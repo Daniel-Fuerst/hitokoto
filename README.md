@@ -1,0 +1,2 @@
+# hitokoto
+Vibe coded slop
