@@ -1,2 +1,2 @@
 # hitokoto
-Vibe coded slop
+Vibe coded markdown editer
