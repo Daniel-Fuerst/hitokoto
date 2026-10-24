@@ -1,6 +1,8 @@
 # S003 — Bullets render as dots, through the same element mechanism
 
-- **Status:** Proposed · **Order:** 6 · **Depends on:** S002
+- **Status:** Done in v0.1 · **Order:** 6 · **Depends on:** S002
+
+**Implementation note:** Done (v0.1, 2026-10-24). Nested items alternate filled and hollow dots. The bullet element was added with one registration line (`ElementRegistry::withBuiltins`). Tests: core `S003_Bullets`, UI `tst_s003_bullets`.
 
 ## Story
 

@@ -1,6 +1,8 @@
 # S002 — Headings render large, `#` hidden unless the cursor is on the line
 
-- **Status:** Proposed · **Order:** 5 · **Depends on:** S001
+- **Status:** Done in v0.1 · **Order:** 5 · **Depends on:** S001
+
+**Implementation note:** Done (v0.1, 2026-10-24). Element registry introduced. Tests: core `S002_Headings` incl. property test, UI `tst_s002_headings`; fuzzer `fuzz_render`. Structural checks of the applied formats instead of image snapshots (fonts differ per platform).
 
 ## Story
 
@@ -22,7 +24,7 @@ that the document reads like a rendered page but stays plain Markdown.
 - Then its markers are visible
 
 **Scenario: levels and non-headings**
-- Given lines `#` to `######` followed by a space, and `####### x`, `#x`, ` # x`
+- Given lines `#` to `######` followed by a space, and `####### x`, `#x`, `    # x` (four spaces)
 - Then levels 1–6 render as headings; the others are plain text (CommonMark rules for ATX
   headings that apply to the MVP; up to three leading spaces allowed)
 

@@ -1,6 +1,8 @@
 # S005 — A theme file changes the look; light and dark built in
 
-- **Status:** Proposed · **Order:** 10 · **Depends on:** S003
+- **Status:** Done in v0.1 · **Order:** 10 · **Depends on:** S003
+
+**Implementation note:** Done (v0.1, 2026-10-24). `docs/theming.md` written; a test checks that it documents every token and that its examples parse. Reload via View > Reload Theme; the theme also follows system light/dark changes. Tests: core `S005_Theme`, UI `tst_s005_theme`, `S005_NoStylingLiteralsInUi`; fuzzer `fuzz_theme`.
 
 ## Story
 

@@ -12,3 +12,13 @@ Read before any work: `docs/brief.md` (the full brief), `docs/adr/` (accepted de
 - Ask before decisions that are expensive to reverse or conflict with the brief; record them as
   ADRs in `docs/adr/`.
 - New dependencies need a justification against the brief, section 3.
+
+Build and check (see README.md for prerequisites per OS):
+
+```sh
+cmake --preset dev && cmake --build --preset dev && ctest --preset dev
+clang-format --dry-run --Werror $(git ls-files '*.cpp' '*.hpp')
+```
+
+Architecture and interfaces: `docs/architecture.md`. Performance tools and numbers:
+`docs/performance.md`. Theme format: `docs/theming.md` (a test keeps it complete).

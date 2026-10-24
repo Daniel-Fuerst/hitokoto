@@ -1,0 +1,5 @@
+# Normalise text files in the repository, check out with native line endings.
+* text=auto
+*.png binary
+# Test fixtures must stay byte-exact (CRLF, BOM, invalid UTF-8 on purpose).
+tests/fixtures/** -text

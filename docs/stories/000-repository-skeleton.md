@@ -1,6 +1,8 @@
 # S000 — Repository skeleton, build and CI on three OSes
 
-- **Status:** Proposed · **Order:** 1 · **Depends on:** –
+- **Status:** Done in v0.1 · **Order:** 1 · **Depends on:** –
+
+**Implementation note:** Done (v0.1, 2026-10-24). CMake presets, core/ui/app layers with configure-time Qt guard, GoogleTest + Qt Test, clang-format/clang-tidy, ASan/UBSan and fuzz jobs, GitHub Actions matrix (Linux Qt 6.12 and 6.8, Windows, macOS). The CI workflow has not run yet; first run on GitHub pending.
 
 ## Story
 

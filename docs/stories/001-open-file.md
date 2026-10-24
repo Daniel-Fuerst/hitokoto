@@ -1,6 +1,8 @@
 # S001 — Opening a Markdown file shows its content
 
-- **Status:** Proposed · **Order:** 2 · **Depends on:** S000
+- **Status:** Done in v0.1 · **Order:** 2 · **Depends on:** S000
+
+**Implementation note:** Done (v0.1, 2026-10-24). ADR 0002 written. Tests: core `S001_Open`, UI `tst_s001_open`.
 
 ## Story
 

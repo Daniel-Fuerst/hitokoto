@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  clang-analyzer-*,
+  -clang-analyzer-optin.cplusplus.VirtualCall,
+  performance-*,
+  -performance-enum-size,
+  modernize-use-override,
+  modernize-use-nullptr,
+  modernize-use-equals-default,
+  readability-redundant-string-cstr,
+  readability-container-size-empty,
+  misc-unused-using-decls
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*/(src|tests|bench|fuzz)/.*'

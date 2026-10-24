@@ -1,6 +1,8 @@
 # S008 — Unsaved changes are never lost silently
 
-- **Status:** Proposed · **Order:** 4 · **Depends on:** S004
+- **Status:** Done in v0.1 · **Order:** 4 · **Depends on:** S004
+
+**Implementation note:** Done (v0.1, 2026-10-24). Tests: UI `tst_s008_unsaved`.
 
 ## Story
 

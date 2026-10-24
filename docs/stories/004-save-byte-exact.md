@@ -1,6 +1,8 @@
 # S004 — Save and Save As write the text byte for byte, atomically
 
-- **Status:** Proposed · **Order:** 3 · **Depends on:** S001
+- **Status:** Done in v0.1 · **Order:** 3 · **Depends on:** S001
+
+**Implementation note:** Done (v0.1, 2026-10-24). Mixed line endings as proposed (existing lines keep theirs, new lines take the majority). Tests: core `S004_Save` incl. property tests, UI `tst_s004_save` incl. a random round trip through the real editor; fuzzer `fuzz_codec`. Saving 10 MB still blocks the UI for about 25 ms (docs/performance.md).
 
 ## Story
 

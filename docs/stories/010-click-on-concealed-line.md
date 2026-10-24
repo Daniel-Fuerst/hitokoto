@@ -1,6 +1,8 @@
 # S010 — Clicking a line with hidden markers puts the caret where clicked
 
-- **Status:** Proposed · **Order:** 9 · **Depends on:** S009
+- **Status:** Done in v0.1 · **Order:** 9 · **Depends on:** S009
+
+**Implementation note:** Done (v0.1, 2026-10-24). Tests: UI `tst_s010_click`.
 
 ## Story
 

@@ -1,0 +1,97 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "dev",
+      "displayName": "Development (Debug, tests)",
+      "binaryDir": "${sourceDir}/build/dev",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "HITOKOTO_BUILD_TESTS": "ON",
+        "HITOKOTO_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "HITOKOTO_BUILD_TESTS": "OFF"
+      }
+    },
+    {
+      "name": "ci",
+      "displayName": "CI (Release, tests, warnings as errors)",
+      "binaryDir": "${sourceDir}/build/ci",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "HITOKOTO_BUILD_TESTS": "ON",
+        "HITOKOTO_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "bench",
+      "displayName": "Benchmarks (Release)",
+      "binaryDir": "${sourceDir}/build/bench",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "HITOKOTO_BUILD_TESTS": "OFF",
+        "HITOKOTO_BUILD_BENCHMARKS": "ON"
+      }
+    },
+    {
+      "name": "core-sanitize",
+      "displayName": "Core only with ASan/UBSan (no Qt needed)",
+      "binaryDir": "${sourceDir}/build/core-sanitize",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "HITOKOTO_BUILD_UI": "OFF",
+        "HITOKOTO_SANITIZE": "address,undefined",
+        "HITOKOTO_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "fuzz",
+      "displayName": "Core fuzzers (Clang)",
+      "binaryDir": "${sourceDir}/build/fuzz",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "HITOKOTO_BUILD_UI": "OFF",
+        "HITOKOTO_BUILD_TESTS": "OFF",
+        "HITOKOTO_BUILD_FUZZERS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "dev", "configurePreset": "dev", "configuration": "Debug" },
+    { "name": "release", "configurePreset": "release", "configuration": "Release" },
+    { "name": "ci", "configurePreset": "ci", "configuration": "Release" },
+    { "name": "bench", "configurePreset": "bench", "configuration": "Release" },
+    { "name": "core-sanitize", "configurePreset": "core-sanitize" },
+    { "name": "fuzz", "configurePreset": "fuzz" }
+  ],
+  "testPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "configuration": "Debug",
+      "output": { "outputOnFailure": true },
+      "environment": { "QT_QPA_PLATFORM": "offscreen" }
+    },
+    {
+      "name": "ci",
+      "configurePreset": "ci",
+      "configuration": "Release",
+      "output": { "outputOnFailure": true },
+      "environment": { "QT_QPA_PLATFORM": "offscreen" }
+    },
+    {
+      "name": "core-sanitize",
+      "configurePreset": "core-sanitize",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}
