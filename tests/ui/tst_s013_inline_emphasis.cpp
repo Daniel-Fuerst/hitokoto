@@ -7,6 +7,25 @@ using namespace hitokoto;
 class tst_s013_inline_emphasis : public QObject {
     Q_OBJECT
 private slots:
+    void formatsPunctuationAtEndOfEmphasizedLabels() {
+        constexpr auto markdown = "**Projekt:** \u2610 Bayernsschach \u2610 Dame \u2610 Clobber\nplain\n";
+        test::Fixture f;
+        const auto theme = core::builtinTheme(core::ColorScheme::Dark);
+        ui::applyThemeToApplication(*qApp, theme);
+        f.window->applyTheme(theme);
+        QVERIFY(f.open(f.writeFile(QStringLiteral("labels.md"), markdown)));
+        f.settle();
+        f.placeCaret(1);
+
+        const auto label = f.editor()->document()->firstBlock();
+        QVERIFY(test::isCollapsed(label, 0));
+        QVERIFY(test::isCollapsed(label, 1));
+        QVERIFY(test::isCollapsed(label, 10));
+        QVERIFY(test::isCollapsed(label, 11));
+        QCOMPARE(test::formatAt(label, 2).fontWeight(), QFont::Bold);
+        QCOMPARE(f.editor()->toPlainText(), QString::fromUtf8(markdown));
+    }
+
     void appliesEmphasisStylesAndConcealsDelimiters() {
         constexpr auto markdown =
             "**bold** *italic* _under_ ~~gone~~\n"

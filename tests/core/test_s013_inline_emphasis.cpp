@@ -56,6 +56,14 @@ TEST(S013_InlineEmphasis, RevealedLineShowsDelimitersAndKeepsStyledRanges) {
     EXPECT_EQ(styled, (std::vector<Span>{{2, 4}, {10, 6}, {20, 4}}));
 }
 
+TEST(S013_InlineEmphasis, FormatsPunctuationAtEndOfEmphasizedLabels) {
+    const auto r = show(u"**Projekt:** \u2610 Bayernsschach \u2610 Dame \u2610 Clobber");
+
+    EXPECT_EQ(spans(r.hidden), (std::vector<Span>{{0, 2}, {10, 2}}));
+    ASSERT_EQ(r.inlineStyles.size(), 1u);
+    EXPECT_EQ(r.inlineStyles[0], (InlineStyleRun{{2, 8}, InlineStyle::Bold}));
+}
+
 TEST(S013_InlineEmphasis, NestedAndCombinedDelimitersProduceSeparateTextRuns) {
     const auto nested = show(u"**bold *italic* bold**");
     std::vector<Span> nestedRuns;
