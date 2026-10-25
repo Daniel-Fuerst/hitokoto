@@ -45,6 +45,10 @@ selection = "#5a3a22"
 editor-family = "Iosevka"
 editor-size = 13
 
+[code-block]
+font-family = "Iosevka Term"
+radius = 8
+
 [headings]
 h1-scale = 2.2
 
@@ -97,6 +101,40 @@ values are device-independent pixels. Hairlines (1 px separators) are fixed.
 | `layout.editor-padding` | number (px) | Space around the editor text, 0 to 256 |
 | `layout.editor-max-width` | number (px) | Maximum width of the text column (centred); 0 = full width, else 200 to 10000 |
 | `buttons.style` | "flat" or "outlined" or "filled" | Look of push buttons in dialogs |
+
+## Element tokens
+
+Each Markdown element has its own section (ADR 0004). An element token that is not set takes
+its fallback, which is resolved when the value is used: a theme that only changes
+`colors.surface` also changes the code block background, unless it sets
+`code-block.background`. The built-in themes leave these tokens unset, so everything below
+follows the general tokens above.
+
+| Token | Type | Meaning | Fallback |
+|---|---|---|---|
+| `code-block.background` | color | Background of the code block panel | `colors.surface` |
+| `code-block.text` | color | Code text | `colors.text` |
+| `code-block.border` | color | Border of the code block panel | `colors.border` |
+| `code-block.border-width` | number (px) | Border width of the panel, 0 to 8 | 0 |
+| `code-block.radius` | number (px) | Corner radius of the panel, 0 to 32 | `layout.radius` |
+| `code-block.padding` | number (px) | Space between the panel edge and the code, 0 to 64 | `layout.spacing` |
+| `code-block.font-family` | string | Font family of the code; "" = system fixed-width font | "" |
+| `code-block.font-scale` | number | Font size relative to the editor font, 0.5 to 2 | 1 |
+| `code-block.marker` | color | Fence lines (fence characters and info string) when revealed | `colors.marker` |
+| `inline-code.background` | color | Background of inline code | `code-block.background` |
+| `inline-code.text` | color | Inline code text | `code-block.text` |
+| `inline-code.border` | color | Border of the inline code background | `code-block.border` |
+| `inline-code.border-width` | number (px) | Border width, 0 to 8 | 0 |
+| `inline-code.radius` | number (px) | Corner radius of the background, 0 to 32 | `code-block.radius` |
+| `inline-code.padding` | number (px) | Horizontal space inside the background on each side, 0 to 16; moves the following text | 2 |
+| `inline-code.font-family` | string | Font family; "" = system fixed-width font | `code-block.font-family` |
+| `inline-code.font-scale` | number | Font size relative to the surrounding text, 0.5 to 2 | 1 |
+| `inline-code.marker` | color | Backticks when revealed | `colors.marker` |
+| `emphasis.bold-weight` | number | Font weight of bold text, 100 to 900 | 700 |
+| `emphasis.bold-text` | color | Colour of bold text (takes precedence over italic and strikethrough) | text colour of the surrounding element |
+| `emphasis.italic-text` | color | Colour of italic text (takes precedence over strikethrough) | text colour of the surrounding element |
+| `emphasis.strikethrough-text` | color | Colour of struck-through text | text colour of the surrounding element |
+| `emphasis.marker` | color | Delimiters (* _ ~~) when revealed | `colors.marker` |
 
 ## The built-in light theme
 
@@ -153,3 +191,8 @@ the Fusion style, the application palette, a style sheet generated from the toke
 editor's text formats. Users never write Qt style sheets, so the native style engine and the
 theme never pull in different directions (ADR 0001). UI code must not contain styling values;
 a test (`S005_NoStylingLiteralsInUi`) enforces that.
+
+Code blocks are drawn as one panel behind their lines, inline code as a box behind the span;
+both are painted by the editor, because character formats can neither round corners nor pad.
+Inline code padding is reserved after the concealed backticks, so the following text moves by
+it; on a revealed line the box covers the backticks instead.

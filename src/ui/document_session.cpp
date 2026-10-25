@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "document_session.hpp"
 
+#include "block_data.hpp"
 #include "editor_widget.hpp"
 #include "hitokoto/core/file_io.hpp"
 #include "qt_bridge.hpp"
@@ -21,12 +22,6 @@ namespace {
 constexpr qsizetype kFirstChunk = qsizetype{64} * 1024;
 constexpr qsizetype kChunk = qsizetype{256} * 1024;
 constexpr qint64 kSliceNanoseconds = 8'000'000;
-
-class LineEndingData final : public QTextBlockUserData {
-public:
-    explicit LineEndingData(core::LineEnding e) : ending(e) {}
-    core::LineEnding ending;
-};
 
 std::filesystem::path toPath(const QString& p) {
     return std::filesystem::path(p.toStdU16String());
@@ -182,7 +177,16 @@ void DocumentSession::finishInsert() {
     if (!pendingPerBreak_.empty()) {
         std::size_t i = 0;
         for (QTextBlock b = doc->begin(); b.isValid() && i < pendingPerBreak_.size(); b = b.next(), ++i) {
-            b.setUserData(new LineEndingData(pendingPerBreak_[i]));
+            // Lines without an entry save with the majority ending; store only the others.
+            if (pendingPerBreak_[i] == format_.ending) {
+                continue;
+            }
+            auto* data = dynamic_cast<BlockData*>(b.userData());
+            if (data == nullptr) {
+                data = new BlockData;
+                b.setUserData(data);
+            }
+            data->ending = pendingPerBreak_[i];
         }
     }
     pendingPerBreak_.clear();
@@ -216,8 +220,8 @@ DocumentSession::Snapshot DocumentSession::snapshot() const {
         text += b.text();
         if (b.next().isValid()) {
             text += QLatin1Char('\n');
-            const auto* data = dynamic_cast<const LineEndingData*>(b.userData());
-            s.perBreak.push_back(data ? data->ending : format_.ending);
+            const auto* data = dynamic_cast<const BlockData*>(b.userData());
+            s.perBreak.push_back(data && data->ending ? *data->ending : format_.ending);
         }
     }
     s.text = std::move(text);

@@ -47,7 +47,7 @@ public:
     [[nodiscard]] quint64 styledCount() const noexcept { return styledCount_; }
 
     /// How a block is shown right now (used for drawing decorations and hit testing).
-    [[nodiscard]] core::LineRender renderFor(const QTextBlock& block) const;
+    [[nodiscard]] core::LineRender renderFor(const QTextBlock& block);
 
 signals:
     void completed();
@@ -56,6 +56,7 @@ private:
     void onContentsChange(int position, int charsRemoved, int charsAdded);
     void styleRange(int first, int last);
     void styleBlock(const QTextBlock& block);
+    [[nodiscard]] core::BlockState blockStateBefore(const QTextBlock& block);
     [[nodiscard]] bool isStyled(const QTextBlock& block) const;
     void scheduleFrom(int blockNumber);
     void idleSlice();

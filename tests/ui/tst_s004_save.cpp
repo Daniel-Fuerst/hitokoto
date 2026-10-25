@@ -44,18 +44,40 @@ private slots:
         const QString path = f.writeFile(QStringLiteral("doc.md"), "\xEF\xBB\xBF# T\r\n- x\r\n");
         QVERIFY(f.open(path));
         f.placeCaret(2);
-        QTest::keyClicks(f.editor(), QStringLiteral("## New"));
-        QTest::keyClick(f.editor(), Qt::Key_Return);
-        QTest::keyClicks(f.editor(), QStringLiteral("- y"));
+        test::keyClicks(f.editor(), QStringLiteral("## New"));
+        test::keyClick(f.editor(), Qt::Key_Return);
+        test::keyClicks(f.editor(), QStringLiteral("- y"));
         f.placeCaret(0);
         QVERIFY(f.saveAndWait(path));
         QCOMPARE(test::Fixture::readFile(path), QByteArray("\xEF\xBB\xBF# T\r\n- x\r\n## New\r\n- y"));
         QVERIFY(!f.editor()->document()->isModified());
     }
 
+    // ADR 0002: mixed files keep each line's ending. Only endings that differ from the majority are
+    // stored per line; every other line saves with the majority ending anyway.
+    void mixedEndingsStoreOnlyMinorityEndings() {
+        test::Fixture f;
+        const QByteArray bytes("a\r\nb\nc\nd\re\nf\r\n\ng\n");
+        const QString path = f.writeFile(QStringLiteral("doc.md"), bytes);
+        QVERIFY(f.open(path));
+        f.settle();
+        QCOMPARE(test::blocksWithUserData(f.editor()->document()), (QList<int>{0, 3, 5}));
+
+        const QString copy = f.dir.filePath(QStringLiteral("copy.md"));
+        QVERIFY(f.saveAndWait(copy));
+        QCOMPARE(test::Fixture::readFile(copy), bytes);
+
+        // A new line takes the majority ending; the minority line it was split from keeps its own.
+        f.placeCaret(0, 1);
+        test::keyClick(f.editor(), Qt::Key_Return);
+        test::keyClicks(f.editor(), QStringLiteral("z"));
+        QVERIFY(f.saveAndWait(copy));
+        QCOMPARE(test::Fixture::readFile(copy), QByteArray("a\r\nz\nb\nc\nd\re\nf\r\n\ng\n"));
+    }
+
     void saveAsChangesPathAndTitle() {
         test::Fixture f;
-        QTest::keyClicks(f.editor(), QStringLiteral("hello"));
+        test::keyClicks(f.editor(), QStringLiteral("hello"));
         const QString target = f.dir.filePath(QStringLiteral("new.md"));
         f.window->setPathPicker([&](bool forSaving, const QString&) { return forSaving ? target : QString(); });
         QSignalSpy done(f.session(), &ui::DocumentSession::saveFinished);
@@ -65,7 +87,7 @@ private slots:
         QCOMPARE(f.session()->path(), target);
         QVERIFY(f.window->windowTitle().startsWith(QStringLiteral("new.md")));
         // Later saves go to the new path.
-        QTest::keyClicks(f.editor(), QStringLiteral("!"));
+        test::keyClicks(f.editor(), QStringLiteral("!"));
         QVERIFY(f.window->save());
         QTRY_COMPARE(done.size(), 2);
         QCOMPARE(test::Fixture::readFile(target), QByteArray("hello!"));
@@ -74,10 +96,10 @@ private slots:
     void typingDuringSaveKeepsModifiedFlag() {
         test::Fixture f;
         const QString path = f.dir.filePath(QStringLiteral("t.md"));
-        QTest::keyClicks(f.editor(), QStringLiteral("one"));
+        test::keyClicks(f.editor(), QStringLiteral("one"));
         QSignalSpy done(f.session(), &ui::DocumentSession::saveFinished);
         f.session()->save(path);
-        QTest::keyClicks(f.editor(), QStringLiteral(" two"));  // before the result arrives
+        test::keyClicks(f.editor(), QStringLiteral(" two"));  // before the result arrives
         QTRY_COMPARE(done.size(), 1);
         QVERIFY(f.editor()->document()->isModified());
     }

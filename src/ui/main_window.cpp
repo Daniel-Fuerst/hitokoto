@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "main_window.hpp"
 
+#include "application_icon.hpp"
 #include "document_session.hpp"
 #include "editor_widget.hpp"
 
@@ -22,6 +23,9 @@ const QString kFilter = QStringLiteral("Markdown (*.md *.markdown *.mdown *.mkd 
 
 MainWindow::MainWindow(const core::ElementRegistry& registry, QWidget* parent)
     : QMainWindow(parent), editor_(new EditorWidget(registry, this)), session_(new DocumentSession(editor_, this)) {
+    const QIcon icon = applicationIcon();
+    QGuiApplication::setWindowIcon(icon);
+    setWindowIcon(icon);
     setCentralWidget(editor_);
     createMenus();
 

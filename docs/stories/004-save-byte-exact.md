@@ -40,6 +40,7 @@ hitokoto is safe to use on any file.
   atomic writer with an injected failure between write and rename.
 - Core fuzz test: arbitrary bytes that decode as UTF-8 survive decode → encode unchanged.
 - UI: `tst_s004_save` – open fixture, edit headings/bullets, save, compare bytes with expectation.
+  With mixed endings only lines whose ending differs from the majority store it per block.
 
 ## Notes
 

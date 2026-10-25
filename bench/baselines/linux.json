@@ -1,0 +1,16 @@
+{
+    "open_10mb_first_chunk_ms": 65.325749,
+    "open_10mb_loaded_ms": 1658.45031,
+    "open_10mb_styled_ms": 2734.163334,
+    "open_1mb_loaded_ms": 140.048398,
+    "save_10mb_total_ms": 58.556648,
+    "save_10mb_ui_blocked_ms": 6.285998,
+    "startup_median_ms": 25.313161,
+    "startup_p95_ms": 26.398085,
+    "typing_10mb_max_ms": 1.328339,
+    "typing_10mb_median_ms": 0.945714,
+    "typing_10mb_p95_ms": 1.04512,
+    "typing_small_max_ms": 1.472598,
+    "typing_small_median_ms": 0.882667,
+    "typing_small_p95_ms": 0.981602
+}

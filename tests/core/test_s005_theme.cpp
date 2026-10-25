@@ -13,7 +13,10 @@ using namespace hitokoto::core;
 TEST(S005_Theme, BuiltinThemesAreCompleteAndDiffer) {
     for (auto scheme : {ColorScheme::Light, ColorScheme::Dark}) {
         const auto r = parseTheme(builtinThemeSource(scheme), Theme{}, true);
-        ASSERT_TRUE(r.theme) << (r.diagnostics.empty() ? "" : r.diagnostics.front().toString());
+        // Explicit branch for bugprone-unchecked-optional-access (it ignores ASSERT_TRUE and flags value()).
+        if (!r.theme) {
+            FAIL() << (r.diagnostics.empty() ? "" : r.diagnostics.front().toString());
+        }
         EXPECT_EQ(r.theme->scheme, scheme);
     }
     EXPECT_NE(builtinTheme(ColorScheme::Light).background, builtinTheme(ColorScheme::Dark).background);
@@ -52,7 +55,10 @@ TEST(S005_Theme, AllValueKinds) {
         "[buttons]\n"
         "style = \"outlined\"\n",
         builtinTheme(ColorScheme::Light));
-    ASSERT_TRUE(r.theme) << r.diagnostics.front().toString();
+    // Explicit branch for bugprone-unchecked-optional-access (it ignores ASSERT_TRUE and flags value()).
+    if (!r.theme) {
+        FAIL() << (r.diagnostics.empty() ? "" : r.diagnostics.front().toString());
+    }
     const Theme& t = *r.theme;
     EXPECT_EQ(t.name, "Mine \"quoted\"");
     EXPECT_EQ(t.accent, (Color{0xaa, 0xbb, 0xcc, 0xff}));
@@ -104,7 +110,10 @@ TEST(S005_Theme, CrlfThemeFilesWork) {
 
 TEST(S005_Theme, NumbersAreLocaleIndependent) {
     const auto r = parseTheme("[fonts]\neditor-size = 11.25\n", builtinTheme(ColorScheme::Light));
-    ASSERT_TRUE(r.theme);
+    // Explicit branch for bugprone-unchecked-optional-access (it ignores ASSERT_TRUE and flags value()).
+    if (!r.theme) {
+        FAIL() << "expected a theme";
+    }
     EXPECT_DOUBLE_EQ(r.theme->editorFontSize, 11.25);
     EXPECT_FALSE(parseTheme("[fonts]\neditor-size = 11,25\n", builtinTheme(ColorScheme::Light)).theme);
 }
@@ -116,6 +125,23 @@ TEST(S005_Theme, EveryTokenIsDocumented) {
         EXPECT_FALSE(t.description.empty()) << t.key;
     }
     EXPECT_GE(themeTokens().size(), 25u);
+}
+
+// ADR 0004: every token of an element section falls back to a documented value; the general
+// tokens have no fallback (the built-in themes set all of them).
+TEST(S005_Theme, ElementTokensDeclareFallbacks) {
+    std::size_t elementTokens = 0;
+    for (const auto& t : themeTokens()) {
+        const bool general = t.section.empty() || t.section == "colors" || t.section == "fonts" ||
+                             t.section == "headings" || t.section == "layout" || t.section == "buttons";
+        if (general) {
+            EXPECT_TRUE(t.fallback.empty()) << t.key;
+        } else {
+            EXPECT_FALSE(t.fallback.empty()) << t.section << "." << t.key;
+            ++elementTokens;
+        }
+    }
+    EXPECT_GE(elementTokens, 23u);
 }
 
 TEST(S005_Theme, ColorToHex) {

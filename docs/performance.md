@@ -18,6 +18,20 @@ CI runs both on Linux, Windows and macOS and compares with `bench/baselines/<os>
 
 ## Measurements
 
+### 2026-10-25, CI runners (run #18, pull request #5)
+
+GitHub-hosted runners (ubuntu-24.04 with Qt 6.12, windows-2022 with Qt 6.8.3, macos-15 with
+Qt 6.12), release build, offscreen, 10 runs. These are the baselines in `bench/baselines/`.
+
+| Measurement | Linux | Windows | macOS | Budget |
+|---|---|---|---|---|
+| Cold start, median | 25 ms | 23 ms | 252 ms | < 1000 ms |
+| Open 1 MB, fully loaded | 140 ms | 171 ms | 202 ms | < 500 ms |
+| Open 10 MB, first screen editable | 65 ms | 79 ms | 79 ms | < 2–3 s |
+| Open 10 MB, fully loaded | 1.7 s | 1.9 s | 3.3 s | |
+| Key to paint, 10 MB file (median / p95) | 0.9 / 1.0 ms | 0.9 / 1.0 ms | 1.2 / 2.2 ms | ≤ 16 ms |
+| Save 10 MB: UI thread blocked | 6 ms | 36 ms | 24 ms | imperceptible |
+
 ### 2026-10-24, development VM (not reference hardware)
 
 Cloud VM, 2 vCPU x86-64, 7 GiB RAM, no GPU, Ubuntu 24.04, Qt 6.12.0, release build,
@@ -40,6 +54,17 @@ Cloud VM, 2 vCPU x86-64, 7 GiB RAM, no GPU, Ubuntu 24.04, Qt 6.12.0, release bui
 
 Core (Google Benchmark): decode 10 MB 24 ms, encode 10 MB 32 ms, render every line of 10 MB
 21 ms, parse the built-in theme 8 µs, render one heading line 60 ns.
+
+With S013–S015 (emphasis, fenced code, inline code; measured 2026-10-25 on the review VM, same
+machine for both): render every line of 10 MB 33 ms (v0.1: 18 ms), render one heading line
+91 ns (v0.1: 50 ns). Inline elements run only on lines containing their trigger characters;
+without that they cost 61 ms and 184 ns.
+
+Per-block metadata (2026-10-25, review VM, Qt 6.12, debug build): every line of the 10 MB
+document from S007 used to carry a 32-byte `BlockData` (427,204 lines, 13.0 MB of about 300 MB
+heap). Now only lines that leave a code block open carry one, and in files with mixed line
+endings only lines whose ending differs from the majority: none in that document, and 61,029 of
+488,233 lines (1.9 MB) in a variant where every eighth line ends in CRLF.
 
 ### Known gaps and next steps
 

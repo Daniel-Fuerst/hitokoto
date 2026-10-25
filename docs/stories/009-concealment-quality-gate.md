@@ -1,6 +1,10 @@
 # S009 — Concealment quality gate: caret, IME, accessibility
 
-- **Status:** Proposed · **Order:** 8 · **Depends on:** S003
+- **Status:** Standing quality gate · **Order:** outside the backlog order · **Depends on:** S003
+
+This is a cross-cutting condition rather than a one-off story. Its scenarios are extended whenever
+an element conceals syntax, and it is checked again then; it may leave the backlog order
+(decided 2026-10-25).
 
 ## Story
 
@@ -11,7 +15,8 @@ depend on it.
 ## Acceptance scenarios
 
 **Scenario: no visible residue**
-- Given headings of levels 1–6 and bullets with the caret elsewhere
+- Given headings of levels 1–6, bullets, emphasis delimiters (S013), code-span backticks (S015)
+  and code fences (S014), with the caret elsewhere
 - Then the visible text starts at the same x position as an unmarked line (tolerance 0.5 px)
 
 **Scenario: caret never inside hidden text**

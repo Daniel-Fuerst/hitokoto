@@ -1,0 +1,89 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Fenced code block (S014): ``` or ~~~ fences (CommonMark 4.5). Everything between the fences is
+// literal code; concealed fence lines are hidden, revealed ones show their source as code.
+#include "hitokoto/core/markdown.hpp"
+
+#include <algorithm>
+
+namespace hitokoto::core {
+namespace {
+
+// Element state: one flag bit for the marker, the fence length below it (never 0 while open).
+constexpr std::uint32_t kBacktick = 1U << 30U;
+constexpr std::uint32_t kTilde = 1U << 31U;
+constexpr std::uint32_t kLengthMask = kBacktick - 1;
+
+struct Fence {
+    std::uint32_t marker = 0;  ///< kBacktick, kTilde or 0 (no fence)
+    std::uint32_t length = 0;
+    std::size_t end = 0;  ///< index after the fence characters
+};
+
+/// A run of at least three ` or ~ after at most three spaces.
+Fence fenceAt(std::u16string_view line) noexcept {
+    std::size_t start = 0;
+    while (start < line.size() && start < 4 && line[start] == u' ') {
+        ++start;
+    }
+    if (start > 3 || start == line.size() || (line[start] != u'`' && line[start] != u'~')) {
+        return {};
+    }
+    const char16_t c = line[start];
+    std::size_t end = start;
+    while (end < line.size() && line[end] == c) {
+        ++end;
+    }
+    if (end - start < 3) {
+        return {};
+    }
+    const auto length = static_cast<std::uint32_t>(std::min<std::size_t>(end - start, kLengthMask));
+    return {c == u'`' ? kBacktick : kTilde, length, end};
+}
+
+bool onlyBlanks(std::u16string_view text) noexcept {
+    return std::all_of(text.begin(), text.end(), [](char16_t c) { return c == u' ' || c == u'\t'; });
+}
+
+class FencedCodeElement final : public MultiLineElement {
+public:
+    [[nodiscard]] std::string_view id() const noexcept override { return "fenced-code"; }
+
+    [[nodiscard]] std::optional<BlockLine> parse(std::u16string_view line,
+                                                 std::uint32_t state) const noexcept override {
+        const Fence fence = fenceAt(line);
+        if (state == 0) {
+            // The info string of a backtick fence must not contain a backtick.
+            if (fence.marker == 0 || (fence.marker == kBacktick && line.substr(fence.end).find(u'`') != line.npos)) {
+                return std::nullopt;
+            }
+            return BlockLine{fence.marker | fence.length, true};
+        }
+        // Closing fence: same character, at least as long as the opening one, nothing but blanks after.
+        const bool closes = fence.marker == (state & ~kLengthMask) && fence.length >= (state & kLengthMask) &&
+                            onlyBlanks(line.substr(fence.end));
+        return closes ? BlockLine{0, true} : BlockLine{state, false};
+    }
+
+    void render(std::u16string_view line, const BlockLine& parsed, const LineContext& context,
+                LineRender& out) const override {
+        out.codeBlock = true;
+        out.fenceLine = parsed.delimiter;
+        const Span whole{0, static_cast<std::uint32_t>(line.size())};
+        if (whole.length == 0) {
+            return;
+        }
+        if (parsed.delimiter && !context.revealed) {
+            out.hidden.push_back({whole, HideMode::Collapse});
+        } else {
+            out.runs.push_back({whole, Role::CodeBlock, 0});
+        }
+    }
+};
+
+}  // namespace
+
+std::unique_ptr<MultiLineElement> makeFencedCodeElement() {
+    return std::make_unique<FencedCodeElement>();
+}
+
+}  // namespace hitokoto::core

@@ -27,6 +27,22 @@ struct Color {
 enum class ColorScheme : std::uint8_t { Light, Dark };
 enum class ButtonStyle : std::uint8_t { Flat, Outlined, Filled };
 
+/// Tokens of a code-like element (`[code-block]`, `[inline-code]`). Unset values fall back when
+/// resolved (ADR 0004); UI code reads codeBlockStyle() / inlineCodeStyle(), never these directly.
+struct CodeTokens {
+    std::optional<Color> background, text, border, marker;
+    std::optional<double> borderWidth, radius, padding, fontScale;
+    std::optional<std::string> fontFamily;
+    friend bool operator==(const CodeTokens&, const CodeTokens&) = default;
+};
+
+/// Tokens of `[emphasis]`; resolved by emphasisStyle().
+struct EmphasisTokens {
+    std::optional<double> boldWeight;
+    std::optional<Color> boldText, italicText, strikethroughText, marker;
+    friend bool operator==(const EmphasisTokens&, const EmphasisTokens&) = default;
+};
+
 /// Every value the UI uses for colours, fonts, radii and spacing. Hard-coded styling values
 /// in UI code are bugs; add a token instead.
 struct Theme {
@@ -56,6 +72,11 @@ struct Theme {
     // [buttons]
     ButtonStyle buttonStyle = ButtonStyle::Filled;
 
+    // Element sections (ADR 0004)
+    CodeTokens codeBlock;
+    CodeTokens inlineCode;
+    EmphasisTokens emphasis;
+
     friend bool operator==(const Theme&, const Theme&) = default;
 };
 
@@ -77,7 +98,30 @@ struct ThemeTokenInfo {
     std::string_view key;
     std::string_view type;
     std::string_view description;
+    std::string_view fallback;  ///< element tokens (ADR 0004): value used when unset; empty = required
 };
+
+/// Resolved look of a code-like element: every element token with its fallback applied.
+struct CodeStyle {
+    Color background, text, border, marker;
+    double borderWidth = 0;
+    double radius = 0;
+    double padding = 0;
+    double fontScale = 1;    ///< relative to the surrounding text
+    std::string fontFamily;  ///< empty = system fixed-width font
+    friend bool operator==(const CodeStyle&, const CodeStyle&) = default;
+};
+
+struct EmphasisStyle {
+    int boldWeight = 700;
+    std::optional<Color> boldText, italicText, strikethroughText;  ///< empty = surrounding text colour
+    Color marker;
+    friend bool operator==(const EmphasisStyle&, const EmphasisStyle&) = default;
+};
+
+[[nodiscard]] CodeStyle codeBlockStyle(const Theme& theme);
+[[nodiscard]] CodeStyle inlineCodeStyle(const Theme& theme);
+[[nodiscard]] EmphasisStyle emphasisStyle(const Theme& theme);
 
 /// All tokens of the theme format, in documentation order.
 std::span<const ThemeTokenInfo> themeTokens();

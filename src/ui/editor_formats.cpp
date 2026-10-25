@@ -6,12 +6,41 @@
 #include <QFontDatabase>
 
 #include <algorithm>
+#include <optional>
 #include <vector>
 
 namespace hitokoto::ui {
 
+namespace {
+/// True if `column` is the backtick before or after an inline-code run.
+bool isInlineCodeDelimiter(const core::LineRender& render, std::uint32_t column) {
+    return std::any_of(render.runs.begin(), render.runs.end(), [column](const core::StyleRun& run) {
+        return run.role == core::Role::InlineCode && (run.span.start == column + 1 || run.span.end() == column);
+    });
+}
+
+// A style hint alone does not change an existing family, so code gets an explicit one.
+QStringList codeFamilies(const std::string& family) {
+    return family.empty() ? QFontDatabase::systemFont(QFontDatabase::FixedFont).families()
+                          : QStringList{QString::fromStdString(family)};
+}
+
+void applyCodeFont(QTextCharFormat& format, const QStringList& families, double size) {
+    format.setFontFamilies(families);
+    format.setFontStyleHint(QFont::TypeWriter);
+    format.setFontPointSize(size);
+}
+}  // namespace
+
 EditorFormats::EditorFormats(const core::Theme& theme)
-    : marker_(toQColor(theme.marker)), bullet_(toQColor(theme.bullet)) {
+    : marker_(toQColor(theme.marker)),
+      bullet_(toQColor(theme.bullet)),
+      editorFontSize_(theme.editorFontSize),
+      codeBlock_(core::codeBlockStyle(theme)),
+      inlineCode_(core::inlineCodeStyle(theme)),
+      emphasis_(core::emphasisStyle(theme)),
+      codeBlockFamilies_(codeFamilies(codeBlock_.fontFamily)),
+      inlineCodeFamilies_(codeFamilies(inlineCode_.fontFamily)) {
     baseFont_ = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
     if (!theme.editorFontFamily.empty()) {
         baseFont_.setFamilies({QString::fromStdString(theme.editorFontFamily)});
@@ -23,6 +52,10 @@ EditorFormats::EditorFormats(const core::Theme& theme)
         f.setFontWeight(theme.headingWeight);
         heading_[static_cast<std::size_t>(level)] = f;
     }
+}
+
+double EditorFormats::textSize(int level) const {
+    return level >= 1 && level <= 6 ? heading_[static_cast<std::size_t>(level)].fontPointSize() : editorFontSize_;
 }
 
 QTextCharFormat EditorFormats::heading(int level) const {
@@ -85,24 +118,54 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
             continue;
         }
 
-        QTextCharFormat format =
-            baseRun != nullptr ? heading(baseRun->level != 0 ? baseRun->level : render.headingLevel) : lineFormat;
-        if (baseRun != nullptr && baseRun->role == core::Role::Marker) {
+        const int level = baseRun != nullptr && baseRun->level != 0 ? baseRun->level : render.headingLevel;
+        QTextCharFormat format = baseRun != nullptr ? heading(level) : lineFormat;
+        // A pointer rather than std::optional<core::Role>: GCC 13 in Release builds (-O3) reports a false
+        // -Wmaybe-uninitialized for the optional, which breaks the Release build with -Werror (CI).
+        const core::Role* role = baseRun != nullptr ? &baseRun->role : nullptr;
+        const auto is = [role](core::Role r) { return role != nullptr && *role == r; };
+        if (is(core::Role::Marker)) {
             format.setForeground(marker_);
+        } else if (is(core::Role::CodeBlock)) {
+            applyCodeFont(format, codeBlockFamilies_, editorFontSize_ * codeBlock_.fontScale);
+            format.setForeground(toQColor(render.fenceLine ? codeBlock_.marker : codeBlock_.text));
+        } else if (is(core::Role::InlineCode) || is(core::Role::InlineCodeMarker)) {
+            // The background is a box painted by EditorWidget (radius, border, padding).
+            applyCodeFont(format, inlineCodeFamilies_, textSize(level) * inlineCode_.fontScale);
+            format.setForeground(toQColor(is(core::Role::InlineCode) ? inlineCode_.text : inlineCode_.marker));
+        } else if (is(core::Role::EmphasisMarker)) {
+            format.setForeground(toQColor(emphasis_.marker));
         }
-        if (inlineRun != nullptr) {
-            if (core::hasStyle(inlineRun->style, core::InlineStyle::Bold)) {
-                format.setFontWeight(QFont::Bold);
+        if (inlineRun != nullptr && !is(core::Role::InlineCode)) {
+            const auto styles = inlineRun->style;
+            if (core::hasStyle(styles, core::InlineStyle::Bold)) {
+                format.setFontWeight(emphasis_.boldWeight);
             }
-            if (core::hasStyle(inlineRun->style, core::InlineStyle::Italic)) {
+            if (core::hasStyle(styles, core::InlineStyle::Italic)) {
                 format.setFontItalic(true);
             }
-            if (core::hasStyle(inlineRun->style, core::InlineStyle::Strikethrough)) {
+            if (core::hasStyle(styles, core::InlineStyle::Strikethrough)) {
                 format.setFontStrikeOut(true);
+            }
+            // Precedence: bold, italic, strikethrough (docs/theming.md).
+            const std::optional<core::Color> color =
+                core::hasStyle(styles, core::InlineStyle::Bold) && emphasis_.boldText       ? emphasis_.boldText
+                : core::hasStyle(styles, core::InlineStyle::Italic) && emphasis_.italicText ? emphasis_.italicText
+                : core::hasStyle(styles, core::InlineStyle::Strikethrough) ? emphasis_.strikethroughText
+                                                                           : std::nullopt;
+            if (color) {
+                format.setForeground(toQColor(*color));
             }
         }
         if (hidden != nullptr) {
-            format = lineFormat;
+            if (!is(core::Role::CodeBlock)) {
+                format = lineFormat;
+            }
+            if (isInlineCodeDelimiter(render, start)) {
+                // Reserves inline-code padding after each concealed backtick (theme token, ADR 0004).
+                format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
+                format.setFontLetterSpacing(inlineCode_.padding);
+            }
             // Concealment mechanism (ADR 0001), not a styling value.
             format.setForeground(Qt::transparent);  // theme-lint: allow
             if (hidden->mode == core::HideMode::Collapse) {

@@ -6,6 +6,7 @@
 #include "editor_widget.hpp"
 #include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/theme.hpp"
+#include "key_input.hpp"
 #include "main_window.hpp"
 #include "theme_applier.hpp"
 
@@ -103,6 +104,17 @@ inline QTextCharFormat formatAt(const QTextBlock& block, int column) {
 
 inline bool isCollapsed(const QTextBlock& block, int column) {
     return formatAt(block, column).intProperty(QTextFormat::FontPixelSize) == 1;
+}
+
+/// Numbers of the blocks that carry per-block metadata (QTextBlockUserData).
+inline QList<int> blocksWithUserData(const QTextDocument* document) {
+    QList<int> result;
+    for (QTextBlock b = document->begin(); b.isValid(); b = b.next()) {
+        if (b.userData() != nullptr) {
+            result << b.blockNumber();
+        }
+    }
+    return result;
 }
 
 }  // namespace hitokoto::test

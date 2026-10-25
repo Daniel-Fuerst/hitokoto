@@ -1,6 +1,6 @@
 # S013 — Inline bold, italic and strikethrough
 
-- **Status:** In Progress · **Order:** 14 · **Depends on:** S003
+- **Status:** In review · **Order:** 14 · **Depends on:** S003
 
 ## Story
 
@@ -39,6 +39,15 @@ readable without changing the plain Markdown source.
 - When the line is rendered
 - Then it remains literal text
 
+**Scenario: emphasis is themeable (theming baseline, ADR 0004)**
+- Given a theme that sets `emphasis.bold-weight`, `emphasis.bold-text`, `emphasis.italic-text`,
+  `emphasis.strikethrough-text` and `emphasis.marker`
+- When emphasis is rendered, with the caret elsewhere and on the line
+- Then each part uses its token: bold text the weight and colour, italic and struck-through text
+  their colours, revealed delimiters the marker colour
+- And a theme that sets none of them renders emphasis in the surrounding text colour, bold at
+  weight 700, revealed delimiters in `colors.marker`
+
 ## Scope
 
 - Single, double and triple `*`/`_` runs provide italic, bold and combined bold+italic.
@@ -54,3 +63,13 @@ readable without changing the plain Markdown source.
   nesting, unmatched input and escaped delimiters.
 - UI: `tst_s013_inline_emphasis` verifies Qt font formats, cursor-aware marker reveal, and that
   rendering never changes the document text.
+- Theming: core tests `S013_InlineEmphasis` parse every `emphasis.*` token and check its fallback;
+  UI tests check that each token changes the rendered format.
+
+## Implementation
+
+Completed 2026-10-25. Core and UI tests pass on Linux. Bold weight, the three text colours and
+the colour of revealed delimiters come from `[emphasis]` (ADR 0004).
+
+CI run #18 (pull request #5, 2026-10-25) is green on Linux (Qt 6.12 and 6.8), Windows (Qt 6.8.3)
+and macOS (Qt 6.12).

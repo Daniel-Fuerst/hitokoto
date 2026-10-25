@@ -10,6 +10,7 @@
 #include "document_session.hpp"
 #include "editor_widget.hpp"
 #include "hitokoto/core/markdown.hpp"
+#include "key_input.hpp"
 #include "main_window.hpp"
 #include "theme_applier.hpp"
 
@@ -27,7 +28,9 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <iterator>
 #include <map>
+#include <string_view>
 #include <vector>
 
 using namespace hitokoto;
@@ -138,16 +141,16 @@ std::vector<double> measureTyping(ui::MainWindow& w, int keys) {
         t.start();
         switch (i % 25) {
             case 22:
-                QTest::keyClick(e, Qt::Key_Return);
+                test::keyClick(e, Qt::Key_Return);
                 break;
             case 23:
-                QTest::keyClick(e, Qt::Key_Up);
+                test::keyClick(e, Qt::Key_Up);
                 break;
             case 24:
-                QTest::keyClick(e, Qt::Key_Down);
+                test::keyClick(e, Qt::Key_Down);
                 break;
             default:
-                QTest::keyClick(e, text.at(i % 22).toLatin1());
+                test::keyClick(e, text.at(i % 22).toLatin1());
                 break;
         }
         e->viewport()->repaint();
@@ -178,6 +181,12 @@ struct Budget {
     double limit;
     const char* text;
 };
+
+// Compared with the baseline but never failing the run: the time until the saved file is on disk
+// includes fsync before the atomic rename (ADR 0002) and swings with the shared CI runners' disks.
+// The budget-relevant value is save_10mb_ui_blocked_ms, which stays checked. To be revisited with
+// the save follow-up of S007 (docs/performance.md).
+constexpr std::string_view kReportOnly[] = {"save_10mb_total_ms"};
 
 // Brief, section 4.
 const Budget kBudgets[] = {
@@ -211,9 +220,9 @@ int main(int argc, char* argv[]) {
     parser.process(app);
 
     QTemporaryDir dir;
-    const QString small = writeFile(dir, QStringLiteral("small.md"), largeDocument(10 * 1024));
-    const QString oneMb = writeFile(dir, QStringLiteral("1mb.md"), largeDocument(1024 * 1024));
-    const QString tenMb = writeFile(dir, QStringLiteral("10mb.md"), largeDocument(10 * 1024 * 1024));
+    const QString small = writeFile(dir, QStringLiteral("small.md"), largeDocument(qsizetype{10} * 1024));
+    const QString oneMb = writeFile(dir, QStringLiteral("1mb.md"), largeDocument(qsizetype{1024} * 1024));
+    const QString tenMb = writeFile(dir, QStringLiteral("10mb.md"), largeDocument(qsizetype{10} * 1024 * 1024));
 
     std::map<std::string, double> r;
     const auto startup = stats(measureStartup(parser.value(appOpt), small, parser.value(runsOpt).toInt()));
@@ -289,8 +298,11 @@ int main(int argc, char* argv[]) {
                 const double now = found->second;
                 // Ignore differences below 2 ms: timer and scheduler noise.
                 const bool regressed = now > was * (1 + tol) && now - was > 2.0;
-                std::printf("  %-4s %-28s %8.2f -> %8.2f\n", regressed ? "SLOW" : "ok", qPrintable(it.key()), was, now);
-                if (regressed)
+                const bool reportOnly = std::find(std::begin(kReportOnly), std::end(kReportOnly),
+                                                  it.key().toStdString()) != std::end(kReportOnly);
+                const char* status = !regressed ? "ok" : reportOnly ? "info" : "SLOW";
+                std::printf("  %-4s %-28s %8.2f -> %8.2f\n", status, qPrintable(it.key()), was, now);
+                if (regressed && !reportOnly)
                     exitCode = 1;
             }
         }

@@ -3,7 +3,7 @@
 find_package(Qt6 REQUIRED COMPONENTS Test)
 
 function(hitokoto_ui_test name)
-    qt_add_executable(${name} ${name}.cpp ui_test_support.hpp)
+    qt_add_executable(${name} ${name}.cpp ui_test_support.hpp key_input.hpp)
     target_link_libraries(${name} PRIVATE hitokoto::ui Qt6::Test)
     hitokoto_set_compile_options(${name})
     if(NOT MSVC)
@@ -24,6 +24,9 @@ foreach(t IN ITEMS
         tst_s007_large_files
         tst_s008_unsaved
         tst_s010_click
-        tst_s013_inline_emphasis)
+        tst_s013_inline_emphasis
+        tst_s014_fenced_code_blocks
+        tst_s015_inline_code
+        tst_s016_app_icon)
     hitokoto_ui_test(${t})
 endforeach()

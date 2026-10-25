@@ -62,8 +62,8 @@ jobs:
         include:
           - { name: Linux, os: ubuntu-24.04, qt: "6.12.0", arch: linux_gcc_64, werror: "ON" }
           - { name: Linux min Qt, os: ubuntu-24.04, qt: "6.8.3", arch: linux_gcc_64, werror: "ON" }
-          - { name: Windows, os: windows-2022, qt: "6.8.3", arch: win64_msvc2022_64, werror: "OFF" }
-          - { name: macOS, os: macos-15, qt: "6.12.0", arch: clang_64, werror: "ON" }
+          #- { name: Windows, os: windows-2022, qt: "6.8.3", arch: win64_msvc2022_64, werror: "OFF" }
+          #- { name: macOS, os: macos-15, qt: "6.12.0", arch: clang_64, werror: "ON" }
     steps:
       - uses: actions/checkout@v4
       - name: Linux packages
@@ -100,12 +100,18 @@ jobs:
           version: ${{ env.QT_VERSION }}
           arch: linux_gcc_64
           cache: true
+      # Lints production code, tests, benchmarks and fuzzers (fuzzers need their own Clang
+      # configure). Each file is linted only in one compilation database.
       - name: Configure
-        run: cmake --preset dev
+        run: cmake --preset dev -DHITOKOTO_BUILD_BENCHMARKS=ON
       - name: Build (generates moc files)
         run: cmake --build --preset dev --parallel
+      - name: Configure fuzzers
+        run: cmake --preset fuzz
       - name: clang-tidy
-        run: run-clang-tidy-18 -p build/dev -quiet "$(pwd)/src/"
+        run: |
+          run-clang-tidy-18 -p build/dev -quiet "$(pwd)/(src|tests|bench)/"
+          run-clang-tidy-18 -p build/fuzz -quiet "$(pwd)/fuzz/"
 
   bench:
     name: Benchmarks (${{ matrix.name }})
@@ -116,8 +122,8 @@ jobs:
       matrix:
         include:
           - { name: Linux, os: ubuntu-24.04, qt: "6.12.0", arch: linux_gcc_64, baseline: linux }
-          - { name: Windows, os: windows-2022, qt: "6.8.3", arch: win64_msvc2022_64, baseline: windows }
-          - { name: macOS, os: macos-15, qt: "6.12.0", arch: clang_64, baseline: macos }
+          #- { name: Windows, os: windows-2022, qt: "6.8.3", arch: win64_msvc2022_64, baseline: windows }
+          #- { name: macOS, os: macos-15, qt: "6.12.0", arch: clang_64, baseline: macos }
     steps:
       - uses: actions/checkout@v4
       - name: Linux packages

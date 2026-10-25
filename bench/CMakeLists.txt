@@ -9,6 +9,8 @@ if(HITOKOTO_BUILD_UI)
     find_package(Qt6 REQUIRED COMPONENTS Test)
     qt_add_executable(hitokoto-bench hitokoto_bench.cpp)
     target_link_libraries(hitokoto-bench PRIVATE hitokoto::ui Qt6::Test)
+    # Simulated key input shared with the UI tests (tests/ui/key_input.hpp).
+    target_include_directories(hitokoto-bench PRIVATE ${PROJECT_SOURCE_DIR}/tests/ui)
     target_compile_definitions(hitokoto-bench PRIVATE HITOKOTO_APP_PATH="$<TARGET_FILE:hitokoto>")
     hitokoto_set_compile_options(hitokoto-bench)
 endif()

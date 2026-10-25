@@ -8,6 +8,10 @@
 #include "hitokoto/core/theme.hpp"
 
 #include <QPlainTextEdit>
+#include <QPointF>
+
+class QPainter;
+class QTextBlock;
 
 namespace hitokoto::ui {
 
@@ -36,6 +40,9 @@ protected:
 private:
     void updateReveal();
     void updateMargins();
+    void paintCodeBlockPanels();
+    void paintInlineCodeBoxes(QPainter& painter, const QTextBlock& block, const core::LineRender& render,
+                              QPointF origin, const core::CodeStyle& style);
     void paintDecorations();
 
     BlockStyler* styler_ = nullptr;

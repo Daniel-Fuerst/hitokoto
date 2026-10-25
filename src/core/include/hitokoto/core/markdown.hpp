@@ -3,9 +3,11 @@
 // registry. The UI asks the registry how to show one line; it never knows the elements.
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -21,8 +23,12 @@ struct Span {
 
 /// Semantic role of a run of text; the UI maps roles to theme formats.
 enum class Role : std::uint8_t {
-    Marker,       ///< visible syntax marker (cursor on the line)
-    HeadingText,  ///< text of a heading; StyleRun::level holds 1..6
+    Marker,            ///< visible syntax marker (cursor on the line)
+    HeadingText,       ///< text of a heading; StyleRun::level holds 1..6
+    CodeBlock,         ///< text inside a fenced code block
+    InlineCode,        ///< text inside a single-backtick code span; one delimiter character on each side
+    InlineCodeMarker,  ///< a revealed inline-code delimiter (backtick)
+    EmphasisMarker,    ///< a revealed emphasis delimiter (* _ ~~)
 };
 
 enum class InlineStyle : std::uint8_t {
@@ -78,15 +84,28 @@ struct Decoration {
     friend bool operator==(const Decoration&, const Decoration&) = default;
 };
 
+/// State carried from one line to the next while a multi-line element (fenced code block, ...)
+/// is open. Opaque outside the registry: compare it, store it per line, pass it back in.
+struct BlockState {
+    std::uint8_t element = 0;  ///< 0 = no block open, else which multi-line element owns it
+    std::uint32_t value = 0;   ///< that element's own state (never 0 while open)
+    [[nodiscard]] bool active() const noexcept { return element != 0; }
+    friend bool operator==(const BlockState&, const BlockState&) = default;
+};
+
 /// How one line is shown. All spans lie within the line.
 struct LineRender {
     std::uint8_t headingLevel = 0;  ///< 1..6 if the whole line is a heading, else 0
+    bool codeBlock = false;         ///< line belongs to a code block (the UI paints a panel)
+    bool fenceLine = false;         ///< opening or closing line of a code block (no panel)
+    BlockState blockState;          ///< state to pass when rendering the next line
     std::vector<StyleRun> runs;
     std::vector<InlineStyleRun> inlineStyles;
     std::vector<HiddenRange> hidden;
     std::vector<Decoration> decorations;
     [[nodiscard]] bool empty() const noexcept {
-        return headingLevel == 0 && runs.empty() && inlineStyles.empty() && hidden.empty() && decorations.empty();
+        return headingLevel == 0 && !codeBlock && !fenceLine && runs.empty() && inlineStyles.empty() &&
+               hidden.empty() && decorations.empty();
     }
     friend bool operator==(const LineRender&, const LineRender&) = default;
 };
@@ -94,6 +113,9 @@ struct LineRender {
 /// Context for rendering one line.
 struct LineContext {
     bool revealed = false;  ///< caret or selection is on this line: show raw syntax
+    BlockState blockState;  ///< state entering this line (`LineRender::blockState` of the line above)
+
+    LineContext(bool showSource = false, BlockState state = {}) : revealed(showSource), blockState(state) {}
 };
 
 /// Result of a line element's parse rule.
@@ -129,7 +151,39 @@ public:
     virtual ~InlineElement() = default;
 
     [[nodiscard]] virtual std::string_view id() const noexcept = 0;
+    /// Characters that can start this element. The registry scans each line once and skips the
+    /// element on lines that contain none of them. Empty (the default) = run on every line.
+    [[nodiscard]] virtual std::u16string_view triggerCharacters() const noexcept { return {}; }
     virtual void render(std::u16string_view line, const LineContext& context, LineRender& out) const = 0;
+};
+
+/// Result of a multi-line element's parse rule for one line.
+struct BlockLine {
+    std::uint32_t stateAfter = 0;  ///< element state for the next line; 0 = the block ends with this line
+    bool delimiter = false;        ///< opening or closing line (e.g. a fence), for the render rule
+};
+
+/// A block-level element that spans lines (fenced code block, ...). While one is open it owns every
+/// line until it ends: line and inline elements do not run there. The element sees only its own
+/// state, a non-zero number it chooses; the registry carries it between lines.
+/// Adding an element = implementing this interface and registering it; nothing else changes.
+class MultiLineElement {
+public:
+    MultiLineElement() = default;
+    MultiLineElement(const MultiLineElement&) = delete;
+    MultiLineElement& operator=(const MultiLineElement&) = delete;
+    virtual ~MultiLineElement() = default;
+
+    [[nodiscard]] virtual std::string_view id() const noexcept = 0;
+    /// Parse rule. `state` is 0 outside a block: return a BlockLine if `line` opens one, else
+    /// nullopt. Inside, `state` is the element's state from the previous line: return the line's
+    /// BlockLine, or nullopt if the block ended before `line` (the line is then parsed afresh).
+    /// Runs for every line above the visible ones, so it must be cheap and must not allocate.
+    [[nodiscard]] virtual std::optional<BlockLine> parse(std::u16string_view line,
+                                                         std::uint32_t state) const noexcept = 0;
+    /// Render rule: how to show a line the parse rule accepted.
+    virtual void render(std::u16string_view line, const BlockLine& parsed, const LineContext& context,
+                        LineRender& out) const = 0;
 };
 
 class ElementRegistry {
@@ -138,9 +192,14 @@ public:
     void add(std::unique_ptr<LineElement> element);
     /// Registers an inline element. All registered inline elements render after the block element.
     void addInline(std::unique_ptr<InlineElement> element);
+    /// Registers a multi-line element. Multi-line elements are tried before line elements; earlier
+    /// registrations win. At most 255 (throws std::length_error beyond).
+    void addMultiLine(std::unique_ptr<MultiLineElement> element);
 
     /// How to show `line`. Never throws for any input.
     [[nodiscard]] LineRender render(std::u16string_view line, const LineContext& context) const;
+    /// `render(line, {any, state}).blockState`, without rendering (the UI walks lines with it).
+    [[nodiscard]] BlockState blockStateAfter(std::u16string_view line, BlockState state = {}) const noexcept;
 
     [[nodiscard]] std::size_t size() const noexcept { return elements_.size(); }
 
@@ -148,13 +207,31 @@ public:
     static ElementRegistry withBuiltins();
 
 private:
+    struct BlockMatch {
+        std::uint8_t element = 0;  ///< index + 1 in multiLineElements_
+        BlockLine parsed;
+        [[nodiscard]] BlockState stateAfter() const noexcept;
+    };
+    [[nodiscard]] std::optional<BlockMatch> matchBlock(std::u16string_view line, BlockState state) const noexcept;
+
     std::vector<std::unique_ptr<LineElement>> elements_;
-    std::vector<std::unique_ptr<InlineElement>> inlineElements_;
+    struct InlineEntry {
+        std::unique_ptr<InlineElement> element;
+        std::u16string otherTriggers;  ///< non-ASCII trigger characters
+        bool always = false;           ///< no trigger characters declared, or more than 64 inline elements
+    };
+    std::vector<InlineEntry> inlineElements_;
+    /// For each ASCII character, bit i is set if it triggers inline element i.
+    std::array<std::uint64_t, 128> asciiTriggers_{};
+    bool hasOtherTriggers_ = false;
+    std::vector<std::unique_ptr<MultiLineElement>> multiLineElements_;
 };
 
 /// Built-in elements (each in its own source file).
 std::unique_ptr<LineElement> makeHeadingElement();
 std::unique_ptr<LineElement> makeBulletElement();
+std::unique_ptr<InlineElement> makeInlineCodeElement();
 std::unique_ptr<InlineElement> makeEmphasisElement();
+std::unique_ptr<MultiLineElement> makeFencedCodeElement();
 
 }  // namespace hitokoto::core
