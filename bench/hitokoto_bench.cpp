@@ -10,6 +10,7 @@
 #include "document_session.hpp"
 #include "editor_widget.hpp"
 #include "hitokoto/core/markdown.hpp"
+#include "key_input.hpp"
 #include "main_window.hpp"
 #include "theme_applier.hpp"
 
@@ -138,16 +139,16 @@ std::vector<double> measureTyping(ui::MainWindow& w, int keys) {
         t.start();
         switch (i % 25) {
             case 22:
-                QTest::keyClick(e, Qt::Key_Return);
+                test::keyClick(e, Qt::Key_Return);
                 break;
             case 23:
-                QTest::keyClick(e, Qt::Key_Up);
+                test::keyClick(e, Qt::Key_Up);
                 break;
             case 24:
-                QTest::keyClick(e, Qt::Key_Down);
+                test::keyClick(e, Qt::Key_Down);
                 break;
             default:
-                QTest::keyClick(e, text.at(i % 22).toLatin1());
+                test::keyClick(e, text.at(i % 22).toLatin1());
                 break;
         }
         e->viewport()->repaint();

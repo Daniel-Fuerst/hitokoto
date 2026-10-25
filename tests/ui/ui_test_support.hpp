@@ -6,6 +6,7 @@
 #include "editor_widget.hpp"
 #include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/theme.hpp"
+#include "key_input.hpp"
 #include "main_window.hpp"
 #include "theme_applier.hpp"
 

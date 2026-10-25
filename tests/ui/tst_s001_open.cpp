@@ -39,14 +39,14 @@ private slots:
 
     void editorIsReadOnlyWhileLoadingAndSavingIsRefused() {
         test::Fixture f;
-        QTest::keyClicks(f.editor(), QStringLiteral("old"));
+        test::keyClicks(f.editor(), QStringLiteral("old"));
         f.editor()->document()->setModified(false);
         const QString path = f.writeFile(QStringLiteral("n.md"), "new content");
         QSignalSpy done(f.session(), &ui::DocumentSession::loadFinished);
         QSignalSpy refused(f.session(), &ui::DocumentSession::saveFailed);
         f.session()->load(path);
         QVERIFY(f.editor()->isReadOnly());
-        QTest::keyClicks(f.editor(), QStringLiteral("lost?"));
+        test::keyClicks(f.editor(), QStringLiteral("lost?"));
         f.session()->save(f.dir.filePath(QStringLiteral("other.md")));
         QCOMPARE(refused.size(), 1);
         QTRY_COMPARE(done.size(), 1);

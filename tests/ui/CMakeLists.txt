@@ -3,7 +3,7 @@
 find_package(Qt6 REQUIRED COMPONENTS Test)
 
 function(hitokoto_ui_test name)
-    qt_add_executable(${name} ${name}.cpp ui_test_support.hpp)
+    qt_add_executable(${name} ${name}.cpp ui_test_support.hpp key_input.hpp)
     target_link_libraries(${name} PRIVATE hitokoto::ui Qt6::Test)
     hitokoto_set_compile_options(${name})
     if(NOT MSVC)

@@ -35,7 +35,7 @@ private slots:
         QVERIFY(!test::isCollapsed(heading, 0));
         QCOMPARE(test::formatAt(heading, 0).foreground().color(),
                  QColor(QString::fromStdString(core::builtinTheme(core::ColorScheme::Light).marker.toHex())));
-        QTest::keyClick(f.editor(), Qt::Key_Down);
+        test::keyClick(f.editor(), Qt::Key_Down);
         QVERIFY(test::isCollapsed(heading, 0));
     }
 
@@ -55,8 +55,8 @@ private slots:
 
     void typingAHeadingRendersItImmediately() {
         test::Fixture f;
-        QTest::keyClicks(f.editor(), QStringLiteral("### Hi"));
-        QTest::keyClick(f.editor(), Qt::Key_Return);
+        test::keyClicks(f.editor(), QStringLiteral("### Hi"));
+        test::keyClick(f.editor(), Qt::Key_Return);
         const QTextBlock heading = f.editor()->document()->firstBlock();
         QVERIFY(test::isCollapsed(heading, 0));
         QVERIFY(test::formatAt(heading, 4).fontPointSize() > 0);
@@ -74,7 +74,7 @@ private slots:
         const auto before = styler.styledCount();
         f.placeCaret(101);
         f.placeCaret(102);
-        QTest::keyClicks(f.editor(), QStringLiteral("abc"));
+        test::keyClicks(f.editor(), QStringLiteral("abc"));
         QVERIFY2(styler.styledCount() - before <= 10, qPrintable(QString::number(styler.styledCount() - before)));
     }
 };

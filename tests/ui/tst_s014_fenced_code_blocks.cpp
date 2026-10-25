@@ -190,7 +190,7 @@ private slots:
 
         // Splitting a code line keeps both halves inside the block.
         f.placeCaret(4, 2);
-        QTest::keyClick(f.editor(), Qt::Key_Return);
+        test::keyClick(f.editor(), Qt::Key_Return);
         f.settle();
         QCOMPARE(test::blocksWithUserData(f.editor()->document()), (QList<int>{3, 4, 5}));
         QCOMPARE(f.editor()->toPlainText(), QStringLiteral("plain\n# h\n- b\n```\nco\nde\n```\nafter\n"));
@@ -203,13 +203,13 @@ private slots:
         QCOMPARE(test::blocksWithUserData(f.editor()->document()), (QList<int>{1, 2, 3, 4}));
 
         f.placeCaret(1);
-        QTest::keyClick(f.editor(), Qt::Key_End);
-        QTest::keyClick(f.editor(), Qt::Key_Backspace);  // "``": no longer a fence
+        test::keyClick(f.editor(), Qt::Key_End);
+        test::keyClick(f.editor(), Qt::Key_Backspace);  // "``": no longer a fence
         f.settle();
         QCOMPARE(test::blocksWithUserData(f.editor()->document()), QList<int>{});
         QVERIFY(test::formatAt(f.editor()->document()->findBlockByNumber(3), 0).fontStyleHint() != QFont::TypeWriter);
 
-        QTest::keyClick(f.editor(), Qt::Key_QuoteLeft);  // "```" again
+        test::keyClick(f.editor(), Qt::Key_QuoteLeft);  // "```" again
         f.settle();
         QCOMPARE(test::blocksWithUserData(f.editor()->document()), (QList<int>{1, 2, 3, 4}));
     }
@@ -227,7 +227,7 @@ private slots:
         QVERIFY(isCode(2) && isCode(3));
 
         f.placeCaret(1);
-        QTest::keyClick(f.editor(), Qt::Key_Backspace);  // "x```": not a fence
+        test::keyClick(f.editor(), Qt::Key_Backspace);  // "x```": not a fence
         f.settle();
         QVERIFY(!isCode(1) && !isCode(2));
         QCOMPARE(test::blocksWithUserData(f.editor()->document()), QList<int>{});

@@ -44,9 +44,9 @@ private slots:
         const QString path = f.writeFile(QStringLiteral("doc.md"), "\xEF\xBB\xBF# T\r\n- x\r\n");
         QVERIFY(f.open(path));
         f.placeCaret(2);
-        QTest::keyClicks(f.editor(), QStringLiteral("## New"));
-        QTest::keyClick(f.editor(), Qt::Key_Return);
-        QTest::keyClicks(f.editor(), QStringLiteral("- y"));
+        test::keyClicks(f.editor(), QStringLiteral("## New"));
+        test::keyClick(f.editor(), Qt::Key_Return);
+        test::keyClicks(f.editor(), QStringLiteral("- y"));
         f.placeCaret(0);
         QVERIFY(f.saveAndWait(path));
         QCOMPARE(test::Fixture::readFile(path), QByteArray("\xEF\xBB\xBF# T\r\n- x\r\n## New\r\n- y"));
@@ -69,15 +69,15 @@ private slots:
 
         // A new line takes the majority ending; the minority line it was split from keeps its own.
         f.placeCaret(0, 1);
-        QTest::keyClick(f.editor(), Qt::Key_Return);
-        QTest::keyClicks(f.editor(), QStringLiteral("z"));
+        test::keyClick(f.editor(), Qt::Key_Return);
+        test::keyClicks(f.editor(), QStringLiteral("z"));
         QVERIFY(f.saveAndWait(copy));
         QCOMPARE(test::Fixture::readFile(copy), QByteArray("a\r\nz\nb\nc\nd\re\nf\r\n\ng\n"));
     }
 
     void saveAsChangesPathAndTitle() {
         test::Fixture f;
-        QTest::keyClicks(f.editor(), QStringLiteral("hello"));
+        test::keyClicks(f.editor(), QStringLiteral("hello"));
         const QString target = f.dir.filePath(QStringLiteral("new.md"));
         f.window->setPathPicker([&](bool forSaving, const QString&) { return forSaving ? target : QString(); });
         QSignalSpy done(f.session(), &ui::DocumentSession::saveFinished);
@@ -87,7 +87,7 @@ private slots:
         QCOMPARE(f.session()->path(), target);
         QVERIFY(f.window->windowTitle().startsWith(QStringLiteral("new.md")));
         // Later saves go to the new path.
-        QTest::keyClicks(f.editor(), QStringLiteral("!"));
+        test::keyClicks(f.editor(), QStringLiteral("!"));
         QVERIFY(f.window->save());
         QTRY_COMPARE(done.size(), 2);
         QCOMPARE(test::Fixture::readFile(target), QByteArray("hello!"));
@@ -96,10 +96,10 @@ private slots:
     void typingDuringSaveKeepsModifiedFlag() {
         test::Fixture f;
         const QString path = f.dir.filePath(QStringLiteral("t.md"));
-        QTest::keyClicks(f.editor(), QStringLiteral("one"));
+        test::keyClicks(f.editor(), QStringLiteral("one"));
         QSignalSpy done(f.session(), &ui::DocumentSession::saveFinished);
         f.session()->save(path);
-        QTest::keyClicks(f.editor(), QStringLiteral(" two"));  // before the result arrives
+        test::keyClicks(f.editor(), QStringLiteral(" two"));  // before the result arrives
         QTRY_COMPARE(done.size(), 1);
         QVERIFY(f.editor()->document()->isModified());
     }

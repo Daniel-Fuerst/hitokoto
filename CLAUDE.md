@@ -20,6 +20,9 @@ Read before any work: `docs/brief.md` (the full brief), `docs/adr/` (accepted de
 - Ask before decisions that are expensive to reverse or conflict with the brief; record them as
   ADRs in `docs/adr/`.
 - New dependencies need a justification against the brief, section 3.
+- UI tests and benchmarks simulate keys with `test::keyClick`/`test::keyClicks` from
+  `tests/ui/key_input.hpp`, never with `QTest::key*` directly (the header says why); the lint test
+  `S000_KeyInputOnlyThroughTestHelpers` enforces it.
 
 Build and check (see README.md for prerequisites per OS):
 

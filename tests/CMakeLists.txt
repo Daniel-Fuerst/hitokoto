@@ -21,6 +21,12 @@ gtest_discover_tests(hitokoto_core_tests DISCOVERY_MODE PRE_TEST)
 add_test(NAME S005_NoStylingLiteralsInUi
     COMMAND ${CMAKE_COMMAND} -DUI_DIR=${PROJECT_SOURCE_DIR}/src/ui -P ${CMAKE_CURRENT_SOURCE_DIR}/lint/no_styling_literals.cmake)
 
+# S000: UI tests and benchmarks simulate keys only through tests/ui/key_input.hpp.
+add_test(NAME S000_KeyInputOnlyThroughTestHelpers
+    COMMAND ${CMAKE_COMMAND} "-DSCAN_DIRS=${CMAKE_CURRENT_SOURCE_DIR}/ui|${PROJECT_SOURCE_DIR}/bench"
+            -DALLOWED_FILE=${CMAKE_CURRENT_SOURCE_DIR}/ui/key_input.hpp
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/lint/no_direct_qtest_keys.cmake)
+
 if(HITOKOTO_BUILD_UI)
     add_subdirectory(ui)
 endif()

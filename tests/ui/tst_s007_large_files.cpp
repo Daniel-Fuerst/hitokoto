@@ -60,7 +60,7 @@ private slots:
         f.placeCaret(f.editor()->document()->blockCount() / 2);
         QElapsedTimer typing;
         typing.start();
-        QTest::keyClicks(f.editor(), QStringLiteral("## typed heading"));
+        test::keyClicks(f.editor(), QStringLiteral("## typed heading"));
         f.editor()->viewport()->repaint();
         qInfo("16 keys + repaint: %lld ms", static_cast<long long>(typing.elapsed()));
 
