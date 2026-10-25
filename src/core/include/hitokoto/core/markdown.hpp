@@ -21,10 +21,12 @@ struct Span {
 
 /// Semantic role of a run of text; the UI maps roles to theme formats.
 enum class Role : std::uint8_t {
-    Marker,       ///< visible syntax marker (cursor on the line)
-    HeadingText,  ///< text of a heading; StyleRun::level holds 1..6
-    CodeBlock,    ///< text inside a fenced code block
-    InlineCode,   ///< text inside a single-backtick code span
+    Marker,            ///< visible syntax marker (cursor on the line)
+    HeadingText,       ///< text of a heading; StyleRun::level holds 1..6
+    CodeBlock,         ///< text inside a fenced code block
+    InlineCode,        ///< text inside a single-backtick code span; one delimiter character on each side
+    InlineCodeMarker,  ///< a revealed inline-code delimiter (backtick)
+    EmphasisMarker,    ///< a revealed emphasis delimiter (* _ ~~)
 };
 
 enum class InlineStyle : std::uint8_t {

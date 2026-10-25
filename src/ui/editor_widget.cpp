@@ -99,23 +99,33 @@ void EditorWidget::paintEvent(QPaintEvent* event) {
     emit painted();
 }
 
+namespace {
+/// Fills `rect` with the element's background and draws its border inside the rect.
+void drawBox(QPainter& painter, const QRectF& rect, const core::CodeStyle& style) {
+    const qreal border = style.borderWidth;
+    painter.setPen(border > 0 ? QPen(toQColor(style.border), border) : QPen(Qt::NoPen));
+    painter.setBrush(toQColor(style.background));
+    const QRectF inner = rect.adjusted(border / 2, border / 2, -border / 2, -border / 2);
+    const qreal radius = std::max<qreal>(0, style.radius - border / 2);
+    painter.drawRoundedRect(inner, radius, radius);
+}
+}  // namespace
+
 void EditorWidget::paintCodeBlockPanels() {
     QPainter painter(viewport());
     painter.setRenderHint(QPainter::Antialiasing);
-    painter.setBrush(styler_->formats().codeBackground());
-    painter.setPen(Qt::NoPen);
     const auto [first, last] = visibleBlockRange();
-    const qreal padding = styler_->formats().codePanelPadding();
-    const qreal radius = styler_->formats().codePanelRadius();
+    const core::CodeStyle& block = styler_->formats().codeBlock();
+    const core::CodeStyle& inlineCode = styler_->formats().inlineCode();
+    const qreal padding = block.padding;
     const qreal outer = document()->documentMargin() / 2.0;
     const qreal width = viewport()->width() - outer * 2;
     const QPointF offset = contentOffset();
     QRectF panel;
     bool inPanel = false;
-    for (QTextBlock block = document()->findBlockByNumber(first); block.isValid() && block.blockNumber() <= last;
-         block = block.next()) {
-        const auto render = styler_->renderFor(block);
-        const QRectF line = blockBoundingGeometry(block).translated(offset);
+    for (QTextBlock b = document()->findBlockByNumber(first); b.isValid() && b.blockNumber() <= last; b = b.next()) {
+        const auto render = styler_->renderFor(b);
+        const QRectF line = blockBoundingGeometry(b).translated(offset);
         if (render.codeBlock && !render.fenceLine) {
             if (!inPanel) {
                 panel = {outer, line.top(), width, line.height()};
@@ -126,12 +136,38 @@ void EditorWidget::paintCodeBlockPanels() {
             continue;
         }
         if (inPanel) {
-            painter.drawRoundedRect(panel.adjusted(-padding, -padding, padding, padding), radius, radius);
+            drawBox(painter, panel.adjusted(-padding, -padding, padding, padding), block);
             inPanel = false;
         }
+        paintInlineCodeBoxes(painter, b, render, line.topLeft(), inlineCode);
     }
     if (inPanel) {
-        painter.drawRoundedRect(panel.adjusted(-padding, -padding, padding, padding), radius, radius);
+        drawBox(painter, panel.adjusted(-padding, -padding, padding, padding), block);
+    }
+}
+
+void EditorWidget::paintInlineCodeBoxes(QPainter& painter, const QTextBlock& block, const core::LineRender& render,
+                                        QPointF origin, const core::CodeStyle& style) {
+    const QTextLayout* layout = block.layout();
+    origin += layout->position();
+    for (const auto& run : render.runs) {
+        if (run.role != core::Role::InlineCode) {
+            continue;
+        }
+        // The box covers the backticks around the code (the concealed ones reserve the padding).
+        const int from = static_cast<int>(run.span.start) - 1;
+        const int to = static_cast<int>(run.span.end()) + 1;
+        for (int i = 0; i < layout->lineCount(); ++i) {
+            const QTextLine line = layout->lineAt(i);
+            const int a = std::max(from, line.textStart());
+            const int z = std::min(to, line.textStart() + line.textLength());
+            if (a >= z) {
+                continue;
+            }
+            const qreal x1 = line.cursorToX(a);
+            const qreal x2 = line.cursorToX(z);
+            drawBox(painter, QRectF(origin.x() + x1, origin.y() + line.y(), x2 - x1, line.height()), style);
+        }
     }
 }
 

@@ -6,11 +6,53 @@
 
 using namespace hitokoto;
 
+namespace {
+QColor qcolor(const core::Color& c) {
+    return {c.r, c.g, c.b, c.a};
+}
+QColor pixel(ui::EditorWidget* editor, qreal x, qreal y) {
+    return editor->viewport()->grab().toImage().pixelColor(static_cast<int>(x), static_cast<int>(y));
+}
+}  // namespace
+
 class tst_s014_fenced_code_blocks : public QObject {
     Q_OBJECT
 private slots:
+    // Theming baseline (ADR 0004): every code-block token reaches the screen.
+    void themedCodeBlockUsesEveryToken() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("code.md"), "before\n```\ncode line\n```\nafter\n")));
+        auto theme = core::builtinTheme(core::ColorScheme::Light);
+        theme.codeBlock.background = core::Color{0x20, 0x40, 0x60, 0xff};
+        theme.codeBlock.text = core::Color{0xa0, 0x10, 0x10, 0xff};
+        theme.codeBlock.border = core::Color{0x10, 0xc0, 0x10, 0xff};
+        theme.codeBlock.borderWidth = 4;
+        theme.codeBlock.radius = 7;
+        theme.codeBlock.padding = 12;
+        theme.codeBlock.fontScale = 1.5;
+        theme.codeBlock.marker = core::Color{0x00, 0x00, 0xff, 0xff};
+        f.window->applyTheme(theme);
+        f.settle();
+        f.placeCaret(0);
+
+        const auto content = f.editor()->document()->findBlockByNumber(2);
+        QCOMPARE(test::formatAt(content, 0).foreground().color(), qcolor(*theme.codeBlock.text));
+        QCOMPARE(test::formatAt(content, 0).fontPointSize(), theme.editorFontSize * 1.5);
+        QCOMPARE(f.editor()->styler().formats().codeBlock().radius, 7.0);
+
+        const QRect line = f.editor()->cursorRect(QTextCursor(content));
+        const qreal x = f.editor()->viewport()->width() / 2.0;
+        QTRY_COMPARE(pixel(f.editor(), x, line.top() - 6), qcolor(*theme.codeBlock.background));  // in the padding
+        QCOMPARE(pixel(f.editor(), x, line.top() - 12 + 2), qcolor(*theme.codeBlock.border));     // in the border
+
+        f.placeCaret(1);
+        f.settle();
+        const auto fence = f.editor()->document()->findBlockByNumber(1);
+        QCOMPARE(test::formatAt(fence, 0).foreground().color(), qcolor(*theme.codeBlock.marker));
+    }
+
     // A style hint alone keeps the proportional editor family whenever that family exists, so code
-    // gets an explicit family: fonts.code-family, else the system's fixed-width font.
+    // gets an explicit family: code-block.font-family, else the system's fixed-width font.
     void codeUsesThemeCodeFamilyOrSystemFixedFont() {
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("code.md"), "```\ncode\n```\n")));
@@ -21,7 +63,7 @@ private slots:
 
         auto theme = core::builtinTheme(core::ColorScheme::Light);
         theme.editorFontFamily = "Editor Test Family";
-        theme.codeFontFamily = "Code Test Family";
+        theme.codeBlock.fontFamily = "Code Test Family";
         f.window->applyTheme(theme);
         f.settle();
         QCOMPARE(test::formatAt(content, 0).fontFamilies().toStringList(),

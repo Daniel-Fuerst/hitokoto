@@ -63,6 +63,8 @@ technique stays or a custom text surface replaces `QPlainTextEdit`; only `src/ui
    the registry wraps it in `BlockState`, which the UI caches per block without knowing the
    element. While a block is open it owns each line; line and inline elements do not run there.
 2. Register it in `ElementRegistry::withBuiltins()` (`add`, `addMultiLine`, `addInline`).
+   Give it its own theme section with a token for every visible property and a fallback for
+   each (ADR 0004, theming baseline); the UI reads resolved values (`codeBlockStyle()`, ...).
 3. Add tests `S<nnn>_<Name>` in `tests/core`; if it needs a new role or decoration, extend
    `LineRender` and map it in `EditorFormats` / `EditorWidget::paintDecorations`.
 

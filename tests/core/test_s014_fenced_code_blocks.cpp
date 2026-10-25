@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S014: fenced code blocks preserve Markdown source and render across lines.
 #include "hitokoto/core/markdown.hpp"
+#include "hitokoto/core/theme.hpp"
 
 #include <gtest/gtest.h>
 
@@ -151,4 +152,52 @@ TEST(S014_FencedCodeBlocks, MultiLineElementsAreAddedByRegistrationOnly) {
     EXPECT_TRUE(shown[6].codeBlock) << "and owns the line";
     EXPECT_TRUE(shown[6].blockState.active());
     EXPECT_NE(shown[6].blockState, shown[0].blockState) << "states of different elements differ";
+}
+
+// Theming baseline (ADR 0004).
+TEST(S014_FencedCodeBlocks, ThemeTokensAreParsed) {
+    const auto r = loadTheme(
+        "[code-block]\nbackground = \"#010203\"\ntext = \"#040506\"\nborder = \"#070809\"\n"
+        "border-width = 2\nradius = 3\npadding = 4\nfont-family = \"Mono X\"\nfont-scale = 0.9\n"
+        "marker = \"#0a0b0c\"\n",
+        ColorScheme::Light);
+    ASSERT_FALSE(r.usedFallback) << r.diagnostics.front().toString();
+    const CodeStyle s = codeBlockStyle(r.theme);
+    EXPECT_EQ(s.background, (Color{1, 2, 3, 255}));
+    EXPECT_EQ(s.text, (Color{4, 5, 6, 255}));
+    EXPECT_EQ(s.border, (Color{7, 8, 9, 255}));
+    EXPECT_DOUBLE_EQ(s.borderWidth, 2);
+    EXPECT_DOUBLE_EQ(s.radius, 3);
+    EXPECT_DOUBLE_EQ(s.padding, 4);
+    EXPECT_EQ(s.fontFamily, "Mono X");
+    EXPECT_DOUBLE_EQ(s.fontScale, 0.9);
+    EXPECT_EQ(s.marker, (Color{10, 11, 12, 255}));
+
+    EXPECT_TRUE(loadTheme("[code-block]\nborder-width = 9\n", ColorScheme::Light).usedFallback);
+    EXPECT_TRUE(loadTheme("[code-block]\nfont-scale = 2.5\n", ColorScheme::Light).usedFallback);
+    EXPECT_TRUE(loadTheme("[code-block]\npadding = 65\n", ColorScheme::Light).usedFallback);
+    EXPECT_TRUE(loadTheme("[code-block]\nbackground = 3\n", ColorScheme::Light).usedFallback);
+}
+
+TEST(S014_FencedCodeBlocks, ThemeTokensFallBackToGeneralTokens) {
+    for (auto scheme : {ColorScheme::Light, ColorScheme::Dark}) {
+        const Theme& t = builtinTheme(scheme);
+        const CodeStyle s = codeBlockStyle(t);
+        EXPECT_EQ(s.background, t.surface);
+        EXPECT_EQ(s.text, t.text);
+        EXPECT_EQ(s.border, t.border);
+        EXPECT_DOUBLE_EQ(s.borderWidth, 0);
+        EXPECT_DOUBLE_EQ(s.radius, t.radius);
+        EXPECT_DOUBLE_EQ(s.padding, t.spacing);
+        EXPECT_EQ(s.fontFamily, "");
+        EXPECT_DOUBLE_EQ(s.fontScale, 1);
+        EXPECT_EQ(s.marker, t.marker);
+    }
+    // A general token changed in a user theme reaches the element unless the element sets its own.
+    const auto general = loadTheme("[colors]\nsurface = \"#123456\"\n[layout]\nradius = 11\n", ColorScheme::Dark);
+    EXPECT_EQ(codeBlockStyle(general.theme).background, (Color{0x12, 0x34, 0x56, 255}));
+    EXPECT_DOUBLE_EQ(codeBlockStyle(general.theme).radius, 11);
+    const auto own =
+        loadTheme("[colors]\nsurface = \"#123456\"\n[code-block]\nbackground = \"#654321\"\n", ColorScheme::Dark);
+    EXPECT_EQ(codeBlockStyle(own.theme).background, (Color{0x65, 0x43, 0x21, 255}));
 }

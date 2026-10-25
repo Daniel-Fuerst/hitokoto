@@ -35,6 +35,9 @@ public:
             out.runs.push_back({{static_cast<std::uint32_t>(opener + 1), static_cast<std::uint32_t>(i - opener - 1)},
                                 Role::InlineCode,
                                 0});
+            // Markers are styled when revealed; when concealed the registry drops them under the hidden ranges.
+            out.runs.push_back({{static_cast<std::uint32_t>(opener), 1}, Role::InlineCodeMarker, 0});
+            out.runs.push_back({{static_cast<std::uint32_t>(i), 1}, Role::InlineCodeMarker, 0});
             if (!context.revealed) {
                 out.hidden.push_back({{static_cast<std::uint32_t>(opener), 1}, HideMode::Collapse});
                 out.hidden.push_back({{static_cast<std::uint32_t>(i), 1}, HideMode::Collapse});

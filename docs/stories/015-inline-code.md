@@ -12,7 +12,7 @@ code-like text is visually distinct without changing the Markdown source.
 **Scenario: inline code renders with concealed delimiters**
 - Given a non-empty span surrounded by matching single backticks
 - When the caret is elsewhere on the line
-- Then the contents use a fixed-width font and the theme's code surface and text colors
+- Then the contents use the inline-code font and the inline-code background and text colours
 - And the delimiters are concealed
 - And the document still contains the original Markdown
 
@@ -31,6 +31,17 @@ code-like text is visually distinct without changing the Markdown source.
 - When the line is rendered
 - Then it remains visible and does not start an inline code span
 
+**Scenario: inline code is themeable (theming baseline, ADR 0004)**
+- Given a theme that sets every `inline-code.*` token (background, text, border, border-width,
+  radius, padding, font-family, font-scale, marker)
+- When an inline code span is rendered, with the caret elsewhere and on the line
+- Then its background is painted with the radius, border and border width, padded horizontally
+  by `padding` (the following text moves by that amount); the contents use the text colour,
+  font family and scale; revealed backticks use the marker colour
+- And a theme that sets none of them falls back to the code block tokens (background, text,
+  border, radius, font family), 2 px padding, no border, scale 1 and `colors.marker`
+- And inline code in a heading keeps the heading size multiplied by `font-scale`
+
 ## Scope
 
 - This story adds spans delimited by one backtick on a single line. Multiline spans and
@@ -44,8 +55,11 @@ code-like text is visually distinct without changing the Markdown source.
   contents, and active-line reveal.
 - UI: `tst_s015_inline_code` verifies the inline fixed-width theme formatting and confirms that
   the document retains the original Markdown.
+- Theming: core tests parse every `inline-code.*` token and check its fallback; UI tests check
+  formats and the painted background (colour, radius, border, padding) by pixel sampling.
 
 ## Implementation
 
 Completed on Linux 2026-10-25. Single-backtick spans use the inline-code role and are excluded
-from emphasis parsing; the source remains unchanged. The font is `fonts.code-family`, as for code blocks.
+from emphasis parsing; the source remains unchanged. The editor paints the inline-code box itself (radius, border); the
+concealed backticks reserve the padding. Every `inline-code.*` token applies (ADR 0004).

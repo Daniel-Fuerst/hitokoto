@@ -23,24 +23,28 @@ public:
 
     [[nodiscard]] const QFont& baseFont() const noexcept { return baseFont_; }
     [[nodiscard]] const QColor& bulletColor() const noexcept { return bullet_; }
-    [[nodiscard]] const QColor& codeBackground() const noexcept { return codeBackground_; }
-    [[nodiscard]] double codePanelPadding() const noexcept { return codePanelPadding_; }
-    [[nodiscard]] double codePanelRadius() const noexcept { return codePanelRadius_; }
+    /// Resolved element tokens (ADR 0004) for what the editor paints itself (panels, boxes).
+    [[nodiscard]] const core::CodeStyle& codeBlock() const noexcept { return codeBlock_; }
+    [[nodiscard]] const core::CodeStyle& inlineCode() const noexcept { return inlineCode_; }
     [[nodiscard]] QTextCharFormat heading(int level) const;
 
     /// Format ranges for one line, ready for QTextLayout::setFormats().
     [[nodiscard]] QList<QTextLayout::FormatRange> ranges(const core::LineRender& render) const;
 
 private:
+    /// Font size of text at heading `level` (0 = body text).
+    [[nodiscard]] double textSize(int level) const;
+
     QFont baseFont_;
     std::array<QTextCharFormat, 7> heading_{};  // index 0 = body text
     QColor marker_;
     QColor bullet_;
-    QColor codeBackground_;
-    QColor codeForeground_;
-    QStringList codeFamilies_;
-    double codePanelPadding_ = 0;
-    double codePanelRadius_ = 0;
+    double editorFontSize_ = 0;
+    core::CodeStyle codeBlock_;
+    core::CodeStyle inlineCode_;
+    core::EmphasisStyle emphasis_;
+    QStringList codeBlockFamilies_;
+    QStringList inlineCodeFamilies_;
 };
 
 }  // namespace hitokoto::ui

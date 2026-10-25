@@ -4,9 +4,44 @@
 
 using namespace hitokoto;
 
+namespace {
+QColor qcolor(const core::Color& c) {
+    return {c.r, c.g, c.b, c.a};
+}
+}  // namespace
+
 class tst_s013_inline_emphasis : public QObject {
     Q_OBJECT
 private slots:
+    // Theming baseline (ADR 0004): every emphasis token reaches the formats.
+    void themedEmphasisUsesEveryToken() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("emphasis.md"), "**b** *i* ~~s~~\nplain\n")));
+        f.settle();
+        f.placeCaret(1);
+        const auto block = f.editor()->document()->firstBlock();
+        QVERIFY2(!test::formatAt(block, 2).hasProperty(QTextFormat::ForegroundBrush),
+                 "unset: the surrounding text colour");
+
+        auto theme = core::builtinTheme(core::ColorScheme::Light);
+        theme.emphasis.boldWeight = 600;
+        theme.emphasis.boldText = core::Color{0xa0, 0x10, 0x10, 0xff};
+        theme.emphasis.italicText = core::Color{0x10, 0xa0, 0x10, 0xff};
+        theme.emphasis.strikethroughText = core::Color{0x10, 0x10, 0xa0, 0xff};
+        theme.emphasis.marker = core::Color{0x00, 0x00, 0xff, 0xff};
+        f.window->applyTheme(theme);
+        f.settle();
+        QCOMPARE(test::formatAt(block, 2).fontWeight(), 600);
+        QCOMPARE(test::formatAt(block, 2).foreground().color(), qcolor(*theme.emphasis.boldText));
+        QCOMPARE(test::formatAt(block, 7).foreground().color(), qcolor(*theme.emphasis.italicText));
+        QCOMPARE(test::formatAt(block, 12).foreground().color(), qcolor(*theme.emphasis.strikethroughText));
+
+        f.placeCaret(0);
+        f.settle();
+        QCOMPARE(test::formatAt(block, 0).foreground().color(), qcolor(*theme.emphasis.marker));
+        QCOMPARE(test::formatAt(block, 6).foreground().color(), qcolor(*theme.emphasis.marker));
+    }
+
     void formatsPunctuationAtEndOfEmphasizedLabels() {
         constexpr auto markdown = "**Projekt:** \u2610 Bayernsschach \u2610 Dame \u2610 Clobber\nplain\n";
         test::Fixture f;

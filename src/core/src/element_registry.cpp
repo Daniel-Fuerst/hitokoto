@@ -7,20 +7,26 @@
 namespace hitokoto::core {
 namespace {
 
-/// Inline code runs take precedence over other runs on the same characters.
-void splitAroundInlineCode(LineRender& out) {
+bool isInlineRole(Role role) noexcept {
+    return role == Role::InlineCode || role == Role::InlineCodeMarker || role == Role::EmphasisMarker;
+}
+
+/// Runs of inline elements take precedence over block runs on the same characters.
+void splitAroundInlineRuns(LineRender& out) {
     std::vector<StyleRun> codeRuns;
     for (const auto& run : out.runs) {
-        if (run.role == Role::InlineCode) {
+        if (isInlineRole(run.role)) {
             codeRuns.push_back(run);
         }
     }
     if (codeRuns.empty()) {
         return;
     }
+    std::sort(codeRuns.begin(), codeRuns.end(),
+              [](const StyleRun& left, const StyleRun& right) { return left.span.start < right.span.start; });
     std::vector<StyleRun> splitRuns;
     for (const auto& run : out.runs) {
-        if (run.role == Role::InlineCode) {
+        if (isInlineRole(run.role)) {
             continue;
         }
         std::uint32_t start = run.span.start;
@@ -133,7 +139,7 @@ LineRender ElementRegistry::render(std::u16string_view line, const LineContext& 
         for (const auto& element : inlineElements_) {
             element->render(line, context, out);
         }
-        splitAroundInlineCode(out);
+        splitAroundInlineRuns(out);
     }
     carveRunsAroundHidden(out);
     return out;

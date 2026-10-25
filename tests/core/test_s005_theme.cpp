@@ -43,7 +43,6 @@ TEST(S005_Theme, AllValueKinds) {
         "selection = \"#11223344\"\n"
         "[fonts]\n"
         "editor-family = \"Iosevka\"\n"
-        "code-family = \"JetBrains Mono\"\n"
         "editor-size = 13.5\n"
         "[headings]\n"
         "h1-scale = 2.25\n"
@@ -59,7 +58,6 @@ TEST(S005_Theme, AllValueKinds) {
     EXPECT_EQ(t.accent, (Color{0xaa, 0xbb, 0xcc, 0xff}));
     EXPECT_EQ(t.selection, (Color{0x11, 0x22, 0x33, 0x44}));
     EXPECT_EQ(t.editorFontFamily, "Iosevka");
-    EXPECT_EQ(t.codeFontFamily, "JetBrains Mono");
     EXPECT_DOUBLE_EQ(t.editorFontSize, 13.5);
     EXPECT_DOUBLE_EQ(t.headingScale[0], 2.25);
     EXPECT_EQ(t.headingWeight, 600);
@@ -118,6 +116,23 @@ TEST(S005_Theme, EveryTokenIsDocumented) {
         EXPECT_FALSE(t.description.empty()) << t.key;
     }
     EXPECT_GE(themeTokens().size(), 25u);
+}
+
+// ADR 0004: every token of an element section falls back to a documented value; the general
+// tokens have no fallback (the built-in themes set all of them).
+TEST(S005_Theme, ElementTokensDeclareFallbacks) {
+    std::size_t elementTokens = 0;
+    for (const auto& t : themeTokens()) {
+        const bool general = t.section.empty() || t.section == "colors" || t.section == "fonts" ||
+                             t.section == "headings" || t.section == "layout" || t.section == "buttons";
+        if (general) {
+            EXPECT_TRUE(t.fallback.empty()) << t.key;
+        } else {
+            EXPECT_FALSE(t.fallback.empty()) << t.section << "." << t.key;
+            ++elementTokens;
+        }
+    }
+    EXPECT_GE(elementTokens, 23u);
 }
 
 TEST(S005_Theme, ColorToHex) {

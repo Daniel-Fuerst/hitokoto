@@ -154,6 +154,8 @@ public:
                 for (std::uint32_t i = delimiter.span.start; i < delimiter.span.end(); ++i) {
                     markerCharacters[i] = true;
                 }
+                // Styled when revealed; when concealed the registry drops the run under the hidden range.
+                out.runs.push_back({delimiter.span, Role::EmphasisMarker, 0});
                 if (!context.revealed) {
                     out.hidden.push_back({delimiter.span, HideMode::Collapse});
                 }

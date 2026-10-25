@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S013: inline emphasis stays in the plain-text document and maps to render spans.
 #include "hitokoto/core/markdown.hpp"
+#include "hitokoto/core/theme.hpp"
 
 #include <gtest/gtest.h>
 
@@ -136,4 +137,45 @@ TEST(S013_InlineEmphasis, UnmatchedEmptyWhitespaceAndEscapedDelimitersStayLitera
                             u"x *spaced *", u"x \\*escaped\\*", u"x a_b_c"}) {
         EXPECT_TRUE(show(line).empty()) << "unexpected emphasis in input";
     }
+}
+
+// Theming baseline (ADR 0004): revealed delimiters carry their own role, so emphasis.marker
+// applies to them; concealed ones are hidden only.
+TEST(S013_InlineEmphasis, RevealedDelimitersAreEmphasisMarkers) {
+    EXPECT_EQ(show(u"**b** x", true).runs,
+              (std::vector<StyleRun>{{{0, 2}, Role::EmphasisMarker, 0}, {{3, 2}, Role::EmphasisMarker, 0}}));
+    EXPECT_TRUE(show(u"**b** x").runs.empty());
+
+    const auto heading = show(u"# **b**", true);
+    EXPECT_EQ(heading.headingLevel, 1);
+    EXPECT_EQ(heading.runs, (std::vector<StyleRun>{{{0, 2}, Role::Marker, 1},
+                                                   {{2, 2}, Role::EmphasisMarker, 0},
+                                                   {{4, 1}, Role::HeadingText, 1},
+                                                   {{5, 2}, Role::EmphasisMarker, 0}}))
+        << "inline markers take precedence over the heading text run; runs never overlap";
+}
+
+TEST(S013_InlineEmphasis, ThemeTokensAreParsed) {
+    const auto r = loadTheme(
+        "[emphasis]\nbold-weight = 600\nbold-text = \"#010203\"\nitalic-text = \"#040506\"\n"
+        "strikethrough-text = \"#070809\"\nmarker = \"#0a0b0c\"\n",
+        ColorScheme::Light);
+    ASSERT_FALSE(r.usedFallback) << r.diagnostics.front().toString();
+    const EmphasisStyle s = emphasisStyle(r.theme);
+    EXPECT_EQ(s.boldWeight, 600);
+    EXPECT_EQ(s.boldText, (Color{1, 2, 3, 255}));
+    EXPECT_EQ(s.italicText, (Color{4, 5, 6, 255}));
+    EXPECT_EQ(s.strikethroughText, (Color{7, 8, 9, 255}));
+    EXPECT_EQ(s.marker, (Color{10, 11, 12, 255}));
+    EXPECT_TRUE(loadTheme("[emphasis]\nbold-weight = 50\n", ColorScheme::Light).usedFallback);
+}
+
+TEST(S013_InlineEmphasis, ThemeTokensFallBack) {
+    const Theme& t = builtinTheme(ColorScheme::Dark);
+    const EmphasisStyle s = emphasisStyle(t);
+    EXPECT_EQ(s.boldWeight, 700);
+    EXPECT_FALSE(s.boldText) << "unset: the surrounding text colour";
+    EXPECT_FALSE(s.italicText);
+    EXPECT_FALSE(s.strikethroughText);
+    EXPECT_EQ(s.marker, t.marker);
 }

@@ -45,8 +45,7 @@ std::optional<Color> parseColor(std::string_view s) {
     }
 }
 
-template <Color Theme::*Member>
-std::optional<std::string> applyColor(Theme& t, const Value& v) {
+std::optional<std::string> colorValue(const Value& v, Color& out) {
     const auto* s = std::get_if<std::string>(&v);
     if (!s) {
         return "expected a colour string like \"#7c5cff\"";
@@ -55,7 +54,33 @@ std::optional<std::string> applyColor(Theme& t, const Value& v) {
     if (!c) {
         return "invalid colour \"" + *s + "\" (use #rgb, #rrggbb or #rrggbbaa)";
     }
-    t.*Member = *c;
+    out = *c;
+    return std::nullopt;
+}
+
+template <Color Theme::*Member>
+std::optional<std::string> applyColor(Theme& t, const Value& v) {
+    return colorValue(v, t.*Member);
+}
+
+// Element tokens (ADR 0004): `Group` is the element's section in Theme, `Member` the token.
+template <auto Group, auto Member>
+std::optional<std::string> applyOptColor(Theme& t, const Value& v) {
+    Color c;
+    if (auto err = colorValue(v, c)) {
+        return err;
+    }
+    (t.*Group).*Member = c;
+    return std::nullopt;
+}
+
+template <auto Group, auto Member>
+std::optional<std::string> applyOptString(Theme& t, const Value& v) {
+    const auto* s = std::get_if<std::string>(&v);
+    if (!s) {
+        return "expected a string in double quotes";
+    }
+    (t.*Group).*Member = *s;
     return std::nullopt;
 }
 
@@ -86,6 +111,17 @@ std::optional<std::string> numberIn(const Value& v, double lo, double hi, double
 template <double Theme::*Member, int Lo, int Hi>
 std::optional<std::string> applyNumber(Theme& t, const Value& v) {
     return numberIn(v, Lo, Hi, t.*Member);
+}
+
+/// Range in tenths, so that bounds like 0.5 need no floating-point template arguments.
+template <auto Group, auto Member, int LoTenths, int HiTenths>
+std::optional<std::string> applyOptNumber(Theme& t, const Value& v) {
+    double d = 0;
+    if (auto err = numberIn(v, LoTenths / 10.0, HiTenths / 10.0, d)) {
+        return err;
+    }
+    (t.*Group).*Member = d;
+    return std::nullopt;
 }
 
 std::optional<std::string> applyEditorFontSize(Theme& t, const Value& v) {
@@ -162,37 +198,59 @@ struct Token {
 
 // clang-format off
 const Token kTokens[] = {
-    {{"", "name", "string", "Display name of the theme"}, &applyString<&Theme::name>},
-    {{"", "base", "\"light\" | \"dark\"", "Built-in theme that supplies every token not set in this file; default: the system colour scheme"}, &applyBase},
-    {{"colors", "primary", "color", "Main brand colour (focus rings, default buttons)"}, &applyColor<&Theme::primary>},
-    {{"colors", "secondary", "color", "Second brand colour for less prominent highlights"}, &applyColor<&Theme::secondary>},
-    {{"colors", "accent", "color", "Accent colour (links, checked states, scroll handles on hover)"}, &applyColor<&Theme::accent>},
-    {{"colors", "background", "color", "Editor and window background"}, &applyColor<&Theme::background>},
-    {{"colors", "surface", "color", "Menus, dialogs and other raised surfaces"}, &applyColor<&Theme::surface>},
-    {{"colors", "border", "color", "Separators and outlines"}, &applyColor<&Theme::border>},
-    {{"colors", "text", "color", "Main text"}, &applyColor<&Theme::text>},
-    {{"colors", "text-muted", "color", "Secondary text (disabled items, hints)"}, &applyColor<&Theme::textMuted>},
-    {{"colors", "selection", "color", "Selection background"}, &applyColor<&Theme::selection>},
-    {{"colors", "selection-text", "color", "Selected text"}, &applyColor<&Theme::selectionText>},
-    {{"colors", "marker", "color", "Markdown syntax markers when revealed (e.g. '#')"}, &applyColor<&Theme::marker>},
-    {{"colors", "bullet", "color", "Bullet dots of list items"}, &applyColor<&Theme::bullet>},
-    {{"fonts", "ui-family", "string", "Font family for menus and dialogs; \"\" = system default"}, &applyString<&Theme::uiFontFamily>},
-    {{"fonts", "ui-size", "number (pt)", "Font size for menus and dialogs; 0 = system default, else 6 to 72"}, &applyUiFontSize},
-    {{"fonts", "editor-family", "string", "Font family of the editor text; \"\" = system default"}, &applyString<&Theme::editorFontFamily>},
-    {{"fonts", "editor-size", "number (pt)", "Font size of the editor text, 6 to 72"}, &applyEditorFontSize},
-    {{"fonts", "code-family", "string", "Font family of code blocks and inline code; \"\" = system fixed-width font"}, &applyString<&Theme::codeFontFamily>},
-    {{"headings", "h1-scale", "number", "Size of level-1 headings relative to the editor font, 0.5 to 4"}, &applyHeadingScale<0>},
-    {{"headings", "h2-scale", "number", "Same for level 2"}, &applyHeadingScale<1>},
-    {{"headings", "h3-scale", "number", "Same for level 3"}, &applyHeadingScale<2>},
-    {{"headings", "h4-scale", "number", "Same for level 4"}, &applyHeadingScale<3>},
-    {{"headings", "h5-scale", "number", "Same for level 5"}, &applyHeadingScale<4>},
-    {{"headings", "h6-scale", "number", "Same for level 6"}, &applyHeadingScale<5>},
-    {{"headings", "weight", "number", "Font weight of headings, 100 to 900"}, &applyHeadingWeight},
-    {{"layout", "radius", "number (px)", "Corner radius of buttons, menus, scroll handles, 0 to 32"}, &applyNumber<&Theme::radius, 0, 32>},
-    {{"layout", "spacing", "number (px)", "Base spacing; paddings in menus and buttons derive from it, 0 to 64"}, &applyNumber<&Theme::spacing, 0, 64>},
-    {{"layout", "editor-padding", "number (px)", "Space around the editor text, 0 to 256"}, &applyNumber<&Theme::editorPadding, 0, 256>},
-    {{"layout", "editor-max-width", "number (px)", "Maximum width of the text column (centred); 0 = full width, else 200 to 10000"}, &applyMaxWidth},
-    {{"buttons", "style", "\"flat\" | \"outlined\" | \"filled\"", "Look of push buttons in dialogs"}, &applyButtonStyle},
+    {{"", "name", "string", "Display name of the theme", ""}, &applyString<&Theme::name>},
+    {{"", "base", "\"light\" | \"dark\"", "Built-in theme that supplies every token not set in this file; default: the system colour scheme", ""}, &applyBase},
+    {{"colors", "primary", "color", "Main brand colour (focus rings, default buttons)", ""}, &applyColor<&Theme::primary>},
+    {{"colors", "secondary", "color", "Second brand colour for less prominent highlights", ""}, &applyColor<&Theme::secondary>},
+    {{"colors", "accent", "color", "Accent colour (links, checked states, scroll handles on hover)", ""}, &applyColor<&Theme::accent>},
+    {{"colors", "background", "color", "Editor and window background", ""}, &applyColor<&Theme::background>},
+    {{"colors", "surface", "color", "Menus, dialogs and other raised surfaces", ""}, &applyColor<&Theme::surface>},
+    {{"colors", "border", "color", "Separators and outlines", ""}, &applyColor<&Theme::border>},
+    {{"colors", "text", "color", "Main text", ""}, &applyColor<&Theme::text>},
+    {{"colors", "text-muted", "color", "Secondary text (disabled items, hints)", ""}, &applyColor<&Theme::textMuted>},
+    {{"colors", "selection", "color", "Selection background", ""}, &applyColor<&Theme::selection>},
+    {{"colors", "selection-text", "color", "Selected text", ""}, &applyColor<&Theme::selectionText>},
+    {{"colors", "marker", "color", "Markdown syntax markers when revealed (e.g. '#')", ""}, &applyColor<&Theme::marker>},
+    {{"colors", "bullet", "color", "Bullet dots of list items", ""}, &applyColor<&Theme::bullet>},
+    {{"fonts", "ui-family", "string", "Font family for menus and dialogs; \"\" = system default", ""}, &applyString<&Theme::uiFontFamily>},
+    {{"fonts", "ui-size", "number (pt)", "Font size for menus and dialogs; 0 = system default, else 6 to 72", ""}, &applyUiFontSize},
+    {{"fonts", "editor-family", "string", "Font family of the editor text; \"\" = system default", ""}, &applyString<&Theme::editorFontFamily>},
+    {{"fonts", "editor-size", "number (pt)", "Font size of the editor text, 6 to 72", ""}, &applyEditorFontSize},
+    {{"headings", "h1-scale", "number", "Size of level-1 headings relative to the editor font, 0.5 to 4", ""}, &applyHeadingScale<0>},
+    {{"headings", "h2-scale", "number", "Same for level 2", ""}, &applyHeadingScale<1>},
+    {{"headings", "h3-scale", "number", "Same for level 3", ""}, &applyHeadingScale<2>},
+    {{"headings", "h4-scale", "number", "Same for level 4", ""}, &applyHeadingScale<3>},
+    {{"headings", "h5-scale", "number", "Same for level 5", ""}, &applyHeadingScale<4>},
+    {{"headings", "h6-scale", "number", "Same for level 6", ""}, &applyHeadingScale<5>},
+    {{"headings", "weight", "number", "Font weight of headings, 100 to 900", ""}, &applyHeadingWeight},
+    {{"layout", "radius", "number (px)", "Corner radius of buttons, menus, scroll handles, 0 to 32", ""}, &applyNumber<&Theme::radius, 0, 32>},
+    {{"layout", "spacing", "number (px)", "Base spacing; paddings in menus and buttons derive from it, 0 to 64", ""}, &applyNumber<&Theme::spacing, 0, 64>},
+    {{"layout", "editor-padding", "number (px)", "Space around the editor text, 0 to 256", ""}, &applyNumber<&Theme::editorPadding, 0, 256>},
+    {{"layout", "editor-max-width", "number (px)", "Maximum width of the text column (centred); 0 = full width, else 200 to 10000", ""}, &applyMaxWidth},
+    {{"buttons", "style", "\"flat\" | \"outlined\" | \"filled\"", "Look of push buttons in dialogs", ""}, &applyButtonStyle},
+    {{"code-block", "background", "color", "Background of the code block panel", "colors.surface"}, &applyOptColor<&Theme::codeBlock, &CodeTokens::background>},
+    {{"code-block", "text", "color", "Code text", "colors.text"}, &applyOptColor<&Theme::codeBlock, &CodeTokens::text>},
+    {{"code-block", "border", "color", "Border of the code block panel", "colors.border"}, &applyOptColor<&Theme::codeBlock, &CodeTokens::border>},
+    {{"code-block", "border-width", "number (px)", "Border width of the panel, 0 to 8", "0"}, &applyOptNumber<&Theme::codeBlock, &CodeTokens::borderWidth, 0, 80>},
+    {{"code-block", "radius", "number (px)", "Corner radius of the panel, 0 to 32", "layout.radius"}, &applyOptNumber<&Theme::codeBlock, &CodeTokens::radius, 0, 320>},
+    {{"code-block", "padding", "number (px)", "Space between the panel edge and the code, 0 to 64", "layout.spacing"}, &applyOptNumber<&Theme::codeBlock, &CodeTokens::padding, 0, 640>},
+    {{"code-block", "font-family", "string", "Font family of the code; \"\" = system fixed-width font", "\"\""}, &applyOptString<&Theme::codeBlock, &CodeTokens::fontFamily>},
+    {{"code-block", "font-scale", "number", "Font size relative to the editor font, 0.5 to 2", "1"}, &applyOptNumber<&Theme::codeBlock, &CodeTokens::fontScale, 5, 20>},
+    {{"code-block", "marker", "color", "Fence lines (fence characters and info string) when revealed", "colors.marker"}, &applyOptColor<&Theme::codeBlock, &CodeTokens::marker>},
+    {{"inline-code", "background", "color", "Background of inline code", "code-block.background"}, &applyOptColor<&Theme::inlineCode, &CodeTokens::background>},
+    {{"inline-code", "text", "color", "Inline code text", "code-block.text"}, &applyOptColor<&Theme::inlineCode, &CodeTokens::text>},
+    {{"inline-code", "border", "color", "Border of the inline code background", "code-block.border"}, &applyOptColor<&Theme::inlineCode, &CodeTokens::border>},
+    {{"inline-code", "border-width", "number (px)", "Border width, 0 to 8", "0"}, &applyOptNumber<&Theme::inlineCode, &CodeTokens::borderWidth, 0, 80>},
+    {{"inline-code", "radius", "number (px)", "Corner radius of the background, 0 to 32", "code-block.radius"}, &applyOptNumber<&Theme::inlineCode, &CodeTokens::radius, 0, 320>},
+    {{"inline-code", "padding", "number (px)", "Horizontal space inside the background on each side, 0 to 16; moves the following text", "2"}, &applyOptNumber<&Theme::inlineCode, &CodeTokens::padding, 0, 160>},
+    {{"inline-code", "font-family", "string", "Font family; \"\" = system fixed-width font", "code-block.font-family"}, &applyOptString<&Theme::inlineCode, &CodeTokens::fontFamily>},
+    {{"inline-code", "font-scale", "number", "Font size relative to the surrounding text, 0.5 to 2", "1"}, &applyOptNumber<&Theme::inlineCode, &CodeTokens::fontScale, 5, 20>},
+    {{"inline-code", "marker", "color", "Backticks when revealed", "colors.marker"}, &applyOptColor<&Theme::inlineCode, &CodeTokens::marker>},
+    {{"emphasis", "bold-weight", "number", "Font weight of bold text, 100 to 900", "700"}, &applyOptNumber<&Theme::emphasis, &EmphasisTokens::boldWeight, 1000, 9000>},
+    {{"emphasis", "bold-text", "color", "Colour of bold text (takes precedence over italic and strikethrough)", "text colour of the surrounding element"}, &applyOptColor<&Theme::emphasis, &EmphasisTokens::boldText>},
+    {{"emphasis", "italic-text", "color", "Colour of italic text (takes precedence over strikethrough)", "text colour of the surrounding element"}, &applyOptColor<&Theme::emphasis, &EmphasisTokens::italicText>},
+    {{"emphasis", "strikethrough-text", "color", "Colour of struck-through text", "text colour of the surrounding element"}, &applyOptColor<&Theme::emphasis, &EmphasisTokens::strikethroughText>},
+    {{"emphasis", "marker", "color", "Delimiters (* _ ~~) when revealed", "colors.marker"}, &applyOptColor<&Theme::emphasis, &EmphasisTokens::marker>},
 };
 // clang-format on
 
@@ -422,7 +480,6 @@ ui-family     = ""
 ui-size       = 0
 editor-family = ""
 editor-size   = 12
-code-family   = ""
 
 [headings]
 h1-scale = 1.9
@@ -466,7 +523,6 @@ ui-family     = ""
 ui-size       = 0
 editor-family = ""
 editor-size   = 12
-code-family   = ""
 
 [headings]
 h1-scale = 1.9
@@ -556,6 +612,9 @@ ThemeParseResult parseTheme(std::string_view source, const Theme& base, bool req
     result.diagnostics = std::move(parser.diagnostics);
     if (requireAllTokens) {
         for (const auto& t : kTokens) {
+            if (!t.info.fallback.empty()) {
+                continue;  // element tokens may stay unset (ADR 0004)
+            }
             const std::string full = t.info.section.empty()
                                          ? std::string(t.info.key)
                                          : std::string(t.info.section) + "." + std::string(t.info.key);
@@ -568,6 +627,48 @@ ThemeParseResult parseTheme(std::string_view source, const Theme& base, bool req
         result.theme = std::move(theme);
     }
     return result;
+}
+
+CodeStyle codeBlockStyle(const Theme& t) {
+    const CodeTokens& c = t.codeBlock;
+    return {
+        .background = c.background.value_or(t.surface),
+        .text = c.text.value_or(t.text),
+        .border = c.border.value_or(t.border),
+        .marker = c.marker.value_or(t.marker),
+        .borderWidth = c.borderWidth.value_or(0),
+        .radius = c.radius.value_or(t.radius),
+        .padding = c.padding.value_or(t.spacing),
+        .fontScale = c.fontScale.value_or(1),
+        .fontFamily = c.fontFamily.value_or(""),
+    };
+}
+
+CodeStyle inlineCodeStyle(const Theme& t) {
+    const CodeStyle block = codeBlockStyle(t);
+    const CodeTokens& c = t.inlineCode;
+    return {
+        .background = c.background.value_or(block.background),
+        .text = c.text.value_or(block.text),
+        .border = c.border.value_or(block.border),
+        .marker = c.marker.value_or(t.marker),
+        .borderWidth = c.borderWidth.value_or(0),
+        .radius = c.radius.value_or(block.radius),
+        .padding = c.padding.value_or(2),
+        .fontScale = c.fontScale.value_or(1),
+        .fontFamily = c.fontFamily.value_or(block.fontFamily),
+    };
+}
+
+EmphasisStyle emphasisStyle(const Theme& t) {
+    const EmphasisTokens& e = t.emphasis;
+    return {
+        .boldWeight = static_cast<int>(e.boldWeight.value_or(700)),
+        .boldText = e.boldText,
+        .italicText = e.italicText,
+        .strikethroughText = e.strikethroughText,
+        .marker = e.marker.value_or(t.marker),
+    };
 }
 
 std::string_view builtinThemeSource(ColorScheme scheme) {

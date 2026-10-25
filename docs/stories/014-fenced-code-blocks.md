@@ -35,6 +35,18 @@ without changing the plain Markdown source.
 - Then the block ends at that closing line
 - And a block without a closing fence continues through the end of the document
 
+**Scenario: code blocks are themeable (theming baseline, ADR 0004)**
+- Given a theme that sets every `code-block.*` token (background, text, border, border-width,
+  radius, padding, font-family, font-scale, marker)
+- When a code block is rendered, with the caret outside and on a fence line
+- Then the panel uses the background, border, border width, radius and padding; the code uses
+  the text colour, font family and scale; revealed fence lines use the marker colour
+- And a theme that sets none of them falls back as documented: `colors.surface`, `colors.text`,
+  `colors.border`, no border, `layout.radius`, `layout.spacing`, the system fixed-width font,
+  scale 1, `colors.marker`
+- And changing a general token such as `colors.surface` in a user theme changes the code block
+  as long as the theme does not set the element token
+
 **Scenario: edits update block membership**
 - Given text before, within, or at a fence in a code block
 - When the text is edited so lines enter or leave the block
@@ -59,10 +71,13 @@ without changing the plain Markdown source.
   literal code content, unterminated blocks, and updates when fence text changes.
 - UI: `tst_s014_fenced_code_blocks` verifies code styling, cursor-aware fence reveal, incremental
   updates, and that rendering never changes the document text.
+- Theming: core tests `S014_FencedCodeBlocks` parse every `code-block.*` token and check its
+  fallback, including a general token changed in a user theme; UI tests check formats and the
+  painted panel (colour, radius, border, padding) by pixel sampling.
 
 ## Implementation
 
 Completed on Linux 2026-10-25. Code content is rendered in a continuous rounded panel painted
 behind the text using the theme's surface, spacing and radius tokens; fence lines remain concealed
-and outside the panel. The code font is `fonts.code-family`, or the system's fixed-width font if
-that is empty.
+and outside the panel. Panel and code take every `code-block.*` token (ADR 0004); revealed fence lines use
+`code-block.marker`.
