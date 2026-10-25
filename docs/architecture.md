@@ -22,16 +22,17 @@ src/core   all logic: Markdown elements, reveal, codec, file I/O, theme (C++ sta
 | Interface | File | Purpose |
 |---|---|---|
 | `LineElement` | `markdown.hpp` | One Markdown element: `parse()` (parse rule) and `render()` (render rule) |
+| `InlineElement` | `markdown.hpp` | Adds inline style ranges and concealed delimiter ranges after block rendering |
 | `ElementRegistry` | `markdown.hpp` | Holds the elements; `render(line, {revealed})` returns a `LineRender` |
-| `LineRender` | `markdown.hpp` | How one line is shown: heading level, style runs, hidden ranges, decorations |
+| `LineRender` | `markdown.hpp` | How one line is shown: heading level, block and inline style runs, hidden ranges, decorations |
 | `revealedLines`, `revealChanges` | `reveal.hpp` | Which lines show raw syntax; which lines must re-render when that changes |
 | `decodeUtf8`, `encodeUtf8` | `text_codec.hpp` | Bytes to text and back, preserving BOM and line endings (ADR 0002) |
 | `readFile`, `writeFileAtomically` | `file_io.hpp` | Reading and atomic saving |
 | `Theme`, `parseTheme`, `loadTheme` | `theme.hpp` | Theme tokens, theme file format, built-in themes |
 
 `LineRender` is the contract between core and UI. It speaks in roles (`Marker`, `HeadingText`),
-hide modes (`Collapse`, `KeepSpace`) and decorations (`Bullet`), never in colours or fonts. The UI
-maps roles to theme formats.
+inline style flags (bold, italic, strikethrough), hide modes (`Collapse`, `KeepSpace`) and
+decorations (`Bullet`), never in colours or fonts. The UI maps these to theme formats.
 
 ## UI pieces
 
@@ -53,14 +54,14 @@ technique stays or a custom text surface replaces `QPlainTextEdit`; only `src/ui
 
 ## Adding a Markdown element
 
-1. Implement `LineElement` in `src/core/src/elements/<name>.cpp` with a factory function.
-2. Register it in `ElementRegistry::withBuiltins()` (one line).
+1. Implement `LineElement` for block constructs or `InlineElement` for inline constructs in
+   `src/core/src/elements/<name>.cpp`, with a factory function.
+2. Register it in `ElementRegistry::withBuiltins()`.
 3. Add tests `S<nnn>_<Name>` in `tests/core`; if it needs a new role or decoration, extend
    `LineRender` and map it in `EditorFormats` / `EditorWidget::paintDecorations`.
 
-Nothing else changes. Inline elements (bold, links) will need a second, inline pass over the
-content range of a line; the plan is an `InlineElement` interface next to `LineElement`, applied by
-the registry after the line element, so existing elements stay untouched.
+Inline elements run after the block element and add spans to the same `LineRender`; existing block
+elements do not need to know about them.
 
 ## Platform shims
 

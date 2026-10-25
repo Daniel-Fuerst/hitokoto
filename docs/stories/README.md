@@ -23,6 +23,7 @@ Tests reference the story ID (see "Conventions").
 | 11 | [S007](007-large-files.md) | 10 MB files open within budget and type without lag | S006 | L | Partly done |
 | 12 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
 | 13 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |
+| 14 | [S013](013-inline-emphasis.md) | Inline bold, italic and strikethrough | S003 | M | In Progress |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 
@@ -50,7 +51,7 @@ these stories.
 
 ## Not in the MVP (from the brief, kept in mind)
 
-Bold, italic, inline code, links, task and numbered lists, blockquotes, code blocks, tables,
-images, search, spellcheck, export, wiki links, multiple documents, plugins, keybinding schemes,
-localisation. The element registry (S002/S003) and theme tokens (S005) are designed so these can
-be added without changing existing elements.
+Inline code, links, task and numbered lists, blockquotes, code blocks, tables, images, search,
+spellcheck, export, wiki links, multiple documents, plugins, keybinding schemes, localisation.
+The element registry (S002/S003) and theme tokens (S005) are designed so these can be added
+without changing existing elements.
