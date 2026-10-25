@@ -13,7 +13,10 @@ using namespace hitokoto::core;
 TEST(S005_Theme, BuiltinThemesAreCompleteAndDiffer) {
     for (auto scheme : {ColorScheme::Light, ColorScheme::Dark}) {
         const auto r = parseTheme(builtinThemeSource(scheme), Theme{}, true);
-        ASSERT_TRUE(r.theme) << (r.diagnostics.empty() ? "" : r.diagnostics.front().toString());
+        // Explicit branch for bugprone-unchecked-optional-access (it ignores ASSERT_TRUE and flags value()).
+        if (!r.theme) {
+            FAIL() << (r.diagnostics.empty() ? "" : r.diagnostics.front().toString());
+        }
         EXPECT_EQ(r.theme->scheme, scheme);
     }
     EXPECT_NE(builtinTheme(ColorScheme::Light).background, builtinTheme(ColorScheme::Dark).background);
@@ -52,7 +55,10 @@ TEST(S005_Theme, AllValueKinds) {
         "[buttons]\n"
         "style = \"outlined\"\n",
         builtinTheme(ColorScheme::Light));
-    ASSERT_TRUE(r.theme) << (r.diagnostics.empty() ? "" : r.diagnostics.front().toString());
+    // Explicit branch for bugprone-unchecked-optional-access (it ignores ASSERT_TRUE and flags value()).
+    if (!r.theme) {
+        FAIL() << (r.diagnostics.empty() ? "" : r.diagnostics.front().toString());
+    }
     const Theme& t = *r.theme;
     EXPECT_EQ(t.name, "Mine \"quoted\"");
     EXPECT_EQ(t.accent, (Color{0xaa, 0xbb, 0xcc, 0xff}));
@@ -104,7 +110,10 @@ TEST(S005_Theme, CrlfThemeFilesWork) {
 
 TEST(S005_Theme, NumbersAreLocaleIndependent) {
     const auto r = parseTheme("[fonts]\neditor-size = 11.25\n", builtinTheme(ColorScheme::Light));
-    ASSERT_TRUE(r.theme);
+    // Explicit branch for bugprone-unchecked-optional-access (it ignores ASSERT_TRUE and flags value()).
+    if (!r.theme) {
+        FAIL() << "expected a theme";
+    }
     EXPECT_DOUBLE_EQ(r.theme->editorFontSize, 11.25);
     EXPECT_FALSE(parseTheme("[fonts]\neditor-size = 11,25\n", builtinTheme(ColorScheme::Light)).theme);
 }

@@ -43,7 +43,13 @@ void S007_Decode10MB(benchmark::State& state) {
 BENCHMARK(S007_Decode10MB)->Unit(benchmark::kMillisecond);
 
 void S007_Encode10MB(benchmark::State& state) {
-    const auto decoded = decodeUtf8(tenMegabytes()).value.value();
+    const auto result = decodeUtf8(tenMegabytes());
+    // Explicit branch for bugprone-unchecked-optional-access (it ignores ASSERT_TRUE and flags value()).
+    if (!result.value) {
+        state.SkipWithError("decode failed");
+        return;
+    }
+    const auto& decoded = *result.value;
     for ([[maybe_unused]] auto _ : state) {
         auto r = encodeUtf8(decoded.text, decoded.hasBom, decoded.uniformEnding);
         benchmark::DoNotOptimize(r);
@@ -52,7 +58,13 @@ void S007_Encode10MB(benchmark::State& state) {
 BENCHMARK(S007_Encode10MB)->Unit(benchmark::kMillisecond);
 
 void S007_RenderAllLines10MB(benchmark::State& state) {
-    const auto decoded = decodeUtf8(tenMegabytes()).value.value();
+    const auto result = decodeUtf8(tenMegabytes());
+    // Explicit branch for bugprone-unchecked-optional-access (it ignores ASSERT_TRUE and flags value()).
+    if (!result.value) {
+        state.SkipWithError("decode failed");
+        return;
+    }
+    const auto& decoded = *result.value;
     const auto registry = ElementRegistry::withBuiltins();
     for ([[maybe_unused]] auto _ : state) {
         std::size_t start = 0;

@@ -18,7 +18,9 @@ namespace {
 std::string roundTrip(std::string_view bytes) {
     const auto d = decodeUtf8(bytes);
     if (!d.value) {
-        ADD_FAILURE() << "decode failed: " << d.error->message;
+        // Guarded for bugprone-unchecked-optional-access; decodeUtf8 sets the error whenever the
+        // value is empty, but the checker cannot know that.
+        ADD_FAILURE() << "decode failed: " << (d.error ? d.error->message : std::string("no error reported"));
         return {};
     }
     const auto e = encodeUtf8(d.value->text, d.value->hasBom, d.value->uniformEnding, d.value->perBreak);
@@ -81,9 +83,19 @@ TEST(S004_Save, UnchangedFilesRoundTripByteForByte) {
 }
 
 TEST(S004_Save, EditedFileKeepsBomAndCrlf) {
-    const auto d = decodeUtf8("\xEF\xBB\xBF# T\r\nx\r\n").value.value();
+    const auto decoded = decodeUtf8("\xEF\xBB\xBF# T\r\nx\r\n");
+    // Explicit branch for bugprone-unchecked-optional-access (it ignores ASSERT_TRUE and flags value()).
+    if (!decoded.value) {
+        FAIL() << "decode failed";
+    }
+    const auto& d = *decoded.value;
     const std::u16string edited = d.text + u"added\n";
-    EXPECT_EQ(encodeUtf8(edited, d.hasBom, d.uniformEnding, {}).value(), "\xEF\xBB\xBF# T\r\nx\r\nadded\r\n");
+    const auto encoded = encodeUtf8(edited, d.hasBom, d.uniformEnding, {});
+    // Explicit branch for bugprone-unchecked-optional-access (it ignores ASSERT_TRUE and flags value()).
+    if (!encoded) {
+        FAIL() << "encode failed";
+    }
+    EXPECT_EQ(*encoded, "\xEF\xBB\xBF# T\r\nx\r\nadded\r\n");
 }
 
 TEST(S004_Save, PerBreakSizeMismatchIsRejected) {
@@ -140,8 +152,12 @@ TEST(S004_Save, PropertyArbitraryBytesNeverCorrupt) {
         const auto d = decodeUtf8(bytes);
         ASSERT_NE(d.value.has_value(), d.error.has_value());
         if (d.value) {
-            ASSERT_EQ(encodeUtf8(d.value->text, d.value->hasBom, d.value->uniformEnding, d.value->perBreak).value(),
-                      bytes);
+            const auto encoded = encodeUtf8(d.value->text, d.value->hasBom, d.value->uniformEnding, d.value->perBreak);
+            // Explicit branch for bugprone-unchecked-optional-access (it ignores ASSERT_TRUE and flags value()).
+            if (!encoded) {
+                FAIL() << "encode failed";
+            }
+            ASSERT_EQ(*encoded, bytes);
         }
     }
 }
@@ -180,7 +196,10 @@ TEST(S004_Save, ReadOnlyFilesAreRefusedAndUnchanged) {
                     fs::perm_options::replace);
     const auto err = writeFileAtomically(file, "new");
     fs::permissions(file, fs::perms::owner_all, fs::perm_options::add);  // allow cleanup
-    ASSERT_TRUE(err);
+    // Explicit branch for bugprone-unchecked-optional-access (it ignores ASSERT_TRUE and flags value()).
+    if (!err) {
+        FAIL() << "expected an error";
+    }
     EXPECT_NE(err->message.find("read-only"), std::string::npos);
     EXPECT_EQ(slurp(file), "original");
     EXPECT_EQ(countEntries(dir.path()), 1u);
@@ -190,7 +209,12 @@ TEST(S004_Save, ReadFileReturnsBytesOrError) {
     TempDir dir;
     const auto file = dir.path() / "a.md";
     spit(file, std::string_view("x\0y\r\n", 5));
-    EXPECT_EQ(readFile(file).bytes.value(), std::string_view("x\0y\r\n", 5));
+    const auto read = readFile(file);
+    // Explicit branch for bugprone-unchecked-optional-access (it ignores ASSERT_TRUE and flags value()).
+    if (!read.bytes) {
+        FAIL() << "read failed";
+    }
+    EXPECT_EQ(*read.bytes, std::string_view("x\0y\r\n", 5));
     const auto missing = readFile(dir.path() / "missing.md");
     EXPECT_FALSE(missing.bytes);
     EXPECT_TRUE(missing.error);

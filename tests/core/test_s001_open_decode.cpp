@@ -9,7 +9,9 @@ using namespace hitokoto::core;
 namespace {
 DecodedText ok(std::string_view bytes) {
     auto r = decodeUtf8(bytes);
-    EXPECT_FALSE(r.error) << r.error->message;
+    // Guarded for bugprone-unchecked-optional-access, which cannot see that the message is only
+    // built when the expectation fails.
+    EXPECT_FALSE(r.error) << (r.error ? r.error->message : std::string());
     return r.value.value_or(DecodedText{});
 }
 std::size_t errorAt(std::string_view bytes) {
@@ -85,7 +87,10 @@ TEST(S001_Open, ParagraphSeparatorIsRejected) {
     const auto r = decodeUtf8(
         "a\xE2\x80\xA9"
         "b");
-    ASSERT_TRUE(r.error);
+    // Explicit branch for bugprone-unchecked-optional-access (it ignores ASSERT_TRUE and flags value()).
+    if (!r.error) {
+        FAIL() << "expected an error";
+    }
     EXPECT_EQ(r.error->byteOffset, 1u);
     EXPECT_NE(r.error->message.find("U+2029"), std::string::npos);
 }
