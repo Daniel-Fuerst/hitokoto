@@ -113,6 +113,9 @@ Include UI-level tests where the toolkit allows (headless rendering, snapshot te
 A hybrid is fine. Either way:
 - Themes are plain text files that users can edit, share, and version-control, with no recompiling.
 - All UI colours, radii, and fonts come from theme tokens. Hard-coded styling values in UI code are bugs.
+- **Every styleable element is themeable on its own.** Each element with a visible appearance exposes theme tokens for every property it visibly has, for example text and background colours, border colour and width, corner radius, padding, and font family, size, weight and style. This covers each rendered Markdown element (headings per level, bullets, emphasis, inline code, code blocks, syntax markers, and every element added later) and each UI element (window, menus, dialogs, buttons, scroll bars, and so on). Example: a fenced code block has its own background colour, text colour, corner radius and padding, independent of the general surface colour or the general radius. These lists are examples, not limits.
+- An element token may default to a general token (the code block radius to the general radius, say), so a short theme stays short. Reusing a general token *instead of* an element token is not enough.
+- Adding an element includes adding its tokens and documenting them in `docs/theming.md`. An element without its own tokens is not done.
 - Themes are validated with clear error messages, and a broken theme never prevents startup (fall back to the default).
 - Theme loading must not noticeably slow startup.
 - Document the theme format in `docs/theming.md` with an example theme.
