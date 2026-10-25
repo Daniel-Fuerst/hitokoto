@@ -20,16 +20,15 @@ public:
     void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
         std::size_t opener = std::u16string_view::npos;
         for (std::size_t i = 0; i < line.size(); ++i) {
-            if (line[i] != u'`' || escaped(line, i) || (i > 0 && line[i - 1] == u'`') ||
-                (i + 1 < line.size() && line[i + 1] == u'`')) {
+            if (line[i] != u'`' || (i > 0 && line[i - 1] == u'`') || (i + 1 < line.size() && line[i + 1] == u'`')) {
                 continue;
             }
             if (opener == std::u16string_view::npos) {
-                opener = i;
-                continue;
-            }
-            if (i == opener + 1) {
-                opener = i;
+                // A backslash escape keeps a backtick from opening a span. Inside a span backslashes
+                // are literal (CommonMark), so the next single backtick always closes it.
+                if (!escaped(line, i)) {
+                    opener = i;
+                }
                 continue;
             }
 

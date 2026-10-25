@@ -40,6 +40,23 @@ TEST(S015_InlineCode, NonMatchingAndEscapedBackticksStayLiteral) {
         EXPECT_TRUE(render.runs.empty());
         EXPECT_TRUE(render.hidden.empty());
     }
+    // An escaped backslash does not escape the backtick after it.
+    const auto render = show(u"\\\\`code`");
+    EXPECT_EQ(render.runs, (std::vector<StyleRun>{{{3, 4}, Role::InlineCode, 0}}));
+    EXPECT_EQ(render.hidden, (std::vector<HiddenRange>{{{2, 1}, HideMode::Collapse}, {{7, 1}, HideMode::Collapse}}));
+}
+
+// CommonMark, code spans: backslash escapes do not work inside a code span. A backslash can only
+// keep a backtick from opening one; the span ends at the next single backtick.
+TEST(S015_InlineCode, BackslashesInsideCodeSpansAreLiteral) {
+    const auto path = show(u"`C:\\`");
+    EXPECT_EQ(path.runs, (std::vector<StyleRun>{{{1, 3}, Role::InlineCode, 0}}));
+    EXPECT_EQ(path.hidden, (std::vector<HiddenRange>{{{0, 1}, HideMode::Collapse}, {{4, 1}, HideMode::Collapse}}));
+
+    // Code "foo\", then "bar`" as text: the last backtick has no partner and stays visible.
+    const auto early = show(u"`foo\\`bar`");
+    EXPECT_EQ(early.runs, (std::vector<StyleRun>{{{1, 4}, Role::InlineCode, 0}}));
+    EXPECT_EQ(early.hidden, (std::vector<HiddenRange>{{{0, 1}, HideMode::Collapse}, {{5, 1}, HideMode::Collapse}}));
 }
 
 TEST(S015_InlineCode, CodeSpansDoNotApplyEmphasisOrHeadingRulesToContents) {

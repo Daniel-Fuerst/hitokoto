@@ -30,6 +30,8 @@ code-like text is visually distinct without changing the Markdown source.
 - Given an unmatched or escaped backtick
 - When the line is rendered
 - Then it remains visible and does not start an inline code span
+- And inside a code span backslashes are literal, as in CommonMark: `` `C:\` `` is the code
+  `C:\`, and in `` `foo\`bar` `` the span ends after `foo\`
 
 **Scenario: inline code is themeable (theming baseline, ADR 0004)**
 - Given a theme that sets every `inline-code.*` token (background, text, border, border-width,
@@ -52,7 +54,7 @@ code-like text is visually distinct without changing the Markdown source.
 ## Tests
 
 - Core: `S015_InlineCode` verifies delimiter matching, hidden ranges, literal Markdown-like
-  contents, and active-line reveal.
+  contents, literal backslashes inside spans, and active-line reveal.
 - UI: `tst_s015_inline_code` verifies the inline fixed-width theme formatting and confirms that
   the document retains the original Markdown.
 - Theming: core tests parse every `inline-code.*` token and check its fallback; UI tests check
