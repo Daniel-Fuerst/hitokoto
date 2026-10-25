@@ -6,3 +6,6 @@ CMakeUserPresets.json
 .idea/
 *.user
 .DS_Store
+
+# Files the Claude desktop app (Cowork) saves into the connected folder
+/Claude outputs/
