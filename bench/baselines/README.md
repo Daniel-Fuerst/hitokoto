@@ -2,6 +2,8 @@
 
 CI compares `hitokoto-bench` results with `<os>.json` in this folder (`linux`, `windows`,
 `macos`) and fails if a value is more than 25 % slower (differences under 2 ms are ignored).
+`save_10mb_total_ms` is compared and reported (`info`) but never fails the run: it waits for the
+file to reach the runner's disk and swings too much on shared CI machines.
 
 There are no baselines yet: CI runners differ from the development machine, so the first ones
 must come from CI itself. To create or update them:

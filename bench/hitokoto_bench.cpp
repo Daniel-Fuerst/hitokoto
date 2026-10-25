@@ -28,7 +28,9 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <iterator>
 #include <map>
+#include <string_view>
 #include <vector>
 
 using namespace hitokoto;
@@ -180,6 +182,12 @@ struct Budget {
     const char* text;
 };
 
+// Compared with the baseline but never failing the run: the time until the saved file is on disk
+// includes fsync before the atomic rename (ADR 0002) and swings with the shared CI runners' disks.
+// The budget-relevant value is save_10mb_ui_blocked_ms, which stays checked. To be revisited with
+// the save follow-up of S007 (docs/performance.md).
+constexpr std::string_view kReportOnly[] = {"save_10mb_total_ms"};
+
 // Brief, section 4.
 const Budget kBudgets[] = {
     {"startup_median_ms", 1000, "cold start < 1000 ms"},
@@ -290,8 +298,11 @@ int main(int argc, char* argv[]) {
                 const double now = found->second;
                 // Ignore differences below 2 ms: timer and scheduler noise.
                 const bool regressed = now > was * (1 + tol) && now - was > 2.0;
-                std::printf("  %-4s %-28s %8.2f -> %8.2f\n", regressed ? "SLOW" : "ok", qPrintable(it.key()), was, now);
-                if (regressed)
+                const bool reportOnly = std::find(std::begin(kReportOnly), std::end(kReportOnly),
+                                                  it.key().toStdString()) != std::end(kReportOnly);
+                const char* status = !regressed ? "ok" : reportOnly ? "info" : "SLOW";
+                std::printf("  %-4s %-28s %8.2f -> %8.2f\n", status, qPrintable(it.key()), was, now);
+                if (regressed && !reportOnly)
                     exitCode = 1;
             }
         }
