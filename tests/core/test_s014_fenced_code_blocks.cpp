@@ -78,6 +78,25 @@ TEST(S014_FencedCodeBlocks, FenceRulesAndUnterminatedBlocksAreHandled) {
     EXPECT_TRUE(show(u"still code", opened.blockState).codeBlock);
 }
 
+// CommonMark 4.5: a fence is at least three backticks or tildes. Two neither open nor close a block
+// and stay literal text.
+TEST(S014_FencedCodeBlocks, TwoCharacterRunsAreNotFences) {
+    for (const auto line : {u"``", u"~~", u"   ``", u"`` x"}) {
+        const auto render = show(line);
+        EXPECT_FALSE(render.codeBlock);
+        EXPECT_FALSE(render.blockState.active());
+        EXPECT_TRUE(render.hidden.empty());
+    }
+
+    const auto opened = show(u"```");
+    for (const auto line : {u"``", u"~~"}) {
+        const auto inside = show(line, opened.blockState);
+        EXPECT_TRUE(inside.codeBlock);
+        EXPECT_FALSE(inside.fenceLine);
+        EXPECT_EQ(inside.blockState, opened.blockState) << "two characters do not close the block";
+    }
+}
+
 namespace {
 struct Walk {
     std::vector<bool> code;          ///< per line: belongs to a code block
