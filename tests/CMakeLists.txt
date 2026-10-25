@@ -5,6 +5,7 @@ add_executable(hitokoto_core_tests
     core/test_s001_open_decode.cpp
     core/test_s002_headings.cpp
     core/test_s003_bullets.cpp
+    core/test_s013_inline_emphasis.cpp
     core/test_s004_save.cpp
     core/test_s005_theme.cpp
 )

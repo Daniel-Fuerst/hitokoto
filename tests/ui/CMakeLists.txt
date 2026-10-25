@@ -23,6 +23,7 @@ foreach(t IN ITEMS
         tst_s005_theme
         tst_s007_large_files
         tst_s008_unsaved
-        tst_s010_click)
+        tst_s010_click
+        tst_s013_inline_emphasis)
     hitokoto_ui_test(${t})
 endforeach()
