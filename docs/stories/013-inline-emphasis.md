@@ -1,6 +1,6 @@
 # S013 — Inline bold, italic and strikethrough
 
-- **Status:** Done · **Order:** 14 · **Depends on:** S003
+- **Status:** In progress (CI pending) · **Order:** 14 · **Depends on:** S003
 
 ## Story
 

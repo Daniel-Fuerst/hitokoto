@@ -5,8 +5,9 @@
 - **Basis:** `docs/brief.md`, `docs/adr/0001-technology-stack.md` (C++20, Qt 6 Widgets, CMake)
 
 Story IDs S001–S007 keep the numbers from the brief; S000 and S008–S012 are new. The order below
-is the proposed implementation order. Each story is one branch/PR, implemented test-first.
-Tests reference the story ID (see "Conventions").
+is the proposed implementation order. Each feature is one branch/PR and may hold several closely
+related stories (more only after asking); stories are implemented test-first. Tests reference the
+story ID (see "Conventions").
 
 | Order | ID | Story | Depends on | Size | Status |
 |---|---|---|---|---|---|
@@ -17,17 +18,21 @@ Tests reference the story ID (see "Conventions").
 | 5 | [S002](002-headings.md) | Headings render large, `#` hidden unless the cursor is on the line | S001 | L | Done |
 | 6 | [S003](003-bullets.md) | Bullets render as dots, through the same element mechanism | S002 | M | Done |
 | 7 | [S006](006-cold-start-budget.md) | Cold start within budget, measured in CI | S003 | M | Done (baselines from CI pending) |
-| 8 | [S009](009-concealment-quality-gate.md) | Concealment quality gate: caret, IME, accessibility | S003 | M | Open |
+| 8 | [S009](009-concealment-quality-gate.md) | Concealment quality gate: caret, IME, accessibility | S003 | M | Standing gate (outside the order) |
 | 9 | [S010](010-click-on-concealed-line.md) | Clicking a line with hidden markers puts the caret where clicked | S009 | S | Done |
 | 10 | [S005](005-theme-files.md) | A theme file changes the look; light and dark built in | S003 | L | Done |
 | 11 | [S007](007-large-files.md) | 10 MB files open within budget and type without lag | S006 | L | Partly done |
 | 12 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
 | 13 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |
-| 14 | [S013](013-inline-emphasis.md) | Inline bold, italic and strikethrough | S003 | M | Done |
-| 15 | [S014](014-fenced-code-blocks.md) | Fenced Markdown code blocks | S013 | M | Done |
-| 16 | [S015](015-inline-code.md) | Inline Markdown code spans | S014 | S | Done |
+| 14 | [S013](013-inline-emphasis.md) | Inline bold, italic and strikethrough | S003 | M | In progress (CI pending) |
+| 15 | [S014](014-fenced-code-blocks.md) | Fenced Markdown code blocks | S013 | M | In progress (CI pending) |
+| 16 | [S015](015-inline-code.md) | Inline Markdown code spans | S014 | S | In progress (CI pending) |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
+
+Status: **Open** → **Confirmed** (by the user) → **In progress** → **In review** (CI green on all
+three platforms, budgets hold) → **Done** (the user has accepted the functionality; only the user
+sets it).
 
 "Done" in v0.1 means: all scenarios pass locally on Linux with Qt 6.12 and Qt 6.8. Windows and
 macOS are covered by the CI workflow, which has not run yet; the first CI run confirms or reopens
@@ -44,12 +49,17 @@ these stories.
 
 ## Conventions
 
-- Story files: `docs/stories/NNN-title.md`, written and confirmed before implementation.
+- Story files: `docs/stories/NNN-title.md`, written before implementation and confirmed by the
+  user. The confirmation may happen in conversation; it need not show in the commits.
+- Scope changes: `docs/brief.md` stays the user's brief. Extensions become new stories here, with
+  their reason. (The additions made to the brief together with S013–S015 stay for now.)
+- S009 is a standing quality gate, not a one-off story: its scenarios are extended whenever an
+  element conceals syntax, and it may leave the order.
 - Core tests (GoogleTest): test suite named after the story, e.g. `TEST(S002_Headings, MarkerHiddenWhenCursorElsewhere)`.
 - UI tests (Qt Test, `QT_QPA_PLATFORM=offscreen`): one test class per story, e.g. `tst_s002_headings`.
 - Benchmarks (Google Benchmark and the startup/latency harness from S006): names start with the story ID.
-- A story is done when its scenarios pass on all three CI platforms, nothing regressed, and the
-  performance budgets still hold.
+- A story is ready for review when its scenarios pass on all three CI platforms, nothing
+  regressed, and the performance budgets still hold. It is done when the user has accepted it.
 
 ## Not in the MVP (from the brief, kept in mind)
 
