@@ -31,7 +31,7 @@ endif()
 add_subdirectory(src/core)
 
 if(HITOKOTO_BUILD_UI)
-    find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets)
+    find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Svg)
     qt_standard_project_setup()
     add_subdirectory(src/ui)
     add_subdirectory(src/app)
