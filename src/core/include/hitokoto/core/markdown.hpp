@@ -29,7 +29,11 @@ enum class InlineStyle : std::uint8_t {
     None = 0,
     Bold = 1,
     Italic = 2,
+    BoldItalic = 3,
     Strikethrough = 4,
+    BoldStrikethrough = 5,
+    ItalicStrikethrough = 6,
+    BoldItalicStrikethrough = 7,
 };
 
 [[nodiscard]] constexpr InlineStyle operator|(InlineStyle left, InlineStyle right) noexcept {
