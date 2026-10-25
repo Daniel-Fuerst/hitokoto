@@ -180,6 +180,7 @@ const Token kTokens[] = {
     {{"fonts", "ui-size", "number (pt)", "Font size for menus and dialogs; 0 = system default, else 6 to 72"}, &applyUiFontSize},
     {{"fonts", "editor-family", "string", "Font family of the editor text; \"\" = system default"}, &applyString<&Theme::editorFontFamily>},
     {{"fonts", "editor-size", "number (pt)", "Font size of the editor text, 6 to 72"}, &applyEditorFontSize},
+    {{"fonts", "code-family", "string", "Font family of code blocks and inline code; \"\" = system fixed-width font"}, &applyString<&Theme::codeFontFamily>},
     {{"headings", "h1-scale", "number", "Size of level-1 headings relative to the editor font, 0.5 to 4"}, &applyHeadingScale<0>},
     {{"headings", "h2-scale", "number", "Same for level 2"}, &applyHeadingScale<1>},
     {{"headings", "h3-scale", "number", "Same for level 3"}, &applyHeadingScale<2>},
@@ -421,6 +422,7 @@ ui-family     = ""
 ui-size       = 0
 editor-family = ""
 editor-size   = 12
+code-family   = ""
 
 [headings]
 h1-scale = 1.9
@@ -464,6 +466,7 @@ ui-family     = ""
 ui-size       = 0
 editor-family = ""
 editor-size   = 12
+code-family   = ""
 
 [headings]
 h1-scale = 1.9

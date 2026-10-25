@@ -7,6 +7,7 @@
 #include <QColor>
 #include <QFont>
 #include <QList>
+#include <QStringList>
 #include <QTextCharFormat>
 #include <QTextLayout>
 
@@ -37,6 +38,7 @@ private:
     QColor bullet_;
     QColor codeBackground_;
     QColor codeForeground_;
+    QStringList codeFamilies_;
     double codePanelPadding_ = 0;
     double codePanelRadius_ = 0;
 };

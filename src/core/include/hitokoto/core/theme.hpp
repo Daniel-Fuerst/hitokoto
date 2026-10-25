@@ -42,6 +42,7 @@ struct Theme {
     double uiFontSize = 0;
     std::string editorFontFamily;
     double editorFontSize = 0;
+    std::string codeFontFamily;  ///< code blocks and inline code; empty = system fixed-width font
 
     // [headings]
     std::array<double, 6> headingScale{};

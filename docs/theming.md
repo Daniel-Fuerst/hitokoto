@@ -44,6 +44,7 @@ selection = "#5a3a22"
 [fonts]
 editor-family = "Iosevka"
 editor-size = 13
+code-family = "Iosevka Term"
 
 [headings]
 h1-scale = 2.2
@@ -85,6 +86,7 @@ values are device-independent pixels. Hairlines (1 px separators) are fixed.
 | `fonts.ui-size` | number (pt) | Font size for menus and dialogs; 0 = system default, else 6 to 72 |
 | `fonts.editor-family` | string | Font family of the editor text; "" = system default |
 | `fonts.editor-size` | number (pt) | Font size of the editor text, 6 to 72 |
+| `fonts.code-family` | string | Font family of code blocks and inline code; "" = system fixed-width font |
 | `headings.h1-scale` | number | Size of level-1 headings relative to the editor font, 0.5 to 4 |
 | `headings.h2-scale` | number | Same for level 2 |
 | `headings.h3-scale` | number | Same for level 3 |
@@ -126,6 +128,7 @@ ui-family     = ""
 ui-size       = 0
 editor-family = ""
 editor-size   = 12
+code-family   = ""
 
 [headings]
 h1-scale = 1.9
@@ -156,5 +159,5 @@ a test (`S005_NoStylingLiteralsInUi`) enforces that.
 
 Fenced code blocks use the theme's `colors.surface` background and `colors.text` foreground,
 with a rounded panel padded by `layout.spacing` and rounded by `layout.radius`. Single-backtick
-inline code uses the same surface and text colors with a fixed-width style hint. No additional
-theme tokens are needed.
+inline code uses the same surface and text colors. Both use the font family `fonts.code-family`,
+or the system's fixed-width font if it is empty, at the size of the surrounding text.

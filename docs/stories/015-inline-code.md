@@ -48,4 +48,4 @@ code-like text is visually distinct without changing the Markdown source.
 ## Implementation
 
 Completed on Linux 2026-10-25. Single-backtick spans use the inline-code role and are excluded
-from emphasis parsing; the source remains unchanged.
+from emphasis parsing; the source remains unchanged. The font is `fonts.code-family`, as for code blocks.

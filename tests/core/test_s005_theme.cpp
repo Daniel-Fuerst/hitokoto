@@ -43,6 +43,7 @@ TEST(S005_Theme, AllValueKinds) {
         "selection = \"#11223344\"\n"
         "[fonts]\n"
         "editor-family = \"Iosevka\"\n"
+        "code-family = \"JetBrains Mono\"\n"
         "editor-size = 13.5\n"
         "[headings]\n"
         "h1-scale = 2.25\n"
@@ -58,6 +59,7 @@ TEST(S005_Theme, AllValueKinds) {
     EXPECT_EQ(t.accent, (Color{0xaa, 0xbb, 0xcc, 0xff}));
     EXPECT_EQ(t.selection, (Color{0x11, 0x22, 0x33, 0x44}));
     EXPECT_EQ(t.editorFontFamily, "Iosevka");
+    EXPECT_EQ(t.codeFontFamily, "JetBrains Mono");
     EXPECT_DOUBLE_EQ(t.editorFontSize, 13.5);
     EXPECT_DOUBLE_EQ(t.headingScale[0], 2.25);
     EXPECT_EQ(t.headingWeight, 600);

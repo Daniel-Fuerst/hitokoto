@@ -2,11 +2,32 @@
 // S014: fenced code blocks render incrementally without changing Markdown source.
 #include "ui_test_support.hpp"
 
+#include <QFontDatabase>
+
 using namespace hitokoto;
 
 class tst_s014_fenced_code_blocks : public QObject {
     Q_OBJECT
 private slots:
+    // A style hint alone keeps the proportional editor family whenever that family exists, so code
+    // gets an explicit family: fonts.code-family, else the system's fixed-width font.
+    void codeUsesThemeCodeFamilyOrSystemFixedFont() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("code.md"), "```\ncode\n```\n")));
+        f.settle();
+        const auto content = f.editor()->document()->findBlockByNumber(1);
+        QCOMPARE(test::formatAt(content, 0).fontFamilies().toStringList(),
+                 QFontDatabase::systemFont(QFontDatabase::FixedFont).families());
+
+        auto theme = core::builtinTheme(core::ColorScheme::Light);
+        theme.editorFontFamily = "Editor Test Family";
+        theme.codeFontFamily = "Code Test Family";
+        f.window->applyTheme(theme);
+        f.settle();
+        QCOMPARE(test::formatAt(content, 0).fontFamilies().toStringList(),
+                 QStringList{QStringLiteral("Code Test Family")});
+    }
+
     void stylesFenceAndContentWhileKeepingSource() {
         constexpr auto markdown = "before\n```cpp\n# **literal** - item\n\nreturn;\n```\nafter\n";
         test::Fixture f;

@@ -64,4 +64,5 @@ without changing the plain Markdown source.
 
 Completed on Linux 2026-10-25. Code content is rendered in a continuous rounded panel painted
 behind the text using the theme's surface, spacing and radius tokens; fence lines remain concealed
-and outside the panel.
+and outside the panel. The code font is `fonts.code-family`, or the system's fixed-width font if
+that is empty.

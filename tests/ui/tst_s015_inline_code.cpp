@@ -2,11 +2,30 @@
 // S015: inline code spans are styled without altering the Markdown document.
 #include "ui_test_support.hpp"
 
+#include <QFontDatabase>
+
 using namespace hitokoto;
 
 class tst_s015_inline_code : public QObject {
     Q_OBJECT
 private slots:
+    void inlineCodeUsesThemeCodeFamilyOrSystemFixedFont() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("inline-code.md"), "text `code` text\n")));
+        f.settle();
+        const auto block = f.editor()->document()->firstBlock();
+        QCOMPARE(test::formatAt(block, 6).fontFamilies().toStringList(),
+                 QFontDatabase::systemFont(QFontDatabase::FixedFont).families());
+        QVERIFY2(test::formatAt(block, 1).fontFamilies().toStringList().isEmpty(), "body text keeps the editor font");
+
+        auto theme = core::builtinTheme(core::ColorScheme::Light);
+        theme.codeFontFamily = "Code Test Family";
+        f.window->applyTheme(theme);
+        f.settle();
+        QCOMPARE(test::formatAt(block, 6).fontFamilies().toStringList(),
+                 QStringList{QStringLiteral("Code Test Family")});
+    }
+
     void stylesInlineCodeAndConcealsDelimiters() {
         constexpr auto markdown = "Teammitglieder: `__________________________`\nDatum: `______________`\n";
         test::Fixture f;

@@ -22,6 +22,9 @@ EditorFormats::EditorFormats(const core::Theme& theme)
         baseFont_.setFamilies({QString::fromStdString(theme.editorFontFamily)});
     }
     baseFont_.setPointSizeF(theme.editorFontSize);
+    // A style hint alone does not change an existing family, so code gets an explicit one.
+    codeFamilies_ = theme.codeFontFamily.empty() ? QFontDatabase::systemFont(QFontDatabase::FixedFont).families()
+                                                 : QStringList{QString::fromStdString(theme.codeFontFamily)};
     for (int level = 1; level <= 6; ++level) {
         QTextCharFormat f;
         f.setFontPointSize(theme.editorFontSize * theme.headingScale[static_cast<std::size_t>(level - 1)]);
@@ -96,12 +99,14 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
             format.setForeground(marker_);
         }
         if (baseRun != nullptr && baseRun->role == core::Role::CodeBlock) {
+            format.setFontFamilies(codeFamilies_);
             format.setFontStyleHint(QFont::TypeWriter);
             if (!render.fenceLine) {
                 format.setForeground(codeForeground_);
             }
         }
         if (baseRun != nullptr && baseRun->role == core::Role::InlineCode) {
+            format.setFontFamilies(codeFamilies_);
             format.setFontStyleHint(QFont::TypeWriter);
             format.setForeground(codeForeground_);
             format.setBackground(codeBackground_);
