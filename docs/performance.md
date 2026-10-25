@@ -41,6 +41,11 @@ Cloud VM, 2 vCPU x86-64, 7 GiB RAM, no GPU, Ubuntu 24.04, Qt 6.12.0, release bui
 Core (Google Benchmark): decode 10 MB 24 ms, encode 10 MB 32 ms, render every line of 10 MB
 21 ms, parse the built-in theme 8 µs, render one heading line 60 ns.
 
+With S013–S015 (emphasis, fenced code, inline code; measured 2026-10-25 on the review VM, same
+machine for both): render every line of 10 MB 33 ms (v0.1: 18 ms), render one heading line
+91 ns (v0.1: 50 ns). Inline elements run only on lines containing their trigger characters;
+without that they cost 61 ms and 184 ns.
+
 ### Known gaps and next steps
 
 - **Saving 10 MB blocks the UI for about 25 ms** (copying the text out of `QTextDocument`). Under

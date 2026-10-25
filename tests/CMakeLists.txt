@@ -10,6 +10,7 @@ add_executable(hitokoto_core_tests
     core/test_s015_inline_code.cpp
     core/test_s004_save.cpp
     core/test_s005_theme.cpp
+    core/test_s007_large_files.cpp
 )
 target_link_libraries(hitokoto_core_tests PRIVATE hitokoto::core GTest::gtest_main)
 target_compile_definitions(hitokoto_core_tests PRIVATE HITOKOTO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")

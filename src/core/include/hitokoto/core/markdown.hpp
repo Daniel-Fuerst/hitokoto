@@ -3,9 +3,11 @@
 // registry. The UI asks the registry how to show one line; it never knows the elements.
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -149,6 +151,9 @@ public:
     virtual ~InlineElement() = default;
 
     [[nodiscard]] virtual std::string_view id() const noexcept = 0;
+    /// Characters that can start this element. The registry scans each line once and skips the
+    /// element on lines that contain none of them. Empty (the default) = run on every line.
+    [[nodiscard]] virtual std::u16string_view triggerCharacters() const noexcept { return {}; }
     virtual void render(std::u16string_view line, const LineContext& context, LineRender& out) const = 0;
 };
 
@@ -210,7 +215,15 @@ private:
     [[nodiscard]] std::optional<BlockMatch> matchBlock(std::u16string_view line, BlockState state) const noexcept;
 
     std::vector<std::unique_ptr<LineElement>> elements_;
-    std::vector<std::unique_ptr<InlineElement>> inlineElements_;
+    struct InlineEntry {
+        std::unique_ptr<InlineElement> element;
+        std::u16string otherTriggers;  ///< non-ASCII trigger characters
+        bool always = false;           ///< no trigger characters declared, or more than 64 inline elements
+    };
+    std::vector<InlineEntry> inlineElements_;
+    /// For each ASCII character, bit i is set if it triggers inline element i.
+    std::array<std::uint64_t, 128> asciiTriggers_{};
+    bool hasOtherTriggers_ = false;
     std::vector<std::unique_ptr<MultiLineElement>> multiLineElements_;
 };
 

@@ -69,8 +69,10 @@ technique stays or a custom text surface replaces `QPlainTextEdit`; only `src/ui
    `LineRender` and map it in `EditorFormats` / `EditorWidget::paintDecorations`.
 
 Order per line: an open multi-line block, else the first multi-line element that opens a block,
-else the first matching line element followed by all inline elements. The registry then removes
-styled runs under hidden ranges, so no element has to know the others.
+else the first matching line element followed by the inline elements. An inline element declares
+its trigger characters (`triggerCharacters()`, e.g. `` ` `` for inline code); the registry scans
+the line once and runs only the elements whose characters occur, so most lines run none. The
+registry then removes styled runs under hidden ranges, so no element has to know the others.
 `S014_FencedCodeBlocks.MultiLineElementsAreAddedByRegistrationOnly` adds a test-only element
 this way.
 

@@ -15,6 +15,7 @@ bool escaped(std::u16string_view line, std::size_t position) {
 class InlineCodeElement final : public InlineElement {
 public:
     [[nodiscard]] std::string_view id() const noexcept override { return "inline-code"; }
+    [[nodiscard]] std::u16string_view triggerCharacters() const noexcept override { return u"`"; }
 
     void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
         std::size_t opener = std::u16string_view::npos;
