@@ -120,20 +120,23 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
 
         const int level = baseRun != nullptr && baseRun->level != 0 ? baseRun->level : render.headingLevel;
         QTextCharFormat format = baseRun != nullptr ? heading(level) : lineFormat;
-        const auto role = baseRun != nullptr ? std::optional<core::Role>(baseRun->role) : std::nullopt;
-        if (role == core::Role::Marker) {
+        // A pointer rather than std::optional<core::Role>: GCC 13 in Release builds (-O3) reports a false
+        // -Wmaybe-uninitialized for the optional, which breaks the Release build with -Werror (CI).
+        const core::Role* role = baseRun != nullptr ? &baseRun->role : nullptr;
+        const auto is = [role](core::Role r) { return role != nullptr && *role == r; };
+        if (is(core::Role::Marker)) {
             format.setForeground(marker_);
-        } else if (role == core::Role::CodeBlock) {
+        } else if (is(core::Role::CodeBlock)) {
             applyCodeFont(format, codeBlockFamilies_, editorFontSize_ * codeBlock_.fontScale);
             format.setForeground(toQColor(render.fenceLine ? codeBlock_.marker : codeBlock_.text));
-        } else if (role == core::Role::InlineCode || role == core::Role::InlineCodeMarker) {
+        } else if (is(core::Role::InlineCode) || is(core::Role::InlineCodeMarker)) {
             // The background is a box painted by EditorWidget (radius, border, padding).
             applyCodeFont(format, inlineCodeFamilies_, textSize(level) * inlineCode_.fontScale);
-            format.setForeground(toQColor(role == core::Role::InlineCode ? inlineCode_.text : inlineCode_.marker));
-        } else if (role == core::Role::EmphasisMarker) {
+            format.setForeground(toQColor(is(core::Role::InlineCode) ? inlineCode_.text : inlineCode_.marker));
+        } else if (is(core::Role::EmphasisMarker)) {
             format.setForeground(toQColor(emphasis_.marker));
         }
-        if (inlineRun != nullptr && role != core::Role::InlineCode) {
+        if (inlineRun != nullptr && !is(core::Role::InlineCode)) {
             const auto styles = inlineRun->style;
             if (core::hasStyle(styles, core::InlineStyle::Bold)) {
                 format.setFontWeight(emphasis_.boldWeight);
@@ -155,7 +158,7 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
             }
         }
         if (hidden != nullptr) {
-            if (role != core::Role::CodeBlock) {
+            if (!is(core::Role::CodeBlock)) {
                 format = lineFormat;
             }
             if (isInlineCodeDelimiter(render, start)) {

@@ -100,12 +100,18 @@ jobs:
           version: ${{ env.QT_VERSION }}
           arch: linux_gcc_64
           cache: true
+      # Lints production code, tests, benchmarks and fuzzers (fuzzers need their own Clang
+      # configure). Each file is linted only in one compilation database.
       - name: Configure
-        run: cmake --preset dev
+        run: cmake --preset dev -DHITOKOTO_BUILD_BENCHMARKS=ON
       - name: Build (generates moc files)
         run: cmake --build --preset dev --parallel
+      - name: Configure fuzzers
+        run: cmake --preset fuzz
       - name: clang-tidy
-        run: run-clang-tidy-18 -p build/dev -quiet "$(pwd)/src/"
+        run: |
+          run-clang-tidy-18 -p build/dev -quiet "$(pwd)/(src|tests|bench)/"
+          run-clang-tidy-18 -p build/fuzz -quiet "$(pwd)/fuzz/"
 
   bench:
     name: Benchmarks (${{ matrix.name }})
