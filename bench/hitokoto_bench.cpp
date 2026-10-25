@@ -211,9 +211,9 @@ int main(int argc, char* argv[]) {
     parser.process(app);
 
     QTemporaryDir dir;
-    const QString small = writeFile(dir, QStringLiteral("small.md"), largeDocument(10 * 1024));
-    const QString oneMb = writeFile(dir, QStringLiteral("1mb.md"), largeDocument(1024 * 1024));
-    const QString tenMb = writeFile(dir, QStringLiteral("10mb.md"), largeDocument(10 * 1024 * 1024));
+    const QString small = writeFile(dir, QStringLiteral("small.md"), largeDocument(qsizetype{10} * 1024));
+    const QString oneMb = writeFile(dir, QStringLiteral("1mb.md"), largeDocument(qsizetype{1024} * 1024));
+    const QString tenMb = writeFile(dir, QStringLiteral("10mb.md"), largeDocument(qsizetype{10} * 1024 * 1024));
 
     std::map<std::string, double> r;
     const auto startup = stats(measureStartup(parser.value(appOpt), small, parser.value(runsOpt).toInt()));

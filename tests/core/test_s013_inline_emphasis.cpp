@@ -22,8 +22,18 @@ LineRender show(std::u16string_view line, bool revealed = false) {
 
 std::vector<Span> spans(const std::vector<HiddenRange>& ranges) {
     std::vector<Span> out;
+    out.reserve(ranges.size());
     for (const auto& range : ranges) {
         out.push_back(range.span);
+    }
+    return out;
+}
+
+std::vector<Span> spans(const std::vector<InlineStyleRun>& runs) {
+    std::vector<Span> out;
+    out.reserve(runs.size());
+    for (const auto& run : runs) {
+        out.push_back(run.span);
     }
     return out;
 }
@@ -34,10 +44,7 @@ TEST(S013_InlineEmphasis, ConcealsMatchedDelimitersAndReturnsStyledTextRanges) {
 
     EXPECT_EQ(spans(r.hidden),
               (std::vector<Span>{{0, 2}, {6, 2}, {9, 1}, {16, 1}, {18, 1}, {24, 1}, {26, 2}, {32, 2}}));
-    std::vector<Span> styled;
-    for (const auto& run : r.inlineStyles) {
-        styled.push_back(run.span);
-    }
+    const auto styled = spans(r.inlineStyles);
     EXPECT_EQ(styled, (std::vector<Span>{{2, 4}, {10, 6}, {19, 5}, {28, 4}}));
     ASSERT_EQ(r.inlineStyles.size(), 4u);
     EXPECT_EQ(r.inlineStyles[0].style, InlineStyle::Bold);
@@ -50,10 +57,7 @@ TEST(S013_InlineEmphasis, RevealedLineShowsDelimitersAndKeepsStyledRanges) {
     const auto r = show(u"**bold** *italic* ~~gone~~", true);
 
     EXPECT_TRUE(r.hidden.empty());
-    std::vector<Span> styled;
-    for (const auto& run : r.inlineStyles) {
-        styled.push_back(run.span);
-    }
+    const auto styled = spans(r.inlineStyles);
     EXPECT_EQ(styled, (std::vector<Span>{{2, 4}, {10, 6}, {20, 4}}));
 }
 
@@ -67,10 +71,7 @@ TEST(S013_InlineEmphasis, FormatsPunctuationAtEndOfEmphasizedLabels) {
 
 TEST(S013_InlineEmphasis, NestedAndCombinedDelimitersProduceSeparateTextRuns) {
     const auto nested = show(u"**bold *italic* bold**");
-    std::vector<Span> nestedRuns;
-    for (const auto& run : nested.inlineStyles) {
-        nestedRuns.push_back(run.span);
-    }
+    const auto nestedRuns = spans(nested.inlineStyles);
     EXPECT_EQ(nestedRuns, (std::vector<Span>{{2, 5}, {8, 6}, {15, 5}}));
     EXPECT_EQ(spans(nested.hidden), (std::vector<Span>{{0, 2}, {7, 1}, {14, 1}, {20, 2}}));
     ASSERT_EQ(nested.inlineStyles.size(), 3u);
@@ -79,10 +80,7 @@ TEST(S013_InlineEmphasis, NestedAndCombinedDelimitersProduceSeparateTextRuns) {
     EXPECT_EQ(nested.inlineStyles[2].style, InlineStyle::Bold);
 
     const auto combined = show(u"***both***");
-    std::vector<Span> combinedRuns;
-    for (const auto& run : combined.inlineStyles) {
-        combinedRuns.push_back(run.span);
-    }
+    const auto combinedRuns = spans(combined.inlineStyles);
     EXPECT_EQ(combinedRuns, (std::vector<Span>{{3, 4}}));
     EXPECT_EQ(spans(combined.hidden), (std::vector<Span>{{0, 3}, {7, 3}}));
     ASSERT_EQ(combined.inlineStyles.size(), 1u);

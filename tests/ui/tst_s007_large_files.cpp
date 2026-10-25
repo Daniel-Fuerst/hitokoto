@@ -29,7 +29,7 @@ class tst_s007_large_files : public QObject {
 private slots:
     void tenMegabytesLoadInSlicesAndRoundTrip() {
         test::Fixture f;
-        const QByteArray bytes = largeDocument(10 * 1024 * 1024);
+        const QByteArray bytes = largeDocument(qsizetype{10} * 1024 * 1024);
         const QString path = f.writeFile(QStringLiteral("big.md"), bytes);
 
         // Watch the event loop: the longest gap between timer ticks while loading.

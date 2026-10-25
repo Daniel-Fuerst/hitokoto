@@ -21,6 +21,7 @@ LineRender show(std::u16string_view line, BlockState state = {}, bool revealed =
 
 std::vector<Span> hiddenSpans(const LineRender& render) {
     std::vector<Span> spans;
+    spans.reserve(render.hidden.size());
     for (const auto& hidden : render.hidden) {
         spans.push_back(hidden.span);
     }
