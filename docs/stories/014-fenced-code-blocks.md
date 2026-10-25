@@ -70,7 +70,8 @@ without changing the plain Markdown source.
 - Core: `S014_FencedCodeBlocks` verifies fence recognition, block membership, concealed ranges,
   literal code content, unterminated blocks, and updates when fence text changes.
 - UI: `tst_s014_fenced_code_blocks` verifies code styling, cursor-aware fence reveal, incremental
-  updates, and that rendering never changes the document text.
+  updates, that rendering never changes the document text, and that only lines leaving a code
+  block open carry per-block metadata (memory footprint).
 - Theming: core tests `S014_FencedCodeBlocks` parse every `code-block.*` token and check its
   fallback, including a general token changed in a user theme; UI tests check formats and the
   painted panel (colour, radius, border, padding) by pixel sampling.

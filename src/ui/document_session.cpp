@@ -177,6 +177,10 @@ void DocumentSession::finishInsert() {
     if (!pendingPerBreak_.empty()) {
         std::size_t i = 0;
         for (QTextBlock b = doc->begin(); b.isValid() && i < pendingPerBreak_.size(); b = b.next(), ++i) {
+            // Lines without an entry save with the majority ending; store only the others.
+            if (pendingPerBreak_[i] == format_.ending) {
+                continue;
+            }
             auto* data = dynamic_cast<BlockData*>(b.userData());
             if (data == nullptr) {
                 data = new BlockData;

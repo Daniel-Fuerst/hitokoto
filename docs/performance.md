@@ -46,6 +46,12 @@ machine for both): render every line of 10 MB 33 ms (v0.1: 18 ms), render one he
 91 ns (v0.1: 50 ns). Inline elements run only on lines containing their trigger characters;
 without that they cost 61 ms and 184 ns.
 
+Per-block metadata (2026-10-25, review VM, Qt 6.12, debug build): every line of the 10 MB
+document from S007 used to carry a 32-byte `BlockData` (427,204 lines, 13.0 MB of about 300 MB
+heap). Now only lines that leave a code block open carry one, and in files with mixed line
+endings only lines whose ending differs from the majority: none in that document, and 61,029 of
+488,233 lines (1.9 MB) in a variant where every eighth line ends in CRLF.
+
 ### Known gaps and next steps
 
 - **Saving 10 MB blocks the UI for about 25 ms** (copying the text out of `QTextDocument`). Under

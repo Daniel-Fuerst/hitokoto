@@ -169,6 +169,75 @@ private slots:
             QVERIFY2(isCode(b), qPrintable(QStringLiteral("block %1 not styled as code").arg(b)));
         QCOMPARE(f.editor()->toPlainText(), QStringLiteral("```\na\nb\nc\nd\n"));
     }
+
+    // Per-block metadata exists only where a block state has to be kept: lines that leave a code
+    // block open. Plain documents carry none, however long (memory footprint, brief section 4).
+    void blockDataOnlyOnLinesThatLeaveACodeBlockOpen() {
+        test::Fixture f;
+        QByteArray plain;
+        for (int i = 0; i < 2000; ++i)
+            plain += "# heading\n- item with *emphasis* and `code`\nbody text\n\n";
+        QVERIFY(f.open(f.writeFile(QStringLiteral("plain.md"), plain)));
+        f.settle();
+        for (int b = 0; b < f.editor()->document()->blockCount(); b += 997)
+            f.placeCaret(b);  // reveal and conceal again
+        f.settle();
+        QCOMPARE(test::blocksWithUserData(f.editor()->document()), QList<int>{});
+
+        QVERIFY(f.open(f.writeFile(QStringLiteral("code.md"), "plain\n# h\n- b\n```\ncode\n```\nafter\n")));
+        f.settle();
+        QCOMPARE(test::blocksWithUserData(f.editor()->document()), (QList<int>{3, 4}));
+
+        // Splitting a code line keeps both halves inside the block.
+        f.placeCaret(4, 2);
+        QTest::keyClick(f.editor(), Qt::Key_Return);
+        f.settle();
+        QCOMPARE(test::blocksWithUserData(f.editor()->document()), (QList<int>{3, 4, 5}));
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("plain\n# h\n- b\n```\nco\nde\n```\nafter\n"));
+    }
+
+    void blockDataIsReleasedWhenTheCodeBlockDisappears() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("code.md"), "before\n```\na\nb\n")));
+        f.settle();
+        QCOMPARE(test::blocksWithUserData(f.editor()->document()), (QList<int>{1, 2, 3, 4}));
+
+        f.placeCaret(1);
+        QTest::keyClick(f.editor(), Qt::Key_End);
+        QTest::keyClick(f.editor(), Qt::Key_Backspace);  // "``": no longer a fence
+        f.settle();
+        QCOMPARE(test::blocksWithUserData(f.editor()->document()), QList<int>{});
+        QVERIFY(test::formatAt(f.editor()->document()->findBlockByNumber(3), 0).fontStyleHint() != QFont::TypeWriter);
+
+        QTest::keyClick(f.editor(), Qt::Key_QuoteLeft);  // "```" again
+        f.settle();
+        QCOMPARE(test::blocksWithUserData(f.editor()->document()), (QList<int>{1, 2, 3, 4}));
+    }
+
+    // Joining lines leaves Qt's per-block state of the last joined line next to the metadata of the
+    // first one; restyling must not trust that mix.
+    void joiningAFenceIntoThePreviousLineRestylesFollowingLines() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("code.md"), "x\n```\na\nb\n")));
+        f.settle();
+        const auto isCode = [&](int block) {
+            return test::formatAt(f.editor()->document()->findBlockByNumber(block), 0).fontStyleHint() ==
+                   QFont::TypeWriter;
+        };
+        QVERIFY(isCode(2) && isCode(3));
+
+        f.placeCaret(1);
+        QTest::keyClick(f.editor(), Qt::Key_Backspace);  // "x```": not a fence
+        f.settle();
+        QVERIFY(!isCode(1) && !isCode(2));
+        QCOMPARE(test::blocksWithUserData(f.editor()->document()), QList<int>{});
+
+        f.editor()->undo();
+        f.settle();
+        QVERIFY(isCode(2) && isCode(3));
+        QCOMPARE(test::blocksWithUserData(f.editor()->document()), (QList<int>{1, 2, 3, 4}));
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("x\n```\na\nb\n"));
+    }
 };
 
 QTEST_MAIN(tst_s014_fenced_code_blocks)

@@ -53,6 +53,28 @@ private slots:
         QVERIFY(!f.editor()->document()->isModified());
     }
 
+    // ADR 0002: mixed files keep each line's ending. Only endings that differ from the majority are
+    // stored per line; every other line saves with the majority ending anyway.
+    void mixedEndingsStoreOnlyMinorityEndings() {
+        test::Fixture f;
+        const QByteArray bytes("a\r\nb\nc\nd\re\nf\r\n\ng\n");
+        const QString path = f.writeFile(QStringLiteral("doc.md"), bytes);
+        QVERIFY(f.open(path));
+        f.settle();
+        QCOMPARE(test::blocksWithUserData(f.editor()->document()), (QList<int>{0, 3, 5}));
+
+        const QString copy = f.dir.filePath(QStringLiteral("copy.md"));
+        QVERIFY(f.saveAndWait(copy));
+        QCOMPARE(test::Fixture::readFile(copy), bytes);
+
+        // A new line takes the majority ending; the minority line it was split from keeps its own.
+        f.placeCaret(0, 1);
+        QTest::keyClick(f.editor(), Qt::Key_Return);
+        QTest::keyClicks(f.editor(), QStringLiteral("z"));
+        QVERIFY(f.saveAndWait(copy));
+        QCOMPARE(test::Fixture::readFile(copy), QByteArray("a\r\nz\nb\nc\nd\re\nf\r\n\ng\n"));
+    }
+
     void saveAsChangesPathAndTitle() {
         test::Fixture f;
         QTest::keyClicks(f.editor(), QStringLiteral("hello"));

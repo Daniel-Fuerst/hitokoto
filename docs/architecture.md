@@ -41,7 +41,7 @@ decorations (`Bullet`), never in colours or fonts. The UI maps these to theme fo
 | Class | Responsibility |
 |---|---|
 | `EditorWidget` | `QPlainTextEdit` subclass; the `QTextDocument` inside is the only copy of the text. Updates the revealed range on caret/selection changes, paints padded code-block panels and decorations, handles S010 clicks, centres the text column. |
-| `BlockStyler` | Applies `LineRender` to blocks as `QTextLayout` formats. Edited lines and lines entering/leaving the revealed range are styled at once; the rest lazily: visible blocks first, then idle slices of at most 6 ms. Per-block metadata caches the block state; edits propagate restyling only while the state changes. |
+| `BlockStyler` | Applies `LineRender` to blocks as `QTextLayout` formats. Edited lines and lines entering/leaving the revealed range are styled at once; the rest lazily: visible blocks first, then idle slices of at most 6 ms. Each block's user state records what it was styled for and caches the block state after the line; only lines that leave a multi-line block open keep that state in a `BlockData`, so plain lines allocate nothing. Edits propagate restyling only while the state changes. |
 | `EditorFormats` | Theme tokens to `QTextCharFormat`s; `LineRender` to format ranges. |
 | `DocumentSession` | Open/save. Reading, decoding, encoding and writing run on a worker thread (`QThreadPool`, one thread, so operations stay in order). Large files are inserted in slices of about 8 ms; the first 64 KB appear at once. |
 | `ThemeManager`, `theme_applier` | Load the theme file, fall back to the built-in theme, apply Fusion + palette + generated style sheet. |

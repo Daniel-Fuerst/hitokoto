@@ -10,17 +10,71 @@
 #include <QTextLayout>
 
 #include <algorithm>
+#include <optional>
 #include <vector>
 
 namespace hitokoto::ui {
 namespace {
-// Block user state encodes what a block was styled for: -1 = never, 0 = concealed, 1 = revealed.
-constexpr int kUnstyled = -1;
-constexpr int kStyledConcealed = 0;
-constexpr int kStyledRevealed = 1;
+// QTextBlock::userState() carries two things per block; Qt gives new blocks -1 (nothing known).
+// Bits 0-1: what the block was styled for (0 = not styled, 1 = concealed, 2 = revealed).
+// Bit 2: the block state after the line is known. Bit 3: that state is active; only then does
+// the block carry a BlockData holding it, so plain lines need no allocation.
+constexpr int kStyleMask = 0x3;
+constexpr int kUnstyled = 0;
+constexpr int kStyledConcealed = 1;
+constexpr int kStyledRevealed = 2;
+constexpr int kStateKnown = 0x4;
+constexpr int kStateActive = 0x8;
 // Ranges up to this size are styled synchronously; larger ones on screen + in idle slices.
 constexpr int kSynchronousLimit = 400;
 constexpr qint64 kSliceNanoseconds = 6'000'000;
+
+int stateBits(const QTextBlock& block) {
+    const int bits = block.userState();
+    return bits < 0 ? 0 : bits;
+}
+
+void setStyled(QTextBlock& block, int style) {
+    block.setUserState((stateBits(block) & ~kStyleMask) | style);
+}
+
+/// The cached block state after `block`, if known. Joining lines can pair the user state of one
+/// line with the BlockData of another; such a mix counts as unknown.
+std::optional<core::BlockState> cachedBlockState(const QTextBlock& block) {
+    const int bits = stateBits(block);
+    if ((bits & kStateKnown) == 0) {
+        return std::nullopt;
+    }
+    if ((bits & kStateActive) == 0) {
+        return core::BlockState{};
+    }
+    const auto* data = dynamic_cast<const BlockData*>(block.userData());
+    if (data != nullptr && data->blockState.active()) {
+        return data->blockState;
+    }
+    return std::nullopt;
+}
+
+void cacheBlockState(QTextBlock& block, core::BlockState state) {
+    auto* data = dynamic_cast<BlockData*>(block.userData());
+    const int style = stateBits(block) & kStyleMask;
+    if (state.active()) {
+        if (data == nullptr) {
+            data = new BlockData;
+            block.setUserData(data);
+        }
+        data->blockState = state;
+        block.setUserState(style | kStateKnown | kStateActive);
+        return;
+    }
+    if (data != nullptr) {
+        data->blockState = {};
+        if (data->empty()) {
+            block.setUserData(nullptr);  // deletes it
+        }
+    }
+    block.setUserState(style | kStateKnown);
+}
 }  // namespace
 
 BlockStyler::BlockStyler(QTextDocument* document, const core::ElementRegistry& registry,
@@ -38,7 +92,7 @@ void BlockStyler::setFormats(EditorFormats formats) {
 
 void BlockStyler::invalidateAll() {
     for (QTextBlock b = document_->begin(); b.isValid(); b = b.next()) {
-        b.setUserState(kUnstyled);
+        setStyled(b, kUnstyled);
     }
     styleVisible();
     scheduleFrom(0);
@@ -46,37 +100,17 @@ void BlockStyler::invalidateAll() {
 
 core::BlockState BlockStyler::blockStateBefore(const QTextBlock& block) {
     std::vector<QTextBlock> uncached;
-    QTextBlock previous = block.previous();
-    while (previous.isValid()) {
-        auto* data = dynamic_cast<BlockData*>(previous.userData());
-        if (data != nullptr && data->blockStateValid) {
-            auto state = data->blockState;
-            for (auto it = uncached.rbegin(); it != uncached.rend(); ++it) {
-                state = registry_.blockStateAfter(view(it->text()), state);
-                auto* current = dynamic_cast<BlockData*>(it->userData());
-                if (current == nullptr) {
-                    current = new BlockData;
-                    it->setUserData(current);
-                }
-                current->blockState = state;
-                current->blockStateValid = true;
-            }
-            return state;
+    core::BlockState state;
+    for (QTextBlock previous = block.previous(); previous.isValid(); previous = previous.previous()) {
+        if (const auto cached = cachedBlockState(previous)) {
+            state = *cached;
+            break;
         }
         uncached.push_back(previous);
-        previous = previous.previous();
     }
-
-    core::BlockState state;
     for (auto it = uncached.rbegin(); it != uncached.rend(); ++it) {
         state = registry_.blockStateAfter(view(it->text()), state);
-        auto* current = dynamic_cast<BlockData*>(it->userData());
-        if (current == nullptr) {
-            current = new BlockData;
-            it->setUserData(current);
-        }
-        current->blockState = state;
-        current->blockStateValid = true;
+        cacheBlockState(*it, state);
     }
     return state;
 }
@@ -87,7 +121,7 @@ core::LineRender BlockStyler::renderFor(const QTextBlock& block) {
 
 bool BlockStyler::isStyled(const QTextBlock& block) const {
     const int expected = isRevealed(block.blockNumber()) ? kStyledRevealed : kStyledConcealed;
-    return block.userState() == expected;
+    return (stateBits(block) & kStyleMask) == expected;
 }
 
 void BlockStyler::styleBlock(const QTextBlock& block) {
@@ -96,20 +130,14 @@ void BlockStyler::styleBlock(const QTextBlock& block) {
         return;
     }
     const auto render = renderFor(block);
-    auto* data = dynamic_cast<BlockData*>(block.userData());
-    if (data == nullptr) {
-        data = new BlockData;
-        QTextBlock mutableBlock = block;
-        mutableBlock.setUserData(data);
-    }
-    const bool blockStateChanged = data->blockStateValid && data->blockState != render.blockState;
-    data->blockState = render.blockState;
-    data->blockStateValid = true;
+    QTextBlock mutableBlock = block;
+    const auto previousState = cachedBlockState(block);
+    const bool blockStateChanged = previousState && *previousState != render.blockState;
+    cacheBlockState(mutableBlock, render.blockState);
     const auto ranges = formats_.ranges(render);
     // Skip the relayout if nothing was and nothing is formatted (most body lines).
     const bool changed = !(ranges.isEmpty() && layout->formats().isEmpty());
-    QTextBlock mutableBlock = block;
-    mutableBlock.setUserState(isRevealed(block.blockNumber()) ? kStyledRevealed : kStyledConcealed);
+    setStyled(mutableBlock, isRevealed(block.blockNumber()) ? kStyledRevealed : kStyledConcealed);
     ++styledCount_;
     if (blockStateChanged) {
         // The next line's block membership may change too. Restyle onward lazily; each restyled
@@ -117,7 +145,7 @@ void BlockStyler::styleBlock(const QTextBlock& block) {
         // the edit changing the text length (e.g. one backtick replaced by a letter).
         QTextBlock next = block.next();
         if (next.isValid()) {
-            next.setUserState(kUnstyled);
+            setStyled(next, kUnstyled);
             scheduleFrom(next.blockNumber());
         }
     }
@@ -188,7 +216,7 @@ void BlockStyler::onContentsChange(int position, int charsRemoved, int charsAdde
     // Edited blocks keep their user state but their formats are stale: force a restyle.
     for (QTextBlock b = first; b.isValid() && b.blockNumber() <= std::min(lastNumber, firstNumber + kSynchronousLimit);
          b = b.next()) {
-        b.setUserState(kUnstyled);
+        setStyled(b, kUnstyled);
     }
     styleRange(firstNumber, std::min(lastNumber + 1, document_->blockCount() - 1));
     if (charsRemoved != charsAdded || lastNumber - firstNumber > kSynchronousLimit) {

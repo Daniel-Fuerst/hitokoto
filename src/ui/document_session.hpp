@@ -22,7 +22,7 @@ class EditorWidget;
 struct FileFormat {
     bool hasBom = false;
     core::LineEnding ending = core::LineEnding::LF;  ///< all breaks, or the majority for mixed files
-    bool mixedEndings = false;                       ///< per-line endings live in block user data
+    bool mixedEndings = false;                       ///< endings other than the majority live in BlockData
 };
 
 class DocumentSession : public QObject {
