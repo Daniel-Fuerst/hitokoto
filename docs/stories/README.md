@@ -31,7 +31,7 @@ story ID (see "Conventions").
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 
 Status: **Open** → **Confirmed** (by the user) → **In progress** → **In review** (CI green on all
-three platforms, budgets hold) → **Done** (the user has accepted the functionality; only the user
+three platforms, budgets hold, theming baseline met) → **Done** (the user has accepted the functionality; only the user
 sets it).
 
 "Done" in v0.1 means: all scenarios pass locally on Linux with Qt 6.12 and Qt 6.8. Windows and
@@ -58,8 +58,11 @@ these stories.
 - Core tests (GoogleTest): test suite named after the story, e.g. `TEST(S002_Headings, MarkerHiddenWhenCursorElsewhere)`.
 - UI tests (Qt Test, `QT_QPA_PLATFORM=offscreen`): one test class per story, e.g. `tst_s002_headings`.
 - Benchmarks (Google Benchmark and the startup/latency harness from S006): names start with the story ID.
+- Theming baseline (brief, section 8): every element a story adds or changes has its own theme
+  tokens for every visible property, documented in `docs/theming.md`. This applies to every story;
+  it is not a story of its own.
 - A story is ready for review when its scenarios pass on all three CI platforms, nothing
-  regressed, and the performance budgets still hold. It is done when the user has accepted it.
+  regressed, the performance budgets still hold, and the theming baseline is met. It is done when the user has accepted it.
 
 ## Not in the MVP (from the brief, kept in mind)
 

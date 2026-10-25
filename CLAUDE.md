@@ -11,10 +11,12 @@ Read before any work: `docs/brief.md` (the full brief), `docs/adr/` (accepted de
   not show in the commits. Test first (red, green, refactor); tests carry the story ID.
 - Scope changes become new stories in `docs/stories/` with their reason; `docs/brief.md` stays the
   user's brief.
-- A story is ready for review when its scenarios pass on Linux, Windows and macOS CI and the
-  performance budgets still hold: set it to "In review" and summarise what changed, which tests
-  were added, and what is next. It is done only when the user accepts the functionality; the
-  user marks it "Done".
+- Theming (brief, section 8) is a baseline for every story, not a story of its own: each element a
+  story adds or changes has its own documented theme tokens for every visible property.
+- A story is ready for review when its scenarios pass on Linux, Windows and macOS CI, the
+  performance budgets still hold and the theming baseline is met: set it to "In review" and
+  summarise what changed, which tests were added, and what is next. It is done only when the user
+  accepts the functionality; the user marks it "Done".
 - Ask before decisions that are expensive to reverse or conflict with the brief; record them as
   ADRs in `docs/adr/`.
 - New dependencies need a justification against the brief, section 3.
