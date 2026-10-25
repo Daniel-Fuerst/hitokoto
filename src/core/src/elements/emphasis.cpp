@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "hitokoto/core/markdown.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -51,12 +52,20 @@ bool supportedRun(char16_t marker, std::size_t length) {
     return marker == u'~' ? length == 2 : length >= 1 && length <= 3;
 }
 
-std::vector<Delimiter> findDelimiters(std::u16string_view line) {
+std::vector<Delimiter> findDelimiters(std::u16string_view line, const std::vector<bool>& codeCharacters) {
     std::vector<Delimiter> delimiters;
     for (std::size_t i = 0; i < line.size();) {
+        if (codeCharacters[i]) {
+            ++i;
+            continue;
+        }
         i = line.find_first_of(u"*~_\\", i);
         if (i == std::u16string_view::npos) {
             break;
+        }
+        if (codeCharacters[i]) {
+            ++i;
+            continue;
         }
         if (line[i] == u'\\' && i + 1 < line.size() && canEscape(line[i + 1])) {
             i += 2;
@@ -121,7 +130,13 @@ public:
     [[nodiscard]] std::string_view id() const noexcept override { return "emphasis"; }
 
     void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
-        const auto delimiters = findDelimiters(line);
+        std::vector<bool> codeCharacters(line.size(), false);
+        for (const auto& run : out.runs) {
+            if (run.role == Role::InlineCode) {
+                std::fill(codeCharacters.begin() + run.span.start, codeCharacters.begin() + run.span.end(), true);
+            }
+        }
+        const auto delimiters = findDelimiters(line, codeCharacters);
         const auto pairs = matchDelimiters(delimiters);
         if (pairs.empty()) {
             return;
@@ -146,7 +161,7 @@ public:
         }
 
         for (std::size_t i = 0; i < line.size();) {
-            while (i < line.size() && (styles[i] == InlineStyle::None || markerCharacters[i])) {
+            while (i < line.size() && (styles[i] == InlineStyle::None || markerCharacters[i] || codeCharacters[i])) {
                 ++i;
             }
             const std::size_t start = i;
@@ -154,7 +169,7 @@ public:
                 break;
             }
             const auto style = styles[i];
-            while (i < line.size() && styles[i] == style && !markerCharacters[i]) {
+            while (i < line.size() && styles[i] == style && !markerCharacters[i] && !codeCharacters[i]) {
                 ++i;
             }
             out.inlineStyles.push_back(

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "block_styler.hpp"
 
+#include "block_data.hpp"
 #include "qt_bridge.hpp"
 
 #include <QElapsedTimer>
@@ -9,6 +10,7 @@
 #include <QTextLayout>
 
 #include <algorithm>
+#include <vector>
 
 namespace hitokoto::ui {
 namespace {
@@ -42,8 +44,45 @@ void BlockStyler::invalidateAll() {
     scheduleFrom(0);
 }
 
-core::LineRender BlockStyler::renderFor(const QTextBlock& block) const {
-    return registry_.render(view(block.text()), {isRevealed(block.blockNumber())});
+core::FenceState BlockStyler::fenceStateBefore(const QTextBlock& block) {
+    std::vector<QTextBlock> uncached;
+    QTextBlock previous = block.previous();
+    while (previous.isValid()) {
+        auto* data = dynamic_cast<BlockData*>(previous.userData());
+        if (data != nullptr && data->fenceStateValid) {
+            auto state = data->fenceState;
+            for (auto it = uncached.rbegin(); it != uncached.rend(); ++it) {
+                state = registry_.fenceStateAfter(view(it->text()), state);
+                auto* current = dynamic_cast<BlockData*>(it->userData());
+                if (current == nullptr) {
+                    current = new BlockData;
+                    it->setUserData(current);
+                }
+                current->fenceState = state;
+                current->fenceStateValid = true;
+            }
+            return state;
+        }
+        uncached.push_back(previous);
+        previous = previous.previous();
+    }
+
+    core::FenceState state;
+    for (auto it = uncached.rbegin(); it != uncached.rend(); ++it) {
+        state = registry_.fenceStateAfter(view(it->text()), state);
+        auto* current = dynamic_cast<BlockData*>(it->userData());
+        if (current == nullptr) {
+            current = new BlockData;
+            it->setUserData(current);
+        }
+        current->fenceState = state;
+        current->fenceStateValid = true;
+    }
+    return state;
+}
+
+core::LineRender BlockStyler::renderFor(const QTextBlock& block) {
+    return registry_.render(view(block.text()), {isRevealed(block.blockNumber()), fenceStateBefore(block)});
 }
 
 bool BlockStyler::isStyled(const QTextBlock& block) const {
@@ -57,12 +96,27 @@ void BlockStyler::styleBlock(const QTextBlock& block) {
         return;
     }
     const auto render = renderFor(block);
+    auto* data = dynamic_cast<BlockData*>(block.userData());
+    if (data == nullptr) {
+        data = new BlockData;
+        QTextBlock mutableBlock = block;
+        mutableBlock.setUserData(data);
+    }
+    const bool fenceStateChanged = data->fenceStateValid && data->fenceState != render.fenceState;
+    data->fenceState = render.fenceState;
+    data->fenceStateValid = true;
     const auto ranges = formats_.ranges(render);
     // Skip the relayout if nothing was and nothing is formatted (most body lines).
     const bool changed = !(ranges.isEmpty() && layout->formats().isEmpty());
     QTextBlock mutableBlock = block;
     mutableBlock.setUserState(isRevealed(block.blockNumber()) ? kStyledRevealed : kStyledConcealed);
     ++styledCount_;
+    if (fenceStateChanged) {
+        QTextBlock next = block.next();
+        if (next.isValid()) {
+            next.setUserState(kUnstyled);
+        }
+    }
     if (!changed) {
         return;
     }
@@ -132,7 +186,7 @@ void BlockStyler::onContentsChange(int position, int charsRemoved, int charsAdde
          b = b.next()) {
         b.setUserState(kUnstyled);
     }
-    styleRange(firstNumber, lastNumber);
+    styleRange(firstNumber, std::min(lastNumber + 1, document_->blockCount() - 1));
     if (charsRemoved != charsAdded || lastNumber - firstNumber > kSynchronousLimit) {
         // Line numbers below may have shifted relative to the revealed range: re-check lazily.
         scheduleFrom(firstNumber);

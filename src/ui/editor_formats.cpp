@@ -11,7 +11,12 @@
 namespace hitokoto::ui {
 
 EditorFormats::EditorFormats(const core::Theme& theme)
-    : marker_(toQColor(theme.marker)), bullet_(toQColor(theme.bullet)) {
+    : marker_(toQColor(theme.marker)),
+      bullet_(toQColor(theme.bullet)),
+      codeBackground_(toQColor(theme.surface)),
+      codeForeground_(toQColor(theme.text)),
+      codePanelPadding_(theme.spacing),
+      codePanelRadius_(theme.radius) {
     baseFont_ = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
     if (!theme.editorFontFamily.empty()) {
         baseFont_.setFamilies({QString::fromStdString(theme.editorFontFamily)});
@@ -90,7 +95,18 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
         if (baseRun != nullptr && baseRun->role == core::Role::Marker) {
             format.setForeground(marker_);
         }
-        if (inlineRun != nullptr) {
+        if (baseRun != nullptr && baseRun->role == core::Role::CodeBlock) {
+            format.setFontStyleHint(QFont::TypeWriter);
+            if (!render.fenceLine) {
+                format.setForeground(codeForeground_);
+            }
+        }
+        if (baseRun != nullptr && baseRun->role == core::Role::InlineCode) {
+            format.setFontStyleHint(QFont::TypeWriter);
+            format.setForeground(codeForeground_);
+            format.setBackground(codeBackground_);
+        }
+        if (inlineRun != nullptr && (baseRun == nullptr || baseRun->role != core::Role::InlineCode)) {
             if (core::hasStyle(inlineRun->style, core::InlineStyle::Bold)) {
                 format.setFontWeight(QFont::Bold);
             }
@@ -102,7 +118,9 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
             }
         }
         if (hidden != nullptr) {
-            format = lineFormat;
+            if (baseRun == nullptr || baseRun->role != core::Role::CodeBlock) {
+                format = lineFormat;
+            }
             // Concealment mechanism (ADR 0001), not a styling value.
             format.setForeground(Qt::transparent);  // theme-lint: allow
             if (hidden->mode == core::HideMode::Collapse) {

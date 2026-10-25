@@ -23,6 +23,8 @@ struct Span {
 enum class Role : std::uint8_t {
     Marker,       ///< visible syntax marker (cursor on the line)
     HeadingText,  ///< text of a heading; StyleRun::level holds 1..6
+    CodeBlock,    ///< text inside a fenced code block
+    InlineCode,   ///< text inside a single-backtick code span
 };
 
 enum class InlineStyle : std::uint8_t {
@@ -78,15 +80,28 @@ struct Decoration {
     friend bool operator==(const Decoration&, const Decoration&) = default;
 };
 
+/// State carried between lines while rendering fenced code blocks.
+struct FenceState {
+    char16_t marker = 0;
+    std::uint32_t length = 0;
+    [[nodiscard]] bool active() const noexcept { return marker != 0 && length >= 3; }
+    [[nodiscard]] bool empty() const noexcept { return !active(); }
+    friend bool operator==(const FenceState&, const FenceState&) = default;
+};
+
 /// How one line is shown. All spans lie within the line.
 struct LineRender {
     std::uint8_t headingLevel = 0;  ///< 1..6 if the whole line is a heading, else 0
+    bool codeBlock = false;
+    bool fenceLine = false;
+    FenceState fenceState;  ///< state to pass when rendering the next line
     std::vector<StyleRun> runs;
     std::vector<InlineStyleRun> inlineStyles;
     std::vector<HiddenRange> hidden;
     std::vector<Decoration> decorations;
     [[nodiscard]] bool empty() const noexcept {
-        return headingLevel == 0 && runs.empty() && inlineStyles.empty() && hidden.empty() && decorations.empty();
+        return headingLevel == 0 && !codeBlock && !fenceLine && runs.empty() && inlineStyles.empty() &&
+               hidden.empty() && decorations.empty();
     }
     friend bool operator==(const LineRender&, const LineRender&) = default;
 };
@@ -94,6 +109,9 @@ struct LineRender {
 /// Context for rendering one line.
 struct LineContext {
     bool revealed = false;  ///< caret or selection is on this line: show raw syntax
+    FenceState fenceState;  ///< fence state entering this line
+
+    LineContext(bool showSource = false, FenceState state = {}) : revealed(showSource), fenceState(state) {}
 };
 
 /// Result of a line element's parse rule.
@@ -141,6 +159,8 @@ public:
 
     /// How to show `line`. Never throws for any input.
     [[nodiscard]] LineRender render(std::u16string_view line, const LineContext& context) const;
+    /// Fence state after `line`, without allocating render ranges.
+    [[nodiscard]] FenceState fenceStateAfter(std::u16string_view line, FenceState state = {}) const noexcept;
 
     [[nodiscard]] std::size_t size() const noexcept { return elements_.size(); }
 
@@ -155,6 +175,7 @@ private:
 /// Built-in elements (each in its own source file).
 std::unique_ptr<LineElement> makeHeadingElement();
 std::unique_ptr<LineElement> makeBulletElement();
+std::unique_ptr<InlineElement> makeInlineCodeElement();
 std::unique_ptr<InlineElement> makeEmphasisElement();
 
 }  // namespace hitokoto::core

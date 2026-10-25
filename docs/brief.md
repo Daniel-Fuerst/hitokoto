@@ -13,7 +13,9 @@ Initial behaviours (MVP):
 
 The source of truth is always the plain Markdown text. Never keep a separate rich-text document model that can drift from the Markdown. Rendering is a view over the text.
 
-Planned later (do not build now, but do not architect it out): bold/italic/inline code, links, task lists, numbered lists, blockquotes, code blocks, tables, images, search, spellcheck, export, `[[wiki links]]`, multiple documents, plugins, keybinding schemes, localisation, accessibility.
+Planned later (do not build now, but do not architect it out): links, task lists, numbered lists,
+blockquotes, tables, images, search, spellcheck, export, `[[wiki links]]`, multiple documents,
+plugins, keybinding schemes, localisation, accessibility.
 
 ## 2. Hard technology constraints
 

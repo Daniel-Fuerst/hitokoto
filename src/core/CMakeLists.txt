@@ -8,6 +8,7 @@ add_library(hitokoto_core STATIC
     src/element_registry.cpp
     src/elements/heading.cpp
     src/elements/bullet.cpp
+    src/elements/inline_code.cpp
     src/elements/emphasis.cpp
     src/reveal.cpp
     src/theme.cpp

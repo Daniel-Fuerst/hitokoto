@@ -8,6 +8,7 @@
 #include <QPainter>
 #include <QScrollBar>
 #include <QTextBlock>
+#include <QTextCursor>
 #include <QTextLayout>
 
 #include <algorithm>
@@ -92,9 +93,46 @@ void EditorWidget::scrollContentsBy(int dx, int dy) {
 }
 
 void EditorWidget::paintEvent(QPaintEvent* event) {
+    paintCodeBlockPanels();
     QPlainTextEdit::paintEvent(event);
     paintDecorations();
     emit painted();
+}
+
+void EditorWidget::paintCodeBlockPanels() {
+    QPainter painter(viewport());
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setBrush(styler_->formats().codeBackground());
+    painter.setPen(Qt::NoPen);
+    const auto [first, last] = visibleBlockRange();
+    const qreal padding = styler_->formats().codePanelPadding();
+    const qreal radius = styler_->formats().codePanelRadius();
+    const qreal outer = document()->documentMargin() / 2.0;
+    const qreal width = viewport()->width() - outer * 2;
+    const QPointF offset = contentOffset();
+    QRectF panel;
+    bool inPanel = false;
+    for (QTextBlock block = document()->findBlockByNumber(first); block.isValid() && block.blockNumber() <= last;
+         block = block.next()) {
+        const auto render = styler_->renderFor(block);
+        const QRectF line = blockBoundingGeometry(block).translated(offset);
+        if (render.codeBlock && !render.fenceLine) {
+            if (!inPanel) {
+                panel = {outer, line.top(), width, line.height()};
+                inPanel = true;
+            } else {
+                panel.setBottom(line.bottom());
+            }
+            continue;
+        }
+        if (inPanel) {
+            painter.drawRoundedRect(panel.adjusted(-padding, -padding, padding, padding), radius, radius);
+            inPanel = false;
+        }
+    }
+    if (inPanel) {
+        painter.drawRoundedRect(panel.adjusted(-padding, -padding, padding, padding), radius, radius);
+    }
 }
 
 void EditorWidget::paintDecorations() {

@@ -6,9 +6,9 @@ and the raw syntax shows only on the line where your cursor is.
 
 ![hitokoto, light theme](docs/assets/screenshot-light.png)
 
-Version 0.1 (MVP): headings, bullet lists, bold, italic and strikethrough render inline; open, edit,
-save and save as; light and dark themes plus your own theme file; native on Linux (Wayland and X11),
-Windows and macOS.
+Version 0.1 (MVP): headings, bullet lists, bold, italic and strikethrough render inline; inline code
+spans and fenced code blocks render in a fixed-width style; open, edit, save and save as; light and
+dark themes plus your own theme file; native on Linux (Wayland and X11), Windows and macOS.
 
 Licence: GPL-3.0-or-later (see `LICENSE`). hitokoto uses Qt under the LGPLv3.
 

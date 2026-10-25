@@ -36,6 +36,7 @@ protected:
 private:
     void updateReveal();
     void updateMargins();
+    void paintCodeBlockPanels();
     void paintDecorations();
 
     BlockStyler* styler_ = nullptr;

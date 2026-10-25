@@ -153,3 +153,8 @@ the Fusion style, the application palette, a style sheet generated from the toke
 editor's text formats. Users never write Qt style sheets, so the native style engine and the
 theme never pull in different directions (ADR 0001). UI code must not contain styling values;
 a test (`S005_NoStylingLiteralsInUi`) enforces that.
+
+Fenced code blocks use the theme's `colors.surface` background and `colors.text` foreground,
+with a rounded panel padded by `layout.spacing` and rounded by `layout.radius`. Single-backtick
+inline code uses the same surface and text colors with a fixed-width style hint. No additional
+theme tokens are needed.

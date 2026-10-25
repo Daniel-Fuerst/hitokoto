@@ -1,6 +1,6 @@
 # S013 — Inline bold, italic and strikethrough
 
-- **Status:** In Progress · **Order:** 14 · **Depends on:** S003
+- **Status:** Done · **Order:** 14 · **Depends on:** S003
 
 ## Story
 
@@ -54,3 +54,7 @@ readable without changing the plain Markdown source.
   nesting, unmatched input and escaped delimiters.
 - UI: `tst_s013_inline_emphasis` verifies Qt font formats, cursor-aware marker reveal, and that
   rendering never changes the document text.
+
+## Implementation
+
+Completed 2026-10-25. Core and UI tests pass on Linux.
