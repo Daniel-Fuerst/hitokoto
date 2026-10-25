@@ -52,7 +52,7 @@ TEST(S005_Theme, AllValueKinds) {
         "[buttons]\n"
         "style = \"outlined\"\n",
         builtinTheme(ColorScheme::Light));
-    ASSERT_TRUE(r.theme) << r.diagnostics.front().toString();
+    ASSERT_TRUE(r.theme) << (r.diagnostics.empty() ? "" : r.diagnostics.front().toString());
     const Theme& t = *r.theme;
     EXPECT_EQ(t.name, "Mine \"quoted\"");
     EXPECT_EQ(t.accent, (Color{0xaa, 0xbb, 0xcc, 0xff}));
