@@ -76,6 +76,36 @@ private slots:
         QCOMPARE(test::formatAt(content, 2).fontWeight(), QFont::Bold);
         QCOMPARE(f.editor()->toPlainText(), QStringLiteral("before\nplain\n**text**\nafter\n"));
     }
+
+    // An edit that keeps the length (select one backtick, type a letter) must still restyle every
+    // line whose block membership changes, in both directions.
+    void sameLengthFenceEditRestylesFollowingLines() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("code.md"), "```\na\nb\nc\nd\n")));
+        f.settle();
+        f.placeCaret(5);
+        const auto isCode = [&](int block) {
+            return test::formatAt(f.editor()->document()->findBlockByNumber(block), 0).fontStyleHint() ==
+                   QFont::TypeWriter;
+        };
+        for (int b = 1; b <= 4; ++b)
+            QVERIFY(isCode(b));
+
+        QTextCursor cursor(f.editor()->document()->firstBlock());
+        cursor.setPosition(1, QTextCursor::KeepAnchor);
+        cursor.insertText(QStringLiteral("x"));  // "x``": no longer a fence
+        f.settle();
+        for (int b = 1; b <= 4; ++b)
+            QVERIFY2(!isCode(b), qPrintable(QStringLiteral("block %1 still styled as code").arg(b)));
+
+        cursor.setPosition(0);
+        cursor.setPosition(1, QTextCursor::KeepAnchor);
+        cursor.insertText(QStringLiteral("`"));  // "```" again
+        f.settle();
+        for (int b = 1; b <= 4; ++b)
+            QVERIFY2(isCode(b), qPrintable(QStringLiteral("block %1 not styled as code").arg(b)));
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("```\na\nb\nc\nd\n"));
+    }
 };
 
 QTEST_MAIN(tst_s014_fenced_code_blocks)

@@ -58,9 +58,12 @@ bool isClosingFence(std::u16string_view line, FenceState state) {
 
 void addCodeLine(std::u16string_view line, const LineContext& context, LineRender& out) {
     out.codeBlock = true;
-    out.runs.push_back({{0, static_cast<std::uint32_t>(line.size())}, Role::CodeBlock, 0});
+    const Span whole{0, static_cast<std::uint32_t>(line.size())};
     if (out.fenceLine && !context.revealed && !line.empty()) {
-        out.hidden.push_back({{0, static_cast<std::uint32_t>(line.size())}, HideMode::Collapse});
+        // A concealed fence is hidden only; styled and hidden ranges never overlap (LineRender contract).
+        out.hidden.push_back({whole, HideMode::Collapse});
+    } else {
+        out.runs.push_back({whole, Role::CodeBlock, 0});
     }
 }
 

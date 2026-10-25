@@ -31,7 +31,7 @@ TEST(S014_FencedCodeBlocks, FencedContentIsLiteralAndFencesAreConcealed) {
     ASSERT_TRUE(opening.fenceLine);
     EXPECT_EQ(opening.fenceState, (FenceState{u'`', 3}));
     EXPECT_EQ(hiddenSpans(opening), (std::vector<Span>{{0, 6}}));
-    EXPECT_EQ(opening.runs, (std::vector<StyleRun>{{{0, 6}, Role::CodeBlock, 0}}));
+    EXPECT_TRUE(opening.runs.empty()) << "a concealed fence is hidden, not also styled (no overlapping spans)";
 
     const auto content = show(u"# **literal** - item", opening.fenceState);
     EXPECT_TRUE(content.codeBlock);
@@ -84,4 +84,17 @@ TEST(S014_FencedCodeBlocks, FenceEditsChangeFollowingLinesBlockMembership) {
     const auto outside = show(u"**literal**", {});
     EXPECT_FALSE(outside.codeBlock);
     EXPECT_FALSE(outside.inlineStyles.empty());
+}
+
+// The registry's shortcut for the UI must agree with the full render, line by line.
+TEST(S014_FencedCodeBlocks, FenceStateAfterMatchesRender) {
+    const std::u16string_view lines[] = {u"text", u"```cpp", u"code",   u"~~~",   u"````",  u"```",
+                                         u"~~~~", u"  ~~~",  u"~~~~ x", u"~~~~~", u"after", u"``` `x`"};
+    FenceState state;
+    for (const auto line : lines) {
+        for (bool revealed : {false, true}) {
+            EXPECT_EQ(show(line, state, revealed).fenceState, registry().fenceStateAfter(line, state));
+        }
+        state = registry().fenceStateAfter(line, state);
+    }
 }

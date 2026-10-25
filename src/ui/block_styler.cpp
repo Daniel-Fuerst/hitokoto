@@ -112,9 +112,13 @@ void BlockStyler::styleBlock(const QTextBlock& block) {
     mutableBlock.setUserState(isRevealed(block.blockNumber()) ? kStyledRevealed : kStyledConcealed);
     ++styledCount_;
     if (fenceStateChanged) {
+        // The next line's block membership may change too. Restyle onward lazily; each restyled
+        // line continues the chain only while its own fence state changes. This must not depend on
+        // the edit changing the text length (e.g. one backtick replaced by a letter).
         QTextBlock next = block.next();
         if (next.isValid()) {
             next.setUserState(kUnstyled);
+            scheduleFrom(next.blockNumber());
         }
     }
     if (!changed) {
