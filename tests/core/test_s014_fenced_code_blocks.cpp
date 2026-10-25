@@ -78,16 +78,40 @@ TEST(S014_FencedCodeBlocks, FenceRulesAndUnterminatedBlocksAreHandled) {
     EXPECT_TRUE(show(u"still code", opened.blockState).codeBlock);
 }
 
-TEST(S014_FencedCodeBlocks, FenceEditsChangeFollowingLinesBlockMembership) {
-    const auto opening = show(u"```");
-    const auto codeLine = show(u"**literal**", opening.blockState);
-    EXPECT_TRUE(codeLine.codeBlock);
+namespace {
+struct Walk {
+    std::vector<bool> code;          ///< per line: belongs to a code block
+    std::vector<BlockState> states;  ///< per line: state passed to the next line
+};
 
-    const auto noOpening = show(u"```");
-    EXPECT_TRUE(noOpening.blockState.active());
-    const auto outside = show(u"**literal**", {});
-    EXPECT_FALSE(outside.codeBlock);
-    EXPECT_FALSE(outside.inlineStyles.empty());
+/// Renders a document line by line, passing each line's block state on, as the editor does.
+Walk walk(const std::vector<std::u16string_view>& lines) {
+    Walk result;
+    BlockState state;
+    for (const auto line : lines) {
+        const auto render = show(line, state);
+        result.code.push_back(render.codeBlock);
+        result.states.push_back(render.blockState);
+        state = render.blockState;
+    }
+    return result;
+}
+}  // namespace
+
+// Editing a fence line changes which of the following lines are code, beyond the original block:
+// the old closing fence then opens a new block. The state after the edited line changes, which is
+// what makes the editor restyle the lines below.
+TEST(S014_FencedCodeBlocks, FenceEditsChangeFollowingLinesBlockMembership) {
+    const std::vector<std::u16string_view> original = {u"```", u"a", u"b", u"```", u"after"};
+    const std::vector<std::u16string_view> edited = {u"x``", u"a", u"b", u"```", u"after"};  // same length
+
+    const auto before = walk(original);
+    EXPECT_EQ(before.code, (std::vector<bool>{true, true, true, true, false}));
+
+    const auto after = walk(edited);
+    EXPECT_EQ(after.code, (std::vector<bool>{false, false, false, true, true}))
+        << "the former closing fence opens a block, so the last line becomes code";
+    EXPECT_NE(after.states.front(), before.states.front());
 }
 
 // The registry's shortcut for the UI must agree with the full render, line by line.
