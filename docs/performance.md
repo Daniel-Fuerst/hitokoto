@@ -18,6 +18,20 @@ CI runs both on Linux, Windows and macOS and compares with `bench/baselines/<os>
 
 ## Measurements
 
+### 2026-10-25, CI runners (run #18, pull request #5)
+
+GitHub-hosted runners (ubuntu-24.04 with Qt 6.12, windows-2022 with Qt 6.8.3, macos-15 with
+Qt 6.12), release build, offscreen, 10 runs. These are the baselines in `bench/baselines/`.
+
+| Measurement | Linux | Windows | macOS | Budget |
+|---|---|---|---|---|
+| Cold start, median | 25 ms | 23 ms | 252 ms | < 1000 ms |
+| Open 1 MB, fully loaded | 140 ms | 171 ms | 202 ms | < 500 ms |
+| Open 10 MB, first screen editable | 65 ms | 79 ms | 79 ms | < 2–3 s |
+| Open 10 MB, fully loaded | 1.7 s | 1.9 s | 3.3 s | |
+| Key to paint, 10 MB file (median / p95) | 0.9 / 1.0 ms | 0.9 / 1.0 ms | 1.2 / 2.2 ms | ≤ 16 ms |
+| Save 10 MB: UI thread blocked | 6 ms | 36 ms | 24 ms | imperceptible |
+
 ### 2026-10-24, development VM (not reference hardware)
 
 Cloud VM, 2 vCPU x86-64, 7 GiB RAM, no GPU, Ubuntu 24.04, Qt 6.12.0, release build,

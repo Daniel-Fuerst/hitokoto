@@ -1,6 +1,6 @@
 # S015 — Inline Markdown code spans
 
-- **Status:** In progress (CI pending) · **Order:** 16 · **Depends on:** S014
+- **Status:** In review · **Order:** 16 · **Depends on:** S014
 
 ## Story
 
@@ -65,3 +65,6 @@ code-like text is visually distinct without changing the Markdown source.
 Completed on Linux 2026-10-25. Single-backtick spans use the inline-code role and are excluded
 from emphasis parsing; the source remains unchanged. The editor paints the inline-code box itself (radius, border); the
 concealed backticks reserve the padding. Every `inline-code.*` token applies (ADR 0004).
+
+CI run #18 (pull request #5, 2026-10-25) is green on Linux (Qt 6.12 and 6.8), Windows (Qt 6.8.3)
+and macOS (Qt 6.12).

@@ -17,16 +17,16 @@ story ID (see "Conventions").
 | 4 | [S008](008-unsaved-changes.md) | Unsaved changes are never lost silently | S004 | S | Done |
 | 5 | [S002](002-headings.md) | Headings render large, `#` hidden unless the cursor is on the line | S001 | L | Done |
 | 6 | [S003](003-bullets.md) | Bullets render as dots, through the same element mechanism | S002 | M | Done |
-| 7 | [S006](006-cold-start-budget.md) | Cold start within budget, measured in CI | S003 | M | Done (baselines from CI pending) |
+| 7 | [S006](006-cold-start-budget.md) | Cold start within budget, measured in CI | S003 | M | Done |
 | 8 | [S009](009-concealment-quality-gate.md) | Concealment quality gate: caret, IME, accessibility | S003 | M | Standing gate (outside the order) |
 | 9 | [S010](010-click-on-concealed-line.md) | Clicking a line with hidden markers puts the caret where clicked | S009 | S | Done |
 | 10 | [S005](005-theme-files.md) | A theme file changes the look; light and dark built in | S003 | L | Done |
 | 11 | [S007](007-large-files.md) | 10 MB files open within budget and type without lag | S006 | L | Partly done |
 | 12 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
 | 13 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |
-| 14 | [S013](013-inline-emphasis.md) | Inline bold, italic and strikethrough | S003 | M | In progress (CI pending) |
-| 15 | [S014](014-fenced-code-blocks.md) | Fenced Markdown code blocks | S013 | M | In progress (CI pending) |
-| 16 | [S015](015-inline-code.md) | Inline Markdown code spans | S014 | S | In progress (CI pending) |
+| 14 | [S013](013-inline-emphasis.md) | Inline bold, italic and strikethrough | S003 | M | In review |
+| 15 | [S014](014-fenced-code-blocks.md) | Fenced Markdown code blocks | S013 | M | In review |
+| 16 | [S015](015-inline-code.md) | Inline Markdown code spans | S014 | S | In review |
 | 17 | [S016](016-application-icon.md) | Show the application icon in the taskbar or dock | S000 | S | In progress |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
@@ -35,9 +35,8 @@ Status: **Open** → **Confirmed** (by the user) → **In progress** → **In re
 three platforms, budgets hold, theming baseline met) → **Done** (the user has accepted the functionality; only the user
 sets it).
 
-"Done" in v0.1 means: all scenarios pass locally on Linux with Qt 6.12 and Qt 6.8. Windows and
-macOS are covered by the CI workflow, which has not run yet; the first CI run confirms or reopens
-these stories.
+"Done" in v0.1 means: all scenarios pass locally on Linux with Qt 6.12 and Qt 6.8. CI run #18
+(pull request #5, 2026-10-25) confirmed them on Linux, Windows and macOS.
 
 ## Decisions (confirmed 2026-10-24)
 

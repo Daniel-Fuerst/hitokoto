@@ -2,7 +2,7 @@
 
 - **Status:** Done in v0.1 · **Order:** 7 · **Depends on:** S003
 
-**Implementation note:** Done (v0.1, 2026-10-24) except the baseline: `hitokoto-bench` and the CI job exist; baselines in `bench/baselines/` must be created from the first CI runs. Idle CPU: no timers run while idle (the styler's idle timer stops when done); not yet measured automatically.
+**Implementation note:** Done (v0.1, 2026-10-24). Baselines in `bench/baselines/` come from CI run #18 (pull request #5, 2026-10-25). Idle CPU: no timers run while idle (the styler's idle timer stops when done); not yet measured automatically.
 
 ## Story
 

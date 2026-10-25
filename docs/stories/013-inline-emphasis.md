@@ -1,6 +1,6 @@
 # S013 — Inline bold, italic and strikethrough
 
-- **Status:** In progress (CI pending) · **Order:** 14 · **Depends on:** S003
+- **Status:** In review · **Order:** 14 · **Depends on:** S003
 
 ## Story
 
@@ -70,3 +70,6 @@ readable without changing the plain Markdown source.
 
 Completed 2026-10-25. Core and UI tests pass on Linux. Bold weight, the three text colours and
 the colour of revealed delimiters come from `[emphasis]` (ADR 0004).
+
+CI run #18 (pull request #5, 2026-10-25) is green on Linux (Qt 6.12 and 6.8), Windows (Qt 6.8.3)
+and macOS (Qt 6.12).

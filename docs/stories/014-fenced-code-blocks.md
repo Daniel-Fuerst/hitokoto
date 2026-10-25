@@ -1,6 +1,6 @@
 # S014 — Fenced Markdown code blocks
 
-- **Status:** In progress (CI pending) · **Order:** 15 · **Depends on:** S013
+- **Status:** In review · **Order:** 15 · **Depends on:** S013
 
 ## Story
 
@@ -82,3 +82,6 @@ Completed on Linux 2026-10-25. Code content is rendered in a continuous rounded 
 behind the text using the theme's surface, spacing and radius tokens; fence lines remain concealed
 and outside the panel. Panel and code take every `code-block.*` token (ADR 0004); revealed fence lines use
 `code-block.marker`.
+
+CI run #18 (pull request #5, 2026-10-25) is green on Linux (Qt 6.12 and 6.8), Windows (Qt 6.8.3)
+and macOS (Qt 6.12).
