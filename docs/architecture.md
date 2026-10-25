@@ -44,6 +44,7 @@ decorations (`Bullet`), never in colours or fonts. The UI maps these to theme fo
 | `BlockStyler` | Applies `LineRender` to blocks as `QTextLayout` formats. Edited lines and lines entering/leaving the revealed range are styled at once; the rest lazily: visible blocks first, then idle slices of at most 6 ms. Each block's user state records what it was styled for and caches the block state after the line; only lines that leave a multi-line block open keep that state in a `BlockData`, so plain lines allocate nothing. Edits propagate restyling only while the state changes. |
 | `EditorFormats` | Theme tokens to `QTextCharFormat`s; `LineRender` to format ranges. |
 | `DocumentSession` | Open/save. Reading, decoding, encoding and writing run on a worker thread (`QThreadPool`, one thread, so operations stay in order). Large files are inserted in slices of about 8 ms; the first 64 KB appear at once. |
+| `application_icon` | Embeds the SVG for Qt windows and supplies derived native icons for Windows and macOS bundles. |
 | `ThemeManager`, `theme_applier` | Load the theme file, fall back to the built-in theme, apply Fusion + palette + generated style sheet. |
 | `MainWindow` | Menus, title, unsaved-changes prompts. Dialogs are replaceable for tests. |
 
@@ -86,7 +87,7 @@ library cannot do this, and Qt may not be used in the core.
 
 | Dependency | Use | Where |
 |---|---|---|
-| Qt 6.8+ (Core, Gui, Widgets) | UI | runtime |
+| Qt 6.8+ (Core, Gui, Widgets, Svg) | UI and SVG application icon | runtime |
 | Qt Test | UI tests, end-to-end benchmark | development |
 | GoogleTest 1.18 | core tests | development (installed package or fetched by tag) |
 | Google Benchmark 1.10 | core benchmarks | development |

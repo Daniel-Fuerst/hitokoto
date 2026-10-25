@@ -1,0 +1,2 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+IDI_ICON1 ICON "@PROJECT_SOURCE_DIR@/icons/hitokoto.ico"

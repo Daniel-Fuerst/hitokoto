@@ -24,23 +24,23 @@ Your own look goes into a theme file; see [docs/theming.md](docs/theming.md).
 
 ## Building
 
-Requirements: a C++20 compiler, CMake 3.25 or newer, Qt 6.8 or newer (Core, Gui, Widgets; Test
-for the tests). Tests and benchmarks fetch GoogleTest and Google Benchmark automatically if they
-are not installed.
+Requirements: a C++20 compiler, CMake 3.25 or newer, Qt 6.8 or newer (Core, Gui, Widgets, Svg;
+Test for the tests). Tests and benchmarks fetch GoogleTest and Google Benchmark automatically if
+they are not installed.
 
 ### Linux
 
 Debian 13 (trixie) or newer:
 
 ```sh
-sudo apt install build-essential cmake ninja-build qt6-base-dev qt6-wayland
+sudo apt install build-essential cmake ninja-build qt6-base-dev qt6-svg-dev qt6-wayland
 cmake --preset release -G Ninja
 cmake --build --preset release
 ./build/release/src/app/hitokoto
 ```
 
 Distributions with an older Qt (Ubuntu 24.04 ships 6.4): install Qt 6.8+ with the Qt Online
-Installer and add `-DCMAKE_PREFIX_PATH=$HOME/Qt/6.12.0/gcc_64`.
+Installer, including the Qt SVG module, and add `-DCMAKE_PREFIX_PATH=$HOME/Qt/6.12.0/gcc_64`.
 
 hitokoto runs natively on Wayland and on X11; Qt picks the right one. Force one with
 `QT_QPA_PLATFORM=wayland` or `QT_QPA_PLATFORM=xcb`.
@@ -48,7 +48,8 @@ hitokoto runs natively on Wayland and on X11; Qt picks the right one. Force one 
 ### Windows
 
 Install Visual Studio 2022 (workload "Desktop development with C++") and Qt 6.12 for
-"MSVC 2022 64-bit" with the Qt Online Installer. In an "x64 Native Tools Command Prompt for VS 2022":
+"MSVC 2022 64-bit" with the Qt Online Installer, including the Qt SVG module. In an
+"x64 Native Tools Command Prompt for VS 2022":
 
 ```bat
 cmake --preset release -DCMAKE_PREFIX_PATH=C:\Qt\6.12.0\msvc2022_64

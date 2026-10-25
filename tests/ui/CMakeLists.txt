@@ -26,6 +26,7 @@ foreach(t IN ITEMS
         tst_s010_click
         tst_s013_inline_emphasis
         tst_s014_fenced_code_blocks
-        tst_s015_inline_code)
+        tst_s015_inline_code
+        tst_s016_app_icon)
     hitokoto_ui_test(${t})
 endforeach()

@@ -27,6 +27,7 @@ story ID (see "Conventions").
 | 14 | [S013](013-inline-emphasis.md) | Inline bold, italic and strikethrough | S003 | M | In progress (CI pending) |
 | 15 | [S014](014-fenced-code-blocks.md) | Fenced Markdown code blocks | S013 | M | In progress (CI pending) |
 | 16 | [S015](015-inline-code.md) | Inline Markdown code spans | S014 | S | In progress (CI pending) |
+| 17 | [S016](016-application-icon.md) | Show the application icon in the taskbar or dock | S000 | S | In progress |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 
