@@ -56,7 +56,7 @@ private:
     void onContentsChange(int position, int charsRemoved, int charsAdded);
     void styleRange(int first, int last);
     void styleBlock(const QTextBlock& block);
-    [[nodiscard]] core::FenceState fenceStateBefore(const QTextBlock& block);
+    [[nodiscard]] core::BlockState blockStateBefore(const QTextBlock& block);
     [[nodiscard]] bool isStyled(const QTextBlock& block) const;
     void scheduleFrom(int blockNumber);
     void idleSlice();

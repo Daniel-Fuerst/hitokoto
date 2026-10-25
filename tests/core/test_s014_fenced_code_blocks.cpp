@@ -4,6 +4,8 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+
 using namespace hitokoto::core;
 
 namespace {
@@ -12,7 +14,7 @@ const ElementRegistry& registry() {
     return r;
 }
 
-LineRender show(std::u16string_view line, FenceState state = {}, bool revealed = false) {
+LineRender show(std::u16string_view line, BlockState state = {}, bool revealed = false) {
     return registry().render(line, {revealed, state});
 }
 
@@ -29,23 +31,23 @@ TEST(S014_FencedCodeBlocks, FencedContentIsLiteralAndFencesAreConcealed) {
     const auto opening = show(u"```cpp");
     ASSERT_TRUE(opening.codeBlock);
     ASSERT_TRUE(opening.fenceLine);
-    EXPECT_EQ(opening.fenceState, (FenceState{u'`', 3}));
+    EXPECT_TRUE(opening.blockState.active());
     EXPECT_EQ(hiddenSpans(opening), (std::vector<Span>{{0, 6}}));
     EXPECT_TRUE(opening.runs.empty()) << "a concealed fence is hidden, not also styled (no overlapping spans)";
 
-    const auto content = show(u"# **literal** - item", opening.fenceState);
+    const auto content = show(u"# **literal** - item", opening.blockState);
     EXPECT_TRUE(content.codeBlock);
     EXPECT_FALSE(content.fenceLine);
     EXPECT_TRUE(content.hidden.empty());
     EXPECT_TRUE(content.inlineStyles.empty());
     EXPECT_EQ(content.headingLevel, 0);
     EXPECT_EQ(content.runs, (std::vector<StyleRun>{{{0, 20}, Role::CodeBlock, 0}}));
-    EXPECT_EQ(content.fenceState, opening.fenceState);
+    EXPECT_EQ(content.blockState, opening.blockState);
 
-    const auto closing = show(u"```", content.fenceState);
+    const auto closing = show(u"```", content.blockState);
     EXPECT_TRUE(closing.codeBlock);
     EXPECT_TRUE(closing.fenceLine);
-    EXPECT_TRUE(closing.fenceState.empty());
+    EXPECT_FALSE(closing.blockState.active());
     EXPECT_EQ(hiddenSpans(closing), (std::vector<Span>{{0, 3}}));
 }
 
@@ -53,48 +55,100 @@ TEST(S014_FencedCodeBlocks, RevealedFenceShowsSourceWithoutLosingCodeStyle) {
     const auto opening = show(u"  ~~~~ c++", {}, true);
     EXPECT_TRUE(opening.codeBlock);
     EXPECT_TRUE(opening.hidden.empty());
-    EXPECT_EQ(opening.fenceState, (FenceState{u'~', 4}));
+    EXPECT_EQ(opening.blockState, show(u"~~~~").blockState) << "indentation and info string do not matter";
+    EXPECT_NE(opening.blockState, show(u"~~~").blockState) << "the fence length is part of the state";
     EXPECT_EQ(opening.runs.front().role, Role::CodeBlock);
 
-    const auto closing = show(u"   ~~~~~  ", opening.fenceState, true);
+    const auto closing = show(u"   ~~~~~  ", opening.blockState, true);
     EXPECT_TRUE(closing.codeBlock);
     EXPECT_TRUE(closing.hidden.empty());
-    EXPECT_TRUE(closing.fenceState.empty());
+    EXPECT_FALSE(closing.blockState.active());
 }
 
 TEST(S014_FencedCodeBlocks, FenceRulesAndUnterminatedBlocksAreHandled) {
-    EXPECT_TRUE(show(u"   ```").fenceState.active());
-    EXPECT_TRUE(show(u"    ```").fenceState.empty());
-    EXPECT_TRUE(show(u"```` `bad").fenceState.empty());
+    EXPECT_TRUE(show(u"   ```").blockState.active());
+    EXPECT_FALSE(show(u"    ```").blockState.active());
+    EXPECT_FALSE(show(u"```` `bad").blockState.active());
 
     const auto opened = show(u"~~~~");
-    EXPECT_TRUE(show(u"~~~", opened.fenceState).fenceState.active());
-    EXPECT_TRUE(show(u"~~~~~~", opened.fenceState).fenceState.empty());
-    EXPECT_TRUE(show(u"~~~ trailing", opened.fenceState).fenceState.active());
-    EXPECT_TRUE(show(u"still code", opened.fenceState).codeBlock);
+    EXPECT_TRUE(show(u"~~~", opened.blockState).blockState.active());
+    EXPECT_FALSE(show(u"~~~~~~", opened.blockState).blockState.active());
+    EXPECT_TRUE(show(u"~~~ trailing", opened.blockState).blockState.active());
+    EXPECT_TRUE(show(u"still code", opened.blockState).codeBlock);
 }
 
 TEST(S014_FencedCodeBlocks, FenceEditsChangeFollowingLinesBlockMembership) {
     const auto opening = show(u"```");
-    const auto codeLine = show(u"**literal**", opening.fenceState);
+    const auto codeLine = show(u"**literal**", opening.blockState);
     EXPECT_TRUE(codeLine.codeBlock);
 
     const auto noOpening = show(u"```");
-    EXPECT_TRUE(noOpening.fenceState.active());
+    EXPECT_TRUE(noOpening.blockState.active());
     const auto outside = show(u"**literal**", {});
     EXPECT_FALSE(outside.codeBlock);
     EXPECT_FALSE(outside.inlineStyles.empty());
 }
 
 // The registry's shortcut for the UI must agree with the full render, line by line.
-TEST(S014_FencedCodeBlocks, FenceStateAfterMatchesRender) {
+TEST(S014_FencedCodeBlocks, BlockStateAfterMatchesRender) {
     const std::u16string_view lines[] = {u"text", u"```cpp", u"code",   u"~~~",   u"````",  u"```",
                                          u"~~~~", u"  ~~~",  u"~~~~ x", u"~~~~~", u"after", u"``` `x`"};
-    FenceState state;
+    BlockState state;
     for (const auto line : lines) {
         for (bool revealed : {false, true}) {
-            EXPECT_EQ(show(line, state, revealed).fenceState, registry().fenceStateAfter(line, state));
+            EXPECT_EQ(show(line, state, revealed).blockState, registry().blockStateAfter(line, state));
         }
-        state = registry().fenceStateAfter(line, state);
+        state = registry().blockStateAfter(line, state);
     }
+}
+
+namespace {
+// A multi-line element the core does not know: a "$$" display-math block. Test-only.
+class MathBlock final : public MultiLineElement {
+public:
+    [[nodiscard]] std::string_view id() const noexcept override { return "test-math"; }
+    [[nodiscard]] std::optional<BlockLine> parse(std::u16string_view line,
+                                                 std::uint32_t state) const noexcept override {
+        const bool delimiter = line == u"$$";
+        if (state == 0) {
+            return delimiter ? std::optional<BlockLine>{BlockLine{1, true}} : std::nullopt;
+        }
+        return BlockLine{delimiter ? 0u : 1u, delimiter};
+    }
+    void render(std::u16string_view line, const BlockLine& parsed, const LineContext& context,
+                LineRender& out) const override {
+        if (parsed.delimiter && !context.revealed) {
+            out.hidden.push_back({{0, static_cast<std::uint32_t>(line.size())}, HideMode::Collapse});
+        }
+        // Deliberately also styles the delimiter: the registry keeps runs and hidden ranges apart.
+        out.runs.push_back({{0, static_cast<std::uint32_t>(line.size())}, Role::CodeBlock, 0});
+    }
+};
+}  // namespace
+
+// Brief section 5, extension by addition: a new multi-line element is added by registering it;
+// the registry, the UI and the existing elements stay unchanged.
+TEST(S014_FencedCodeBlocks, MultiLineElementsAreAddedByRegistrationOnly) {
+    ElementRegistry r = ElementRegistry::withBuiltins();
+    r.addMultiLine(std::make_unique<MathBlock>());
+
+    const std::u16string_view lines[] = {u"$$", u"# not a heading", u"```", u"$$", u"# heading", u"```", u"$$"};
+    BlockState state;
+    std::vector<LineRender> shown;
+    for (const auto line : lines) {
+        shown.push_back(r.render(line, {false, state}));
+        EXPECT_EQ(shown.back().blockState, r.blockStateAfter(line, state));
+        state = shown.back().blockState;
+    }
+    EXPECT_TRUE(shown[0].blockState.active());
+    EXPECT_EQ(hiddenSpans(shown[0]), (std::vector<Span>{{0, 2}}));
+    EXPECT_TRUE(shown[0].runs.empty()) << "styled and hidden ranges never overlap";
+    EXPECT_EQ(shown[1].headingLevel, 0) << "the open block owns the line";
+    EXPECT_FALSE(shown[2].codeBlock) << "a fence inside the math block is math";
+    EXPECT_FALSE(shown[3].blockState.active()) << "closed";
+    EXPECT_EQ(shown[4].headingLevel, 1);
+    EXPECT_TRUE(shown[5].codeBlock) << "built-in fenced code still works";
+    EXPECT_TRUE(shown[6].codeBlock) << "and owns the line";
+    EXPECT_TRUE(shown[6].blockState.active());
+    EXPECT_NE(shown[6].blockState, shown[0].blockState) << "states of different elements differ";
 }

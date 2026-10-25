@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Any text renders to well-formed spans, line by line, revealed or not, with the fence state carried
+// Any text renders to well-formed spans, line by line, revealed or not, with the block state carried
 // from line to line as the editor does. Spans stay inside the line, hidden and styled ranges never
-// overlap, a revealed line hides nothing, and the registry's fence-state shortcut agrees with render().
+// overlap, a revealed line hides nothing, and the registry's block-state shortcut agrees with render().
 #include "hitokoto/core/markdown.hpp"
 
 #include <cstdlib>
@@ -14,7 +14,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     for (std::size_t i = 0; i < text.size(); ++i) {
         text[i] = static_cast<char16_t>(data[2 * i] | (data[2 * i + 1] << 8));
     }
-    hitokoto::core::FenceState state;
+    hitokoto::core::BlockState state;
     std::size_t start = 0;
     while (start <= text.size()) {
         const auto nl = text.find(u'\n', start);
@@ -47,10 +47,10 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
                 if (c > 1)
                     std::abort();
             }
-            if (r.fenceState != registry.fenceStateAfter(line, state))
+            if (r.blockState != registry.blockStateAfter(line, state))
                 std::abort();
         }
-        state = registry.fenceStateAfter(line, state);
+        state = registry.blockStateAfter(line, state);
         if (nl == std::u16string::npos)
             break;
         start = nl + 1;

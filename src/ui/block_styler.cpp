@@ -44,22 +44,22 @@ void BlockStyler::invalidateAll() {
     scheduleFrom(0);
 }
 
-core::FenceState BlockStyler::fenceStateBefore(const QTextBlock& block) {
+core::BlockState BlockStyler::blockStateBefore(const QTextBlock& block) {
     std::vector<QTextBlock> uncached;
     QTextBlock previous = block.previous();
     while (previous.isValid()) {
         auto* data = dynamic_cast<BlockData*>(previous.userData());
-        if (data != nullptr && data->fenceStateValid) {
-            auto state = data->fenceState;
+        if (data != nullptr && data->blockStateValid) {
+            auto state = data->blockState;
             for (auto it = uncached.rbegin(); it != uncached.rend(); ++it) {
-                state = registry_.fenceStateAfter(view(it->text()), state);
+                state = registry_.blockStateAfter(view(it->text()), state);
                 auto* current = dynamic_cast<BlockData*>(it->userData());
                 if (current == nullptr) {
                     current = new BlockData;
                     it->setUserData(current);
                 }
-                current->fenceState = state;
-                current->fenceStateValid = true;
+                current->blockState = state;
+                current->blockStateValid = true;
             }
             return state;
         }
@@ -67,22 +67,22 @@ core::FenceState BlockStyler::fenceStateBefore(const QTextBlock& block) {
         previous = previous.previous();
     }
 
-    core::FenceState state;
+    core::BlockState state;
     for (auto it = uncached.rbegin(); it != uncached.rend(); ++it) {
-        state = registry_.fenceStateAfter(view(it->text()), state);
+        state = registry_.blockStateAfter(view(it->text()), state);
         auto* current = dynamic_cast<BlockData*>(it->userData());
         if (current == nullptr) {
             current = new BlockData;
             it->setUserData(current);
         }
-        current->fenceState = state;
-        current->fenceStateValid = true;
+        current->blockState = state;
+        current->blockStateValid = true;
     }
     return state;
 }
 
 core::LineRender BlockStyler::renderFor(const QTextBlock& block) {
-    return registry_.render(view(block.text()), {isRevealed(block.blockNumber()), fenceStateBefore(block)});
+    return registry_.render(view(block.text()), {isRevealed(block.blockNumber()), blockStateBefore(block)});
 }
 
 bool BlockStyler::isStyled(const QTextBlock& block) const {
@@ -102,18 +102,18 @@ void BlockStyler::styleBlock(const QTextBlock& block) {
         QTextBlock mutableBlock = block;
         mutableBlock.setUserData(data);
     }
-    const bool fenceStateChanged = data->fenceStateValid && data->fenceState != render.fenceState;
-    data->fenceState = render.fenceState;
-    data->fenceStateValid = true;
+    const bool blockStateChanged = data->blockStateValid && data->blockState != render.blockState;
+    data->blockState = render.blockState;
+    data->blockStateValid = true;
     const auto ranges = formats_.ranges(render);
     // Skip the relayout if nothing was and nothing is formatted (most body lines).
     const bool changed = !(ranges.isEmpty() && layout->formats().isEmpty());
     QTextBlock mutableBlock = block;
     mutableBlock.setUserState(isRevealed(block.blockNumber()) ? kStyledRevealed : kStyledConcealed);
     ++styledCount_;
-    if (fenceStateChanged) {
+    if (blockStateChanged) {
         // The next line's block membership may change too. Restyle onward lazily; each restyled
-        // line continues the chain only while its own fence state changes. This must not depend on
+        // line continues the chain only while its own block state changes. This must not depend on
         // the edit changing the text length (e.g. one backtick replaced by a letter).
         QTextBlock next = block.next();
         if (next.isValid()) {

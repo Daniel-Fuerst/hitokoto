@@ -13,8 +13,8 @@ namespace hitokoto::ui {
 class BlockData final : public QTextBlockUserData {
 public:
     std::optional<core::LineEnding> ending;
-    core::FenceState fenceState;
-    bool fenceStateValid = false;
+    core::BlockState blockState;
+    bool blockStateValid = false;
 };
 
 }  // namespace hitokoto::ui

@@ -91,15 +91,16 @@ TEST(S002_Headings, PropertyRenderIsWellFormed) {
     // found a fence-line overlap that this test missed while '`' and '~' were absent).
     const char16_t alphabet[] = {u'#', u'#', u'-',  u'*', u'+',      u'_',   u'`',   u'`', u'~',
                                  u' ', u' ', u'\t', u'a', u'\u00E4', 0xD83D, 0xDE00, 0};
-    const FenceState fences[] = {{}, {u'`', 3}, {u'~', 4}};
+    const BlockState blocks[] = {
+        {}, registry().render(u"```", {}).blockState, registry().render(u"~~~~", {}).blockState};
     for (int iteration = 0; iteration < 50000; ++iteration) {
         std::u16string line(rng() % 14, u' ');
         for (auto& c : line) {
             c = alphabet[rng() % std::size(alphabet)];
         }
         for (bool revealed : {false, true}) {
-            const auto fence = fences[rng() % std::size(fences)];
-            const auto r = registry().render(line, {revealed, fence});
+            const auto block = blocks[rng() % std::size(blocks)];
+            const auto r = registry().render(line, {revealed, block});
             std::vector<int> cover(line.size(), 0);
             for (const auto& run : r.runs) {
                 ASSERT_LE(run.span.end(), line.size());

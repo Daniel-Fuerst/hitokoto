@@ -2,157 +2,52 @@
 #include "hitokoto/core/markdown.hpp"
 
 #include <algorithm>
+#include <stdexcept>
 
 namespace hitokoto::core {
 namespace {
 
-struct FenceRun {
-    char16_t marker = 0;
-    std::uint32_t length = 0;
-};
-
-FenceRun fenceRun(std::u16string_view line) {
-    std::size_t start = 0;
-    while (start < line.size() && line[start] == u' ' && start < 4) {
-        ++start;
-    }
-    if (start > 3 || start == line.size() || (line[start] != u'`' && line[start] != u'~')) {
-        return {};
-    }
-    const char16_t marker = line[start];
-    std::size_t end = start;
-    while (end < line.size() && line[end] == marker) {
-        ++end;
-    }
-    const auto length = end - start;
-    if (length < 3) {
-        return {};
-    }
-    return {marker, static_cast<std::uint32_t>(length)};
-}
-
-bool hasOnlyWhitespace(std::u16string_view text) {
-    return std::all_of(text.begin(), text.end(), [](char16_t c) { return c == u' ' || c == u'\t'; });
-}
-
-bool validOpeningFence(std::u16string_view line, FenceRun run) {
-    std::size_t start = 0;
-    while (start < line.size() && line[start] == u' ') {
-        ++start;
-    }
-    const auto info = line.substr(start + run.length);
-    return run.marker != u'`' || info.find(u'`') == std::u16string_view::npos;
-}
-
-bool isClosingFence(std::u16string_view line, FenceState state) {
-    const auto run = fenceRun(line);
-    if (run.marker != state.marker || run.length < state.length) {
-        return false;
-    }
-    std::size_t start = 0;
-    while (start < line.size() && line[start] == u' ') {
-        ++start;
-    }
-    return hasOnlyWhitespace(line.substr(start + run.length));
-}
-
-void addCodeLine(std::u16string_view line, const LineContext& context, LineRender& out) {
-    out.codeBlock = true;
-    const Span whole{0, static_cast<std::uint32_t>(line.size())};
-    if (out.fenceLine && !context.revealed && !line.empty()) {
-        // A concealed fence is hidden only; styled and hidden ranges never overlap (LineRender contract).
-        out.hidden.push_back({whole, HideMode::Collapse});
-    } else {
-        out.runs.push_back({whole, Role::CodeBlock, 0});
-    }
-}
-
-}  // namespace
-
-void ElementRegistry::add(std::unique_ptr<LineElement> element) {
-    if (element) {
-        elements_.push_back(std::move(element));
-    }
-}
-
-void ElementRegistry::addInline(std::unique_ptr<InlineElement> element) {
-    if (element) {
-        inlineElements_.push_back(std::move(element));
-    }
-}
-
-FenceState ElementRegistry::fenceStateAfter(std::u16string_view line, FenceState state) const noexcept {
-    if (state.active()) {
-        return isClosingFence(line, state) ? FenceState{} : state;
-    }
-    const auto opening = fenceRun(line);
-    return opening.marker != 0 && validOpeningFence(line, opening) ? FenceState{opening.marker, opening.length}
-                                                                   : FenceState{};
-}
-
-LineRender ElementRegistry::render(std::u16string_view line, const LineContext& context) const {
-    LineRender out;
-    out.fenceState = context.fenceState;
-    if (context.fenceState.active()) {
-        out.codeBlock = true;
-        if (isClosingFence(line, context.fenceState)) {
-            out.fenceLine = true;
-            out.fenceState = {};
-            addCodeLine(line, context, out);
-        } else {
-            addCodeLine(line, context, out);
-        }
-        return out;
-    }
-    const auto opening = fenceRun(line);
-    if (opening.marker != 0 && validOpeningFence(line, opening)) {
-        out.fenceLine = true;
-        out.fenceState = {opening.marker, opening.length};
-        addCodeLine(line, context, out);
-        return out;
-    }
-    for (const auto& element : elements_) {
-        if (auto match = element->parse(line)) {
-            element->render(line, *match, context, out);
-            break;
-        }
-    }
-    for (const auto& element : inlineElements_) {
-        element->render(line, context, out);
-    }
-
+/// Inline code runs take precedence over other runs on the same characters.
+void splitAroundInlineCode(LineRender& out) {
     std::vector<StyleRun> codeRuns;
     for (const auto& run : out.runs) {
         if (run.role == Role::InlineCode) {
             codeRuns.push_back(run);
         }
     }
-    if (!codeRuns.empty()) {
-        std::vector<StyleRun> splitRuns;
-        for (const auto& run : out.runs) {
-            if (run.role == Role::InlineCode) {
+    if (codeRuns.empty()) {
+        return;
+    }
+    std::vector<StyleRun> splitRuns;
+    for (const auto& run : out.runs) {
+        if (run.role == Role::InlineCode) {
+            continue;
+        }
+        std::uint32_t start = run.span.start;
+        for (const auto& code : codeRuns) {
+            if (code.span.end() <= start || code.span.start >= run.span.end()) {
                 continue;
             }
-            std::uint32_t start = run.span.start;
-            for (const auto& code : codeRuns) {
-                if (code.span.end() <= start || code.span.start >= run.span.end()) {
-                    continue;
-                }
-                if (code.span.start > start) {
-                    splitRuns.push_back({{start, code.span.start - start}, run.role, run.level});
-                }
-                start = std::max(start, code.span.end());
+            if (code.span.start > start) {
+                splitRuns.push_back({{start, code.span.start - start}, run.role, run.level});
             }
-            if (start < run.span.end()) {
-                splitRuns.push_back({{start, run.span.end() - start}, run.role, run.level});
-            }
+            start = std::max(start, code.span.end());
         }
-        splitRuns.insert(splitRuns.end(), codeRuns.begin(), codeRuns.end());
-        std::sort(splitRuns.begin(), splitRuns.end(),
-                  [](const StyleRun& left, const StyleRun& right) { return left.span.start < right.span.start; });
-        out.runs = std::move(splitRuns);
+        if (start < run.span.end()) {
+            splitRuns.push_back({{start, run.span.end() - start}, run.role, run.level});
+        }
     }
+    splitRuns.insert(splitRuns.end(), codeRuns.begin(), codeRuns.end());
+    std::sort(splitRuns.begin(), splitRuns.end(),
+              [](const StyleRun& left, const StyleRun& right) { return left.span.start < right.span.start; });
+    out.runs = std::move(splitRuns);
+}
 
+/// LineRender contract: styled runs and hidden ranges never overlap; hidden ranges win.
+void carveRunsAroundHidden(LineRender& out) {
+    if (out.hidden.empty()) {
+        return;
+    }
     std::sort(out.hidden.begin(), out.hidden.end(),
               [](const HiddenRange& left, const HiddenRange& right) { return left.span.start < right.span.start; });
     std::vector<StyleRun> visibleRuns;
@@ -172,11 +67,81 @@ LineRender ElementRegistry::render(std::u16string_view line, const LineContext& 
         }
     }
     out.runs = std::move(visibleRuns);
+}
+
+}  // namespace
+
+void ElementRegistry::add(std::unique_ptr<LineElement> element) {
+    if (element) {
+        elements_.push_back(std::move(element));
+    }
+}
+
+void ElementRegistry::addInline(std::unique_ptr<InlineElement> element) {
+    if (element) {
+        inlineElements_.push_back(std::move(element));
+    }
+}
+
+void ElementRegistry::addMultiLine(std::unique_ptr<MultiLineElement> element) {
+    if (!element) {
+        return;
+    }
+    if (multiLineElements_.size() >= 255) {
+        throw std::length_error("too many multi-line elements");
+    }
+    multiLineElements_.push_back(std::move(element));
+}
+
+std::optional<ElementRegistry::BlockMatch> ElementRegistry::matchBlock(std::u16string_view line,
+                                                                       BlockState state) const noexcept {
+    if (state.active() && state.element <= multiLineElements_.size()) {
+        if (auto parsed = multiLineElements_[state.element - 1U]->parse(line, state.value)) {
+            return BlockMatch{state.element, *parsed};
+        }
+    }
+    for (std::size_t i = 0; i < multiLineElements_.size(); ++i) {
+        if (auto parsed = multiLineElements_[i]->parse(line, 0)) {
+            return BlockMatch{static_cast<std::uint8_t>(i + 1U), *parsed};
+        }
+    }
+    return std::nullopt;
+}
+
+BlockState ElementRegistry::BlockMatch::stateAfter() const noexcept {
+    return parsed.stateAfter == 0 ? BlockState{} : BlockState{element, parsed.stateAfter};
+}
+
+BlockState ElementRegistry::blockStateAfter(std::u16string_view line, BlockState state) const noexcept {
+    const auto block = matchBlock(line, state);
+    return block ? block->stateAfter() : BlockState{};
+}
+
+LineRender ElementRegistry::render(std::u16string_view line, const LineContext& context) const {
+    LineRender out;
+    if (const auto block = matchBlock(line, context.blockState)) {
+        // The open block owns the line; line and inline elements do not run.
+        multiLineElements_[block->element - 1U]->render(line, block->parsed, context, out);
+        out.blockState = block->stateAfter();
+    } else {
+        for (const auto& element : elements_) {
+            if (auto match = element->parse(line)) {
+                element->render(line, *match, context, out);
+                break;
+            }
+        }
+        for (const auto& element : inlineElements_) {
+            element->render(line, context, out);
+        }
+        splitAroundInlineCode(out);
+    }
+    carveRunsAroundHidden(out);
     return out;
 }
 
 ElementRegistry ElementRegistry::withBuiltins() {
     ElementRegistry registry;
+    registry.addMultiLine(makeFencedCodeElement());
     registry.add(makeHeadingElement());
     registry.add(makeBulletElement());
     registry.addInline(makeInlineCodeElement());
