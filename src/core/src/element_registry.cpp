@@ -2,48 +2,40 @@
 #include "hitokoto/core/markdown.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <stdexcept>
 
 namespace hitokoto::core {
 namespace {
 
-bool isInlineRole(Role role) noexcept {
-    return role == Role::InlineCode || role == Role::InlineCodeMarker || role == Role::EmphasisMarker;
-}
-
-/// Runs of inline elements take precedence over block runs on the same characters.
-void splitAroundInlineRuns(LineRender& out) {
-    std::vector<StyleRun> codeRuns;
-    for (const auto& run : out.runs) {
-        if (isInlineRole(run.role)) {
-            codeRuns.push_back(run);
-        }
+/// Runs of inline elements (every run appended after the block element ran, from index
+/// `firstInlineRun` on) take precedence over the block element's runs on the same characters.
+/// The registry tells them apart by position, so a new inline element needs no new role here.
+void splitAroundInlineRuns(LineRender& out, std::size_t firstInlineRun) {
+    if (firstInlineRun >= out.runs.size()) {
+        return;  // no inline runs
     }
-    if (codeRuns.empty()) {
-        return;
-    }
-    std::sort(codeRuns.begin(), codeRuns.end(),
+    std::vector<StyleRun> inlineRuns(out.runs.begin() + static_cast<std::ptrdiff_t>(firstInlineRun), out.runs.end());
+    std::sort(inlineRuns.begin(), inlineRuns.end(),
               [](const StyleRun& left, const StyleRun& right) { return left.span.start < right.span.start; });
     std::vector<StyleRun> splitRuns;
-    for (const auto& run : out.runs) {
-        if (isInlineRole(run.role)) {
-            continue;
-        }
+    for (std::size_t i = 0; i < firstInlineRun; ++i) {
+        const auto& run = out.runs[i];
         std::uint32_t start = run.span.start;
-        for (const auto& code : codeRuns) {
-            if (code.span.end() <= start || code.span.start >= run.span.end()) {
+        for (const auto& inlineRun : inlineRuns) {
+            if (inlineRun.span.end() <= start || inlineRun.span.start >= run.span.end()) {
                 continue;
             }
-            if (code.span.start > start) {
-                splitRuns.push_back({{start, code.span.start - start}, run.role, run.level});
+            if (inlineRun.span.start > start) {
+                splitRuns.push_back({{start, inlineRun.span.start - start}, run.role, run.level});
             }
-            start = std::max(start, code.span.end());
+            start = std::max(start, inlineRun.span.end());
         }
         if (start < run.span.end()) {
             splitRuns.push_back({{start, run.span.end() - start}, run.role, run.level});
         }
     }
-    splitRuns.insert(splitRuns.end(), codeRuns.begin(), codeRuns.end());
+    splitRuns.insert(splitRuns.end(), inlineRuns.begin(), inlineRuns.end());
     std::sort(splitRuns.begin(), splitRuns.end(),
               [](const StyleRun& left, const StyleRun& right) { return left.span.start < right.span.start; });
     out.runs = std::move(splitRuns);
@@ -166,6 +158,7 @@ LineRender ElementRegistry::render(std::u16string_view line, const LineContext& 
         }
         // One table lookup per character tells which inline elements this line can trigger;
         // most lines trigger none.
+        const std::size_t firstInlineRun = out.runs.size();
         std::uint64_t triggered = 0;
         bool nonAscii = false;
         for (const char16_t c : line) {
@@ -184,7 +177,7 @@ LineRender ElementRegistry::render(std::u16string_view line, const LineContext& 
                 entry.element->render(line, context, out);
             }
         }
-        splitAroundInlineRuns(out);
+        splitAroundInlineRuns(out, firstInlineRun);
     }
     carveRunsAroundHidden(out);
     return out;
