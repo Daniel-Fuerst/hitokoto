@@ -2,7 +2,7 @@
 
 - **Status:** Partly done in v0.1 · **Order:** 11 · **Depends on:** S006
 
-**Implementation note:** Partly done (v0.1, 2026-10-24). Loading off-thread and in slices, lazy styling, typing p95 under 2 ms on 10 MB (development VM). Open: the editor is read-only until the whole file is inserted (2.2 s for 10 MB on the VM), saving 10 MB blocks the UI for about 25 ms, scrolling smoothness is not measured yet. Tests: UI `tst_s007_large_files`, benchmarks `hitokoto-bench`, `hitokoto_core_bench`.
+**Implementation note:** Partly done (v0.1, 2026-10-24). Loading off-thread and in slices, lazy styling, typing p95 under 2 ms on 10 MB (development VM). Open: the editor is read-only until the whole file is inserted (2.2 s for 10 MB on the VM), saving 10 MB blocks the UI for about 25 ms (follow-up: S017), scrolling smoothness is not measured yet. Tests: UI `tst_s007_large_files`, benchmarks `hitokoto-bench`, `hitokoto_core_bench`.
 
 ## Story
 

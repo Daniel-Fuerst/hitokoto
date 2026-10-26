@@ -93,14 +93,19 @@ private slots:
         QCOMPARE(test::Fixture::readFile(target), QByteArray("hello!"));
     }
 
+    // Keystrokes after the snapshot was taken (S017) are not in the file: the document stays
+    // modified. Keystrokes before that go into the file.
     void typingDuringSaveKeepsModifiedFlag() {
         test::Fixture f;
         const QString path = f.dir.filePath(QStringLiteral("t.md"));
         test::keyClicks(f.editor(), QStringLiteral("one"));
+        QSignalSpy snapshot(f.session(), &ui::DocumentSession::snapshotTaken);
         QSignalSpy done(f.session(), &ui::DocumentSession::saveFinished);
         f.session()->save(path);
+        QTRY_COMPARE(snapshot.size(), 1);
         test::keyClicks(f.editor(), QStringLiteral(" two"));  // before the result arrives
         QTRY_COMPARE(done.size(), 1);
+        QCOMPARE(test::Fixture::readFile(path), QByteArray("one"));
         QVERIFY(f.editor()->document()->isModified());
     }
 
