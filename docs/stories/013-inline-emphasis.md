@@ -17,11 +17,12 @@ readable without changing the plain Markdown source.
 - And the underlying document still contains the original Markdown
 
 **Scenario: combined and nested emphasis**
-- Given nested combinations such as `***bold italic***`, `**bold *italic* bold**` and
-  `~~removed **bold removed**~~`
+- Given nested combinations such as `***bold italic***`, `**bold *italic* bold**`,
+  `**bold *boldanditalic***` and `~~removed **bold removed**~~`
 - When the line is rendered
 - Then each text range receives the combination of styles indicated by its delimiters
 - And only the matched delimiter characters are concealed
+- And a combined closing run can close nested emphasis of the same marker
 
 **Scenario: source is revealed on the active line**
 - Given a line containing matched emphasis markers
@@ -50,17 +51,18 @@ readable without changing the plain Markdown source.
 
 ## Scope
 
-- Single, double and triple `*`/`_` runs provide italic, bold and combined bold+italic.
-- `~~` provides strikethrough.
+- Single, double and triple `*`/`_` runs provide italic, bold and combined bold+italic; a triple
+  run can also resolve as nested italic and bold delimiters, including across separate closing runs.
+- `~~` provides strikethrough, which can be nested with `*`/`_` emphasis.
 - Nested and adjacent combinations work within one line. This story does not add other Markdown
   syntax such as links, inline code, or block-level constructs.
 - This is a focused inline subset, not a complete CommonMark delimiter-resolution implementation;
-  paired delimiter runs must use the same marker and run length.
+  delimiters that form a pair must use the same marker, and `~` remains a two-character delimiter.
 
 ## Tests
 
 - Core: `S013_InlineEmphasis` verifies parsing into styled ranges, hidden delimiter ranges,
-  nesting, unmatched input and escaped delimiters.
+  nested and shared delimiter runs, unmatched input and escaped delimiters.
 - UI: `tst_s013_inline_emphasis` verifies Qt font formats, cursor-aware marker reveal, and that
   rendering never changes the document text.
 - Theming: core tests `S013_InlineEmphasis` parse every `emphasis.*` token and check its fallback;

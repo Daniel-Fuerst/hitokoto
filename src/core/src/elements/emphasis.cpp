@@ -16,9 +16,15 @@ struct Delimiter {
     bool canClose = false;
 };
 
+struct Opening {
+    Span span;
+    char16_t marker = 0;
+    InlineStyle style = InlineStyle::None;
+};
+
 struct Pair {
-    std::size_t opener = 0;
-    std::size_t closer = 0;
+    Span opener;
+    Span closer;
     InlineStyle style = InlineStyle::None;
 };
 
@@ -35,21 +41,27 @@ bool canEscape(char16_t c) {
     return isAsciiPunctuation(c);
 }
 
-InlineStyle styleFor(char16_t marker, std::uint8_t length) {
-    if (marker == u'~') {
-        return InlineStyle::Strikethrough;
-    }
-    if (length == 1) {
-        return InlineStyle::Italic;
-    }
-    if (length == 2) {
-        return InlineStyle::Bold;
-    }
-    return InlineStyle::Bold | InlineStyle::Italic;
-}
-
 bool supportedRun(char16_t marker, std::size_t length) {
     return marker == u'~' ? length == 2 : length >= 1 && length <= 3;
+}
+
+void appendOpenings(std::vector<Opening>& openings, const Delimiter& delimiter, std::size_t offset,
+                    std::size_t length) {
+    const auto span = [&](std::size_t start, std::size_t count) {
+        return Span{static_cast<std::uint32_t>(delimiter.span.start + start), static_cast<std::uint32_t>(count)};
+    };
+    if (delimiter.marker == u'~') {
+        if (length == 2) {
+            openings.push_back({span(offset, length), delimiter.marker, InlineStyle::Strikethrough});
+        }
+    } else if (length == 1) {
+        openings.push_back({span(offset, length), delimiter.marker, InlineStyle::Italic});
+    } else if (length == 2) {
+        openings.push_back({span(offset, length), delimiter.marker, InlineStyle::Bold});
+    } else if (length == 3) {
+        openings.push_back({span(offset, 1), delimiter.marker, InlineStyle::Italic});
+        openings.push_back({span(offset + 1, 2), delimiter.marker, InlineStyle::Bold});
+    }
 }
 
 std::vector<Delimiter> findDelimiters(std::u16string_view line, const std::vector<bool>& codeCharacters) {
@@ -110,16 +122,21 @@ std::vector<Delimiter> findDelimiters(std::u16string_view line, const std::vecto
 
 std::vector<Pair> matchDelimiters(const std::vector<Delimiter>& delimiters) {
     std::vector<Pair> pairs;
-    std::vector<std::size_t> openers;
-    for (std::size_t i = 0; i < delimiters.size(); ++i) {
-        const auto& delimiter = delimiters[i];
-        const bool matchesTop = !openers.empty() && delimiters[openers.back()].marker == delimiter.marker &&
-                                delimiters[openers.back()].length == delimiter.length;
-        if (delimiter.canClose && matchesTop) {
-            pairs.push_back({openers.back(), i, styleFor(delimiter.marker, delimiter.length)});
-            openers.pop_back();
-        } else if (delimiter.canOpen) {
-            openers.push_back(i);
+    std::vector<Opening> openings;
+    for (const auto& delimiter : delimiters) {
+        std::size_t closeLength = 0;
+        if (delimiter.canClose) {
+            while (!openings.empty() && openings.back().marker == delimiter.marker &&
+                   openings.back().span.length <= delimiter.length - closeLength) {
+                const auto opening = openings.back();
+                openings.pop_back();
+                const Span closing{static_cast<std::uint32_t>(delimiter.span.start + closeLength), opening.span.length};
+                pairs.push_back({opening.span, closing, opening.style});
+                closeLength += opening.span.length;
+            }
+        }
+        if (delimiter.canOpen && closeLength < delimiter.length) {
+            appendOpenings(openings, delimiter, closeLength, delimiter.length - closeLength);
         }
     }
     return pairs;
@@ -146,20 +163,30 @@ public:
         std::vector<InlineStyle> styles(line.size(), InlineStyle::None);
         std::vector<bool> markerCharacters(line.size(), false);
         for (const auto& pair : pairs) {
-            const auto& opener = delimiters[pair.opener];
-            const auto& closer = delimiters[pair.closer];
-            for (std::uint32_t i = opener.span.end(); i < closer.span.start; ++i) {
+            for (std::uint32_t i = pair.opener.end(); i < pair.closer.start; ++i) {
                 styles[i] = styles[i] | pair.style;
             }
-            for (const auto& delimiter : {opener, closer}) {
-                for (std::uint32_t i = delimiter.span.start; i < delimiter.span.end(); ++i) {
-                    markerCharacters[i] = true;
-                }
-                // Styled when revealed; when concealed the registry drops the run under the hidden range.
-                out.runs.push_back({delimiter.span, Role::EmphasisMarker, 0});
-                if (!context.revealed) {
-                    out.hidden.push_back({delimiter.span, HideMode::Collapse});
-                }
+            for (const auto& delimiter : {pair.opener, pair.closer}) {
+                std::fill(markerCharacters.begin() + delimiter.start, markerCharacters.begin() + delimiter.end(), true);
+            }
+        }
+
+        for (std::size_t i = 0; i < line.size();) {
+            while (i < line.size() && !markerCharacters[i]) {
+                ++i;
+            }
+            const std::size_t start = i;
+            while (i < line.size() && markerCharacters[i]) {
+                ++i;
+            }
+            if (start == i) {
+                continue;
+            }
+            const Span span{static_cast<std::uint32_t>(start), static_cast<std::uint32_t>(i - start)};
+            // Styled when revealed; when concealed the registry drops the run under the hidden range.
+            out.runs.push_back({span, Role::EmphasisMarker, 0});
+            if (!context.revealed) {
+                out.hidden.push_back({span, HideMode::Collapse});
             }
         }
 
