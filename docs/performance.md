@@ -70,7 +70,7 @@ endings only lines whose ending differs from the majority: none in that document
 
 - **Saving 10 MB blocks the UI for about 25 ms** (copying the text out of `QTextDocument`). Under
   1 MB this is below 3 ms. Options: copy in slices with the editor briefly read-only, or keep a
-  copy-on-write snapshot. To be decided in S007's follow-up.
+  copy-on-write snapshot. S017 takes the snapshot in slices with the editor editable.
 - **Loading and background styling of 10 MB are dominated by Qt** (inserting text into
   `QTextDocument` and relayouting styled blocks), not by the core (21 ms for all lines). The editor
   is usable after 95 ms, but read-only until the whole file is inserted (2.2 s here).
