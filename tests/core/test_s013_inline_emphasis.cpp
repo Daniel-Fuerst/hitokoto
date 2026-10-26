@@ -296,3 +296,41 @@ TEST(S013_InlineEmphasis, InlineElementsAreAddedByRegistrationOnly) {
                   {{2, 2}, Role::HeadingText, 1}, {{6, 1}, Role::HeadingText, 1}, {{9, 2}, Role::HeadingText, 1}}))
         << "concealed markers (and the heading's own) are carved out of the heading run";
 }
+
+namespace {
+/// Hidden spans merged where they touch: how many ranges an element reports for one delimiter
+/// run is its business; what matters is which characters are concealed.
+std::vector<Span> concealed(const LineRender& r) {
+    std::vector<Span> out;
+    for (const auto& hidden : r.hidden) {
+        if (!out.empty() && out.back().end() == hidden.span.start) {
+            out.back().length += hidden.span.length;
+        } else {
+            out.push_back(hidden.span);
+        }
+    }
+    return out;
+}
+}  // namespace
+
+// Review objection O1: a delimiter run serves two pairs when it closes (or opens) nested emphasis
+// of different lengths, as in CommonMark and Obsidian. Delimiters are still paired by marker and
+// length; only the run is split.
+TEST(S013_InlineEmphasis, DelimiterRunClosesOrOpensNestedPairsOfDifferentLength) {
+    const auto closingRun = show(u"**bold *italic***");
+    EXPECT_EQ(concealed(closingRun), (std::vector<Span>{{0, 2}, {7, 1}, {14, 3}}));
+    EXPECT_EQ(
+        closingRun.inlineStyles,
+        (std::vector<InlineStyleRun>{{{2, 5}, InlineStyle::Bold}, {{8, 6}, InlineStyle::Bold | InlineStyle::Italic}}));
+
+    const auto closingRunReversed = show(u"*italic **bold***");
+    EXPECT_EQ(concealed(closingRunReversed), (std::vector<Span>{{0, 1}, {8, 2}, {14, 3}}));
+    EXPECT_EQ(closingRunReversed.inlineStyles,
+              (std::vector<InlineStyleRun>{{{1, 7}, InlineStyle::Italic},
+                                           {{10, 4}, InlineStyle::Bold | InlineStyle::Italic}}));
+
+    const auto openingRun = show(u"***bold** italic*");
+    EXPECT_EQ(concealed(openingRun), (std::vector<Span>{{0, 3}, {7, 2}, {16, 1}}));
+    EXPECT_EQ(openingRun.inlineStyles, (std::vector<InlineStyleRun>{{{3, 4}, InlineStyle::Bold | InlineStyle::Italic},
+                                                                    {{9, 7}, InlineStyle::Italic}}));
+}
