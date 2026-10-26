@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <iterator>
+#include <memory>
 #include <random>
 
 using namespace hitokoto::core;
@@ -251,4 +252,47 @@ TEST(S013_InlineEmphasis, EmphasisLeavesInlineCodeDelimitersAlone) {
     const auto mixed = show(u"**a `b` c**");
     EXPECT_EQ(mixed.inlineStyles,
               (std::vector<InlineStyleRun>{{{2, 2}, InlineStyle::Bold}, {{7, 2}, InlineStyle::Bold}}));
+}
+
+namespace {
+/// A test-only inline element: `==text==` is a highlight whose revealed markers reuse the
+/// existing Marker role. It does not know headings; the registry must still split the heading
+/// text run around its runs (brief, section 5: adding an element never edits the core loop).
+class HighlightElement final : public InlineElement {
+public:
+    [[nodiscard]] std::string_view id() const noexcept override { return "test-highlight"; }
+    [[nodiscard]] std::u16string_view triggerCharacters() const noexcept override { return u"="; }
+    void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
+        const auto open = line.find(u"==");
+        const auto close = open == std::u16string_view::npos ? open : line.find(u"==", open + 2);
+        if (close == std::u16string_view::npos) {
+            return;
+        }
+        for (const auto start : {open, close}) {
+            out.runs.push_back({{static_cast<std::uint32_t>(start), 2}, Role::Marker, 0});
+            if (!context.revealed) {
+                out.hidden.push_back({{static_cast<std::uint32_t>(start), 2}, HideMode::Collapse});
+            }
+        }
+    }
+};
+}  // namespace
+
+// Review objection O3: the registry gives inline runs precedence over the block element's runs
+// without a list of inline roles in its core loop.
+TEST(S013_InlineEmphasis, InlineElementsAreAddedByRegistrationOnly) {
+    ElementRegistry r = ElementRegistry::withBuiltins();
+    r.addInline(std::make_unique<HighlightElement>());
+
+    EXPECT_EQ(r.render(u"# a ==b== c", {true}).runs, (std::vector<StyleRun>{{{0, 2}, Role::Marker, 1},
+                                                                            {{2, 2}, Role::HeadingText, 1},
+                                                                            {{4, 2}, Role::Marker, 0},
+                                                                            {{6, 1}, Role::HeadingText, 1},
+                                                                            {{7, 2}, Role::Marker, 0},
+                                                                            {{9, 2}, Role::HeadingText, 1}}))
+        << "inline markers take precedence over the heading text run; runs never overlap";
+    EXPECT_EQ(r.render(u"# a ==b== c", {false}).runs,
+              (std::vector<StyleRun>{
+                  {{2, 2}, Role::HeadingText, 1}, {{6, 1}, Role::HeadingText, 1}, {{9, 2}, Role::HeadingText, 1}}))
+        << "concealed markers (and the heading's own) are carved out of the heading run";
 }
