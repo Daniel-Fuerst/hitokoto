@@ -249,6 +249,7 @@ void DocumentSession::save(const QString& path) {
         return;
     }
     Snapshot s = snapshot();
+    emit snapshotTaken();
     const quint64 editCount = s.editCount;
     const quint64 documentId = documentId_;
     ++savesInFlight_;

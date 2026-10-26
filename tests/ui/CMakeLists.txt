@@ -27,6 +27,7 @@ foreach(t IN ITEMS
         tst_s013_inline_emphasis
         tst_s014_fenced_code_blocks
         tst_s015_inline_code
-        tst_s016_app_icon)
+        tst_s016_app_icon
+        tst_s017_save_without_stall)
     hitokoto_ui_test(${t})
 endforeach()

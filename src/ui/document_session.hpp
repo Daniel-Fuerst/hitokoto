@@ -55,6 +55,8 @@ signals:
     void firstChunkShown();
     void loadFinished(const QString& path);
     void loadFailed(const QString& path, const QString& message);
+    /// The copy of the text a save will write is complete; the file will be this document state.
+    void snapshotTaken();
     void saveFinished(const QString& path);
     void saveFailed(const QString& path, const QString& message);
     void pathChanged(const QString& path);
