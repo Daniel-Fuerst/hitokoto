@@ -171,7 +171,7 @@ private slots:
         f.session()->save(first);
         QCoreApplication::processEvents();  // the copy is under way
         f.session()->save(second);          // Save As while the first copy runs
-        QVERIFY(QTest::qWaitFor([&] { return done.size() >= 1; }, 120000));
+        QVERIFY(QTest::qWaitFor([&] { return !done.isEmpty(); }, 120000));
         QTest::qWait(200);
         QCOMPARE(done.size(), 1);
         QVERIFY2(!QFile::exists(first), "the dropped request wrote a file");
