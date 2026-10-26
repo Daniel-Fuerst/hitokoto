@@ -225,11 +225,13 @@ struct Budget {
 // file is on disk includes fsync before the atomic rename (ADR 0002) and swings with the shared
 // CI runners' disks (58.6 -> 78.1 ms between two runs without a code change). The hard budget
 // below catches real regressions instead (S017).
-// The maximum of 200 key-to-paint samples is one scheduler hiccup away from failing on a shared
-// runner (1.47 -> 23.32 ms in one run); p99 drops the worst 1 % and is compared instead, the
-// maximum has a hard budget below. The counts of samples over 16 ms are information only.
-constexpr std::string_view kReportOnly[] = {"save_10mb_total_ms", "typing_small_max_ms", "typing_10mb_max_ms",
-                                            "typing_small_over_16ms", "typing_10mb_over_16ms"};
+// Extremes of few samples are one scheduler hiccup away from failing on a shared runner: the
+// maximum of 200 key-to-paint samples (1.47 -> 23.32 ms in one run) and the p95 of 10 cold
+// starts (31.6 -> 127.2 ms on a Windows runner, the median unchanged). Medians, and p95/p99 of
+// the 200 typing samples, are compared; extremes are reported, and where the brief names an
+// absolute limit they have a hard budget below. The counts of samples over 16 ms are information.
+constexpr std::string_view kReportOnly[] = {"save_10mb_total_ms",     "typing_small_max_ms",   "typing_10mb_max_ms",
+                                            "typing_small_over_16ms", "typing_10mb_over_16ms", "startup_p95_ms"};
 
 // Brief, section 4. Most budgets are meaningful on reference hardware only (S011) and fail the run
 // with --fail-on-budget; the hard ones hold on any machine, CI runners included (S017): a save

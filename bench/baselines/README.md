@@ -11,7 +11,10 @@ the maximum of the 200 key-to-paint samples (`typing_*_max_ms`) is `info` in the
 scheduler hiccup on a shared runner would fail it, and has a hard budget of 50 ms instead (S007:
 no single event above 50 ms); `typing_*_p99_ms`, the maximum after dropping the worst 1 %, is
 compared with the baseline. `typing_*_over_16ms` counts the samples above the 16 ms budget, for
-information.
+information. `startup_p95_ms`, the p95 of 10 cold starts, is `info` as well (31.6 -> 127.2 ms on
+a Windows runner with the median unchanged); `startup_median_ms` is the gate. The rule: medians
+and percentiles of the 200 typing samples are compared, extremes of few samples are reported,
+and where the brief names an absolute limit, a hard budget applies.
 
 The baselines come from CI run #18 (pull request #5). CI runners differ from the development
 machine, so baselines must come from CI itself. To create or update them:
