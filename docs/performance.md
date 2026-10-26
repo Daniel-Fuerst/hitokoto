@@ -15,7 +15,8 @@ build/bench/bench/hitokoto-bench --fail-on-budget   # on a reference machine, wi
 ```
 
 CI runs both on Linux, Windows and macOS and compares with `bench/baselines/<os>.json`
-(tolerance 25 %, differences under 2 ms ignored). Hard budgets fail the run on any machine:
+(tolerance 25 % on Linux, 50 % on Windows and macOS whose runners vary that much; differences
+under 2 ms ignored). Hard budgets fail the run on any machine:
 saving 10 MB stalls the UI for at most 16 ms, the file is on disk within 1 s, and no key event
 takes longer than 50 ms. Maxima of many samples (`typing_*_max_ms`, `save_10mb_total_ms`) are
 compared with the baseline for information only; p99 of the key-to-paint samples is the compared

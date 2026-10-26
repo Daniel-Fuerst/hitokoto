@@ -1,7 +1,11 @@
 # Benchmark baselines
 
 CI compares `hitokoto-bench` results with `<os>.json` in this folder (`linux`, `windows`,
-`macos`) and fails if a value is more than 25 % slower (differences under 2 ms are ignored).
+`macos`) and fails if a value is more than 25 % slower on Linux or 50 % on Windows and macOS
+(differences under 2 ms are ignored). The wider tolerance is for the runners, not the code: the
+same commit ran 20-50 % slower across every value on a second Windows and macOS runner
+(2026-10-26); a baseline is one sample of a runner's speed. If this keeps failing, the
+comparison should normalise by the run's overall slowdown instead.
 `save_10mb_total_ms` is compared and reported (`info`) but never fails the comparison: it waits
 for the file to reach the runner's disk and swings too much on shared CI machines. Two hard
 budgets hold on every machine instead and fail the run without a baseline: the longest UI stall
