@@ -1,6 +1,6 @@
 # S017 — Saving never stalls the UI
 
-- **Status:** In progress · **Order:** 18 · **Depends on:** S004, S007
+- **Status:** In review · **Order:** 18 · **Depends on:** S004, S007
 
 Follow-up of S007 (`docs/performance.md`, "Known gaps"): saving a 10 MB file blocks the UI thread
 while the text is copied out of the `QTextDocument` (CI run #18: Linux 6 ms, macOS 24 ms, Windows
@@ -80,6 +80,16 @@ keystroke pay for the save (moving up to 20 MB) and risks drifting from the docu
 byte-exact editor cannot afford. Both rejected. Replacing a single changed block inside the copy
 instead of setting back would move the rest of the copy on every keystroke; set-backs are cheaper
 and simpler.
+
+## Implementation
+
+Implemented 2026-10-26 on branch `agents/s017-save-without-stall`. CI review run of 2026-10-27
+green on Linux (Qt 6.12 and 6.8), Windows (Qt 6.8.3) and macOS (Qt 6.12): longest UI stall
+while saving 10 MB 3.0 / 2.2 / 3.3 ms (baselines from CI run #18: 6.3 / 36.4 / 23.7 ms as the
+duration of the save() call), file on disk after 159 / 190 / 190 ms. The baselines in
+`bench/baselines/` come from that run. Next: a user check that typing during a save feels
+seamless on real hardware (S011), and S007's remaining work (read-only while loading, the
+styler's catch-up after typing).
 
 ## Tests
 

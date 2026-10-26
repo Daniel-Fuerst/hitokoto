@@ -20,8 +20,9 @@ a Windows runner with the median unchanged); `startup_median_ms` is the gate. Th
 and percentiles of the 200 typing samples are compared, extremes of few samples are reported,
 and where the brief names an absolute limit, a hard budget applies.
 
-The baselines come from CI run #18 (pull request #5). CI runners differ from the development
-machine, so baselines must come from CI itself. To create or update them:
+The baselines come from the review run of the S017 pull request (2026-10-27; Windows and macOS
+from single re-runs of their jobs). CI runners differ from the development machine, so
+baselines must come from CI itself. To create or update them:
 
 1. Open a successful CI run (on `main` or on a pull request; both use the same runners), download
    the artefacts `bench-linux`, `bench-windows`, `bench-macos`.
