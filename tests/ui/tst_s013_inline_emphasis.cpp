@@ -67,6 +67,7 @@ private slots:
             "**bold *italic* bold**\n"
             "***both***\n"
             "~~gone **bold gone**~~\n"
+            "**bold *boldanditalic***\n"
             "plain\n";
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("emphasis.md"), markdown)));
@@ -99,6 +100,18 @@ private slots:
         const auto nestedStrike = f.editor()->document()->findBlockByNumber(3);
         QCOMPARE(test::formatAt(nestedStrike, nestedBoldPosition).fontWeight(), QFont::Bold);
         QVERIFY(test::formatAt(nestedStrike, nestedBoldPosition).fontStrikeOut());
+
+        const auto adjacent = f.editor()->document()->findBlockByNumber(4);
+        QVERIFY(test::isCollapsed(adjacent, 0));
+        QVERIFY(test::isCollapsed(adjacent, 1));
+        QVERIFY(test::isCollapsed(adjacent, 7));
+        QVERIFY(test::isCollapsed(adjacent, 21));
+        QVERIFY(test::isCollapsed(adjacent, 22));
+        QVERIFY(test::isCollapsed(adjacent, 23));
+        QCOMPARE(test::formatAt(adjacent, 2).fontWeight(), QFont::Bold);
+        QVERIFY(!test::formatAt(adjacent, 2).fontItalic());
+        QCOMPARE(test::formatAt(adjacent, 8).fontWeight(), QFont::Bold);
+        QVERIFY(test::formatAt(adjacent, 8).fontItalic());
         QCOMPARE(f.editor()->toPlainText(), QString::fromUtf8(markdown));
     }
 

@@ -87,6 +87,44 @@ TEST(S013_InlineEmphasis, NestedAndCombinedDelimitersProduceSeparateTextRuns) {
     EXPECT_EQ(combined.inlineStyles[0].style, InlineStyle::Bold | InlineStyle::Italic);
 }
 
+TEST(S013_InlineEmphasis, AdjacentDelimiterRunsCloseNestedStyles) {
+    const auto boldThenItalic = show(u"**bold *boldanditalic***");
+    EXPECT_EQ(spans(boldThenItalic.hidden), (std::vector<Span>{{0, 2}, {7, 1}, {21, 3}}));
+    ASSERT_EQ(boldThenItalic.inlineStyles.size(), 2u);
+    EXPECT_EQ(boldThenItalic.inlineStyles[0], (InlineStyleRun{{2, 5}, InlineStyle::Bold}));
+    EXPECT_EQ(boldThenItalic.inlineStyles[1], (InlineStyleRun{{8, 13}, InlineStyle::Bold | InlineStyle::Italic}));
+
+    const auto italicThenBold = show(u"*italic **italicandbold***");
+    EXPECT_EQ(spans(italicThenBold.hidden), (std::vector<Span>{{0, 1}, {8, 2}, {23, 3}}));
+    ASSERT_EQ(italicThenBold.inlineStyles.size(), 2u);
+    EXPECT_EQ(italicThenBold.inlineStyles[0], (InlineStyleRun{{1, 7}, InlineStyle::Italic}));
+    EXPECT_EQ(italicThenBold.inlineStyles[1], (InlineStyleRun{{10, 13}, InlineStyle::Bold | InlineStyle::Italic}));
+
+    const auto underscore = show(u"__bold _boldanditalic___");
+    EXPECT_EQ(spans(underscore.hidden), (std::vector<Span>{{0, 2}, {7, 1}, {21, 3}}));
+    ASSERT_EQ(underscore.inlineStyles.size(), 2u);
+    EXPECT_EQ(underscore.inlineStyles[0], (InlineStyleRun{{2, 5}, InlineStyle::Bold}));
+    EXPECT_EQ(underscore.inlineStyles[1], (InlineStyleRun{{8, 13}, InlineStyle::Bold | InlineStyle::Italic}));
+}
+
+TEST(S013_InlineEmphasis, TripleOpeningRunCanCloseAcrossSeparateRuns) {
+    const auto r = show(u"***bold italic** and italic*");
+    EXPECT_EQ(spans(r.hidden), (std::vector<Span>{{0, 3}, {14, 2}, {27, 1}}));
+    ASSERT_EQ(r.inlineStyles.size(), 2u);
+    EXPECT_EQ(r.inlineStyles[0], (InlineStyleRun{{3, 11}, InlineStyle::Bold | InlineStyle::Italic}));
+    EXPECT_EQ(r.inlineStyles[1], (InlineStyleRun{{16, 11}, InlineStyle::Italic}));
+}
+
+TEST(S013_InlineEmphasis, StrikethroughNestsWithCombinedBoldAndItalic) {
+    const auto r = show(u"~~strike ***allthree*** strike~~");
+    EXPECT_EQ(spans(r.hidden), (std::vector<Span>{{0, 2}, {9, 3}, {20, 3}, {30, 2}}));
+    ASSERT_EQ(r.inlineStyles.size(), 3u);
+    EXPECT_EQ(r.inlineStyles[0], (InlineStyleRun{{2, 7}, InlineStyle::Strikethrough}));
+    EXPECT_EQ(r.inlineStyles[1],
+              (InlineStyleRun{{12, 8}, InlineStyle::Bold | InlineStyle::Italic | InlineStyle::Strikethrough}));
+    EXPECT_EQ(r.inlineStyles[2], (InlineStyleRun{{23, 7}, InlineStyle::Strikethrough}));
+}
+
 TEST(S013_InlineEmphasis, UnderscoreStrongAndCombinedRunsAreSupported) {
     const auto r = show(u"__bold__ ___both___");
     EXPECT_EQ(spans(r.hidden), (std::vector<Span>{{0, 2}, {6, 2}, {9, 3}, {16, 3}}));
