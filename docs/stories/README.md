@@ -28,7 +28,7 @@ story ID (see "Conventions").
 | 15 | [S014](014-fenced-code-blocks.md) | Fenced Markdown code blocks | S013 | M | In review |
 | 16 | [S015](015-inline-code.md) | Inline Markdown code spans | S014 | S | In review |
 | 17 | [S016](016-application-icon.md) | Show the application icon in the taskbar or dock | S000 | S | In progress |
-| 18 | [S017](017-save-without-stall.md) | Saving never stalls the UI (follow-up of S007) | S004, S007 | M | Open |
+| 18 | [S017](017-save-without-stall.md) | Saving never stalls the UI (follow-up of S007) | S004, S007 | M | In progress |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 

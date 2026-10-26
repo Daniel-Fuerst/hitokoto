@@ -68,9 +68,13 @@ endings only lines whose ending differs from the majority: none in that document
 
 ### Known gaps and next steps
 
-- **Saving 10 MB blocks the UI for about 25 ms** (copying the text out of `QTextDocument`). Under
-  1 MB this is below 3 ms. Options: copy in slices with the editor briefly read-only, or keep a
-  copy-on-write snapshot. S017 takes the snapshot in slices with the editor editable.
+- **Saving 10 MB used to block the UI for about 25 ms** (copying the text out of
+  `QTextDocument` in one go). S017 copies in slices of about 128 K characters with the editor
+  editable: longest stall 4–5 ms on the development VM (Debug build), snapshot complete after
+  about 160 ms. The only public range copy, `QTextCursor::selectedText()`, costs about six times
+  `toRawText()` per character (10 MB: 124 ms against 21 ms; `QTextBlock::text()` per block
+  226 ms; `QTextDocumentFragment::toRawText()` 1.6 s), so the sliced copy spends more CPU in
+  total, spread so that nothing stalls.
 - **Loading and background styling of 10 MB are dominated by Qt** (inserting text into
   `QTextDocument` and relayouting styled blocks), not by the core (21 ms for all lines). The editor
   is usable after 95 ms, but read-only until the whole file is inserted (2.2 s here).

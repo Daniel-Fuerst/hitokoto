@@ -5,6 +5,7 @@
 #include "ui_test_support.hpp"
 
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QTimer>
 
 #include <algorithm>
@@ -27,6 +28,8 @@ QByteArray largeDocument(qsizetype target) {
 }
 
 /// The longest gap between 1 ms timer ticks while `run()` executes (the UI thread's longest stall).
+/// `run()` must keep the event loop running without sleeping: QTest::qWaitFor() sleeps 10 ms
+/// between its passes, which would show up as stalls.
 template <typename F>
 qint64 longestStallMs(F&& run) {
     qint64 longest = 0;
@@ -60,9 +63,9 @@ private slots:
         f.settle();
 
         // What one synchronous copy of the text costs on this machine; the sliced snapshot must
-        // stay well below it. Slices are 4 ms or 1 MB of text, whichever ends first; on a fast
-        // machine the one-shot copy itself is short, so a floor of 12 ms keeps the bound above
-        // one slice plus timer noise. The 16 ms budget is checked by the benchmark.
+        // stay well below it. On a fast machine the one-shot copy itself is short, so the bound
+        // never drops below the 16 ms budget (one slice is a few milliseconds). The budget itself
+        // is checked by the benchmark.
         QElapsedTimer copy;
         copy.start();
         const QString whole = f.editor()->document()->toRawText();
@@ -71,12 +74,16 @@ private slots:
 
         QSignalSpy done(f.session(), &ui::DocumentSession::saveFinished);
         const QString path = f.dir.filePath(QStringLiteral("copy.md"));
+        QEventLoop untilSaved;
+        connect(f.session(), &ui::DocumentSession::saveFinished, &untilSaved, &QEventLoop::quit);
+        QTimer::singleShot(120000, &untilSaved, &QEventLoop::quit);
         const qint64 stall = longestStallMs([&] {
             f.session()->save(path);
-            QVERIFY(QTest::qWaitFor([&] { return !done.isEmpty(); }, 120000));
+            untilSaved.exec();
         });
+        QCOMPARE(done.size(), 1);
         qInfo("10 MB: one-shot copy %lld ms, longest UI stall while saving %lld ms", copyMs, stall);
-        QVERIFY2(stall < std::max<qint64>(copyMs / 2, 12), qPrintable(QString::number(stall)));
+        QVERIFY2(stall < std::max<qint64>(copyMs / 2, 16), qPrintable(QString::number(stall)));
         QCOMPARE(test::Fixture::readFile(path), bytes);
     }
 

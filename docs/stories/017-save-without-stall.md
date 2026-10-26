@@ -1,6 +1,6 @@
 # S017 — Saving never stalls the UI
 
-- **Status:** Open · **Order:** 18 · **Depends on:** S004, S007
+- **Status:** In progress · **Order:** 18 · **Depends on:** S004, S007
 
 Follow-up of S007 (`docs/performance.md`, "Known gaps"): saving a 10 MB file blocks the UI thread
 while the text is copied out of the `QTextDocument` (CI run #18: Linux 6 ms, macOS 24 ms, Windows
@@ -30,7 +30,7 @@ save often instead of putting it off.
 
 **Scenario: saving always finishes**
 - Given I keep inserting lines near the top of the 10 MB file while a save is in progress
-- When the copy has been set back more than a few times or has run for longer than about 500 ms
+- When the copy has been set back more than a few times
 - Then the rest is copied in one go (a single short stall) and the save completes
 
 **Scenario: save, save as and quit behave as before**
@@ -51,31 +51,44 @@ save often instead of putting it off.
 
 ## Design
 
-The snapshot (`DocumentSession::snapshot()`) is taken block by block in time slices of at most
-8 ms on the UI thread, like loading (S007), with the editor editable throughout. Edits during the
-copy are tracked through `QTextDocument::contentsChange`:
+The snapshot is taken in slices of about 128 K characters on the UI thread, one slice per
+event-loop turn, with the editor editable throughout. Each slice copies whole blocks with a
+`QTextCursor` (`selectedText()`, raw text as `toRawText()` gives it). Edits during the copy are
+tracked through `QTextDocument::contentsChange`:
 
-- an edit that changes the content of an already copied block without changing the number of
-  blocks replaces that block's copy;
-- an edit that inserts or removes blocks at or before the copied part sets the copy back to that
-  block;
-- edits after the copied part need nothing: those blocks are copied later with their new content.
+- an edit at or before the copied part sets the copy back to the start of the slice that holds
+  the changed block; the following slices copy from there again;
+- edits behind the copied part need nothing: those blocks are copied later with their new content.
 
-So when the copy completes, every block's copy was taken after its last edit and no line moved
-in front of it since: the copy equals the document at that moment. Only the completed copy goes
-to the worker thread, which encodes and writes it atomically as today. A time limit and a limit
-on set-backs end the sliced copy with one synchronous copy of the rest, so a save cannot be
-starved by continuous edits. `saveNow()` (quit, tests) stays synchronous.
+So when the copy completes, every block's copy was taken after its last edit and no line moved in
+front of it since: the copy equals the document at that moment (`snapshotTaken()`). Only the
+completed copy goes to the worker thread, which encodes and writes it atomically as before. After
+a few set-backs the rest is copied in one go, so a save cannot be starved by continuous edits;
+there is no time limit, because a slow but steady copy must not turn into one big stall.
+`saveNow()` (quit, tests) copies everything in one go and writes synchronously. A newer `save()`
+drops a running copy; loading another document drops it too.
+
+Cost: `selectedText()` is the only public way to copy a range of a `QTextDocument`, and it costs
+about six times `toRawText()` per character (development VM: 124 ms against 21 ms for 10 MB,
+`QTextBlock::text()` per block 226 ms). The sliced copy therefore uses more CPU in total than the
+old one-shot copy, spread over about 80 event-loop turns of a few milliseconds each; nothing
+stalls. Measured in `docs/performance.md`.
 
 Alternatives considered: copying faster (a block loop with `reserve` instead of `toRawText()`)
-halves the stall at best and leaves Windows above 16 ms; a shadow copy maintained on every
-keystroke makes every keystroke pay for the save. Both rejected.
+is slower, not faster, see above; a shadow copy maintained on every keystroke makes every
+keystroke pay for the save (moving up to 20 MB) and risks drifting from the document, which a
+byte-exact editor cannot afford. Both rejected. Replacing a single changed block inside the copy
+instead of setting back would move the rest of the copy on every keystroke; set-backs are cheaper
+and simpler.
 
 ## Tests
 
-- UI: `tst_s017_save_without_stall` — stall bound and typing during a save; the consistency
-  scenario (edits at several places while the copy runs, written bytes compared with
-  `toPlainText()` at completion); set-back limit; save during save; Save As and quit.
+- UI: `tst_s017_save_without_stall` — stall bound (longest gap between 1 ms timer ticks while
+  saving, in an event loop without sleeps); the consistency scenario (edits at several places
+  while the copy runs, written bytes compared with `toPlainText()` at `snapshotTaken()`);
+  set-back limit; save during save; quit while a copy runs. `tst_s004_save` now expects
+  keystrokes before `snapshotTaken()` in the file and keystrokes after it to keep the modified
+  flag.
 - Core: nothing new; encoding and atomic writing stay in `core::encodeUtf8` and
   `core::writeFileAtomically` (S004).
 - Bench: `S007_save_10mb` measures the longest event-loop stall and the median total of the
