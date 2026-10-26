@@ -5,8 +5,9 @@
 //                  [--tolerance 0.2] [--fail-on-budget] [--app path/to/hitokoto]
 //
 // Measures cold start (separate processes), opening 1 MB and 10 MB files, key-to-paint
-// latency (typing, Enter, moving across headings) and saving. Compares against a baseline
-// (regression gate for CI) and reports the brief's budgets (section 4).
+// latency (typing, Enter, moving across headings) and saving (longest UI stall and total, median
+// of --runs saves). Compares against a baseline (regression gate for CI) and reports the brief's
+// budgets (section 4); hard budgets fail the run on any machine.
 #include "document_session.hpp"
 #include "editor_widget.hpp"
 #include "hitokoto/core/markdown.hpp"
@@ -17,6 +18,7 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -25,6 +27,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTextBlock>
+#include <QTimer>
 
 #include <algorithm>
 #include <cstdio>
@@ -160,42 +163,75 @@ std::vector<double> measureTyping(ui::MainWindow& w, int keys) {
 }
 
 struct SaveTiming {
-    double uiBlockedMs = 0;
-    double totalMs = 0;
+    double uiBlockedMs = 0;  ///< longest stall of the UI thread while saving
+    double totalMs = 0;      ///< until the file is on disk (saveFinished)
 };
 
+/// One save: the longest gap between 1 ms timer ticks until saveFinished (S017: the snapshot is
+/// taken in slices, so the stall is no longer the save() call itself), and the total time. The
+/// wait runs in an event loop without sleeps; QTest::qWaitFor() would add its own 10 ms gaps.
 SaveTiming measureSave(ui::MainWindow& w, const QString& path) {
-    QSignalSpy done(w.session(), &ui::DocumentSession::saveFinished);
-    QElapsedTimer t;
-    t.start();
+    QEventLoop untilSaved;
+    QObject::connect(w.session(), &ui::DocumentSession::saveFinished, &untilSaved, &QEventLoop::quit);
+    QObject::connect(w.session(), &ui::DocumentSession::saveFailed, &untilSaved, &QEventLoop::quit);
+    QTimer::singleShot(120000, &untilSaved, &QEventLoop::quit);
+    qint64 longestGapNs = 0;
+    QElapsedTimer gap;
+    QTimer ticker;
+    ticker.setInterval(1);
+    QObject::connect(&ticker, &QTimer::timeout, [&] {
+        longestGapNs = std::max(longestGapNs, gap.nsecsElapsed());
+        gap.restart();
+    });
+    QElapsedTimer total;
+    total.start();
+    gap.start();
+    ticker.start();
     w.session()->save(path);
+    untilSaved.exec();
+    ticker.stop();
     SaveTiming r;
-    r.uiBlockedMs = static_cast<double>(t.nsecsElapsed()) / 1e6;
-    (void)QTest::qWaitFor([&] { return !done.isEmpty(); }, 120000);
-    r.totalMs = static_cast<double>(t.nsecsElapsed()) / 1e6;
+    r.uiBlockedMs = static_cast<double>(longestGapNs) / 1e6;
+    r.totalMs = static_cast<double>(total.nsecsElapsed()) / 1e6;
     return r;
+}
+
+/// `runs` saves of the open document; the median of each value.
+SaveTiming measureSaves(ui::MainWindow& w, const QString& path, int runs) {
+    std::vector<double> blocked;
+    std::vector<double> total;
+    for (int i = 0; i < std::max(runs, 1); ++i) {
+        const auto one = measureSave(w, path);
+        blocked.push_back(one.uiBlockedMs);
+        total.push_back(one.totalMs);
+    }
+    return {stats(blocked).median, stats(total).median};
 }
 
 struct Budget {
     const char* key;
     double limit;
     const char* text;
+    bool hard = false;  ///< fails the run on every machine, not only with --fail-on-budget
 };
 
-// Compared with the baseline but never failing the run: the time until the saved file is on disk
-// includes fsync before the atomic rename (ADR 0002) and swings with the shared CI runners' disks.
-// The budget-relevant value is save_10mb_ui_blocked_ms, which stays checked. To be revisited with
-// the save follow-up of S007 (docs/performance.md).
+// Compared with the baseline but never failing the baseline comparison: the time until the saved
+// file is on disk includes fsync before the atomic rename (ADR 0002) and swings with the shared
+// CI runners' disks (58.6 -> 78.1 ms between two runs without a code change). The hard budget
+// below catches real regressions instead (S017).
 constexpr std::string_view kReportOnly[] = {"save_10mb_total_ms"};
 
-// Brief, section 4.
+// Brief, section 4. Most budgets are meaningful on reference hardware only (S011) and fail the run
+// with --fail-on-budget; the hard ones hold on any machine, CI runners included (S017): a save
+// must never stall the UI, and 10 MB must be on disk within a second.
 const Budget kBudgets[] = {
     {"startup_median_ms", 1000, "cold start < 1000 ms"},
     {"open_1mb_loaded_ms", 500, "open 1 MB < 500 ms"},
     {"open_10mb_first_chunk_ms", 3000, "10 MB usable < 3 s"},
     {"typing_small_p95_ms", 16, "key to screen <= 16 ms"},
     {"typing_10mb_p95_ms", 16, "key to screen <= 16 ms (10 MB)"},
-    {"save_10mb_ui_blocked_ms", 16, "saving never blocks the UI"},
+    {"save_10mb_ui_blocked_ms", 16, "saving never stalls the UI (hard)", true},
+    {"save_10mb_total_ms", 1000, "10 MB on disk within 1 s (hard)", true},
 };
 
 }  // namespace
@@ -204,8 +240,8 @@ int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
     QCommandLineParser parser;
     parser.addHelpOption();
-    const QCommandLineOption runsOpt(QStringLiteral("runs"), QStringLiteral("Startup runs."), QStringLiteral("n"),
-                                     QStringLiteral("10"));
+    const QCommandLineOption runsOpt(QStringLiteral("runs"), QStringLiteral("Startup runs and save runs."),
+                                     QStringLiteral("n"), QStringLiteral("10"));
     const QCommandLineOption outOpt(QStringLiteral("output"), QStringLiteral("Write results as JSON."),
                                     QStringLiteral("file"));
     const QCommandLineOption baseOpt(QStringLiteral("baseline"), QStringLiteral("Compare with baseline JSON."),
@@ -256,7 +292,7 @@ int main(int argc, char* argv[]) {
     r["typing_10mb_median_ms"] = typing10.median;
     r["typing_10mb_p95_ms"] = typing10.p95;
     r["typing_10mb_max_ms"] = typing10.max;
-    const auto save10 = measureSave(w, dir.filePath(QStringLiteral("10mb-copy.md")));
+    const auto save10 = measureSaves(w, dir.filePath(QStringLiteral("10mb-copy.md")), parser.value(runsOpt).toInt());
     r["save_10mb_ui_blocked_ms"] = save10.uiBlockedMs;
     r["save_10mb_total_ms"] = save10.totalMs;
     w.editor()->document()->setModified(false);
@@ -273,12 +309,12 @@ int main(int argc, char* argv[]) {
     }
 
     int exitCode = 0;
-    std::printf("\nBudgets (brief, section 4; meaningful on reference hardware only):\n");
+    std::printf("\nBudgets (brief, section 4; hard ones hold on any machine, the rest on reference hardware):\n");
     for (const auto& b : kBudgets) {
         const double v = r[b.key];
         const bool ok = v <= b.limit;
         std::printf("  %-4s %-34s %8.2f / %.0f ms\n", ok ? "ok" : "OVER", b.text, v, b.limit);
-        if (!ok && parser.isSet(budgetOpt))
+        if (!ok && (b.hard || parser.isSet(budgetOpt)))
             exitCode = 1;
     }
 

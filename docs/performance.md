@@ -5,7 +5,8 @@ Budgets come from the brief, section 4. They are checked by two tools:
 - `hitokoto_core_bench` (Google Benchmark): core costs for 10 MB files and theme parsing.
 - `hitokoto-bench`: end to end. Cold start (separate processes, time from exec to the first painted
   frame with the file shown), opening 1 MB and 10 MB files, key-to-paint latency while typing,
-  pressing Enter and moving across headings, and saving 10 MB.
+  pressing Enter and moving across headings, and saving 10 MB (longest stall of the UI thread and
+  time until the file is on disk, median of `--runs` saves).
 
 ```sh
 cmake --preset bench && cmake --build --preset bench
@@ -14,7 +15,9 @@ build/bench/bench/hitokoto-bench --fail-on-budget   # on a reference machine, wi
 ```
 
 CI runs both on Linux, Windows and macOS and compares with `bench/baselines/<os>.json`
-(tolerance 25 %, differences under 2 ms ignored). See `bench/baselines/README.md`.
+(tolerance 25 %, differences under 2 ms ignored). Two hard budgets fail the run on any machine:
+saving 10 MB stalls the UI for at most 16 ms, and the file is on disk within 1 s. See
+`bench/baselines/README.md`.
 
 ## Measurements
 
@@ -30,7 +33,13 @@ Qt 6.12), release build, offscreen, 10 runs. These are the baselines in `bench/b
 | Open 10 MB, first screen editable | 65 ms | 79 ms | 79 ms | < 2–3 s |
 | Open 10 MB, fully loaded | 1.7 s | 1.9 s | 3.3 s | |
 | Key to paint, 10 MB file (median / p95) | 0.9 / 1.0 ms | 0.9 / 1.0 ms | 1.2 / 2.2 ms | ≤ 16 ms |
-| Save 10 MB: UI thread blocked | 6 ms | 36 ms | 24 ms | imperceptible |
+| Save 10 MB: UI thread blocked (duration of the save() call; S017 measures the longest stall instead) | 6 ms | 36 ms | 24 ms | imperceptible |
+
+### 2026-10-26, development VM, S017 (release build, offscreen, 5 runs)
+
+Saving 10 MB: longest UI stall 6.7 ms (was 18.9 ms, measured as the duration of the save() call),
+until on disk 190 ms (was 111 ms: the sliced copy costs about six times the CPU of a one-shot
+copy, see "Known gaps").
 
 ### 2026-10-24, development VM (not reference hardware)
 
