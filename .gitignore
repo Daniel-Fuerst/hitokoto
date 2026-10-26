@@ -3,6 +3,7 @@
 /out/
 CMakeUserPresets.json
 .vscode/
+.vs/
 .idea/
 *.user
 .DS_Store

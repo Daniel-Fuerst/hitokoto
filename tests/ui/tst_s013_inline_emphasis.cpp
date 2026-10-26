@@ -127,6 +127,25 @@ private slots:
         QCOMPARE(test::formatAt(block, 2).fontWeight(), QFont::Bold);
         QVERIFY(test::formatAt(block, 10).fontItalic());
     }
+
+    // Review objection O6: bold inside a heading never renders lighter than the heading itself.
+    // With headings.weight above emphasis.bold-weight, the bold weight used to replace the
+    // heading weight, so the emphasised word lost weight instead of gaining it.
+    void boldInsideHeadingIsNeverLighterThanTheHeading() {
+        test::Fixture f;
+        auto theme = core::builtinTheme(core::ColorScheme::Light);
+        theme.headingWeight = 800;
+        theme.emphasis.boldWeight = 700;
+        f.window->applyTheme(theme);
+        QVERIFY(f.open(f.writeFile(QStringLiteral("heading.md"), "# a **b** c\nplain\n")));
+        f.settle();
+        f.placeCaret(1);
+
+        const auto heading = f.editor()->document()->firstBlock();
+        QCOMPARE(test::formatAt(heading, 2).fontWeight(), 800);
+        QVERIFY2(test::formatAt(heading, 6).fontWeight() >= 800, "bold text in a heading keeps the heading weight");
+        QCOMPARE(test::formatAt(heading, 10).fontWeight(), 800);
+    }
 };
 
 QTEST_MAIN(tst_s013_inline_emphasis)

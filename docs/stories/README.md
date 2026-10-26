@@ -51,6 +51,8 @@ sets it).
 
 - Story files: `docs/stories/NNN-title.md`, written before implementation and confirmed by the
   user. The confirmation may happen in conversation; it need not show in the commits.
+- Review records (Advocatus Diaboli): `docs/reviews/NNN-title-<mode>.md`, the objections as
+  delivered plus the disposition of each; the story links nothing, the file name carries the ID.
 - Scope changes: `docs/brief.md` stays the user's brief. Extensions become new stories here, with
   their reason. (The additions made to the brief together with S013–S015 stay for now.)
 - S009 is a standing quality gate, not a one-off story: its scenarios are extended whenever an

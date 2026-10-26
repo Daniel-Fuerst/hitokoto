@@ -73,9 +73,11 @@ Order per line: an open multi-line block, else the first multi-line element that
 else the first matching line element followed by the inline elements. An inline element declares
 its trigger characters (`triggerCharacters()`, e.g. `` ` `` for inline code); the registry scans
 the line once and runs only the elements whose characters occur, so most lines run none. The
-registry then removes styled runs under hidden ranges, so no element has to know the others.
+registry then removes styled runs under hidden ranges. Inline elements run in registration order
+and see the runs of the earlier ones: emphasis skips the characters that inline code claimed, so
+inline code is registered first (`addInline` documents this). Nothing else connects two elements.
 `S014_FencedCodeBlocks.MultiLineElementsAreAddedByRegistrationOnly` adds a test-only element
-this way.
+this way, `S013_InlineEmphasis.InlineElementsAreAddedByRegistrationOnly` a test-only inline element.
 
 ## Platform shims
 
