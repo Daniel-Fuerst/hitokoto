@@ -217,25 +217,29 @@ TEST(S013_InlineEmphasis, ThemeTokensFallBack) {
     EXPECT_EQ(s.marker, t.marker);
 }
 
-// Review objection O4 (docs/reviews/013-inline-emphasis-code.md): an unmatched delimiter inside a
-// valid pair does not cancel that pair. CommonMark and Obsidian render the outer pair; the inner
-// delimiter stays literal.
+// Review objection O4: an unmatched delimiter inside a valid pair does not cancel that pair.
+// Expectations checked against commonmark.js 0.31.2 and markdown-it (CommonMark mode): a `*` that
+// can both open and close does not pair with a run when the two lengths add up to a multiple of
+// three ("rule of 3"), so the outer pair wins and the inner delimiter stays literal.
 TEST(S013_InlineEmphasis, UnmatchedDelimiterInsidePairDoesNotCancelThePair) {
     const auto product = show(u"**2*3 is six**");
     EXPECT_EQ(spans(product.hidden), (std::vector<Span>{{0, 2}, {12, 2}}));
     EXPECT_EQ(product.inlineStyles, (std::vector<InlineStyleRun>{{{2, 10}, InlineStyle::Bold}}));
 
-    const auto opener = show(u"**a *b**");
-    EXPECT_EQ(spans(opener.hidden), (std::vector<Span>{{0, 2}, {6, 2}}));
-    EXPECT_EQ(opener.inlineStyles, (std::vector<InlineStyleRun>{{{2, 4}, InlineStyle::Bold}}));
+    const auto letters = show(u"**x*y**");
+    EXPECT_EQ(spans(letters.hidden), (std::vector<Span>{{0, 2}, {5, 2}}));
+    EXPECT_EQ(letters.inlineStyles, (std::vector<InlineStyleRun>{{{2, 3}, InlineStyle::Bold}}));
 
-    const auto strongInsideItalic = show(u"*a **b*");
-    EXPECT_EQ(spans(strongInsideItalic.hidden), (std::vector<Span>{{0, 1}, {6, 1}}));
-    EXPECT_EQ(strongInsideItalic.inlineStyles, (std::vector<InlineStyleRun>{{{1, 5}, InlineStyle::Italic}}));
+    const auto strongInsideItalic = show(u"*2**3*");
+    EXPECT_EQ(spans(strongInsideItalic.hidden), (std::vector<Span>{{0, 1}, {5, 1}}));
+    EXPECT_EQ(strongInsideItalic.inlineStyles, (std::vector<InlineStyleRun>{{{1, 4}, InlineStyle::Italic}}));
 
-    const auto trailing = show(u"**a *b** c*");
-    EXPECT_EQ(spans(trailing.hidden), (std::vector<Span>{{0, 2}, {6, 2}}));
-    EXPECT_EQ(trailing.inlineStyles, (std::vector<InlineStyleRun>{{{2, 4}, InlineStyle::Bold}}));
+    // Two inner delimiters do pair with each other (lengths 1 + 1): bold a, bold italic b, bold c.
+    const auto innerPair = show(u"**a*b*c**");
+    EXPECT_EQ(spans(innerPair.hidden), (std::vector<Span>{{0, 2}, {3, 1}, {5, 1}, {7, 2}}));
+    EXPECT_EQ(innerPair.inlineStyles, (std::vector<InlineStyleRun>{{{2, 1}, InlineStyle::Bold},
+                                                                   {{4, 1}, InlineStyle::Bold | InlineStyle::Italic},
+                                                                   {{6, 1}, InlineStyle::Bold}}));
 }
 
 // Review objection O5: emphasis never styles the backticks of inline code. They are hidden when
