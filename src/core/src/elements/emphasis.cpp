@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <vector>
 
 namespace hitokoto::core {
@@ -20,6 +21,8 @@ struct Opening {
     Span span;
     char16_t marker = 0;
     InlineStyle style = InlineStyle::None;
+    std::uint8_t runLength = 0;  ///< length of the delimiter run this opening came from
+    bool canClose = false;       ///< that run could also close
 };
 
 struct Pair {
@@ -52,15 +55,20 @@ void appendOpenings(std::vector<Opening>& openings, const Delimiter& delimiter, 
     };
     if (delimiter.marker == u'~') {
         if (length == 2) {
-            openings.push_back({span(offset, length), delimiter.marker, InlineStyle::Strikethrough});
+            openings.push_back({span(offset, length), delimiter.marker, InlineStyle::Strikethrough, delimiter.length,
+                                delimiter.canClose});
         }
     } else if (length == 1) {
-        openings.push_back({span(offset, length), delimiter.marker, InlineStyle::Italic});
+        openings.push_back(
+            {span(offset, length), delimiter.marker, InlineStyle::Italic, delimiter.length, delimiter.canClose});
     } else if (length == 2) {
-        openings.push_back({span(offset, length), delimiter.marker, InlineStyle::Bold});
+        openings.push_back(
+            {span(offset, length), delimiter.marker, InlineStyle::Bold, delimiter.length, delimiter.canClose});
     } else if (length == 3) {
-        openings.push_back({span(offset, 1), delimiter.marker, InlineStyle::Italic});
-        openings.push_back({span(offset + 1, 2), delimiter.marker, InlineStyle::Bold});
+        openings.push_back(
+            {span(offset, 1), delimiter.marker, InlineStyle::Italic, delimiter.length, delimiter.canClose});
+        openings.push_back(
+            {span(offset + 1, 2), delimiter.marker, InlineStyle::Bold, delimiter.length, delimiter.canClose});
     }
 }
 
@@ -120,19 +128,37 @@ std::vector<Delimiter> findDelimiters(std::u16string_view line, const std::vecto
     return delimiters;
 }
 
+/// CommonMark's "rule of 3": a run that can both open and close does not pair with a run when the
+/// two run lengths add up to a multiple of 3, unless both are multiples of 3. It keeps the inner
+/// `*` of `**2*3 is six**` literal.
+bool ruleOfThreeForbids(const Opening& opening, const Delimiter& closer) {
+    return (closer.canOpen || opening.canClose) && (opening.runLength + closer.length) % 3 == 0 &&
+           (opening.runLength % 3 != 0 || closer.length % 3 != 0);
+}
+
+/// A closer pairs with the nearest earlier opening of the same marker that fits into what is left
+/// of the closing run; openings skipped on the way stay literal (CommonMark). A run longer than the
+/// opening closes several nested pairs, inner first.
 std::vector<Pair> matchDelimiters(const std::vector<Delimiter>& delimiters) {
     std::vector<Pair> pairs;
     std::vector<Opening> openings;
     for (const auto& delimiter : delimiters) {
         std::size_t closeLength = 0;
         if (delimiter.canClose) {
-            while (!openings.empty() && openings.back().marker == delimiter.marker &&
-                   openings.back().span.length <= delimiter.length - closeLength) {
-                const auto opening = openings.back();
-                openings.pop_back();
-                const Span closing{static_cast<std::uint32_t>(delimiter.span.start + closeLength), opening.span.length};
-                pairs.push_back({opening.span, closing, opening.style});
-                closeLength += opening.span.length;
+            while (closeLength < delimiter.length) {
+                const auto opening = std::find_if(openings.rbegin(), openings.rend(), [&](const Opening& candidate) {
+                    return candidate.marker == delimiter.marker &&
+                           candidate.span.length <= delimiter.length - closeLength &&
+                           !ruleOfThreeForbids(candidate, delimiter);
+                });
+                if (opening == openings.rend()) {
+                    break;
+                }
+                const Span closing{static_cast<std::uint32_t>(delimiter.span.start + closeLength),
+                                   opening->span.length};
+                pairs.push_back({opening->span, closing, opening->style});
+                closeLength += opening->span.length;
+                openings.erase(std::prev(opening.base()), openings.end());
             }
         }
         if (delimiter.canOpen && closeLength < delimiter.length) {
