@@ -43,7 +43,9 @@ namespace {
 struct Stats {
     double median = 0;
     double p95 = 0;
+    double p99 = 0;  ///< the maximum after dropping the worst 1 % (2 of 200 samples)
     double max = 0;
+    double over16 = 0;  ///< how many samples exceeded the 16 ms typing budget
 };
 
 Stats stats(std::vector<double> v) {
@@ -51,7 +53,8 @@ Stats stats(std::vector<double> v) {
         return {};
     std::sort(v.begin(), v.end());
     const auto at = [&](double q) { return v[static_cast<std::size_t>(q * static_cast<double>(v.size() - 1))]; };
-    return {at(0.5), at(0.95), v.back()};
+    const auto over16 = static_cast<double>(std::count_if(v.begin(), v.end(), [](double ms) { return ms > 16.0; }));
+    return {at(0.5), at(0.95), at(0.99), v.back(), over16};
 }
 
 QByteArray largeDocument(qsizetype target) {
@@ -198,6 +201,9 @@ SaveTiming measureSave(ui::MainWindow& w, const QString& path) {
 
 /// `runs` saves of the open document; the median of each value.
 SaveTiming measureSaves(ui::MainWindow& w, const QString& path, int runs) {
+    // Measure saving alone: let the styler and layout finish the work the typing left behind.
+    (void)QTest::qWaitFor([&] { return w.editor()->styler().isComplete(); }, 120000);
+    QCoreApplication::processEvents();
     std::vector<double> blocked;
     std::vector<double> total;
     for (int i = 0; i < std::max(runs, 1); ++i) {
@@ -219,17 +225,26 @@ struct Budget {
 // file is on disk includes fsync before the atomic rename (ADR 0002) and swings with the shared
 // CI runners' disks (58.6 -> 78.1 ms between two runs without a code change). The hard budget
 // below catches real regressions instead (S017).
-constexpr std::string_view kReportOnly[] = {"save_10mb_total_ms"};
+// The maximum of 200 key-to-paint samples is one scheduler hiccup away from failing on a shared
+// runner (1.47 -> 23.32 ms in one run); p99 drops the worst 1 % and is compared instead, the
+// maximum has a hard budget below. The counts of samples over 16 ms are information only.
+constexpr std::string_view kReportOnly[] = {"save_10mb_total_ms", "typing_small_max_ms", "typing_10mb_max_ms",
+                                            "typing_small_over_16ms", "typing_10mb_over_16ms"};
 
 // Brief, section 4. Most budgets are meaningful on reference hardware only (S011) and fail the run
 // with --fail-on-budget; the hard ones hold on any machine, CI runners included (S017): a save
-// must never stall the UI, and 10 MB must be on disk within a second.
+// must never stall the UI, 10 MB must be on disk within a second, and no key event may take
+// longer than 50 ms (S007).
 const Budget kBudgets[] = {
     {"startup_median_ms", 1000, "cold start < 1000 ms"},
     {"open_1mb_loaded_ms", 500, "open 1 MB < 500 ms"},
     {"open_10mb_first_chunk_ms", 3000, "10 MB usable < 3 s"},
     {"typing_small_p95_ms", 16, "key to screen <= 16 ms"},
     {"typing_10mb_p95_ms", 16, "key to screen <= 16 ms (10 MB)"},
+    {"typing_small_p99_ms", 16, "key to screen <= 16 ms, p99"},
+    {"typing_10mb_p99_ms", 16, "key to screen <= 16 ms, p99 (10 MB)"},
+    {"typing_small_max_ms", 50, "no key event above 50 ms (hard)", true},
+    {"typing_10mb_max_ms", 50, "no key event above 50 ms, 10 MB (hard)", true},
     {"save_10mb_ui_blocked_ms", 16, "saving never stalls the UI (hard)", true},
     {"save_10mb_total_ms", 1000, "10 MB on disk within 1 s (hard)", true},
 };
@@ -277,7 +292,9 @@ int main(int argc, char* argv[]) {
     const auto typingSmall = stats(measureTyping(w, 200));
     r["typing_small_median_ms"] = typingSmall.median;
     r["typing_small_p95_ms"] = typingSmall.p95;
+    r["typing_small_p99_ms"] = typingSmall.p99;
     r["typing_small_max_ms"] = typingSmall.max;
+    r["typing_small_over_16ms"] = typingSmall.over16;
     w.session()->newDocument();
 
     const auto open1 = measureOpen(w, oneMb);
@@ -291,7 +308,9 @@ int main(int argc, char* argv[]) {
     const auto typing10 = stats(measureTyping(w, 200));
     r["typing_10mb_median_ms"] = typing10.median;
     r["typing_10mb_p95_ms"] = typing10.p95;
+    r["typing_10mb_p99_ms"] = typing10.p99;
     r["typing_10mb_max_ms"] = typing10.max;
+    r["typing_10mb_over_16ms"] = typing10.over16;
     const auto save10 = measureSaves(w, dir.filePath(QStringLiteral("10mb-copy.md")), parser.value(runsOpt).toInt());
     r["save_10mb_ui_blocked_ms"] = save10.uiBlockedMs;
     r["save_10mb_total_ms"] = save10.totalMs;
