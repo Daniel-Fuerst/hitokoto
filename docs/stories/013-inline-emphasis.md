@@ -74,7 +74,7 @@ readable without changing the plain Markdown source.
 
 ## Implementation
 
-Completed 2026-10-25. Core and UI tests pass on Linux. Bold weight, the three text colours and
+Implemented 2026-10-25. Core and UI tests pass on Linux. Bold weight, the three text colours and
 the colour of revealed delimiters come from `[emphasis]` (ADR 0004).
 
 CI run #18 (pull request #5, 2026-10-25) is green on Linux (Qt 6.12 and 6.8), Windows (Qt 6.8.3)
