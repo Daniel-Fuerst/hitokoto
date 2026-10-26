@@ -144,7 +144,7 @@ TEST(S013_InlineEmphasis, EmphasisIsAppliedInsideHeadings) {
 
 TEST(S013_InlineEmphasis, PropertyRangesStayInsideLineAndDoNotOverlapHiddenMarkers) {
     std::mt19937 rng(73013);
-    constexpr char16_t alphabet[] = {u'*', u'*', u'_', u'~', u'\\', u' ', u'\t', u'a', u'b', u'\u00e4'};
+    constexpr char16_t alphabet[] = {u'*', u'*', u'_', u'~', u'\\', u'`', u' ', u'\t', u'a', u'b', u'\u00e4'};
     for (int iteration = 0; iteration < 5000; ++iteration) {
         std::u16string line(rng() % 32, u' ');
         for (auto& c : line) {
@@ -235,4 +235,20 @@ TEST(S013_InlineEmphasis, UnmatchedDelimiterInsidePairDoesNotCancelThePair) {
     const auto trailing = show(u"**a *b** c*");
     EXPECT_EQ(spans(trailing.hidden), (std::vector<Span>{{0, 2}, {6, 2}}));
     EXPECT_EQ(trailing.inlineStyles, (std::vector<InlineStyleRun>{{{2, 4}, InlineStyle::Bold}}));
+}
+
+// Review objection O5: emphasis never styles the backticks of inline code. They are hidden when
+// concealed (styled runs and hidden ranges never overlap) and keep the inline-code.marker colour
+// when revealed.
+TEST(S013_InlineEmphasis, EmphasisLeavesInlineCodeDelimitersAlone) {
+    const auto concealed = show(u"**`code`**");
+    EXPECT_EQ(spans(concealed.hidden), (std::vector<Span>{{0, 2}, {2, 1}, {7, 1}, {8, 2}}));
+    EXPECT_TRUE(concealed.inlineStyles.empty()) << "nothing but code and delimiters between the markers";
+
+    const auto revealed = show(u"**`code`**", true);
+    EXPECT_TRUE(revealed.inlineStyles.empty());
+
+    const auto mixed = show(u"**a `b` c**");
+    EXPECT_EQ(mixed.inlineStyles,
+              (std::vector<InlineStyleRun>{{{2, 2}, InlineStyle::Bold}, {{7, 2}, InlineStyle::Bold}}));
 }
