@@ -215,3 +215,24 @@ TEST(S013_InlineEmphasis, ThemeTokensFallBack) {
     EXPECT_FALSE(s.strikethroughText);
     EXPECT_EQ(s.marker, t.marker);
 }
+
+// Review objection O4 (docs/reviews/013-inline-emphasis-code.md): an unmatched delimiter inside a
+// valid pair does not cancel that pair. CommonMark and Obsidian render the outer pair; the inner
+// delimiter stays literal.
+TEST(S013_InlineEmphasis, UnmatchedDelimiterInsidePairDoesNotCancelThePair) {
+    const auto product = show(u"**2*3 is six**");
+    EXPECT_EQ(spans(product.hidden), (std::vector<Span>{{0, 2}, {12, 2}}));
+    EXPECT_EQ(product.inlineStyles, (std::vector<InlineStyleRun>{{{2, 10}, InlineStyle::Bold}}));
+
+    const auto opener = show(u"**a *b**");
+    EXPECT_EQ(spans(opener.hidden), (std::vector<Span>{{0, 2}, {6, 2}}));
+    EXPECT_EQ(opener.inlineStyles, (std::vector<InlineStyleRun>{{{2, 4}, InlineStyle::Bold}}));
+
+    const auto strongInsideItalic = show(u"*a **b*");
+    EXPECT_EQ(spans(strongInsideItalic.hidden), (std::vector<Span>{{0, 1}, {6, 1}}));
+    EXPECT_EQ(strongInsideItalic.inlineStyles, (std::vector<InlineStyleRun>{{{1, 5}, InlineStyle::Italic}}));
+
+    const auto trailing = show(u"**a *b** c*");
+    EXPECT_EQ(spans(trailing.hidden), (std::vector<Span>{{0, 2}, {6, 2}}));
+    EXPECT_EQ(trailing.inlineStyles, (std::vector<InlineStyleRun>{{{2, 4}, InlineStyle::Bold}}));
+}
