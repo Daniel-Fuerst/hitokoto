@@ -4,6 +4,7 @@
 #include "qt_bridge.hpp"
 
 #include <QFontDatabase>
+#include <QFontMetricsF>
 
 #include <algorithm>
 #include <optional>
@@ -39,8 +40,11 @@ EditorFormats::EditorFormats(const core::Theme& theme)
       codeBlock_(core::codeBlockStyle(theme)),
       inlineCode_(core::inlineCodeStyle(theme)),
       emphasis_(core::emphasisStyle(theme)),
+      table_(core::tableStyle(theme)),
       codeBlockFamilies_(codeFamilies(codeBlock_.fontFamily)),
-      inlineCodeFamilies_(codeFamilies(inlineCode_.fontFamily)) {
+      inlineCodeFamilies_(codeFamilies(inlineCode_.fontFamily)),
+      tableFamilies_(table_.fontFamily.empty() ? QStringList{}
+                                               : QStringList{QString::fromStdString(table_.fontFamily)}) {
     baseFont_ = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
     if (!theme.editorFontFamily.empty()) {
         baseFont_.setFamilies({QString::fromStdString(theme.editorFontFamily)});
@@ -65,8 +69,24 @@ QTextCharFormat EditorFormats::heading(int level) const {
 QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& render) const {
     QList<QTextLayout::FormatRange> out;
     const QTextCharFormat lineFormat = heading(render.headingLevel);
+    std::vector<std::uint32_t> emptyCellAnchors;
+    if (render.table && !render.tableDelimiter && !render.cells.empty()) {
+        emptyCellAnchors.reserve(render.cells.size());
+        for (std::size_t c = 0; c < render.cells.size(); ++c) {
+            const auto& cell = render.cells[c];
+            if (cell.content.length == 0) {
+                // Anchor on the cell's leading '|' (non-whitespace, since QTextLine ignores trailing spaces
+                // when computing line height). Its width is subtracted by layoutTableRow's prefixW.
+                const std::uint32_t anchor =
+                    c == 0 ? (cell.raw.start > 0 ? cell.raw.start - 1 : 0U) : render.cells[c - 1].raw.end();
+                emptyCellAnchors.push_back(anchor);
+            }
+        }
+    }
+
     std::vector<std::uint32_t> boundaries;
-    boundaries.reserve((render.runs.size() + render.inlineStyles.size() + render.hidden.size()) * 2);
+    boundaries.reserve(
+        (render.runs.size() + render.inlineStyles.size() + render.hidden.size() + emptyCellAnchors.size()) * 2);
     for (const auto& run : render.runs) {
         boundaries.push_back(run.span.start);
         boundaries.push_back(run.span.end());
@@ -78,6 +98,10 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
     for (const auto& hidden : render.hidden) {
         boundaries.push_back(hidden.span.start);
         boundaries.push_back(hidden.span.end());
+    }
+    for (const std::uint32_t anchor : emptyCellAnchors) {
+        boundaries.push_back(anchor);
+        boundaries.push_back(anchor + 1);
     }
     std::sort(boundaries.begin(), boundaries.end());
     boundaries.erase(std::unique(boundaries.begin(), boundaries.end()), boundaries.end());
@@ -124,6 +148,7 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
         // -Wmaybe-uninitialized for the optional, which breaks the Release build with -Werror (CI).
         const core::Role* role = baseRun != nullptr ? &baseRun->role : nullptr;
         const auto is = [role](core::Role r) { return role != nullptr && *role == r; };
+        const double surroundingSize = render.table ? editorFontSize_ * table_.fontScale : textSize(level);
         if (is(core::Role::Marker)) {
             format.setForeground(marker_);
         } else if (is(core::Role::CodeBlock)) {
@@ -131,10 +156,21 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
             format.setForeground(toQColor(render.fenceLine ? codeBlock_.marker : codeBlock_.text));
         } else if (is(core::Role::InlineCode) || is(core::Role::InlineCodeMarker)) {
             // The background is a box painted by EditorWidget (radius, border, padding).
-            applyCodeFont(format, inlineCodeFamilies_, textSize(level) * inlineCode_.fontScale);
+            applyCodeFont(format, inlineCodeFamilies_, surroundingSize * inlineCode_.fontScale);
             format.setForeground(toQColor(is(core::Role::InlineCode) ? inlineCode_.text : inlineCode_.marker));
         } else if (is(core::Role::EmphasisMarker)) {
             format.setForeground(toQColor(emphasis_.marker));
+        } else if (is(core::Role::TableHeader) || is(core::Role::TableCell)) {
+            if (!tableFamilies_.isEmpty()) {
+                format.setFontFamilies(tableFamilies_);
+            }
+            format.setFontPointSize(surroundingSize);
+            if (is(core::Role::TableHeader)) {
+                format.setFontWeight(table_.headerWeight);
+                format.setForeground(toQColor(table_.headerText));
+            } else {
+                format.setForeground(toQColor(table_.text));
+            }
         }
         if (inlineRun != nullptr && !is(core::Role::InlineCode)) {
             const auto styles = inlineRun->style;
@@ -158,24 +194,100 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
             }
         }
         if (hidden != nullptr) {
-            if (!is(core::Role::CodeBlock)) {
+            const bool keepEmptyCellHeight =
+                end == start + 1 && std::binary_search(emptyCellAnchors.begin(), emptyCellAnchors.end(), start);
+            if (keepEmptyCellHeight) {
+                // Keep one concealed character per empty cell at table font size so empty cells and
+                // empty rows retain full single-line height and a full-height caret.
                 format = lineFormat;
-            }
-            if (isInlineCodeDelimiter(render, start)) {
-                // Reserves inline-code padding after each concealed backtick (theme token, ADR 0004).
-                format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
-                format.setFontLetterSpacing(inlineCode_.padding);
-            }
-            // Concealment mechanism (ADR 0001), not a styling value.
-            format.setForeground(Qt::transparent);  // theme-lint: allow
-            if (hidden->mode == core::HideMode::Collapse) {
-                format.clearProperty(QTextFormat::FontPointSize);
-                format.setProperty(QTextFormat::FontPixelSize, 1);
+                if (!tableFamilies_.isEmpty()) {
+                    format.setFontFamilies(tableFamilies_);
+                }
+                format.setFontPointSize(surroundingSize);
+                if (render.tableHeader) {
+                    format.setFontWeight(table_.headerWeight);
+                }
+                format.setForeground(Qt::transparent);  // theme-lint: allow
+            } else {
+                if (!is(core::Role::CodeBlock)) {
+                    format = lineFormat;
+                }
+                if (isInlineCodeDelimiter(render, start)) {
+                    // Reserves inline-code padding after each concealed backtick (theme token, ADR 0004).
+                    format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
+                    format.setFontLetterSpacing(inlineCode_.padding);
+                }
+                // Concealment mechanism (ADR 0001), not a styling value.
+                format.setForeground(Qt::transparent);  // theme-lint: allow
+                if (hidden->mode == core::HideMode::Collapse) {
+                    format.clearProperty(QTextFormat::FontPointSize);
+                    format.setProperty(QTextFormat::FontPixelSize, 1);
+                }
             }
         }
         out.append({static_cast<int>(start), static_cast<int>(end - start), format});
     }
     return out;
+}
+
+double EditorFormats::cellTextWidth(const QString& lineText, const core::LineRender& render,
+                                    const core::TableCell& cell) const {
+    if (cell.content.length == 0) {
+        return 0.0;
+    }
+    const auto fmtRanges = ranges(render);
+    const int cellStart = static_cast<int>(cell.content.start);
+    const int cellEnd = static_cast<int>(cell.content.end());
+    double width = 0.0;
+    int pos = cellStart;
+    for (const auto& r : fmtRanges) {
+        const int rStart = std::max(cellStart, r.start);
+        const int rEnd = std::min(cellEnd, r.start + r.length);
+        if (rStart >= rEnd) {
+            continue;
+        }
+        if (rStart > pos) {
+            QFont f = baseFont_;
+            f.setPointSizeF(editorFontSize_ * table_.fontScale);
+            if (!tableFamilies_.isEmpty()) {
+                f.setFamilies(tableFamilies_);
+            }
+            width += QFontMetricsF(f).horizontalAdvance(lineText.mid(pos, rStart - pos));
+        }
+        if (r.format.intProperty(QTextFormat::FontPixelSize) == 1) {
+            // Concealed characters inside the cell (e.g. emphasis delimiters, backticks, '\|' backslash).
+            width += (rEnd - rStart) * (1.0 + r.format.fontLetterSpacing());
+        } else {
+            QFont f = baseFont_;
+            if (r.format.hasProperty(QTextFormat::FontFamilies)) {
+                const QStringList fams = r.format.fontFamilies().toStringList();
+                if (!fams.isEmpty()) {
+                    f.setFamilies(fams);
+                }
+            }
+            if (r.format.hasProperty(QTextFormat::FontStyleHint)) {
+                f.setStyleHint(r.format.fontStyleHint());
+            }
+            if (r.format.fontPointSize() > 0) {
+                f.setPointSizeF(r.format.fontPointSize());
+            }
+            if (r.format.fontWeight() > 0) {
+                f.setWeight(static_cast<QFont::Weight>(r.format.fontWeight()));
+            }
+            f.setItalic(r.format.fontItalic());
+            width += QFontMetricsF(f).horizontalAdvance(lineText.mid(rStart, rEnd - rStart));
+        }
+        pos = rEnd;
+    }
+    if (pos < cellEnd) {
+        QFont f = baseFont_;
+        f.setPointSizeF(editorFontSize_ * table_.fontScale);
+        if (!tableFamilies_.isEmpty()) {
+            f.setFamilies(tableFamilies_);
+        }
+        width += QFontMetricsF(f).horizontalAdvance(lineText.mid(pos, cellEnd - pos));
+    }
+    return width;
 }
 
 }  // namespace hitokoto::ui

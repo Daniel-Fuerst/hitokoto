@@ -29,6 +29,21 @@ enum class Role : std::uint8_t {
     InlineCode,        ///< text inside a single-backtick code span; one delimiter character on each side
     InlineCodeMarker,  ///< a revealed inline-code delimiter (backtick)
     EmphasisMarker,    ///< a revealed emphasis delimiter (* _ ~~)
+    TableHeader,       ///< text inside a table header cell
+    TableCell,         ///< text inside a table body cell
+};
+
+enum class TableAlign : std::uint8_t {
+    Left = 0,
+    Center = 1,
+    Right = 2,
+};
+
+struct TableCell {
+    Span content;  ///< trimmed cell content span within the line (empty cell: start == end)
+    Span raw;      ///< full cell span between pipe delimiters
+    TableAlign align = TableAlign::Left;
+    friend bool operator==(const TableCell&, const TableCell&) = default;
 };
 
 enum class InlineStyle : std::uint8_t {
@@ -98,13 +113,17 @@ struct LineRender {
     std::uint8_t headingLevel = 0;  ///< 1..6 if the whole line is a heading, else 0
     bool codeBlock = false;         ///< line belongs to a code block (the UI paints a panel)
     bool fenceLine = false;         ///< opening or closing line of a code block (no panel)
+    bool table = false;             ///< line belongs to a Markdown table
+    bool tableHeader = false;       ///< header row of a table
+    bool tableDelimiter = false;    ///< delimiter row (| --- | --- |) of a table
     BlockState blockState;          ///< state to pass when rendering the next line
+    std::vector<TableCell> cells;   ///< cells of a table header or body row
     std::vector<StyleRun> runs;
     std::vector<InlineStyleRun> inlineStyles;
     std::vector<HiddenRange> hidden;
     std::vector<Decoration> decorations;
     [[nodiscard]] bool empty() const noexcept {
-        return headingLevel == 0 && !codeBlock && !fenceLine && runs.empty() && inlineStyles.empty() &&
+        return headingLevel == 0 && !codeBlock && !fenceLine && !table && runs.empty() && inlineStyles.empty() &&
                hidden.empty() && decorations.empty();
     }
     friend bool operator==(const LineRender&, const LineRender&) = default;
@@ -112,10 +131,12 @@ struct LineRender {
 
 /// Context for rendering one line.
 struct LineContext {
-    bool revealed = false;  ///< caret or selection is on this line: show raw syntax
-    BlockState blockState;  ///< state entering this line (`LineRender::blockState` of the line above)
+    bool revealed = false;           ///< caret or selection is on this line: show raw syntax
+    BlockState blockState;           ///< state entering this line (`LineRender::blockState` of the line above)
+    std::u16string_view nextLine{};  ///< following line in the document (for 1-line lookahead elements)
 
-    LineContext(bool showSource = false, BlockState state = {}) : revealed(showSource), blockState(state) {}
+    LineContext(bool showSource = false, BlockState state = {}, std::u16string_view next = {})
+        : revealed(showSource), blockState(state), nextLine(next) {}
 };
 
 /// Result of a line element's parse rule.
@@ -181,6 +202,14 @@ public:
     /// Runs for every line above the visible ones, so it must be cheap and must not allocate.
     [[nodiscard]] virtual std::optional<BlockLine> parse(std::u16string_view line,
                                                          std::uint32_t state) const noexcept = 0;
+    /// Parse rule with one-line lookahead (default: ignores `nextLine` and calls `parse`).
+    [[nodiscard]] virtual std::optional<BlockLine> parseWithNextLine(std::u16string_view line, std::uint32_t state,
+                                                                     std::u16string_view nextLine) const noexcept {
+        (void)nextLine;
+        return parse(line, state);
+    }
+    /// Whether inline elements (emphasis, inline code) run inside non-delimiter lines of this block.
+    [[nodiscard]] virtual bool allowsInlineElements() const noexcept { return false; }
     /// Render rule: how to show a line the parse rule accepted.
     virtual void render(std::u16string_view line, const BlockLine& parsed, const LineContext& context,
                         LineRender& out) const = 0;
@@ -198,8 +227,9 @@ public:
 
     /// How to show `line`. Never throws for any input.
     [[nodiscard]] LineRender render(std::u16string_view line, const LineContext& context) const;
-    /// `render(line, {any, state}).blockState`, without rendering (the UI walks lines with it).
-    [[nodiscard]] BlockState blockStateAfter(std::u16string_view line, BlockState state = {}) const noexcept;
+    /// `render(line, {any, state, nextLine}).blockState`, without rendering (the UI walks lines with it).
+    [[nodiscard]] BlockState blockStateAfter(std::u16string_view line, BlockState state = {},
+                                             std::u16string_view nextLine = {}) const noexcept;
 
     [[nodiscard]] std::size_t size() const noexcept { return elements_.size(); }
 
@@ -212,7 +242,9 @@ private:
         BlockLine parsed;
         [[nodiscard]] BlockState stateAfter() const noexcept;
     };
-    [[nodiscard]] std::optional<BlockMatch> matchBlock(std::u16string_view line, BlockState state) const noexcept;
+    [[nodiscard]] std::optional<BlockMatch> matchBlock(std::u16string_view line, BlockState state,
+                                                       std::u16string_view nextLine) const noexcept;
+    void runInlineElements(std::u16string_view line, const LineContext& context, LineRender& out) const;
 
     std::vector<std::unique_ptr<LineElement>> elements_;
     struct InlineEntry {
@@ -233,5 +265,15 @@ std::unique_ptr<LineElement> makeBulletElement();
 std::unique_ptr<InlineElement> makeInlineCodeElement();
 std::unique_ptr<InlineElement> makeEmphasisElement();
 std::unique_ptr<MultiLineElement> makeFencedCodeElement();
+std::unique_ptr<MultiLineElement> makeTableElement();
+
+/// Returns a blank GFM pipe-table row with `columns` empty cells, e.g. "|  |  |".
+[[nodiscard]] std::u16string makeEmptyTableRow(std::size_t columns);
+/// Appends one new column to a table line (`|  |` for header/body rows, `| --- |` for delimiter rows).
+[[nodiscard]] std::u16string appendTableColumn(std::u16string_view line, bool delimiterRow);
+/// Removes `column` (0-based) from a table header, delimiter or body row when the row has at least 2 columns.
+[[nodiscard]] std::u16string removeTableColumn(std::u16string_view line, std::size_t column);
+/// Ensures a table header or body row has at least `columns` cells by appending empty ` |` cells.
+[[nodiscard]] std::u16string padTableRowCells(std::u16string_view line, std::size_t columns);
 
 }  // namespace hitokoto::core

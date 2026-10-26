@@ -22,10 +22,10 @@ src/core   all logic: Markdown elements, reveal, codec, file I/O, theme (C++ sta
 | Interface | File | Purpose |
 |---|---|---|
 | `LineElement` | `markdown.hpp` | One Markdown element: `parse()` (parse rule) and `render()` (render rule) |
-| `MultiLineElement` | `markdown.hpp` | A block spanning lines (fenced code): `parse(line, state)` and `render()`; owns every line while open |
+| `MultiLineElement` | `markdown.hpp` | A block spanning lines (fenced code, tables): `parse(line, state)` / `parseWithNextLine()` and `render()`; owns every line while open |
 | `InlineElement` | `markdown.hpp` | Adds inline style ranges, inline-code runs and concealed delimiter ranges after block rendering |
-| `ElementRegistry` | `markdown.hpp` | Holds the elements; `render(line, {revealed, blockState})` returns a `LineRender`; `blockStateAfter()` walks lines without rendering |
-| `LineRender` | `markdown.hpp` | How one line is shown: heading level, block and inline style runs, hidden ranges, decorations |
+| `ElementRegistry` | `markdown.hpp` | Holds the elements; `render(line, {revealed, blockState, nextLine})` returns a `LineRender`; `blockStateAfter()` walks lines without rendering |
+| `LineRender` | `markdown.hpp` | How one line is shown: heading level, table cells, block and inline style runs, hidden ranges, decorations |
 | `BlockState` | `markdown.hpp` | Opaque state from one line to the next while a multi-line element is open |
 | `revealedLines`, `revealChanges` | `reveal.hpp` | Which lines show raw syntax; which lines must re-render when that changes |
 | `decodeUtf8`, `encodeUtf8` | `text_codec.hpp` | Bytes to text and back, preserving BOM and line endings (ADR 0002) |
@@ -40,8 +40,8 @@ decorations (`Bullet`), never in colours or fonts. The UI maps these to theme fo
 
 | Class | Responsibility |
 |---|---|
-| `EditorWidget` | `QPlainTextEdit` subclass; the `QTextDocument` inside is the only copy of the text. Updates the revealed range on caret/selection changes, paints padded code-block panels and decorations, handles S010 clicks, centres the text column. |
-| `BlockStyler` | Applies `LineRender` to blocks as `QTextLayout` formats. Edited lines and lines entering/leaving the revealed range are styled at once; the rest lazily: visible blocks first, then idle slices of at most 6 ms. Each block's user state records what it was styled for and caches the block state after the line; only lines that leave a multi-line block open keep that state in a `BlockData`, so plain lines allocate nothing. Edits propagate restyling only while the state changes. |
+| `EditorWidget` | `QPlainTextEdit` subclass; the `QTextDocument` inside is the only copy of the text. Updates the revealed range on caret/selection changes, paints padded code-block panels, tables (backgrounds, grid lines, hover-revealed `+` / `−` row and column controls) and decorations, handles S010 clicks and interactive S017 table cell editing/navigation, centres the text column. |
+| `BlockStyler` | Applies `LineRender` to blocks as `QTextLayout` formats, including shared column-width alignment across table rows. Edited lines and lines entering/leaving the revealed range are styled at once; the rest lazily: visible blocks first, then idle slices of at most 6 ms. Each block's user state records what it was styled for and caches the block state after the line; only lines that leave a multi-line block open keep that state in a `BlockData`, so plain lines allocate nothing. Edits propagate restyling only while the state changes. |
 | `EditorFormats` | Theme tokens to `QTextCharFormat`s; `LineRender` to format ranges. |
 | `DocumentSession` | Open/save. Reading, decoding, encoding and writing run on a worker thread (`QThreadPool`, one thread, so operations stay in order). Large files are inserted in slices of about 8 ms; the first 64 KB appear at once. |
 | `application_icon` | Embeds the SVG for Qt windows and supplies derived native icons for Windows and macOS bundles. |

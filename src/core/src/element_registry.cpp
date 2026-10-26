@@ -127,15 +127,15 @@ void ElementRegistry::addMultiLine(std::unique_ptr<MultiLineElement> element) {
     multiLineElements_.push_back(std::move(element));
 }
 
-std::optional<ElementRegistry::BlockMatch> ElementRegistry::matchBlock(std::u16string_view line,
-                                                                       BlockState state) const noexcept {
+std::optional<ElementRegistry::BlockMatch> ElementRegistry::matchBlock(std::u16string_view line, BlockState state,
+                                                                       std::u16string_view nextLine) const noexcept {
     if (state.active() && state.element <= multiLineElements_.size()) {
-        if (auto parsed = multiLineElements_[state.element - 1U]->parse(line, state.value)) {
+        if (auto parsed = multiLineElements_[state.element - 1U]->parseWithNextLine(line, state.value, nextLine)) {
             return BlockMatch{state.element, *parsed};
         }
     }
     for (std::size_t i = 0; i < multiLineElements_.size(); ++i) {
-        if (auto parsed = multiLineElements_[i]->parse(line, 0)) {
+        if (auto parsed = multiLineElements_[i]->parseWithNextLine(line, 0, nextLine)) {
             return BlockMatch{static_cast<std::uint8_t>(i + 1U), *parsed};
         }
     }
@@ -146,17 +146,65 @@ BlockState ElementRegistry::BlockMatch::stateAfter() const noexcept {
     return parsed.stateAfter == 0 ? BlockState{} : BlockState{element, parsed.stateAfter};
 }
 
-BlockState ElementRegistry::blockStateAfter(std::u16string_view line, BlockState state) const noexcept {
-    const auto block = matchBlock(line, state);
+BlockState ElementRegistry::blockStateAfter(std::u16string_view line, BlockState state,
+                                            std::u16string_view nextLine) const noexcept {
+    const auto block = matchBlock(line, state, nextLine);
     return block ? block->stateAfter() : BlockState{};
+}
+
+void ElementRegistry::runInlineElements(std::u16string_view line, const LineContext& context, LineRender& out) const {
+    // One table lookup per character tells which inline elements this line can trigger;
+    // most lines trigger none.
+    std::uint64_t triggered = 0;
+    bool nonAscii = false;
+    for (const char16_t c : line) {
+        if (c < asciiTriggers_.size()) {
+            triggered |= asciiTriggers_[c];
+        } else {
+            nonAscii = true;
+        }
+    }
+    for (std::size_t i = 0; i < inlineElements_.size(); ++i) {
+        const auto& entry = inlineElements_[i];
+        const bool run = entry.always || ((triggered >> i) & 1U) != 0 ||
+                         (nonAscii && hasOtherTriggers_ && !entry.otherTriggers.empty() &&
+                          line.find_first_of(entry.otherTriggers) != std::u16string_view::npos);
+        if (run) {
+            entry.element->render(line, context, out);
+        }
+    }
 }
 
 LineRender ElementRegistry::render(std::u16string_view line, const LineContext& context) const {
     LineRender out;
-    if (const auto block = matchBlock(line, context.blockState)) {
-        // The open block owns the line; line and inline elements do not run.
-        multiLineElements_[block->element - 1U]->render(line, block->parsed, context, out);
+    if (const auto block = matchBlock(line, context.blockState, context.nextLine)) {
+        const auto& multi = multiLineElements_[block->element - 1U];
+        multi->render(line, block->parsed, context, out);
         out.blockState = block->stateAfter();
+        if (multi->allowsInlineElements() && !out.cells.empty()) {
+            // GFM 4.10: inline elements are parsed independently inside each table cell.
+            const LineContext cellContext{false, {}};
+            for (const auto& cell : out.cells) {
+                if (cell.content.length == 0) {
+                    continue;
+                }
+                LineRender cellRender;
+                runInlineElements(line.substr(cell.content.start, cell.content.length), cellContext, cellRender);
+                for (auto run : cellRender.runs) {
+                    run.span.start += cell.content.start;
+                    out.runs.push_back(run);
+                }
+                for (auto style : cellRender.inlineStyles) {
+                    style.span.start += cell.content.start;
+                    out.inlineStyles.push_back(style);
+                }
+                for (auto hidden : cellRender.hidden) {
+                    hidden.span.start += cell.content.start;
+                    out.hidden.push_back(hidden);
+                }
+            }
+            splitAroundInlineRuns(out);
+        }
     } else {
         for (const auto& element : elements_) {
             if (auto match = element->parse(line)) {
@@ -164,26 +212,7 @@ LineRender ElementRegistry::render(std::u16string_view line, const LineContext& 
                 break;
             }
         }
-        // One table lookup per character tells which inline elements this line can trigger;
-        // most lines trigger none.
-        std::uint64_t triggered = 0;
-        bool nonAscii = false;
-        for (const char16_t c : line) {
-            if (c < asciiTriggers_.size()) {
-                triggered |= asciiTriggers_[c];
-            } else {
-                nonAscii = true;
-            }
-        }
-        for (std::size_t i = 0; i < inlineElements_.size(); ++i) {
-            const auto& entry = inlineElements_[i];
-            const bool run = entry.always || ((triggered >> i) & 1U) != 0 ||
-                             (nonAscii && hasOtherTriggers_ && !entry.otherTriggers.empty() &&
-                              line.find_first_of(entry.otherTriggers) != std::u16string_view::npos);
-            if (run) {
-                entry.element->render(line, context, out);
-            }
-        }
+        runInlineElements(line, context, out);
         splitAroundInlineRuns(out);
     }
     carveRunsAroundHidden(out);
@@ -193,6 +222,7 @@ LineRender ElementRegistry::render(std::u16string_view line, const LineContext& 
 ElementRegistry ElementRegistry::withBuiltins() {
     ElementRegistry registry;
     registry.addMultiLine(makeFencedCodeElement());
+    registry.addMultiLine(makeTableElement());
     registry.add(makeHeadingElement());
     registry.add(makeBulletElement());
     registry.addInline(makeInlineCodeElement());

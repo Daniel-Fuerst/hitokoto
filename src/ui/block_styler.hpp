@@ -14,11 +14,18 @@
 
 #include <functional>
 #include <utility>
+#include <vector>
 
 class QTextDocument;
 class QTextBlock;
 
 namespace hitokoto::ui {
+
+struct TableMetrics {
+    int firstBlock = -1;
+    int lastBlock = -1;
+    std::vector<double> columnWidths;  ///< content width W_c (excluding 2*padding) of each column
+};
 
 class BlockStyler : public QObject {
     Q_OBJECT
@@ -29,6 +36,10 @@ public:
 
     void setFormats(EditorFormats formats);
     [[nodiscard]] const EditorFormats& formats() const noexcept { return formats_; }
+
+    /// Maximum horizontal width (px) available for a table; wider tables wrap inside their columns.
+    void setAvailableWidth(double width);
+    [[nodiscard]] double availableWidth() const noexcept { return availableWidth_; }
 
     void setRevealed(core::LineRange range);
     [[nodiscard]] core::LineRange revealed() const noexcept { return revealed_; }
@@ -48,6 +59,8 @@ public:
 
     /// How a block is shown right now (used for drawing decorations and hit testing).
     [[nodiscard]] core::LineRender renderFor(const QTextBlock& block);
+    /// Span of blocks and per-column content widths for the table containing `block`.
+    [[nodiscard]] TableMetrics tableMetrics(const QTextBlock& block);
 
 signals:
     void completed();
@@ -56,6 +69,7 @@ private:
     void onContentsChange(int position, int charsRemoved, int charsAdded);
     void styleRange(int first, int last);
     void styleBlock(const QTextBlock& block);
+    void layoutTableRow(QTextBlock& block, const core::LineRender& render, const TableMetrics& metrics);
     [[nodiscard]] core::BlockState blockStateBefore(const QTextBlock& block);
     [[nodiscard]] bool isStyled(const QTextBlock& block) const;
     void scheduleFrom(int blockNumber);
@@ -65,6 +79,7 @@ private:
     const core::ElementRegistry& registry_;
     std::function<std::pair<int, int>()> visibleBlocks_;
     EditorFormats formats_;
+    double availableWidth_ = 0.0;
     core::LineRange revealed_{0, 0};
     QTimer idle_;
     int idleNext_ = 0;

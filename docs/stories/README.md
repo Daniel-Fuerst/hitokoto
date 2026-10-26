@@ -28,6 +28,7 @@ story ID (see "Conventions").
 | 15 | [S014](014-fenced-code-blocks.md) | Fenced Markdown code blocks | S013 | M | In review |
 | 16 | [S015](015-inline-code.md) | Inline Markdown code spans | S014 | S | In review |
 | 17 | [S016](016-application-icon.md) | Show the application icon in the taskbar or dock | S000 | S | In progress |
+| 18 | [S017](017-tables.md) | Interactive Markdown pipe tables | S015 | L | In review |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 
@@ -66,7 +67,7 @@ sets it).
 
 ## Not in the MVP (from the brief, kept in mind)
 
-Links, task and numbered lists, blockquotes, tables, images, search,
+Links, task and numbered lists, blockquotes, images, search,
 spellcheck, export, wiki links, multiple documents, plugins, keybinding schemes, localisation.
 The element registry (S002/S003) and theme tokens (S005) are designed so these can be added
 without changing existing elements.

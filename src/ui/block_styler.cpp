@@ -5,11 +5,14 @@
 #include "qt_bridge.hpp"
 
 #include <QElapsedTimer>
+#include <QPlainTextEdit>
 #include <QTextBlock>
 #include <QTextDocument>
 #include <QTextLayout>
+#include <QTextOption>
 
 #include <algorithm>
+#include <cmath>
 #include <optional>
 #include <vector>
 
@@ -25,6 +28,7 @@ constexpr int kStyledConcealed = 1;
 constexpr int kStyledRevealed = 2;
 constexpr int kStateKnown = 0x4;
 constexpr int kStateActive = 0x8;
+constexpr int kTableContentRow = 0x10;
 // Ranges up to this size are styled synchronously; larger ones on screen + in idle slices.
 constexpr int kSynchronousLimit = 400;
 constexpr qint64 kSliceNanoseconds = 6'000'000;
@@ -57,14 +61,14 @@ std::optional<core::BlockState> cachedBlockState(const QTextBlock& block) {
 
 void cacheBlockState(QTextBlock& block, core::BlockState state) {
     auto* data = dynamic_cast<BlockData*>(block.userData());
-    const int style = stateBits(block) & kStyleMask;
+    const int preserved = stateBits(block) & (kStyleMask | kTableContentRow);
     if (state.active()) {
         if (data == nullptr) {
             data = new BlockData;
             block.setUserData(data);
         }
         data->blockState = state;
-        block.setUserState(style | kStateKnown | kStateActive);
+        block.setUserState(preserved | kStateKnown | kStateActive);
         return;
     }
     if (data != nullptr) {
@@ -73,7 +77,7 @@ void cacheBlockState(QTextBlock& block, core::BlockState state) {
             block.setUserData(nullptr);  // deletes it
         }
     }
-    block.setUserState(style | kStateKnown);
+    block.setUserState(preserved | kStateKnown);
 }
 }  // namespace
 
@@ -88,6 +92,20 @@ BlockStyler::BlockStyler(QTextDocument* document, const core::ElementRegistry& r
 void BlockStyler::setFormats(EditorFormats formats) {
     formats_ = std::move(formats);
     invalidateAll();
+}
+
+void BlockStyler::setAvailableWidth(double width) {
+    if (std::abs(width - availableWidth_) <= 0.5) {
+        return;
+    }
+    availableWidth_ = width;
+    for (QTextBlock b = document_->begin(); b.isValid(); b = b.next()) {
+        if ((stateBits(b) & kStateActive) != 0) {
+            setStyled(b, kUnstyled);
+        }
+    }
+    styleVisible();
+    scheduleFrom(0);
 }
 
 void BlockStyler::invalidateAll() {
@@ -109,19 +127,200 @@ core::BlockState BlockStyler::blockStateBefore(const QTextBlock& block) {
         uncached.push_back(previous);
     }
     for (auto it = uncached.rbegin(); it != uncached.rend(); ++it) {
-        state = registry_.blockStateAfter(view(it->text()), state);
+        const QTextBlock next = it->next();
+        const QString lineText = it->text();
+        const QString nextText = next.isValid() ? next.text() : QString{};
+        state =
+            registry_.blockStateAfter(view(lineText), state, next.isValid() ? view(nextText) : std::u16string_view{});
         cacheBlockState(*it, state);
     }
     return state;
 }
 
 core::LineRender BlockStyler::renderFor(const QTextBlock& block) {
-    return registry_.render(view(block.text()), {isRevealed(block.blockNumber()), blockStateBefore(block)});
+    const QTextBlock next = block.next();
+    const QString lineText = block.text();
+    const QString nextText = next.isValid() ? next.text() : QString{};
+    return registry_.render(view(lineText), {isRevealed(block.blockNumber()), blockStateBefore(block),
+                                             next.isValid() ? view(nextText) : std::u16string_view{}});
+}
+
+TableMetrics BlockStyler::tableMetrics(const QTextBlock& block) {
+    TableMetrics metrics;
+    if (!block.isValid() || !renderFor(block).table) {
+        return metrics;
+    }
+    QTextBlock first = block;
+    for (int steps = 0; steps < kSynchronousLimit; ++steps) {
+        const QTextBlock prev = first.previous();
+        if (!prev.isValid() || !renderFor(prev).table) {
+            break;
+        }
+        first = prev;
+        if (renderFor(first).tableHeader) {
+            break;
+        }
+    }
+    QTextBlock last = first;
+    for (int steps = 0; steps < kSynchronousLimit; ++steps) {
+        const QTextBlock next = last.next();
+        if (!next.isValid()) {
+            break;
+        }
+        const auto nextRender = renderFor(next);
+        if (!nextRender.table || nextRender.tableHeader) {
+            break;
+        }
+        last = next;
+    }
+    metrics.firstBlock = first.blockNumber();
+    metrics.lastBlock = last.blockNumber();
+    const double minWidth = std::max(24.0, formats_.baseFont().pointSizeF() * 2.0);
+    for (QTextBlock b = first; b.isValid() && b.blockNumber() <= metrics.lastBlock; b = b.next()) {
+        const auto r = renderFor(b);
+        if (r.tableDelimiter) {
+            continue;
+        }
+        if (metrics.columnWidths.size() < r.cells.size()) {
+            metrics.columnWidths.resize(r.cells.size(), minWidth);
+        }
+        const QString text = b.text();
+        for (std::size_t c = 0; c < r.cells.size(); ++c) {
+            metrics.columnWidths[c] = std::max(metrics.columnWidths[c], formats_.cellTextWidth(text, r, r.cells[c]));
+        }
+    }
+    if (availableWidth_ > 0.0 && !metrics.columnWidths.empty()) {
+        const double pad = formats_.table().padding;
+        const auto cols = static_cast<double>(metrics.columnWidths.size());
+        const double maxInnerWidth = std::max(cols * 8.0, availableWidth_ - cols * 2.0 * pad);
+        double naturalSum = 0.0;
+        double maxSqrt = 0.0;
+        for (double w : metrics.columnWidths) {
+            naturalSum += w;
+            maxSqrt = std::max(maxSqrt, std::sqrt(w));
+        }
+        if (naturalSum > maxInnerWidth) {
+            const double floorW = std::min(minWidth, maxInnerWidth / cols);
+            double lo = 0.0;
+            double hi = maxSqrt + 1.0;
+            for (int iter = 0; iter < 40; ++iter) {
+                const double mid = 0.5 * (lo + hi);
+                double sum = 0.0;
+                for (double w : metrics.columnWidths) {
+                    sum += std::clamp(mid * std::sqrt(w), std::min(w, floorW), w);
+                }
+                if (sum <= maxInnerWidth) {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+            for (double& w : metrics.columnWidths) {
+                w = std::clamp(lo * std::sqrt(w), std::min(w, floorW), w);
+            }
+        }
+    }
+    return metrics;
 }
 
 bool BlockStyler::isStyled(const QTextBlock& block) const {
+    const int bits = stateBits(block);
     const int expected = isRevealed(block.blockNumber()) ? kStyledRevealed : kStyledConcealed;
-    return (stateBits(block) & kStyleMask) == expected;
+    if ((bits & kStyleMask) != expected) {
+        return false;
+    }
+    if ((bits & kTableContentRow) != 0) {
+        const QTextLayout* layout = block.layout();
+        // QPlainTextDocumentLayout::layoutBlock sets leadingIncluded(true); layoutTableRow sets false.
+        if (!layout || layout->lineCount() == 0 || layout->lineAt(0).leadingIncluded()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void BlockStyler::layoutTableRow(QTextBlock& block, const core::LineRender& render, const TableMetrics& metrics) {
+    QTextLayout* layout = block.layout();
+    if (!layout || render.cells.empty()) {
+        return;
+    }
+    QTextOption opt = layout->textOption();
+    opt.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+    layout->setTextOption(opt);
+
+    const QString text = block.text();
+    const auto lineLen = static_cast<int>(text.size());
+    if (lineLen <= 0) {
+        return;
+    }
+    const qreal margin = document_->documentMargin();
+    const qreal pad = formats_.table().padding;
+    qreal colLeft = 0.0;
+    int cursor = 0;
+
+    layout->beginLayout();
+    for (std::size_t c = 0; c < render.cells.size(); ++c) {
+        const auto& cell = render.cells[c];
+        const qreal colW = c < metrics.columnWidths.size() ? metrics.columnWidths[c] : 24.0;
+        const int segEnd = (c + 1 < render.cells.size()) ? static_cast<int>(cell.raw.end()) : lineLen;
+        const int contentStart = static_cast<int>(cell.content.start);
+        const int contentEnd = static_cast<int>(cell.content.end());
+
+        qreal cellY = 0.0;
+        while (cursor < segEnd) {
+            QTextLine line = layout->createLine();
+            if (!line.isValid()) {
+                break;
+            }
+            const int st = line.textStart();
+            if (st >= segEnd) {
+                break;
+            }
+            const int rem = segEnd - st;
+            line.setNumColumns(rem);
+
+            const int fitVisStart = std::clamp(contentStart, st, st + line.textLength());
+            const int fitVisEnd = std::clamp(contentEnd, fitVisStart, st + line.textLength());
+            const qreal fitPrefixW = line.cursorToX(fitVisStart) - line.x();
+            const qreal fitVisW = line.cursorToX(fitVisEnd) - line.cursorToX(fitVisStart);
+
+            if (fitVisW > colW + 0.5) {
+                line.setLineWidth(std::max<qreal>(1.0, colW + fitPrefixW));
+                if (line.textLength() <= 0) {
+                    line.setNumColumns(1);
+                }
+                if (line.textStart() + line.textLength() > segEnd ||
+                    line.textStart() + line.textLength() >= contentEnd) {
+                    line.setNumColumns(rem);
+                }
+            }
+
+            const int lineEnd = st + line.textLength();
+            const int visStart = std::clamp(contentStart, st, lineEnd);
+            int visEnd = std::clamp(contentEnd, visStart, lineEnd);
+            if (lineEnd < segEnd) {
+                while (visEnd > visStart && text[visEnd - 1].isSpace()) {
+                    --visEnd;
+                }
+            }
+            const qreal prefixW = line.cursorToX(visStart) - line.x();
+            const qreal visW = std::max<qreal>(0.0, line.cursorToX(visEnd) - line.cursorToX(visStart));
+            const qreal slack = std::max<qreal>(0.0, colW - visW);
+            const qreal alignOffset = cell.align == core::TableAlign::Center  ? slack / 2.0
+                                      : cell.align == core::TableAlign::Right ? slack
+                                                                              : 0.0;
+            line.setLeadingIncluded(false);
+            line.setPosition(QPointF(margin + colLeft + pad + alignOffset - prefixW, cellY));
+            cellY += line.height();
+            cursor = line.textStart() + line.textLength();
+        }
+        colLeft += colW + 2.0 * pad;
+    }
+    layout->endLayout();
+    block.setLineCount(1);
+    if (auto* plainLayout = qobject_cast<QPlainTextDocumentLayout*>(document_->documentLayout())) {
+        plainLayout->requestUpdate();
+    }
 }
 
 void BlockStyler::styleBlock(const QTextBlock& block) {
@@ -135,9 +334,13 @@ void BlockStyler::styleBlock(const QTextBlock& block) {
     const bool blockStateChanged = previousState && *previousState != render.blockState;
     cacheBlockState(mutableBlock, render.blockState);
     const auto ranges = formats_.ranges(render);
+    const bool wasTableRow = (stateBits(block) & kTableContentRow) != 0;
     // Skip the relayout if nothing was and nothing is formatted (most body lines).
-    const bool changed = !(ranges.isEmpty() && layout->formats().isEmpty());
-    setStyled(mutableBlock, isRevealed(block.blockNumber()) ? kStyledRevealed : kStyledConcealed);
+    const bool changed = wasTableRow || !(ranges.isEmpty() && layout->formats().isEmpty());
+    const bool tableRow = render.table && !render.tableDelimiter && !render.cells.empty();
+    const int style = isRevealed(block.blockNumber()) ? kStyledRevealed : kStyledConcealed;
+    mutableBlock.setUserState((stateBits(mutableBlock) & ~(kStyleMask | kTableContentRow)) | style |
+                              (tableRow ? kTableContentRow : 0));
     ++styledCount_;
     if (blockStateChanged) {
         // The next line's block membership may change too. Restyle onward lazily; each restyled
@@ -153,8 +356,21 @@ void BlockStyler::styleBlock(const QTextBlock& block) {
         return;
     }
     busy_ = true;
+    QTextOption opt = layout->textOption();
+    const auto desiredWrap =
+        (render.table && render.tableDelimiter) ? QTextOption::NoWrap : QTextOption::WrapAtWordBoundaryOrAnywhere;
+    if (opt.wrapMode() != desiredWrap) {
+        opt.setWrapMode(desiredWrap);
+        layout->setTextOption(opt);
+    }
     layout->setFormats(ranges);
     document_->markContentsDirty(block.position(), block.length());
+    if (render.table && !render.tableDelimiter && !render.cells.empty()) {
+        if (const auto* plainLayout = qobject_cast<const QPlainTextDocumentLayout*>(document_->documentLayout())) {
+            plainLayout->ensureBlockLayout(block);
+        }
+        layoutTableRow(mutableBlock, render, tableMetrics(block));
+    }
     busy_ = false;
 }
 
@@ -211,14 +427,31 @@ void BlockStyler::onContentsChange(int position, int charsRemoved, int charsAdde
     if (!last.isValid()) {
         last = document_->lastBlock();
     }
-    const int firstNumber = first.isValid() ? first.blockNumber() : 0;
-    const int lastNumber = last.blockNumber();
-    // Edited blocks keep their user state but their formats are stale: force a restyle.
-    for (QTextBlock b = first; b.isValid() && b.blockNumber() <= std::min(lastNumber, firstNumber + kSynchronousLimit);
-         b = b.next()) {
+    int firstNumber = first.blockNumber();
+    if (first.previous().isValid() && first.previous().text().contains(QLatin1Char('|'))) {
+        // A 1-line lookahead element (table header) depends on its next line.
+        firstNumber = first.previous().blockNumber();
+    }
+    int lastNumber = std::min(last.blockNumber() + 1, document_->blockCount() - 1);
+    for (QTextBlock b = document_->findBlockByNumber(firstNumber);
+         b.isValid() && b.blockNumber() <= std::min(lastNumber, firstNumber + kSynchronousLimit); b = b.next()) {
         setStyled(b, kUnstyled);
     }
-    styleRange(firstNumber, std::min(lastNumber + 1, document_->blockCount() - 1));
+    if (first.isValid() && (first.text().contains(QLatin1Char('|')) || renderFor(first).table)) {
+        const QTextBlock probe = renderFor(first).table ? first : first.previous();
+        if (probe.isValid() && renderFor(probe).table) {
+            const TableMetrics m = tableMetrics(probe);
+            if (m.firstBlock >= 0) {
+                firstNumber = std::min(firstNumber, m.firstBlock);
+                lastNumber = std::max(lastNumber, m.lastBlock);
+                for (QTextBlock b = document_->findBlockByNumber(m.firstBlock);
+                     b.isValid() && b.blockNumber() <= m.lastBlock; b = b.next()) {
+                    setStyled(b, kUnstyled);
+                }
+            }
+        }
+    }
+    styleRange(firstNumber, lastNumber);
     if (charsRemoved != charsAdded || lastNumber - firstNumber > kSynchronousLimit) {
         // Line numbers below may have shifted relative to the revealed range: re-check lazily.
         scheduleFrom(firstNumber);

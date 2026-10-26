@@ -7,6 +7,7 @@
 #include <QColor>
 #include <QFont>
 #include <QList>
+#include <QString>
 #include <QStringList>
 #include <QTextCharFormat>
 #include <QTextLayout>
@@ -23,13 +24,18 @@ public:
 
     [[nodiscard]] const QFont& baseFont() const noexcept { return baseFont_; }
     [[nodiscard]] const QColor& bulletColor() const noexcept { return bullet_; }
-    /// Resolved element tokens (ADR 0004) for what the editor paints itself (panels, boxes).
+    /// Resolved element tokens (ADR 0004) for what the editor paints itself (panels, boxes, tables).
     [[nodiscard]] const core::CodeStyle& codeBlock() const noexcept { return codeBlock_; }
     [[nodiscard]] const core::CodeStyle& inlineCode() const noexcept { return inlineCode_; }
+    [[nodiscard]] const core::TableStyle& table() const noexcept { return table_; }
     [[nodiscard]] QTextCharFormat heading(int level) const;
 
     /// Format ranges for one line, ready for QTextLayout::setFormats().
     [[nodiscard]] QList<QTextLayout::FormatRange> ranges(const core::LineRender& render) const;
+
+    /// Rendered width (px) of a table cell's content span.
+    [[nodiscard]] double cellTextWidth(const QString& lineText, const core::LineRender& render,
+                                       const core::TableCell& cell) const;
 
 private:
     /// Font size of text at heading `level` (0 = body text).
@@ -43,8 +49,10 @@ private:
     core::CodeStyle codeBlock_;
     core::CodeStyle inlineCode_;
     core::EmphasisStyle emphasis_;
+    core::TableStyle table_;
     QStringList codeBlockFamilies_;
     QStringList inlineCodeFamilies_;
+    QStringList tableFamilies_;
 };
 
 }  // namespace hitokoto::ui
