@@ -176,7 +176,7 @@ public:
     void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
         std::vector<bool> codeCharacters(line.size(), false);
         for (const auto& run : out.runs) {
-            if (run.role == Role::InlineCode) {
+            if (run.role == Role::InlineCode || run.role == Role::InlineCodeMarker) {
                 std::fill(codeCharacters.begin() + run.span.start, codeCharacters.begin() + run.span.end(), true);
             }
         }
