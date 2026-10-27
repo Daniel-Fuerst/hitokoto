@@ -1,6 +1,6 @@
 # S018 — Markdown tables
 
-- **Status:** In review · **Order:** 19 · **Depends on:** S015
+- **Status:** In progress · **Order:** 20 · **Depends on:** S015, S019
 - **Basis:** User request and confirmation on 2026-10-26; ADR 0005.
 - **Renumbered:** from S017 on 2026-10-27, because S017 is "Saving never stalls the UI" on main.
   Commits 8130875 and a3def18 still say S017.

@@ -37,6 +37,8 @@ depend on it.
 
 **ADR 0003 – concealment technique**: keep the `QPlainTextEdit` adapter, or switch to the
 custom `QAbstractScrollArea` + `QTextLayout` surface (plan B). Core does not change either way.
+Decided on 2026-10-27 for the surface (S019): `QTextEdit` with our own document layout. The 1-px
+concealment stays; this gate keeps checking it on the new surface.
 
 ## Tests
 
