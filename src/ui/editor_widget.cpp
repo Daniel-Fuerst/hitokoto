@@ -5,6 +5,8 @@
 #include "table_embedder.hpp"
 
 #include <QFontMetricsF>
+#include <QInputMethodEvent>
+#include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QResizeEvent>
@@ -57,7 +59,7 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     });
     connect(this, &QTextEdit::cursorPositionChanged, this, &EditorWidget::updateReveal);
     connect(this, &QTextEdit::cursorPositionChanged, tables_.get(), &TableEmbedder::caretMoved);
-    connect(document(), &QTextDocument::contentsChange, tables_.get(), &TableEmbedder::scheduleRefresh);
+    connect(document(), &QTextDocument::contentsChange, tables_.get(), &TableEmbedder::documentChanged);
     connect(styler_, &BlockStyler::completed, tables_.get(), &TableEmbedder::scheduleRefresh);
     connect(layout_, &BlockLayout::documentSizeChanged, tables_.get(), &TableEmbedder::reposition);
     connect(this, &QTextEdit::selectionChanged, this, &EditorWidget::updateReveal);
@@ -261,7 +263,18 @@ void EditorWidget::keyPressEvent(QKeyEvent* event) {
     if (tables_->handleEditorKey(event)) {
         return;
     }
+    const TableEmbedder::Typing typing(tables_.get());
     QTextEdit::keyPressEvent(event);
+}
+
+void EditorWidget::inputMethodEvent(QInputMethodEvent* event) {
+    const TableEmbedder::Typing typing(tables_.get());
+    QTextEdit::inputMethodEvent(event);
+}
+
+void EditorWidget::insertFromMimeData(const QMimeData* source) {
+    const TableEmbedder::Typing typing(tables_.get());
+    QTextEdit::insertFromMimeData(source);
 }
 
 void EditorWidget::paintCodeBlockPanels() {

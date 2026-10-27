@@ -501,6 +501,22 @@ private slots:
         QVERIFY(f.editor()->hasFocus());
     }
 
+    // Only typing in the editor holds a table: a change made otherwise (loading in slices, the
+    // table view, undo from elsewhere) while the editor has the focus keeps the table view.
+    void changesThatAreNotTypingKeepTheTableView() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("other.md"), "text\n\n| A |\n| --- |\n| 1 |\n\nend\n")));
+        f.settle();
+        f.editor()->setFocus();
+        f.placeCaret(0, 0);
+        QTextCursor row(f.editor()->document()->findBlockByNumber(4));
+        row.movePosition(QTextCursor::EndOfBlock);
+        row.insertText(QStringLiteral(" x |"));
+        f.settle();
+        QCOMPARE(text(f), QStringLiteral("text\n\n| A |\n| --- |\n| 1 | x |\n\nend\n"));
+        QVERIFY(f.editor()->tableViewAt(2) != nullptr);
+    }
+
     // Daniel's recording: the view was narrower than its columns and scrolled horizontally. The
     // header's minimum section size widened narrow columns beyond what the view was sized for.
     void theTableIsAsWideAsItsColumns() {
@@ -534,7 +550,7 @@ private slots:
         QVERIFY(editor != nullptr);
         QCOMPARE(editor->textCursor().position(), 0);  // where clicked, not at the end
         typeAsUser(QStringLiteral("x"));
-        test::keyClick(QApplication::focusWidget(), Qt::Key_Return);
+        test::keyClick(QApplication::focusWidget(), Qt::Key_Backtab);  // Enter would add a row
         f.settle();
         QCOMPARE(text(f), QStringLiteral("| Name |\n| --- |\n| xAlice |\n"));
     }

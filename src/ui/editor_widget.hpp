@@ -15,6 +15,7 @@
 #include <memory>
 #include <optional>
 
+class QMimeData;
 class QPainter;
 
 class QTableView;
@@ -52,6 +53,8 @@ protected:
     void resizeEvent(QResizeEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
+    void inputMethodEvent(QInputMethodEvent* event) override;
+    void insertFromMimeData(const QMimeData* source) override;
     void scrollContentsBy(int dx, int dy) override;
 
 private:

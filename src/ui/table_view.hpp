@@ -9,9 +9,9 @@
 #include <QSizeF>
 #include <QStyledItemDelegate>
 #include <QTableView>
+#include <QToolButton>
 
 class QTextDocument;
-class QToolButton;
 
 namespace hitokoto::ui {
 
@@ -64,6 +64,26 @@ private:
     mutable QHash<QString, QSizeF> naturalCache_;
 };
 
+/// An add (`+`) or delete (`−`) control along a table edge, drawn in the table's header colours
+/// as before the revision of S018: a rounded bar with the sign in its middle.
+class TableControl : public QToolButton {
+    Q_OBJECT
+public:
+    TableControl(bool plus, QWidget* parent);
+    void setColors(const QColor& background, const QColor& border, const QColor& sign, qreal borderWidth, qreal radius);
+
+protected:
+    void paintEvent(QPaintEvent* event) override;
+
+private:
+    bool plus_;
+    QColor background_;
+    QColor border_;
+    QColor sign_;
+    qreal borderWidth_ = 1;
+    qreal radius_ = 0;
+};
+
 /// One table. Signals ask the embedder to change the document or leave the table.
 class TableView : public QTableView {
     Q_OBJECT
@@ -88,6 +108,8 @@ signals:
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
+    /// One click opens the cell's editor with the caret where clicked.
+    void mousePressEvent(QMouseEvent* event) override;
     QModelIndex moveCursor(CursorAction cursorAction, Qt::KeyboardModifiers modifiers) override;
 
 private:
@@ -123,11 +145,12 @@ private:
 
     TableModel* model_;
     TableView* view_;
-    QToolButton* addRow_;
-    QToolButton* addColumn_;
-    QToolButton* deleteRow_;
-    QToolButton* deleteColumn_;
-    int gutter_ = 22;
+    TableControl* addRow_;
+    TableControl* addColumn_;
+    TableControl* deleteRow_;
+    TableControl* deleteColumn_;
+    int thickness_ = 14;  ///< of the controls, from the editor font
+    int gutter_ = 18;     ///< thickness_ plus the gaps around it
     int hoverRow_ = -1;
     int hoverColumn_ = -1;
 };

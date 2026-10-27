@@ -7,6 +7,7 @@
 
 #include <QAbstractTextDocumentLayout>
 #include <QAction>
+#include <QApplication>
 #include <QEvent>
 #include <QHeaderView>
 #include <QKeyEvent>
@@ -187,13 +188,17 @@ TableView::TableView(QWidget* parent) : QTableView(parent), delegate_(new TableD
     setItemDelegate(delegate_);
     horizontalHeader()->hide();
     verticalHeader()->hide();
+    // The headers' minimum section size depends on font and style and would silently widen
+    // narrow columns and rows beyond what fit() computes (Daniel's recording, 2026-10-27).
+    horizontalHeader()->setMinimumSectionSize(1);
+    verticalHeader()->setMinimumSectionSize(1);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setWordWrap(true);
     setTabKeyNavigation(true);
     setSelectionMode(QAbstractItemView::SingleSelection);
-    setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::SelectedClicked |
-                    QAbstractItemView::EditKeyPressed | QAbstractItemView::AnyKeyPressed);
+    // Clicks open the editor in mousePressEvent; keys edit the current cell.
+    setEditTriggers(QAbstractItemView::EditKeyPressed | QAbstractItemView::AnyKeyPressed);
     connect(delegate_, &TableDelegate::editorEnterPressed, this, &TableView::handleEnter);
 
     setContextMenuPolicy(Qt::ActionsContextMenu);
@@ -218,6 +223,7 @@ void TableView::fit(int width) {
         return;
     }
     const int grid = showGrid() ? 1 : 0;
+    ensurePolished();  // the theme's border (style sheet) sets the frame width
     const int frame = 2 * frameWidth();
     std::vector<qreal> widths(static_cast<std::size_t>(columns), 24.0);
     for (int r = 0; r < rows; ++r) {
@@ -249,9 +255,8 @@ void TableView::fit(int width) {
     }
     int viewWidth = frame;
     for (int c = 0; c < columns; ++c) {
-        const int w = static_cast<int>(std::ceil(widths[static_cast<std::size_t>(c)])) + grid;
-        setColumnWidth(c, w);
-        viewWidth += w;
+        setColumnWidth(c, static_cast<int>(std::ceil(widths[static_cast<std::size_t>(c)])) + grid);
+        viewWidth += columnWidth(c);  // as the header applied it
     }
     int viewHeight = frame;
     for (int r = 0; r < rows; ++r) {
@@ -259,9 +264,8 @@ void TableView::fit(int width) {
         for (int c = 0; c < columns; ++c) {
             h = std::max(h, delegate_->heightAt(m->index(r, c), columnWidth(c) - grid));
         }
-        const int rowHeight = static_cast<int>(std::ceil(h)) + grid;
-        setRowHeight(r, rowHeight);
-        viewHeight += rowHeight;
+        setRowHeight(r, static_cast<int>(std::ceil(h)) + grid);
+        viewHeight += rowHeight(r);
     }
     setFixedSize(viewWidth, viewHeight);
 }
@@ -327,6 +331,21 @@ void TableView::handleEnter() {
     }
 }
 
+void TableView::mousePressEvent(QMouseEvent* event) {
+    QTableView::mousePressEvent(event);
+    const QPoint position = event->position().toPoint();
+    const QModelIndex index = indexAt(position);
+    if (event->button() != Qt::LeftButton || event->modifiers() != Qt::NoModifier || !index.isValid()) {
+        return;
+    }
+    setCurrentIndex(index);
+    edit(index);
+    if (auto* editor = qobject_cast<CellEditor*>(QApplication::focusWidget());
+        editor != nullptr && editor->parentWidget() == viewport()) {
+        editor->setTextCursor(editor->cursorForPosition(editor->viewport()->mapFrom(viewport(), position)));
+    }
+}
+
 QModelIndex TableView::moveCursor(CursorAction cursorAction, Qt::KeyboardModifiers modifiers) {
     QAbstractItemModel* m = model();
     const QModelIndex current = currentIndex();
@@ -340,25 +359,58 @@ QModelIndex TableView::moveCursor(CursorAction cursorAction, Qt::KeyboardModifie
     return QTableView::moveCursor(cursorAction, modifiers);
 }
 
+// --- TableControl -----------------------------------------------------------------------------
+
+TableControl::TableControl(bool plus, QWidget* parent) : QToolButton(parent), plus_(plus) {}
+
+void TableControl::setColors(const QColor& background, const QColor& border, const QColor& sign, qreal borderWidth,
+                             qreal radius) {
+    background_ = background;
+    border_ = border;
+    sign_ = sign;
+    borderWidth_ = std::max<qreal>(1.0, borderWidth);
+    radius_ = radius;
+    update();
+}
+
+void TableControl::paintEvent(QPaintEvent* /*event*/) {
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing);
+    const QRectF box =
+        QRectF(rect()).adjusted(borderWidth_ / 2, borderWidth_ / 2, -borderWidth_ / 2, -borderWidth_ / 2);
+    const qreal radius = std::min<qreal>(radius_, std::min(box.width(), box.height()) / 2.0);
+    painter.setPen(QPen(border_, borderWidth_));
+    painter.setBrush(underMouse() ? background_.lighter(115) : background_);
+    painter.drawRoundedRect(box, radius, radius);
+
+    // The sign as the table controls drew it before the revision of S018.
+    const QPointF c = box.center();
+    const qreal arm = std::min({box.width(), box.height(), 12.0}) * 0.28;
+    painter.setPen(QPen(sign_, 1.5));
+    painter.drawLine(QPointF(c.x() - arm, c.y()), QPointF(c.x() + arm, c.y()));
+    if (plus_) {
+        painter.drawLine(QPointF(c.x(), c.y() - arm), QPointF(c.x(), c.y() + arm));
+    }
+}
+
 // --- TableWidget ------------------------------------------------------------------------------
 
 TableWidget::TableWidget(TableModel* model, QWidget* parent)
     : QWidget(parent),
       model_(model),
       view_(new TableView(this)),
-      addRow_(new QToolButton(this)),
-      addColumn_(new QToolButton(this)),
-      deleteRow_(new QToolButton(this)),
-      deleteColumn_(new QToolButton(this)) {
+      addRow_(new TableControl(true, this)),
+      addColumn_(new TableControl(true, this)),
+      deleteRow_(new TableControl(false, this)),
+      deleteColumn_(new TableControl(false, this)) {
     model_->setParent(this);
     view_->setModel(model_);
     const auto setUp = [](QToolButton* button, const char* name, const QString& text, const QString& tip) {
         button->setObjectName(QString::fromLatin1(name));
         button->setText(text);
         button->setToolTip(tip);
-        button->setAutoRaise(true);
         button->setFocusPolicy(Qt::NoFocus);
-        button->setFixedSize(18, 18);
+        button->setCursor(Qt::PointingHandCursor);
         button->hide();
     };
     setUp(addRow_, "tableAddRow", QStringLiteral("+"), tr("Add Row"));
@@ -387,6 +439,13 @@ TableWidget::TableWidget(TableModel* model, QWidget* parent)
 void TableWidget::applyStyle(const EditorFormats& formats) {
     const core::TableStyle& style = formats.table();
     model_->setFormats(&formats);
+    // As before the revision: 1.3 times the editor font, between 14 and 22 pixels.
+    thickness_ = static_cast<int>(std::clamp(formats.baseFont().pointSizeF() * 1.3, 14.0, 22.0));
+    gutter_ = thickness_ + 4;
+    for (TableControl* control : {addRow_, addColumn_, deleteRow_, deleteColumn_}) {
+        control->setColors(toQColor(style.headerBackground), toQColor(style.border), toQColor(style.headerText),
+                           style.borderWidth, style.radius);
+    }
     view_->tableDelegate()->setPadding(style.padding);
     view_->setStyleSheet(
         QStringLiteral("QTableView { background: %1; gridline-color: %2; border: %3px solid %2; "
@@ -421,39 +480,50 @@ void TableWidget::hideControls() {
 }
 
 void TableWidget::updateHover(QPoint position) {
-    // Controls appear only while the pointer is near the edge they act on (S018).
-    constexpr int kReach = 6;
+    // Each control shows only while the pointer is near the edge it acts on, and runs along that
+    // edge (S018; the zones as before the revision).
     const QRect v = view_->geometry();
     const int frame = view_->frameWidth();
-    const QPoint inView = position - v.topLeft() - QPoint(frame, frame);
-    const bool insideX = position.x() >= v.left() && position.x() <= v.right();
-    const bool insideY = position.y() >= v.top() && position.y() <= v.bottom();
+    const QPoint origin = v.topLeft() + QPoint(frame, frame);  // of the cells
+    constexpr int kGap = 2;
 
-    const bool nearBottom = insideX && position.y() >= v.bottom() - kReach && position.y() <= height();
-    addRow_->setVisible(nearBottom);
-    if (nearBottom) {
-        addRow_->move(v.center().x() - addRow_->width() / 2, v.bottom() + 2);
+    const QRect addRow(v.left(), v.bottom() + 1 + kGap, v.width(), thickness_);
+    const bool showAddRow = addRow.adjusted(-8, -10, 8, 4).contains(position);
+    addRow_->setGeometry(addRow);
+    addRow_->setVisible(showAddRow);
+
+    const QRect addColumn(v.right() + 1 + kGap, v.top(), thickness_, v.height());
+    const bool showAddColumn = addColumn.adjusted(-10, -8, 12, 8).contains(position);
+    addColumn_->setGeometry(addColumn);
+    addColumn_->setVisible(showAddColumn);
+
+    hoverRow_ = -1;
+    const int row = view_->rowAt(position.y() - origin.y());
+    if (row > 0) {
+        const QRect cell = view_->visualRect(model_->index(row, 0)).translated(origin);
+        const QRect button(v.left() - kGap - thickness_, cell.top(), thickness_, cell.height());
+        const QRect zone(button.left() - 8, cell.top(),
+                         cell.left() + std::min(24, cell.width() / 2) - button.left() + 8, cell.height());
+        if (zone.contains(position)) {
+            hoverRow_ = row;
+            deleteRow_->setGeometry(button);
+        }
     }
-    const bool nearRight = insideY && position.x() >= v.right() - kReach && position.x() <= width();
-    addColumn_->setVisible(nearRight);
-    if (nearRight) {
-        addColumn_->move(v.right() + 2, v.center().y() - addColumn_->height() / 2);
-    }
-    hoverRow_ = position.x() <= v.left() + kReach && insideY ? view_->rowAt(inView.y()) : -1;
     deleteRow_->setVisible(hoverRow_ > 0);
-    if (hoverRow_ > 0) {
-        deleteRow_->move(v.left() - deleteRow_->width() - 2, v.top() + frame + view_->rowViewportPosition(hoverRow_) +
-                                                                 view_->rowHeight(hoverRow_) / 2 -
-                                                                 deleteRow_->height() / 2);
+
+    hoverColumn_ = -1;
+    const int column = view_->columnAt(position.x() - origin.x());
+    if (column >= 0 && model_->columnCount() > 1) {
+        const QRect cell = view_->visualRect(model_->index(0, column)).translated(origin);
+        const QRect button(cell.left(), v.top() - kGap - thickness_, cell.width(), thickness_);
+        const QRect zone(cell.left(), button.top() - 4, cell.width(),
+                         cell.top() + std::min(14, cell.height() * 45 / 100) - button.top() + 4);
+        if (zone.contains(position)) {
+            hoverColumn_ = column;
+            deleteColumn_->setGeometry(button);
+        }
     }
-    const int columns = model_->columnCount();
-    hoverColumn_ = position.y() <= v.top() + kReach && insideX && columns > 1 ? view_->columnAt(inView.x()) : -1;
     deleteColumn_->setVisible(hoverColumn_ >= 0);
-    if (hoverColumn_ >= 0) {
-        deleteColumn_->move(v.left() + frame + view_->columnViewportPosition(hoverColumn_) +
-                                view_->columnWidth(hoverColumn_) / 2 - deleteColumn_->width() / 2,
-                            v.top() - deleteColumn_->height() - 2);
-    }
 }
 
 }  // namespace hitokoto::ui

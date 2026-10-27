@@ -35,6 +35,22 @@ public:
     void refresh();
     /// refresh() once the event loop runs again (after document changes).
     void scheduleRefresh();
+    /// A change to the document: typing in the editor keeps a table that the typed line belongs
+    /// to as Markdown lines until the caret leaves that line (S018, "typing a table").
+    void documentChanged(int position, int charsRemoved, int charsAdded);
+
+    /// Marks changes as typed in the editor (keys, input method, paste) while it exists; loading
+    /// a file or the table view's own changes are not typing.
+    class Typing {
+    public:
+        explicit Typing(TableEmbedder* embedder) : embedder_(embedder) { ++embedder_->typingDepth_; }
+        ~Typing() { --embedder_->typingDepth_; }
+        Typing(const Typing&) = delete;
+        Typing& operator=(const Typing&) = delete;
+
+    private:
+        TableEmbedder* embedder_;
+    };
     /// Moves the widgets to their lines (after scrolling or layout changes).
     void reposition();
     /// Up/Down from the lines next to a table enter it; Ctrl+Shift+M on a table line in the source
@@ -48,6 +64,7 @@ private:
         QTextBlock header;
         QTextBlock last;
         bool source = false;
+        bool held = false;               ///< shows its lines while the caret is in a line typed in the editor
         TableWidget* widget = nullptr;   ///< owned by the table; deleted in release()
         std::vector<QTextBlock> hidden;  ///< lines this table hides
         quint64 signature = 0;           ///< of the lines and width the widget was fitted to
@@ -83,6 +100,8 @@ private:
     const EditorFormats* formats_ = nullptr;
     int availableWidth_ = 400;
     std::vector<Table> tables_;
+    int typingDepth_ = 0;
+    QTextBlock typing_;  ///< the line the editor's caret types in; invalid once it leaves
     bool refreshPending_ = false;
     bool refreshing_ = false;
 };

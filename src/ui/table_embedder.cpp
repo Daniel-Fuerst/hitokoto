@@ -129,6 +129,15 @@ void TableEmbedder::scheduleRefresh() {
         Qt::QueuedConnection);
 }
 
+void TableEmbedder::documentChanged(int position, int /*charsRemoved*/, int charsAdded) {
+    // Only typing in the editor holds a table; loading, restyling and the table view's own
+    // changes do not.
+    if (typingDepth_ > 0 && !styler_->isBusy()) {
+        typing_ = editor_->document()->findBlock(position + charsAdded);
+    }
+    scheduleRefresh();
+}
+
 void TableEmbedder::refresh() {
     if (refreshing_ || formats_ == nullptr) {
         return;
@@ -189,10 +198,16 @@ void TableEmbedder::refresh() {
         }
     }
     tables_ = std::move(next);
+    const int typing = typing_.isValid() ? typing_.blockNumber() : -1;
     for (Table& table : tables_) {
+        table.held = table.header.isValid() && table.last.isValid() && typing >= table.header.blockNumber() &&
+                     typing <= table.last.blockNumber();
         apply(table);
     }
     refreshing_ = false;
+    if (editor_->hasFocus()) {
+        caretMoved();  // the caret may now be on lines a table view stands for
+    }
 }
 
 void TableEmbedder::release(Table& table) {
@@ -265,7 +280,7 @@ void TableEmbedder::apply(Table& table) {
         release(table);
         return;
     }
-    if (table.source) {
+    if (table.source || table.held) {
         release(table);
         return;
     }
@@ -385,6 +400,10 @@ bool TableEmbedder::handleEditorKey(QKeyEvent* event) {
 
 void TableEmbedder::caretMoved() {
     const QTextCursor cursor = editor_->textCursor();
+    if (typing_.isValid() && cursor.block() != typing_) {
+        typing_ = QTextBlock();  // left the typed line: a table held for it appears
+        scheduleRefresh();
+    }
     if (cursor.hasSelection()) {
         return;
     }
