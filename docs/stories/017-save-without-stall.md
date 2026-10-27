@@ -87,9 +87,11 @@ Implemented 2026-10-26 on branch `agents/s017-save-without-stall`. CI review run
 green on Linux (Qt 6.12 and 6.8), Windows (Qt 6.8.3) and macOS (Qt 6.12): longest UI stall
 while saving 10 MB 3.0 / 2.2 / 3.3 ms (baselines from CI run #18: 6.3 / 36.4 / 23.7 ms as the
 duration of the save() call), file on disk after 159 / 190 / 190 ms. The baselines in
-`bench/baselines/` come from that run. Next: a user check that typing during a save feels
-seamless on real hardware (S011), and S007's remaining work (read-only while loading, the
-styler's catch-up after typing).
+`bench/baselines/` come from that run. Code review of 2026-10-27
+(`docs/reviews/017-save-without-stall-code.md`): a pending copy is now written when the window
+closes or another document replaces this one, never dropped. Next: a user check that typing
+during a save feels seamless on real hardware (S011), and S007's remaining work (read-only while
+loading, the styler's catch-up after typing).
 
 ## Tests
 

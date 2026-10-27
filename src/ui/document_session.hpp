@@ -101,6 +101,8 @@ private:
     bool copyBlocks(bool allAtOnce);
     void copySlice();
     [[nodiscard]] Snapshot takeSnapshot();
+    /// Completes a running copy in one go and hands it to the worker thread (nothing if none runs).
+    void finishCopy();
     void cancelCopy();
     void onContentsChange(int position, int charsRemoved, int charsAdded);
     void startWrite(Snapshot s, const QString& path);
