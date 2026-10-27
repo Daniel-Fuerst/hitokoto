@@ -62,7 +62,9 @@ public:
     /// Up/Down from the lines next to a table enter it; Ctrl+Shift+M on a table line in the source
     /// view shows the table again. Returns true if the key was handled.
     bool handleEditorKey(QKeyEvent* event);
-    /// A collapsed caret that lands on hidden table lines moves into the table view.
+    /// A collapsed caret that lands on hidden table lines moves into the table view; on the hidden
+    /// blank line below a table it moves to the line after it (S018, "the blank line below a
+    /// table").
     void caretMoved();
     /// A click in the editor above a table that starts the document or below one that ends it
     /// adds a line there for the caret. Returns true if the click was handled.
@@ -88,6 +90,15 @@ private:
     [[nodiscard]] const Table* tableAt(int blockNumber) const;
     [[nodiscard]] Table* tableOf(const TableWidget* widget);
     [[nodiscard]] QTextBlock lastLineOf(const QTextBlock& header) const;
+    /// The table view is showing the table.
+    [[nodiscard]] static bool shows(const Table& table);
+    /// The blank line directly below the table, if there is one.
+    [[nodiscard]] static QTextBlock separatorOf(const Table& table);
+    /// The table whose blank line below it is `block`, while its view shows it.
+    [[nodiscard]] Table* tableAbove(const QTextBlock& block);
+    /// The blank line below the table if it is to be hidden now: the view shows the table and the
+    /// caret is not on that line.
+    [[nodiscard]] QTextBlock hiddenSeparatorOf(const Table& table) const;
     [[nodiscard]] quint64 signatureOf(const Table& table) const;
     void apply(Table& table);
     void release(Table& table);
@@ -127,6 +138,7 @@ private:
     int typingDepth_ = 0;
     bool leaving_ = false;  ///< moving the caret out of a table: caretMoved() lets it
     QTextBlock typing_;     ///< the line the editor's caret types in; invalid once it leaves
+    QTextBlock revealed_;   ///< a blank line below a table shown because the caret is on it
     bool refreshPending_ = false;
     bool refreshing_ = false;
 };

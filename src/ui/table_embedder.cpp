@@ -94,6 +94,36 @@ QTextBlock TableEmbedder::lastLineOf(const QTextBlock& header) const {
     return last;
 }
 
+bool TableEmbedder::shows(const Table& table) {
+    return !table.stale && table.widget != nullptr && !table.source && !table.held;
+}
+
+QTextBlock TableEmbedder::separatorOf(const Table& table) {
+    if (table.stale || !table.last.isValid()) {
+        return {};
+    }
+    const QTextBlock next = table.last.next();
+    return next.isValid() && next.text().trimmed().isEmpty() ? next : QTextBlock();
+}
+
+TableEmbedder::Table* TableEmbedder::tableAbove(const QTextBlock& block) {
+    if (!block.isValid() || !block.previous().isValid()) {
+        return nullptr;
+    }
+    Table* table = tableAt(block.previous().blockNumber());
+    return table != nullptr && shows(*table) && table->last == block.previous() && separatorOf(*table) == block
+               ? table
+               : nullptr;
+}
+
+QTextBlock TableEmbedder::hiddenSeparatorOf(const Table& table) const {
+    // GFM needs the blank line before text that is not a row; it is syntax, hidden like the
+    // table's other lines (S018). The caret is on it only where no line follows it or right
+    // after typing the table, and then it shows.
+    const QTextBlock separator = shows(table) ? separatorOf(table) : QTextBlock();
+    return separator.isValid() && separator != editor_->textCursor().block() ? separator : QTextBlock();
+}
+
 // --- finding and showing tables ---------------------------------------------------------------
 
 void TableEmbedder::setFormats(const EditorFormats* formats) {
@@ -157,6 +187,9 @@ void TableEmbedder::documentChanged(int position, int charsRemoved, int charsAdd
         }
         if (charsRemoved > 0 && typingDepth_ == 0) {
             typing_ = QTextBlock();  // may be gone
+        }
+        if (charsRemoved > 0) {
+            revealed_ = QTextBlock();
         }
     }
     if (typingDepth_ > 0 && !styler_->isBusy()) {
@@ -226,6 +259,11 @@ void TableEmbedder::sweep(int from, int to) {
         }
         for (int number = std::max(header + 1, from); number <= std::min(table.last.blockNumber(), to); ++number) {
             hidden[static_cast<std::size_t>(number - from)] = 1;
+        }
+        if (const QTextBlock separator = hiddenSeparatorOf(table); separator.isValid()) {
+            if (const int number = separator.blockNumber(); number >= from && number <= to) {
+                hidden[static_cast<std::size_t>(number - from)] = 1;
+            }
         }
     }
     QTextBlock block = editor_->document()->findBlockByNumber(from);
@@ -328,6 +366,7 @@ void TableEmbedder::release(Table& table) {
                 break;
             }
         }
+        layout_->setHidden(table.last.next(), false);  // the blank line below it
         layout_->setReservedHeight(table.header, 0);
     }
     if (table.widget != nullptr) {
@@ -419,6 +458,7 @@ void TableEmbedder::apply(Table& table) {
     }
     const quint64 signature = signatureOf(table);
     if (table.widget != nullptr && signature == table.signature) {
+        layout_->setHidden(hiddenSeparatorOf(table), true);
         reposition();
         return;
     }
@@ -435,6 +475,7 @@ void TableEmbedder::apply(Table& table) {
     table.widget->model()->setLines(table.header, table.last);
     table.widget->fit(availableWidth_);
     layout_->setReservedHeight(table.header, table.widget->height());
+    layout_->setHidden(hiddenSeparatorOf(table), true);
     table.widget->show();
     table.signature = signature;
     reposition();
@@ -490,7 +531,9 @@ bool TableEmbedder::handleEditorClick(QPoint position) {
             leaveAbove(table, false);
             return true;
         }
-        if (table.last == document->lastBlock() && position.y() > view.bottom()) {
+        const QTextBlock separator = separatorOf(table);
+        const QTextBlock end = separator.isValid() ? separator : table.last;
+        if (end == document->lastBlock() && position.y() > view.bottom()) {
             leaveBelow(table);
             return true;
         }
@@ -511,6 +554,18 @@ bool TableEmbedder::handleEditorKey(QKeyEvent* event) {
     }
     if (modifiers != Qt::NoModifier || cursor.hasSelection()) {
         return false;
+    }
+    if (Table* table = cursor.positionInBlock() == 0 ? tableAbove(block.previous()) : nullptr;
+        table != nullptr && (event->key() == Qt::Key_Left || event->key() == Qt::Key_Backspace)) {
+        // Into the last cell, over the hidden blank line; Backspace removes an empty line, as in
+        // any text, and never the blank line (S018, "the blank line below a table").
+        if (event->key() == Qt::Key_Backspace && block.text().isEmpty()) {
+            QTextCursor remove = cursor;
+            remove.deletePreviousChar();
+        }
+        const TableModel* model = table->widget->model();
+        focusCell(*table, model->rowCount() - 1, model->columnCount() - 1, true);
+        return true;
     }
     const QTextLayout* lines = block.layout();
     const QTextLine line = lines->lineForTextPosition(cursor.positionInBlock());
@@ -553,7 +608,22 @@ void TableEmbedder::caretMoved() {
         typing_ = QTextBlock();  // left the typed line: a table held for it appears
         scheduleRefresh();
     }
+    if (revealed_.isValid() && cursor.block() != revealed_) {
+        revealed_ = QTextBlock();
+        scheduleRefresh();  // hides the blank line below a table again
+    }
     if (cursor.hasSelection()) {
+        return;
+    }
+    if (tableAbove(cursor.block()) != nullptr) {
+        const QTextBlock separator = cursor.block();
+        if (separator == typing_ || !separator.next().isValid()) {
+            revealed_ = separator;
+            layout_->setHidden(separator, false);
+        } else {
+            const QScopedValueRollback<bool> leaving(leaving_, true);
+            editor_->setTextCursor(QTextCursor(separator.next()));
+        }
         return;
     }
     Table* table = tableAt(cursor.blockNumber());
@@ -586,11 +656,17 @@ void TableEmbedder::leaveAbove(Table& table, bool atEnd) {
 }
 
 void TableEmbedder::leaveDown(Table& table) {
-    const QTextBlock below = table.last.next();
+    // Over the hidden blank line below the table to the line after it.
+    const QTextBlock separator = hiddenSeparatorOf(table);
+    const QTextBlock below = separator.isValid() && separator.next().isValid() ? separator.next() : table.last.next();
     if (!below.isValid()) {
         return;
     }
     const QScopedValueRollback<bool> leaving(leaving_, true);
+    if (below == separatorOf(table)) {
+        revealed_ = below;  // no line follows it: the caret shows on it
+        layout_->setHidden(below, false);
+    }
     editor_->setFocus();
     editor_->setTextCursor(QTextCursor(below));
 }
@@ -610,7 +686,7 @@ void TableEmbedder::leaveBelow(Table& table) {
             cursor.setPosition(table.last.position() + table.last.length() - 1);
             cursor.insertText(QStringLiteral("\n\n"));
         } else {
-            cursor.setPosition(next.position());
+            cursor.setPosition(next.position() + next.length() - 1);  // after it: it may be hidden
             cursor.insertText(QStringLiteral("\n"));
         }
         cursor.endEditBlock();
