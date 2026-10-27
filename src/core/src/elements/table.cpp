@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S017: GitHub Flavored Markdown pipe tables (GFM 4.10, ADR 0005).
+// S018: GitHub Flavored Markdown pipe tables (GFM 4.10, ADR 0005).
 // Pipe delimiters, escaped-pipe backslashes and the delimiter row are always concealed.
 #include "hitokoto/core/markdown.hpp"
 

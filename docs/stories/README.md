@@ -29,7 +29,7 @@ story ID (see "Conventions").
 | 16 | [S015](015-inline-code.md) | Inline Markdown code spans | S014 | S | In review |
 | 17 | [S016](016-application-icon.md) | Show the application icon in the taskbar or dock | S000 | S | In progress |
 | 18 | [S017](017-save-without-stall.md) | Saving never stalls the UI (follow-up of S007) | S004, S007 | M | In review |
-| 18 | [S017](017-tables.md) | Interactive Markdown pipe tables | S015 | L | In review |
+| 19 | [S018](018-tables.md) | Interactive Markdown pipe tables | S015 | L | In review |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 

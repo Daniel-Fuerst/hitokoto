@@ -1,7 +1,9 @@
-# S017 — Markdown tables
+# S018 — Markdown tables
 
-- **Status:** In review · **Order:** 18 · **Depends on:** S015
+- **Status:** In review · **Order:** 19 · **Depends on:** S015
 - **Basis:** User request and confirmation on 2026-10-26; ADR 0005.
+- **Renumbered:** from S017 on 2026-10-27, because S017 is "Saving never stalls the UI" on main.
+  Commits 8130875 and a3def18 still say S017.
 
 ## Story
 
@@ -96,10 +98,10 @@ document remains plain GFM Markdown.
 
 ## Tests
 
-- Core: `S017_Tables` verifies table recognition, 1-line header lookahead, delimiter alignments,
+- Core: `S018_Tables` verifies table recognition, 1-line header lookahead, delimiter alignments,
   cell spans, escaped pipes, pipes inside inline code, per-cell inline formatting, row/column
   manipulation helpers, and `[table]` theme token parsing and fallbacks.
-- UI: `tst_s017_tables` verifies permanent concealment of table syntax even when focused, column
+- UI: `tst_s018_tables` verifies permanent concealment of table syntax even when focused, column
   width alignment and left/centre/right cell alignment, cell typing and pipe-protected deletion,
   `Tab`/`Shift+Tab`/`Enter`/arrow navigation, hover-only reveal and clicking of the graphical
   add-row/add-column (`+`) and delete-row/delete-column (`−`) buttons, keyboard row and column

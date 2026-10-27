@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S017: interactive Markdown pipe tables (ADR 0005).
+// S018: interactive Markdown pipe tables (ADR 0005).
 #include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/theme.hpp"
 
@@ -31,7 +31,7 @@ std::vector<Span> hiddenSpans(const LineRender& render) {
 }
 }  // namespace
 
-TEST(S017_Tables, RecognizesHeaderDelimiterAndBodyRowsAndAlwaysConcealsSyntax) {
+TEST(S018_Tables, RecognizesHeaderDelimiterAndBodyRowsAndAlwaysConcealsSyntax) {
     const std::u16string_view headerLine = u"| Name | Score | Rank |";
     const std::u16string_view delimLine = u"| :--- | :---: | ---: |";
     const std::u16string_view bodyLine = u"| Alice | 95 | 1 |";
@@ -82,7 +82,7 @@ TEST(S017_Tables, RecognizesHeaderDelimiterAndBodyRowsAndAlwaysConcealsSyntax) {
     }
 }
 
-TEST(S017_Tables, PipeLinesWithoutMatchingDelimiterStayLiteral) {
+TEST(S018_Tables, PipeLinesWithoutMatchingDelimiterStayLiteral) {
     // No next line, or next line is not a delimiter row, or column counts differ.
     for (const auto next : {std::u16string_view{}, std::u16string_view{u"plain text"}, std::u16string_view{u"| --- |"},
                             std::u16string_view{u"| --- | --- | --- |"}, std::u16string_view{u"| :: | --- |"}}) {
@@ -93,7 +93,7 @@ TEST(S017_Tables, PipeLinesWithoutMatchingDelimiterStayLiteral) {
     }
 }
 
-TEST(S017_Tables, TableEndsAtBlankLineOrBlockElement) {
+TEST(S018_Tables, TableEndsAtBlankLineOrBlockElement) {
     const auto header = show(u"| A | B |", {}, false, u"| --- | --- |");
     const auto delim = show(u"| --- | --- |", header.blockState);
     const auto body = show(u"| 1 | 2 |", delim.blockState);
@@ -112,7 +112,7 @@ TEST(S017_Tables, TableEndsAtBlankLineOrBlockElement) {
     EXPECT_TRUE(fence.codeBlock);
 }
 
-TEST(S017_Tables, EscapedPipesAndInlineCodePipesDoNotSplitCells) {
+TEST(S018_Tables, EscapedPipesAndInlineCodePipesDoNotSplitCells) {
     const std::u16string_view headerLine = u"| Expr | Code |";
     const std::u16string_view delimLine = u"| --- | --- |";
     const std::u16string_view bodyLine = u"| a \\| b | `x | y` |";
@@ -134,7 +134,7 @@ TEST(S017_Tables, EscapedPipesAndInlineCodePipesDoNotSplitCells) {
         << "backslash of escaped pipe is concealed";
 }
 
-TEST(S017_Tables, InlineEmphasisIsParsedPerCellAndDoesNotBleedAcrossPipes) {
+TEST(S018_Tables, InlineEmphasisIsParsedPerCellAndDoesNotBleedAcrossPipes) {
     const auto header = show(u"| A | B |", {}, false, u"| --- | --- |");
     const auto delim = show(u"| --- | --- |", header.blockState);
 
@@ -150,7 +150,7 @@ TEST(S017_Tables, InlineEmphasisIsParsedPerCellAndDoesNotBleedAcrossPipes) {
     EXPECT_EQ(within.inlineStyles[1], (InlineStyleRun{{14, 6}, InlineStyle::Italic}));
 }
 
-TEST(S017_Tables, EmptyCellsAndRowColumnManipulationHelpers) {
+TEST(S018_Tables, EmptyCellsAndRowColumnManipulationHelpers) {
     EXPECT_EQ(makeEmptyTableRow(1), u"|  |");
     EXPECT_EQ(makeEmptyTableRow(3), u"|  |  |  |");
 
@@ -170,7 +170,7 @@ TEST(S017_Tables, EmptyCellsAndRowColumnManipulationHelpers) {
     EXPECT_EQ(padTableRowCells(u"| 1 |", 3), u"| 1 |  |  |");
 }
 
-TEST(S017_Tables, BlockStateAfterMatchesRender) {
+TEST(S018_Tables, BlockStateAfterMatchesRender) {
     const std::u16string_view lines[] = {u"before", u"| A | B |", u"| --- | :---: |", u"| 1 | 2 |", u"", u"after"};
     BlockState state;
     for (std::size_t i = 0; i < std::size(lines); ++i) {
@@ -183,7 +183,7 @@ TEST(S017_Tables, BlockStateAfterMatchesRender) {
     }
 }
 
-TEST(S017_Tables, ThemeTokensAreParsedAndFallBackToGeneralTokens) {
+TEST(S018_Tables, ThemeTokensAreParsedAndFallBackToGeneralTokens) {
     const auto r = loadTheme(
         "[table]\n"
         "background = \"#010203\"\n"

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S017: interactive Markdown pipe tables (ADR 0005).
+// S018: interactive Markdown pipe tables (ADR 0005).
 #include "ui_test_support.hpp"
 
 using namespace hitokoto;
@@ -13,7 +13,7 @@ QColor pixel(ui::EditorWidget* editor, qreal x, qreal y) {
 }
 }  // namespace
 
-class tst_s017_tables : public QObject {
+class tst_s018_tables : public QObject {
     Q_OBJECT
 private slots:
     void rendersTableAndAlwaysConcealsSyntaxEvenWhenFocused() {
@@ -671,5 +671,5 @@ private slots:
     }
 };
 
-QTEST_MAIN(tst_s017_tables)
-#include "tst_s017_tables.moc"
+QTEST_MAIN(tst_s018_tables)
+#include "tst_s018_tables.moc"
