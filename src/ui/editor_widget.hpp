@@ -17,6 +17,8 @@
 
 class QPainter;
 
+class QTableView;
+
 namespace hitokoto::ui {
 
 class TableController;
@@ -30,6 +32,11 @@ public:
     void applyTheme(const core::Theme& theme);
 
     [[nodiscard]] BlockStyler& styler() noexcept { return *styler_; }
+    /// The table view showing the table whose lines include `blockNumber`; null if the line is not
+    /// in a table or the table shows its source (S018).
+    [[nodiscard]] QTableView* tableViewAt(int blockNumber) const;
+    /// Whether the table whose lines include `blockNumber` shows its Markdown lines (S018).
+    [[nodiscard]] bool isTableSourceShown(int blockNumber) const;
     /// The document layout (ADR 0003).
     [[nodiscard]] BlockLayout* blockLayout() const noexcept { return layout_; }
     [[nodiscard]] TableController* tableController() const noexcept { return tableController_.get(); }

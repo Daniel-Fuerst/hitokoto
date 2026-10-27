@@ -422,4 +422,25 @@ std::u16string padTableRowCells(std::u16string_view line, std::size_t columns) {
     return out;
 }
 
+// S018 revision: interface only (test first).
+std::vector<TableCell> tableRowCells(std::u16string_view /*line*/) {
+    return {};
+}
+
+std::optional<std::vector<TableAlign>> tableDelimiterAligns(std::u16string_view /*line*/) {
+    return std::nullopt;
+}
+
+std::u16string tableCellToText(std::u16string_view markdown) {
+    return std::u16string(markdown);
+}
+
+std::u16string tableCellFromText(std::u16string_view text) {
+    return std::u16string(text);
+}
+
+std::u16string replaceTableCell(std::u16string_view line, std::size_t /*column*/, std::u16string_view /*markdown*/) {
+    return std::u16string(line);
+}
+
 }  // namespace hitokoto::core

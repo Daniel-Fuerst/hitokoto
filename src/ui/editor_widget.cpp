@@ -62,6 +62,14 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
 
 EditorWidget::~EditorWidget() = default;
 
+QTableView* EditorWidget::tableViewAt(int /*blockNumber*/) const {
+    return nullptr;  // S018 revision: interface only (test first)
+}
+
+bool EditorWidget::isTableSourceShown(int /*blockNumber*/) const {
+    return false;
+}
+
 QRectF EditorWidget::blockBoundingGeometry(const QTextBlock& block) const {
     return layout_->blockBoundingRect(block);
 }

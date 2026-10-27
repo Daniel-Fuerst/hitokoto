@@ -278,5 +278,18 @@ std::unique_ptr<MultiLineElement> makeTableElement();
 [[nodiscard]] std::u16string removeTableColumn(std::u16string_view line, std::size_t column);
 /// Ensures a table header or body row has at least `columns` cells by appending empty ` |` cells.
 [[nodiscard]] std::u16string padTableRowCells(std::u16string_view line, std::size_t columns);
+/// Every cell of a table row under GFM rules (also cells beyond the header's column count). A line
+/// without a pipe is one cell.
+[[nodiscard]] std::vector<TableCell> tableRowCells(std::u16string_view line);
+/// The column alignments of a delimiter row, or nothing if `line` is not one.
+[[nodiscard]] std::optional<std::vector<TableAlign>> tableDelimiterAligns(std::u16string_view line);
+/// Cell Markdown as text to edit: `\|` becomes `|`, `<br>` (any spelling) a line break.
+[[nodiscard]] std::u16string tableCellToText(std::u16string_view markdown);
+/// Edited text as cell Markdown: `|` becomes `\|`, a line break `<br>`.
+[[nodiscard]] std::u16string tableCellFromText(std::u16string_view text);
+/// `line` with the content of cell `column` replaced by `markdown`; the rest stays byte for byte.
+/// A missing cell is added after the existing ones.
+[[nodiscard]] std::u16string replaceTableCell(std::u16string_view line, std::size_t column,
+                                              std::u16string_view markdown);
 
 }  // namespace hitokoto::core
