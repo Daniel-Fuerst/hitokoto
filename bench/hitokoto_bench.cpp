@@ -131,15 +131,22 @@ struct OpenTiming {
 };
 
 OpenTiming measureOpen(ui::MainWindow& w, const QString& path) {
-    QSignalSpy first(w.session(), &ui::DocumentSession::firstChunkShown);
     QSignalSpy done(w.session(), &ui::DocumentSession::loadFinished);
     QElapsedTimer t;
-    t.start();
     OpenTiming r;
+    // The first screen is painted and timed in the signal itself. Waiting for it with qWaitFor
+    // added the wait's own polling and the further slices of text that processEvents inserted in
+    // the meantime: 15-40 ms, and the share swung between runs (S018).
+    bool shown = false;
+    const QMetaObject::Connection first = QObject::connect(w.session(), &ui::DocumentSession::firstChunkShown, &w, [&] {
+        w.editor()->viewport()->repaint();
+        r.firstChunkMs = static_cast<double>(t.nsecsElapsed()) / 1e6;
+        shown = true;
+    });
+    t.start();
     w.openFile(path);
-    (void)QTest::qWaitFor([&] { return !first.isEmpty(); }, 120000);
-    w.editor()->viewport()->repaint();
-    r.firstChunkMs = static_cast<double>(t.nsecsElapsed()) / 1e6;
+    (void)QTest::qWaitFor([&] { return shown; }, 120000);
+    QObject::disconnect(first);
     (void)QTest::qWaitFor([&] { return !done.isEmpty(); }, 120000);
     r.loadedMs = static_cast<double>(t.nsecsElapsed()) / 1e6;
     (void)QTest::qWaitFor([&] { return w.editor()->styler().isComplete(); }, 120000);
