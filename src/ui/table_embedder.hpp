@@ -5,6 +5,7 @@
 #pragma once
 
 #include <QObject>
+#include <QPoint>
 #include <QTextBlock>
 
 #include <vector>
@@ -58,6 +59,9 @@ public:
     bool handleEditorKey(QKeyEvent* event);
     /// A collapsed caret that lands on hidden table lines moves into the table view.
     void caretMoved();
+    /// A click in the editor above a table that starts the document or below one that ends it
+    /// adds a line there for the caret. Returns true if the click was handled.
+    bool handleEditorClick(QPoint position);
 
 private:
     struct Table {
@@ -78,16 +82,20 @@ private:
     void apply(Table& table);
     void release(Table& table);
     TableWidget* createWidget();
-    void focusCell(Table& table, int row, int column);
+    void focusCell(Table& table, int row, int column, bool atEnd = false);
 
     // Changes to the Markdown lines; each is one undo step.
     void appendRow(Table& table, int column);
-    void deleteRow(Table& table, int row);
+    void deleteRow(Table& table, int row, bool preferPrevious);
     void addColumn(Table& table);
     void deleteColumn(Table& table, int column);
     void removeLastRowAndLeave(Table& table);
-    void leaveAbove(Table& table);
-    void leaveBelow(Table& table, bool addLine);
+    /// To the line above (`atEnd`: its end), adding one if the table starts the document.
+    void leaveAbove(Table& table, bool atEnd);
+    /// To the line below, if any.
+    void leaveDown(Table& table);
+    /// Below the table, adding lines at the end of the document (see the .cpp).
+    void leaveBelow(Table& table);
     /// From the table view: `rowOrBlock`/`columnOrPosition` are the current cell; from the source
     /// view: the caret's block number and position in its line.
     void toggleSource(Table& table, int rowOrBlock, int columnOrPosition);
@@ -101,7 +109,8 @@ private:
     int availableWidth_ = 400;
     std::vector<Table> tables_;
     int typingDepth_ = 0;
-    QTextBlock typing_;  ///< the line the editor's caret types in; invalid once it leaves
+    bool leaving_ = false;  ///< moving the caret out of a table: caretMoved() lets it
+    QTextBlock typing_;     ///< the line the editor's caret types in; invalid once it leaves
     bool refreshPending_ = false;
     bool refreshing_ = false;
 };

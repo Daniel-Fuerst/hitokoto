@@ -245,9 +245,11 @@ private slots:
         f.settle();
         QCOMPARE(text(f), QStringLiteral("| Key | Value |\n| --- | --- |\n|foo2\\|x<br>y|  p\\|q<br>r  |\n"));
 
-        // Undo in the document restores the previous lines.
-        f.editor()->document()->undo();
-        f.editor()->document()->undo();
+        // Undo in the document restores the previous lines, a keystroke at a time (S018, kept from
+        // the first version: no editing mode).
+        for (int i = 0; i < 20 && text(f) != QString::fromUtf8(markdown); ++i) {
+            f.editor()->document()->undo();
+        }
         f.settle();
         QCOMPARE(text(f), QString::fromUtf8(markdown));
     }
@@ -317,20 +319,22 @@ private slots:
         QTableView* view = f.editor()->tableViewAt(1);
         QVERIFY(view != nullptr);
 
+        // The caret is in the text of a cell then: its editor inside the view has the focus.
+        const auto inTable = [view] { return view->isAncestorOf(QApplication::focusWidget()); };
         f.editor()->setFocus();
         f.placeCaret(0, 2);
-        test::keyClick(f.editor(), Qt::Key_Down);
-        QTRY_VERIFY(view->hasFocus());
+        press(Qt::Key_Down);
+        QTRY_VERIFY(inTable());
         QCOMPARE(view->currentIndex().row(), 0);
-        test::keyClick(view, Qt::Key_Up);
+        press(Qt::Key_Up);
         QTRY_VERIFY(f.editor()->hasFocus());
         QCOMPARE(f.editor()->textCursor().blockNumber(), 0);
 
         f.placeCaret(5, 0);
-        test::keyClick(f.editor(), Qt::Key_Up);
-        QTRY_VERIFY(view->hasFocus());
+        press(Qt::Key_Up);
+        QTRY_VERIFY(inTable());
         QCOMPARE(view->currentIndex().row(), 2);
-        test::keyClick(view, Qt::Key_Down);
+        press(Qt::Key_Down);
         QTRY_VERIFY(f.editor()->hasFocus());
         QCOMPARE(f.editor()->textCursor().blockNumber(), 5);
         QCOMPARE(text(f), QString::fromUtf8(markdown));
@@ -1151,6 +1155,29 @@ private slots:
         press(Qt::Key_Home, Qt::ShiftModifier);
         QCOMPARE(focusedCell()->textCursor().selectedText(), QStringLiteral("Alice Smith"));
         QCOMPARE(text(f), QString::fromUtf8(markdown));
+    }
+
+    // The open cell keeps its column's alignment: the text does not jump when the caret enters.
+    void anOpenCellKeepsItsColumnsAlignment() {
+        constexpr auto markdown =
+            "| Name | Score |\n"
+            "| :---: | ---: |\n"
+            "| Alice | 95 |\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("align.md"), markdown)));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QPlainTextEdit* cell = clickCell(view, 1, 1);
+        QVERIFY(cell != nullptr);
+        press(Qt::Key_End);
+        const int width = cell->viewport()->width();
+        QVERIFY2(cell->cursorRect().right() >= width - 4,
+                 qPrintable(QStringLiteral("caret at %1 of %2").arg(cell->cursorRect().right()).arg(width)));
+        cell = clickCell(view, 1, 0);
+        press(Qt::Key_Home);
+        QVERIFY2(cell->cursorRect().left() > 4,
+                 qPrintable(QStringLiteral("caret at %1").arg(cell->cursorRect().left())));
     }
 
     // Daniel's emptyRowsCreatedWithEnterKeepFullRowAndCaretHeight: empty rows, also "|||" from a

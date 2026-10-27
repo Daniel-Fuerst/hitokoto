@@ -232,6 +232,11 @@ void EditorWidget::paintEvent(QPaintEvent* event) {
 }
 
 void EditorWidget::mousePressEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton && event->modifiers() == Qt::NoModifier &&
+        tables_->handleEditorClick(event->position().toPoint())) {
+        event->accept();  // S018: a line above or below a table at the document's edge
+        return;
+    }
     // S010: a click into a line whose markers are collapsed hits the concealed layout. The
     // character index is right, except left of the first visible character, where the hit
     // can land inside the collapsed marker; move it behind the marker.

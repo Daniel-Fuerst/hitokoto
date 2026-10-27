@@ -186,9 +186,9 @@ double measureTableOpen(ui::MainWindow& w, const QString& path) {
     return static_cast<double>(t.nsecsElapsed()) / 1e6;
 }
 
-/// S018: key-to-paint in a table cell. Opens the cell editor in the middle of the table and types;
-/// every 25th key is Tab, which writes the cell into the Markdown line and opens the next cell, so
-/// the samples include the document change, re-styling and re-fitting the view.
+/// S018: key-to-paint in a table cell. Puts the caret into a cell in the middle of the table and
+/// types; every keystroke writes the cell into its Markdown line, so each sample includes the
+/// document change, re-styling and re-fitting the view; every 25th key is Tab to the next cell.
 std::vector<double> measureTableTyping(ui::MainWindow& w, int keys) {
     ui::EditorWidget* e = w.editor();
     QTableView* view = e->tableViewAt(2);

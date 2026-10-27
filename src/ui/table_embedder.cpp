@@ -11,6 +11,7 @@
 
 #include <QKeyEvent>
 #include <QMetaObject>
+#include <QScopedValueRollback>
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QTextLayout>
@@ -241,13 +242,16 @@ TableWidget* TableEmbedder::createWidget() {
         };
     };
     connect(view, &TableView::appendRow, this, on([this](Table& t, int column) { appendRow(t, column); }));
-    connect(view, &TableView::deleteRow, this, on([this](Table& t, int row) { deleteRow(t, row); }));
+    connect(view, &TableView::deleteRow, this,
+            on([this](Table& t, int row, bool preferPrevious) { deleteRow(t, row, preferPrevious); }));
     connect(view, &TableView::addColumn, this, on([this](Table& t) { addColumn(t); }));
     connect(view, &TableView::deleteColumn, this, on([this](Table& t, int column) { deleteColumn(t, column); }));
     connect(view, &TableView::removeLastRowAndLeave, this, on([this](Table& t) { removeLastRowAndLeave(t); }));
-    connect(view, &TableView::leaveUp, this, on([this](Table& t, int /*column*/) { leaveAbove(t); }));
-    connect(view, &TableView::leaveDown, this, on([this](Table& t, int /*column*/) { leaveBelow(t, false); }));
-    connect(view, &TableView::leaveBelow, this, on([this](Table& t) { leaveBelow(t, true); }));
+    connect(view, &TableView::leaveAbove, this, on([this](Table& t, bool atEnd) { leaveAbove(t, atEnd); }));
+    connect(view, &TableView::leaveDown, this, on([this](Table& t) { leaveDown(t); }));
+    connect(view, &TableView::leaveBelow, this, on([this](Table& t) { leaveBelow(t); }));
+    connect(view, &TableView::undo, editor_, [this] { editor_->document()->undo(); });
+    connect(view, &TableView::redo, editor_, [this] { editor_->document()->redo(); });
     connect(view, &TableView::toggleSource, this, on([this, view](Table& t) {
                 const QModelIndex current = view->currentIndex();
                 toggleSource(t, std::max(current.row(), 0), std::max(current.column(), 0));
@@ -337,19 +341,38 @@ void TableEmbedder::update(Table& table) {
 
 // --- caret and focus --------------------------------------------------------------------------
 
-void TableEmbedder::focusCell(Table& table, int row, int column) {
+void TableEmbedder::focusCell(Table& table, int row, int column, bool atEnd) {
     if (table.widget == nullptr) {
         return;
     }
-    TableView* view = table.widget->view();
     TableModel* model = table.widget->model();
     if (model->rowCount() == 0 || model->columnCount() == 0) {
         return;
     }
-    row = std::clamp(row, 0, model->rowCount() - 1);
-    column = std::clamp(column, 0, model->columnCount() - 1);
-    view->setFocus();
-    view->setCurrentIndex(model->index(row, column));
+    table.widget->view()->enterCell(std::clamp(row, 0, model->rowCount() - 1),
+                                    std::clamp(column, 0, model->columnCount() - 1),
+                                    atEnd ? TableView::Caret::End : TableView::Caret::Start);
+}
+
+bool TableEmbedder::handleEditorClick(QPoint position) {
+    // A click above a table that starts the document or below one that ends it puts the caret
+    // on a new line there (S018, kept from the first version).
+    QTextDocument* document = editor_->document();
+    for (Table& table : tables_) {
+        if (table.widget == nullptr || table.source) {
+            continue;
+        }
+        const QRect view = table.widget->view()->geometry().translated(table.widget->pos());
+        if (table.header == document->firstBlock() && position.y() < view.top() - 4) {
+            leaveAbove(table, false);
+            return true;
+        }
+        if (table.last == document->lastBlock() && position.y() > view.bottom()) {
+            leaveBelow(table);
+            return true;
+        }
+    }
+    return false;
 }
 
 bool TableEmbedder::handleEditorKey(QKeyEvent* event) {
@@ -399,6 +422,9 @@ bool TableEmbedder::handleEditorKey(QKeyEvent* event) {
 }
 
 void TableEmbedder::caretMoved() {
+    if (leaving_) {
+        return;  // the caret is on its way out of a table
+    }
     const QTextCursor cursor = editor_->textCursor();
     if (typing_.isValid() && cursor.block() != typing_) {
         typing_ = QTextBlock();  // left the typed line: a table held for it appears
@@ -417,31 +443,55 @@ void TableEmbedder::caretMoved() {
     focusCell(*table, row, model->columnAt(row, cursor.positionInBlock()));
 }
 
-void TableEmbedder::leaveAbove(Table& table) {
+void TableEmbedder::leaveAbove(Table& table, bool atEnd) {
+    const QScopedValueRollback<bool> leaving(leaving_, true);
+    QTextCursor cursor = editor_->textCursor();
     const QTextBlock above = table.header.previous();
-    if (!above.isValid()) {
-        return;
+    if (above.isValid()) {
+        cursor.setPosition(atEnd ? above.position() + above.length() - 1 : above.position());
+    } else {
+        // The table starts the document: a line above it, apart from it by a blank line.
+        cursor.setPosition(0);
+        cursor.insertText(QStringLiteral("\n\n"));
+        cursor.setPosition(0);
     }
-    QTextCursor cursor(above);
-    cursor.movePosition(QTextCursor::EndOfBlock);
     editor_->setFocus();
     editor_->setTextCursor(cursor);
 }
 
-void TableEmbedder::leaveBelow(Table& table, bool addLine) {
-    QTextBlock below = table.last.next();
+void TableEmbedder::leaveDown(Table& table) {
+    const QTextBlock below = table.last.next();
     if (!below.isValid()) {
-        if (!addLine) {
-            return;
-        }
-        // The only change that leaving a table makes: a line for the caret at the end (S018).
-        QTextCursor cursor(table.last);
-        cursor.movePosition(QTextCursor::EndOfBlock);
-        cursor.insertText(QStringLiteral("\n"));
-        below = table.last.next();
+        return;
     }
+    const QScopedValueRollback<bool> leaving(leaving_, true);
     editor_->setFocus();
     editor_->setTextCursor(QTextCursor(below));
+}
+
+void TableEmbedder::leaveBelow(Table& table) {
+    // As in the first version: onto the line after the blank line that ends the table; at the
+    // end of the document a blank line and a line are added, so text typed there is a paragraph
+    // and not a table row (GFM continues a table on the next line).
+    const QScopedValueRollback<bool> leaving(leaving_, true);
+    const QTextBlock next = table.last.next();
+    const QTextBlock after = next.isValid() ? next.next() : QTextBlock();
+    const bool blank = next.isValid() && next.text().trimmed().isEmpty();
+    QTextCursor cursor = editor_->textCursor();
+    if (!blank || !after.isValid()) {
+        cursor.beginEditBlock();
+        if (!blank) {
+            cursor.setPosition(table.last.position() + table.last.length() - 1);
+            cursor.insertText(QStringLiteral("\n\n"));
+        } else {
+            cursor.setPosition(next.position());
+            cursor.insertText(QStringLiteral("\n"));
+        }
+        cursor.endEditBlock();
+    }
+    cursor.setPosition(table.last.next().next().position());
+    editor_->setFocus();
+    editor_->setTextCursor(cursor);
 }
 
 void TableEmbedder::toggleSource(Table& table, int rowOrBlock, int columnOrPosition) {
@@ -485,7 +535,7 @@ void TableEmbedder::appendRow(Table& table, int column) {
     focusCell(table, table.widget->model()->rowCount() - 1, column);
 }
 
-void TableEmbedder::deleteRow(Table& table, int row) {
+void TableEmbedder::deleteRow(Table& table, int row, bool preferPrevious) {
     if (table.widget == nullptr || row < 1) {
         return;
     }
@@ -502,7 +552,12 @@ void TableEmbedder::deleteRow(Table& table, int row) {
     cursor.removeSelectedText();
     cursor.endEditBlock();
     update(table);
-    focusCell(table, row, column);
+    // Backspace: to the end of the row above; Delete: to the row now in its place (S018).
+    if (!preferPrevious && row < model->rowCount()) {
+        focusCell(table, row, column);
+    } else {
+        focusCell(table, row - 1, column, preferPrevious);
+    }
 }
 
 void TableEmbedder::addColumn(Table& table) {
@@ -539,30 +594,25 @@ void TableEmbedder::deleteColumn(Table& table, int column) {
     }
     cursor.endEditBlock();
     update(table);
-    focusCell(table, row, column);
+    focusCell(table, row, std::min(column, table.widget->model()->columnCount() - 1));
 }
 
 void TableEmbedder::removeLastRowAndLeave(Table& table) {
     if (table.widget == nullptr) {
         return;
     }
-    TableModel* model = table.widget->model();
     const QTextBlock line = table.last;
-    if (model->rowCount() < 2 || line == table.header.next()) {
+    if (table.widget->model()->rowCount() < 2 || line == table.header.next()) {
         return;
     }
-    const QTextBlock previous = line.previous();
     QTextCursor cursor(line);
     cursor.beginEditBlock();
     cursor.setPosition(line.position() - 1);
     cursor.setPosition(line.position() + static_cast<int>(line.text().size()), QTextCursor::KeepAnchor);
     cursor.removeSelectedText();
-    if (!previous.next().isValid()) {
-        cursor.insertText(QStringLiteral("\n"));  // a line for the caret at the end (S018)
-    }
     cursor.endEditBlock();
-    update(table);
-    leaveBelow(table, true);
+    table.last = lastLineOf(table.header);
+    leaveBelow(table);
 }
 
 }  // namespace hitokoto::ui
