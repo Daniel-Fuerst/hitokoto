@@ -51,9 +51,10 @@ public:
     bool setData(const QModelIndex& index, const QVariant& value, int role = Qt::EditRole) override;
     [[nodiscard]] Qt::ItemFlags flags(const QModelIndex& index) const override;
 
-private:
+    /// The Markdown of a cell as it stands in its line.
     [[nodiscard]] std::u16string cellMarkdown(int row, int column) const;
 
+private:
     QTextDocument* document_;
     const EditorFormats* formats_;
     std::vector<QTextBlock> rows_;  ///< header and body lines; the delimiter line is not a row

@@ -9,6 +9,7 @@
 #include "table_model.hpp"
 #include "table_view.hpp"
 
+#include <QApplication>
 #include <QKeyEvent>
 #include <QMetaObject>
 #include <QScopedValueRollback>
@@ -134,7 +135,11 @@ void TableEmbedder::documentChanged(int position, int /*charsRemoved*/, int char
     // Only typing in the editor holds a table; loading, restyling and the table view's own
     // changes do not.
     if (typingDepth_ > 0 && !styler_->isBusy()) {
-        typing_ = editor_->document()->findBlock(position + charsAdded);
+        // A line already in a shown table (Backspace below it joins the line to the last row)
+        // keeps the table view; only a line that is becoming part of a table is held (S018).
+        const QTextBlock typed = editor_->document()->findBlock(position + charsAdded);
+        const Table* table = typed.isValid() ? tableAt(typed.blockNumber()) : nullptr;
+        typing_ = table != nullptr && table->widget != nullptr && !table->source ? QTextBlock() : typed;
     }
     scheduleRefresh();
 }
@@ -222,6 +227,22 @@ void TableEmbedder::release(Table& table) {
         layout_->setReservedHeight(table.header, 0);
     }
     if (table.widget != nullptr) {
+        // Keys always reach the editor or a cell (S018): a caret in the table goes into its
+        // lines before the view goes.
+        if (table.widget->isAncestorOf(QApplication::focusWidget())) {
+            const QScopedValueRollback<bool> leaving(leaving_, true);
+            const TableModel* model = table.widget->model();
+            const QModelIndex current = table.widget->view()->currentIndex();
+            const QTextBlock line = model->lineOfRow(std::max(current.row(), 0));
+            QTextCursor cursor = editor_->textCursor();
+            if (line.isValid()) {
+                cursor.setPosition(line.position() + std::min(model->positionOfCell(std::max(current.row(), 0),
+                                                                                    std::max(current.column(), 0)),
+                                                              line.length() - 1));
+            }
+            editor_->setFocus();
+            editor_->setTextCursor(cursor);
+        }
         table.widget->hide();
         table.widget->deleteLater();
         table.widget = nullptr;
@@ -437,10 +458,13 @@ void TableEmbedder::caretMoved() {
     if (table == nullptr || table->source || !table->widget) {
         return;
     }
-    // The caret never stays on lines the table view stands for (S009).
+    // The caret never stays on lines the table view stands for (S009); behind the text of a
+    // cell (Backspace below the table joined a line to the last row) it goes to the cell's end.
     TableModel* model = table->widget->model();
     const int row = std::max(model->rowOfBlock(cursor.blockNumber()), 0);
-    focusCell(*table, row, model->columnAt(row, cursor.positionInBlock()));
+    const int column = model->columnAt(row, cursor.positionInBlock());
+    const auto end = model->positionOfCell(row, column) + static_cast<int>(model->cellMarkdown(row, column).size());
+    focusCell(*table, row, column, cursor.positionInBlock() >= end);
 }
 
 void TableEmbedder::leaveAbove(Table& table, bool atEnd) {
