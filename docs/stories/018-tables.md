@@ -14,7 +14,10 @@
   table without a blank line (as Obsidian writes them) get the blank line when opened (user
   decision; ADR 0002, decision 6). Amended again on 2026-10-27: the blank line that separates a
   table from the text below it is syntax and is hidden like the table's other syntax (user
-  decision). The status stays "In review": the user's test of the changes completes the review.
+  decision). After the user's test on 2026-10-27, opening such a file shows no message; the
+  document is only marked modified; the message stays as a feature toggle, off until an options
+  dialog offers it (user decision). The status stays "In review": the user's test of the changes
+  completes the review.
 - **Review basis:** Linux only (CI on `feature/tables` with Qt 6.12 and Qt 6.8.3; the Windows and
   macOS jobs are disabled in `ci.yml`), as for S019 by the user's decision of 2026-10-27; Windows
   and macOS run with the pull request to `main`.
@@ -152,8 +155,10 @@ Markdown that GitHub shows the same way.
 - When I open it
 - Then hitokoto adds a blank line before that line, so it is a paragraph in hitokoto, Obsidian
   and on GitHub alike
-- And the document is marked modified and a message says how many blank lines were added; the
-  file on disk changes only when I save, and closing without saving leaves it as it was
+- And the document is marked modified, with no message (user decision 2026-10-27); the file on
+  disk changes only when I save, and closing without saving leaves it as it was
+- And a message saying how many blank lines were added is a feature toggle
+  (`Options::reportBlankLinesAdded`), switched off in code until an options dialog offers it
 - And a line with `|` after a table, text after a blank line, and anything inside a code block
   stay as they are
 
@@ -248,7 +253,8 @@ On `feature/tables`, 2026-10-27, after the code review of the first version
   Qt 6.8.3).
 - Files from other editors (ADR 0002, decision 6): `core::separateTextAfterTables` adds the
   blank lines on the loading thread right after decoding; `DocumentSession` then marks the
-  document modified and `MainWindow` says how many lines were added.
+  document modified; the message is behind `ui::Options::reportBlankLinesAdded` (off), the first
+  entry of the options a later dialog will offer.
 - The blank line below a table: `TableEmbedder` hides it with the table's lines while the view
   shows the table and the caret is not on it; keys and caret moves go over it.
 - Budgets on the development VM: opening a 1000-row table 110–130 ms (500 ms), typing in a

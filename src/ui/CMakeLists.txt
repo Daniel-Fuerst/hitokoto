@@ -8,6 +8,7 @@ qt_add_library(hitokoto_ui STATIC
     editor_formats.cpp editor_formats.hpp
     editor_widget.cpp editor_widget.hpp
     main_window.cpp main_window.hpp
+    options.hpp
     qt_bridge.hpp
     table_embedder.cpp table_embedder.hpp
     table_model.cpp table_model.hpp

@@ -1399,7 +1399,8 @@ private slots:
     }
 
     // ADR 0002, decision 6 (S018, files from other editors): Obsidian writes text directly below a
-    // table; hitokoto adds the blank line when opening, marks the document modified and says so.
+    // table; hitokoto adds the blank line when opening and marks the document modified, without a
+    // message (user decision 2026-10-27); the message is a feature toggle, switched off.
     void openingAddsABlankLineBelowATable() {
         constexpr auto markdown =
             "| a | b |\n"
@@ -1415,8 +1416,8 @@ private slots:
         QVERIFY(view != nullptr);
         QCOMPARE(view->model()->rowCount(), 2);
         QVERIFY(f.editor()->document()->isModified());
-        QCOMPARE(f.messages.size(), 1);
-        QVERIFY2(f.messages.first().contains(u'1'), qPrintable(f.messages.first()));
+        QVERIFY(f.window->isWindowModified());
+        QVERIFY2(f.messages.isEmpty(), qPrintable(f.messages.join(u'\n')));
         QCOMPARE(test::Fixture::readFile(path), QByteArray(markdown));  // nothing written yet
 
         // A file that needs nothing opens unmodified and without a message.
@@ -1424,7 +1425,16 @@ private slots:
         QVERIFY(g.open(g.writeFile(QStringLiteral("gfm.md"), "| a |\n| --- |\n| 1 |\n\nText\n")));
         g.settle();
         QVERIFY(!g.editor()->document()->isModified());
-        QVERIFY(g.messages.isEmpty());
+        QVERIFY(!g.window->isWindowModified());
+
+        // The message stays behind an option, off for now and meant for the options dialog.
+        QVERIFY(!ui::Options{}.reportBlankLinesAdded);
+        test::Fixture h;
+        h.window->setOptions(ui::Options{.reportBlankLinesAdded = true});
+        QVERIFY(h.open(h.writeFile(QStringLiteral("obsidian.md"), markdown)));
+        h.settle();
+        QCOMPARE(h.messages.size(), 1);
+        QVERIFY2(h.messages.first().contains(u'1'), qPrintable(h.messages.first()));
     }
 
     // The open cell keeps its column's alignment: the text does not jump when the caret enters.
