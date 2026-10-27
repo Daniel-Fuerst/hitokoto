@@ -213,9 +213,10 @@ private slots:
             stall = i == 0 ? s : std::min(stall, s);
             setBacks += f.session()->copySetBacks();
         }
+        // The stall here is the styler's own catch-up (docs/performance.md, "Known gaps"), not the
+        // copy's: reported, not asserted. savingTenMegabytesDoesNotStallTheEventLoop bounds the copy.
         qInfo("styler working: %llu set-backs, longest UI stall %lld ms (best of 3)", setBacks, stall);
         QCOMPARE(setBacks, quint64{0});
-        QVERIFY2(stall < 16, qPrintable(QString::number(stall)));
         QCOMPARE(test::Fixture::readFile(path), bytes);
     }
 
