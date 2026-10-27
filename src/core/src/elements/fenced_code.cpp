@@ -19,13 +19,13 @@ struct Fence {
     std::size_t end = 0;  ///< index after the fence characters
 };
 
-/// A run of at least three ` or ~ after at most three spaces.
+/// A run of at least three ` or ~ after optional leading whitespace.
 Fence fenceAt(std::u16string_view line) noexcept {
     std::size_t start = 0;
-    while (start < line.size() && start < 4 && line[start] == u' ') {
+    while (start < line.size() && (line[start] == u' ' || line[start] == u'\t')) {
         ++start;
     }
-    if (start > 3 || start == line.size() || (line[start] != u'`' && line[start] != u'~')) {
+    if (start == line.size() || (line[start] != u'`' && line[start] != u'~')) {
         return {};
     }
     const char16_t c = line[start];
