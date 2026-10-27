@@ -37,7 +37,11 @@ public:
 
 private:
     [[nodiscard]] std::size_t slotOf(std::size_t index) const noexcept;
+    /// The heights in index order, without the gap.
+    [[nodiscard]] std::vector<double> values() const;
     void rebuild(std::size_t gapAt, std::size_t gapLength);
+    void build(const std::vector<double>& logical, std::size_t gapAt, std::size_t gapLength);
+    void buildSums();
     void moveGap(std::size_t to);
     void add(std::size_t slot, double delta);
 

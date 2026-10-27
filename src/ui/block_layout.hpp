@@ -3,6 +3,8 @@
 // geometry in pixels. A block can be hidden or reserve a fixed height for an embedded widget.
 #pragma once
 
+#include "hitokoto/core/height_index.hpp"
+
 #include <QAbstractTextDocumentLayout>
 #include <QTextBlock>
 
@@ -83,16 +85,14 @@ private:
     [[nodiscard]] qreal heightOf(const QTextBlock& block) const;
     /// Stores `height` for block `number`; emits the size and height signals when it changed.
     void setHeight(int number, qreal height, bool emitNow) const;
-    void rebuildSums() const;
-    [[nodiscard]] qreal sumBefore(int number) const;
-    void addToSums(int number, qreal delta) const;
+    /// Estimated heights for every block (loading, a new width).
+    void estimateAll();
     void scheduleSizeChange() const;
 
-    // Heights per block number and a Fenwick tree over them: block <-> y in O(log n). Mutable:
-    // blocks are laid out lazily from const queries (blockBoundingRect, hitTest), like Qt's layouts.
-    mutable std::vector<qreal> heights_;
-    mutable std::vector<qreal> sums_;
-    mutable qreal total_ = 0;
+    // Heights per block number with their prefix sums: block <-> y in O(log n), new lines too.
+    // Mutable: blocks are laid out lazily from const queries (blockBoundingRect, hitTest), like
+    // Qt's layouts.
+    mutable core::HeightIndex heights_;
     mutable bool sizeChangePending_ = false;
     mutable std::vector<QTextBlock> deferred_;  ///< laid out while heights_ was stale
     qreal laidOutWidth_ = -1;

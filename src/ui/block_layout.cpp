@@ -30,11 +30,7 @@ const BlockData* dataOf(const QTextBlock& block) {
 
 BlockLayout::BlockLayout(QTextDocument* document) : QAbstractTextDocumentLayout(document) {
     refreshMetrics();
-    heights_.assign(static_cast<std::size_t>(document->blockCount()), 0.0);
-    for (QTextBlock b = document->begin(); b.isValid(); b = b.next()) {
-        heights_[static_cast<std::size_t>(b.blockNumber())] = estimatedHeight(b);
-    }
-    rebuildSums();
+    estimateAll();
 }
 
 // --- block attributes -------------------------------------------------------------------------
@@ -216,14 +212,13 @@ void BlockLayout::setHeight(int number, qreal height, bool emitNow) const {
     if (number < 0 || static_cast<std::size_t>(number) >= heights_.size() || !inSync()) {
         return;
     }
-    const qreal delta = height - heights_[static_cast<std::size_t>(number)];
+    const auto index = static_cast<std::size_t>(number);
+    const qreal delta = height - heights_.height(index);
     if (std::abs(delta) < 1e-6) {
         return;
     }
-    heights_[static_cast<std::size_t>(number)] = height;
-    addToSums(number, delta);
-    total_ += delta;
-    const qreal top = margin() + sumBefore(number);
+    heights_.set(index, height);
+    const qreal top = margin() + heights_.sumBefore(index);
     auto* self = const_cast<BlockLayout*>(this);
     if (batch_ > 0) {
         batchChanged_ = true;
@@ -253,66 +248,17 @@ void BlockLayout::scheduleSizeChange() const {
         Qt::QueuedConnection);
 }
 
-void BlockLayout::rebuildSums() const {
-    const std::size_t n = heights_.size();
-    sums_.assign(n + 1, 0.0);
-    total_ = 0;
-    for (std::size_t i = 0; i < n; ++i) {
-        sums_[i + 1] += heights_[i];
-        total_ += heights_[i];
-        const std::size_t parent = (i + 1) + ((i + 1) & (~(i + 1) + 1));
-        if (parent <= n) {
-            sums_[parent] += sums_[i + 1];
-        }
+void BlockLayout::estimateAll() {
+    std::vector<double> heights(static_cast<std::size_t>(document()->blockCount()), 0.0);
+    for (QTextBlock b = document()->begin(); b.isValid(); b = b.next()) {
+        heights[static_cast<std::size_t>(b.blockNumber())] = estimatedHeight(b);
     }
-}
-
-qreal BlockLayout::sumBefore(int number) const {
-    qreal sum = 0;
-    for (auto i = static_cast<std::size_t>(std::clamp<int>(number, 0, static_cast<int>(heights_.size()))); i > 0;
-         i -= i & (~i + 1)) {
-        sum += sums_[i];
-    }
-    return sum;
-}
-
-void BlockLayout::addToSums(int number, qreal delta) const {
-    for (auto i = static_cast<std::size_t>(number) + 1; i < sums_.size(); i += i & (~i + 1)) {
-        sums_[i] += delta;
-    }
+    heights_.assign(heights);
 }
 
 QTextBlock BlockLayout::blockAt(qreal y) const {
-    const qreal target = y - margin();
-    if (heights_.empty() || target >= total_) {
-        return {};
-    }
-    if (target < 0) {
-        // Above the first block: the first visible one.
-        QTextBlock b = document()->begin();
-        while (b.isValid() && heights_[static_cast<std::size_t>(b.blockNumber())] <= 0) {
-            b = b.next();
-        }
-        return b;
-    }
-    // Fenwick descent: the last index whose prefix sum is <= target.
-    std::size_t pos = 0;
-    qreal remaining = target;
-    std::size_t step = 1;
-    while (step * 2 <= heights_.size()) {
-        step *= 2;
-    }
-    for (; step > 0; step /= 2) {
-        if (pos + step <= heights_.size() && sums_[pos + step] <= remaining) {
-            pos += step;
-            remaining -= sums_[pos];
-        }
-    }
-    // Block `pos` (0-based) starts at or before target; skip blocks without height.
-    while (pos < heights_.size() && heights_[pos] <= 0) {
-        ++pos;
-    }
-    return document()->findBlockByNumber(static_cast<int>(pos));
+    const std::size_t index = heights_.indexAt(y - margin());
+    return index < heights_.size() ? document()->findBlockByNumber(static_cast<int>(index)) : QTextBlock{};
 }
 
 QRectF BlockLayout::blockBoundingRect(const QTextBlock& block) const {
@@ -320,16 +266,16 @@ QRectF BlockLayout::blockBoundingRect(const QTextBlock& block) const {
         return {};
     }
     ensureBlockLayout(block);
-    const qreal top = margin() + sumBefore(block.blockNumber());
+    const qreal top = margin() + heights_.sumBefore(static_cast<std::size_t>(block.blockNumber()));
     const qreal width = document()->textWidth() > 0 ? document()->textWidth() : availableWidth() + 2 * margin();
     const auto number = static_cast<std::size_t>(block.blockNumber());
-    const qreal height = inSync() && number < heights_.size() ? heights_[number] : heightOf(block);
+    const qreal height = inSync() && number < heights_.size() ? heights_.height(number) : heightOf(block);
     return {0, top, width, height};
 }
 
 QSizeF BlockLayout::documentSize() const {
     const qreal width = document()->textWidth() > 0 ? document()->textWidth() : availableWidth() + 2 * margin();
-    return {width, total_ + 2 * margin()};
+    return {width, heights_.total() + 2 * margin()};
 }
 
 QRectF BlockLayout::frameBoundingRect(QTextFrame* frame) const {
@@ -462,12 +408,10 @@ void BlockLayout::applyChange(int position, int charsRemoved, int charsAdded) {
     if (std::abs(available - laidOutWidth_) > 0.5 || oldCount == 0 || (wholeDocument && charsRemoved == 0)) {
         // Everything wraps anew: estimate all blocks, lay them out lazily.
         laidOutWidth_ = available;
-        heights_.assign(static_cast<std::size_t>(newCount), 0.0);
         for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
             b.layout()->clearLayout();
-            heights_[static_cast<std::size_t>(b.blockNumber())] = estimatedHeight(b);
         }
-        rebuildSums();
+        estimateAll();
         emit documentSizeChanged(documentSize());
         emit update();
         return;
@@ -493,7 +437,7 @@ void BlockLayout::applyChange(int position, int charsRemoved, int charsAdded) {
         if (first.isVisible() && reservedHeight(first) <= 0) {
             layoutBlock(first);
         }
-        const qreal before = heights_[static_cast<std::size_t>(firstNumber)];
+        const qreal before = heights_.height(static_cast<std::size_t>(firstNumber));
         const qreal after = heightOf(first);
         if (std::abs(after - before) < 1e-6) {
             emit updateBlock(first);
@@ -501,7 +445,7 @@ void BlockLayout::applyChange(int position, int charsRemoved, int charsAdded) {
         }
         setHeight(firstNumber, after, true);
         if (batch_ == 0) {
-            const qreal top = margin() + sumBefore(firstNumber);
+            const qreal top = margin() + heights_.sumBefore(static_cast<std::size_t>(firstNumber));
             emit update(QRectF(0, top, documentSize().width(), documentSize().height() - top));
         } else {
             batchNeedsRepaint_ = true;  // blocks below moved
@@ -518,16 +462,16 @@ void BlockLayout::applyChange(int position, int charsRemoved, int charsAdded) {
         }
         const int newLast = end.blockNumber();
         const int oldLast = std::clamp(newLast - delta, firstNumber - 1, oldCount - 1);
-        heights_.erase(heights_.begin() + std::clamp(firstNumber, 0, oldCount),
-                       heights_.begin() + std::clamp(oldLast + 1, firstNumber, oldCount));
+        const int eraseFrom = std::clamp(firstNumber, 0, oldCount);
+        const int eraseTo = std::clamp(oldLast + 1, firstNumber, oldCount);
+        heights_.erase(static_cast<std::size_t>(eraseFrom), static_cast<std::size_t>(eraseTo - eraseFrom));
         const int inserted = newLast - firstNumber + 1;
-        heights_.insert(heights_.begin() + std::clamp(firstNumber, 0, static_cast<int>(heights_.size())),
+        heights_.insert(static_cast<std::size_t>(std::clamp(firstNumber, 0, static_cast<int>(heights_.size()))),
                         static_cast<std::size_t>(inserted), 0.0);
         QTextBlock b = first;
         for (int n = firstNumber; n <= newLast && b.isValid(); ++n, b = b.next()) {
-            heights_[static_cast<std::size_t>(n)] = estimatedHeight(b);
+            heights_.set(static_cast<std::size_t>(n), estimatedHeight(b));  // O(log n) each
         }
-        rebuildSums();  // O(n), only when lines were added or removed
         if (last.blockNumber() < newLast) {
             last = end;
         }
@@ -548,7 +492,7 @@ void BlockLayout::applyChange(int position, int charsRemoved, int charsAdded) {
     if (delta != 0) {
         emit documentSizeChanged(documentSize());
     }
-    const qreal top = margin() + sumBefore(firstNumber);
+    const qreal top = margin() + heights_.sumBefore(static_cast<std::size_t>(firstNumber));
     emit update(QRectF(0, top, documentSize().width(), documentSize().height() - top));
 }
 

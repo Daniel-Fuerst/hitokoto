@@ -58,6 +58,14 @@ changes are reported once per styler slice, not per block (each report relayouts
 bars). Enter rebuilds the prefix sums of all blocks, O(n) for 427,000 lines; whether that explains
 the higher p95 and p99 is not measured yet. All values stay well inside the budgets.
 
+### 2026-10-27, development VM, S019 follow-up (release build, offscreen)
+
+CI on feature/tables: `typing_10mb_p99_ms` 1.00 -> 3.88 ms. Enter in the 10 MB file (427k
+blocks) rebuilt `BlockLayout`'s prefix sums over every block, 2.5-3.5 ms per Enter here. With
+`HeightIndex` (a gap at the last edit) Enter costs about 0.6 ms; the first Enter after the caret
+jumps far moves the gap once (3.6 ms). `typing_10mb_p99_ms` over four runs: main 3.2-3.6 ms,
+feature/tables 2.7-3.5 ms (one run with a 55 ms VM hiccup, six further runs below 8 ms).
+
 ### 2026-10-27, development VM, S018 (release build, offscreen)
 
 Tables (`hitokoto-bench`): opening a 1000-row table until the table view shows it 139 ms (budget
