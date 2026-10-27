@@ -1301,6 +1301,35 @@ private slots:
         }
     }
 
+    // ADR 0002, decision 6 (S018, files from other editors): Obsidian writes text directly below a
+    // table; hitokoto adds the blank line when opening, marks the document modified and says so.
+    void openingAddsABlankLineBelowATable() {
+        constexpr auto markdown =
+            "| a | b |\n"
+            "| --- | --- |\n"
+            "| 1 | 2 |\n"
+            "Ich schreibe\n";
+        test::Fixture f;
+        const QString path = f.writeFile(QStringLiteral("obsidian.md"), markdown);
+        QVERIFY(f.open(path));
+        f.settle();
+        QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2 |\n\nIch schreibe\n"));
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QCOMPARE(view->model()->rowCount(), 2);
+        QVERIFY(f.editor()->document()->isModified());
+        QCOMPARE(f.messages.size(), 1);
+        QVERIFY2(f.messages.first().contains(u'1'), qPrintable(f.messages.first()));
+        QCOMPARE(test::Fixture::readFile(path), QByteArray(markdown));  // nothing written yet
+
+        // A file that needs nothing opens unmodified and without a message.
+        test::Fixture g;
+        QVERIFY(g.open(g.writeFile(QStringLiteral("gfm.md"), "| a |\n| --- |\n| 1 |\n\nText\n")));
+        g.settle();
+        QVERIFY(!g.editor()->document()->isModified());
+        QVERIFY(g.messages.isEmpty());
+    }
+
     // The open cell keeps its column's alignment: the text does not jump when the caret enters.
     void anOpenCellKeepsItsColumnsAlignment() {
         constexpr auto markdown =

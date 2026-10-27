@@ -447,4 +447,8 @@ std::u16string padTableRowCells(std::u16string_view line, std::size_t columns) {
     return out;
 }
 
+std::size_t separateTextAfterTables(DecodedText& /*decoded*/, const ElementRegistry& /*registry*/) {
+    return 0;
+}
+
 }  // namespace hitokoto::core

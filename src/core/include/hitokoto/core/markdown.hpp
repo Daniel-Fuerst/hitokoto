@@ -3,6 +3,8 @@
 // registry. The UI asks the registry how to show one line; it never knows the elements.
 #pragma once
 
+#include "hitokoto/core/text_codec.hpp"
+
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -267,6 +269,11 @@ std::unique_ptr<MultiLineElement> makeFencedCodeElement();
 std::unique_ptr<MultiLineElement> makeTableElement();
 
 /// Returns a blank GFM pipe-table row with `columns` empty cells, e.g. "|  |  |".
+/// ADR 0002, decision 6 (S018): adds a blank line before each line without `|` that directly
+/// follows a table's rows, which GFM would make a row and Obsidian ends the table with. Added
+/// breaks take the majority ending in `decoded.perBreak`. Returns how many lines were added.
+std::size_t separateTextAfterTables(DecodedText& decoded, const ElementRegistry& registry);
+
 [[nodiscard]] std::u16string makeEmptyTableRow(std::size_t columns);
 /// Appends one new column to a table line (`|  |` for header/body rows, `| --- |` for delimiter rows).
 [[nodiscard]] std::u16string appendTableColumn(std::u16string_view line, bool delimiterRow);

@@ -230,3 +230,33 @@ TEST(S018_Tables, ThemeTokensAreParsedAndFallBackToGeneralTokens) {
         EXPECT_DOUBLE_EQ(def.fontScale, 1);
     }
 }
+
+// ADR 0002, decision 6 (S018, files from other editors): a line without a pipe directly after a
+// table's rows gets a blank line before it, so it is a paragraph in GFM as in Obsidian.
+TEST(S018_Tables, TextDirectlyBelowATableGetsABlankLineWhenOpened) {
+    const ElementRegistry registry = ElementRegistry::withBuiltins();
+    DecodedText decoded;
+    decoded.text = u"| a | b |\n| --- | --- |\n| 1 | 2 |\nText\nmore\n\n| c |\n| --- |\n| 3 |\n| 4 |\n";
+    EXPECT_EQ(separateTextAfterTables(decoded, registry), 1u);
+    EXPECT_EQ(decoded.text, u"| a | b |\n| --- | --- |\n| 1 | 2 |\n\nText\nmore\n\n| c |\n| --- |\n| 3 |\n| 4 |\n");
+    EXPECT_TRUE(decoded.perBreak.empty());
+
+    // Left alone: a row with a pipe, text after a blank line, a heading, code, a pipe-less
+    // header-like line that is no table.
+    DecodedText untouched;
+    untouched.text =
+        u"| a |\n| --- |\n| 1 |\nx | y\n\nText\n\n| b |\n| --- |\n# Heading\n```\n| c |\n| --- |\ncode\n```\n";
+    const std::u16string before = untouched.text;
+    EXPECT_EQ(separateTextAfterTables(untouched, registry), 0u);
+    EXPECT_EQ(untouched.text, before);
+
+    // Files with mixed line endings: the added break takes the majority ending.
+    DecodedText mixed;
+    mixed.text = u"| a |\n| --- |\nText\nend";
+    mixed.uniformEnding = LineEnding::CRLF;
+    mixed.perBreak = {LineEnding::CRLF, LineEnding::LF, LineEnding::CRLF};
+    EXPECT_EQ(separateTextAfterTables(mixed, registry), 1u);
+    EXPECT_EQ(mixed.text, u"| a |\n| --- |\n\nText\nend");
+    EXPECT_EQ(mixed.perBreak,
+              (std::vector<LineEnding>{LineEnding::CRLF, LineEnding::LF, LineEnding::CRLF, LineEnding::CRLF}));
+}

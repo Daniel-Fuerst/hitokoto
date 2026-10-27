@@ -10,7 +10,10 @@
   version (Daniel, before the revision) is restored where the revision had lost it; see "Kept from
   the first version" (user decision on 2026-10-27). Amended on 2026-10-27 after the user's test:
   spaces at the edges of a cell while typing, and typing in the blank line below a table starts a
-  paragraph (user decision on 2026-10-27).
+  paragraph (user decision on 2026-10-27). Amended again on 2026-10-27: files whose text follows a
+  table without a blank line (as Obsidian writes them) get the blank line when opened (user
+  decision; ADR 0002, decision 6). The status stays "In review": the user's test of the change
+  completes the review.
 - **Review basis:** Linux only (CI on `feature/tables` with Qt 6.12 and Qt 6.8.3; the Windows and
   macOS jobs are disabled in `ci.yml`), as for S019 by the user's decision of 2026-10-27; Windows
   and macOS run with the pull request to `main`.
@@ -127,6 +130,17 @@ Markdown that GitHub shows the same way.
 - When I type, paste or commit input method text in it
 - Then hitokoto first adds a blank line, so the text is a paragraph below the table, and the
   table stays a table
+
+**Scenario: files from other editors**
+- Given a file in which a line without `|` directly follows a table's rows (Obsidian writes this
+  and shows the line as a paragraph; GFM and GitHub make it a row of the table)
+- When I open it
+- Then hitokoto adds a blank line before that line, so it is a paragraph in hitokoto, Obsidian
+  and on GitHub alike
+- And the document is marked modified and a message says how many blank lines were added; the
+  file on disk changes only when I save, and closing without saving leaves it as it was
+- And a line with `|` after a table, text after a blank line, and anything inside a code block
+  stay as they are
 
 **Scenario: leaving the table**
 - Given the caret in a cell
