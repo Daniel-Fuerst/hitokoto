@@ -35,15 +35,21 @@ private slots:
         f.settle();
         f.placeCaret(0);
 
+        const auto opening = f.editor()->document()->findBlockByNumber(1);
         const auto content = f.editor()->document()->findBlockByNumber(2);
         QCOMPARE(test::formatAt(content, 0).foreground().color(), qcolor(*theme.codeBlock.text));
         QCOMPARE(test::formatAt(content, 0).fontPointSize(), theme.editorFontSize * 1.5);
         QCOMPARE(f.editor()->styler().formats().codeBlock().radius, 7.0);
 
-        const QRect line = f.editor()->cursorRect(QTextCursor(content));
+        const QRect line = f.editor()->cursorRect(QTextCursor(opening));
         const qreal x = f.editor()->viewport()->width() / 2.0;
-        QTRY_COMPARE(pixel(f.editor(), x, line.top() - 6), qcolor(*theme.codeBlock.background));  // in the padding
-        QCOMPARE(pixel(f.editor(), x, line.top() - 12 + 2), qcolor(*theme.codeBlock.border));     // in the border
+        QTRY_COMPARE(pixel(f.editor(), x, line.center().y()), qcolor(*theme.codeBlock.background));
+        QCOMPARE(pixel(f.editor(), x, line.top() + 2), qcolor(*theme.codeBlock.border));  // in the top border
+
+        // The line directly above the code block is not overlapped by the panel background
+        const auto before = f.editor()->document()->findBlockByNumber(0);
+        const QRect beforeLine = f.editor()->cursorRect(QTextCursor(before));
+        QVERIFY(pixel(f.editor(), x, beforeLine.center().y()) != qcolor(*theme.codeBlock.background));
 
         f.placeCaret(1);
         f.settle();
@@ -82,9 +88,11 @@ private slots:
         const auto emptyCodeLine = f.editor()->document()->findBlockByNumber(3);
         const auto codeLine = f.editor()->document()->findBlockByNumber(4);
         const auto closing = f.editor()->document()->findBlockByNumber(5);
-        QVERIFY(test::isCollapsed(opening, 0));
-        QVERIFY(test::isCollapsed(opening, 5));
-        QVERIFY(test::isCollapsed(closing, 0));
+        QVERIFY(!test::isCollapsed(opening, 0));
+        QVERIFY(!test::isCollapsed(opening, 5));
+        QVERIFY(!test::isCollapsed(closing, 0));
+        QCOMPARE(test::formatAt(opening, 0).foreground().color(), Qt::transparent);
+        QCOMPARE(test::formatAt(closing, 0).foreground().color(), Qt::transparent);
         QCOMPARE(test::formatAt(content, 0).fontStyleHint(), QFont::TypeWriter);
         QCOMPARE(test::formatAt(content, 4).fontWeight(), QFont::Normal);
         const auto surface = core::builtinTheme(core::ColorScheme::Light).surface;
@@ -96,9 +104,18 @@ private slots:
         const auto emptyLineY = f.editor()->cursorRect(QTextCursor(emptyCodeLine)).center().y();
         QCOMPARE(f.editor()->viewport()->grab().toImage().pixelColor(25, emptyLineY), panel);
         QCOMPARE(test::formatAt(codeLine, 0).fontStyleHint(), QFont::TypeWriter);
-        const int topPaddingY = y - contentRect.height() / 2 - 3;
-        QCOMPARE(f.editor()->viewport()->grab().toImage().pixelColor(50, topPaddingY), panel);
-        QVERIFY(!test::isCollapsed(content, 4));
+        const auto openingRect = f.editor()->cursorRect(QTextCursor(opening));
+        QCOMPARE(f.editor()->viewport()->grab().toImage().pixelColor(25, openingRect.center().y()), panel);
+        const auto closingRect = f.editor()->cursorRect(QTextCursor(closing));
+        QCOMPARE(f.editor()->viewport()->grab().toImage().pixelColor(25, closingRect.center().y()), panel);
+
+        // When caret is on a code line inside the block, both fences are revealed without geometry change
+        f.placeCaret(2);
+        f.settle();
+        QCOMPARE(f.editor()->cursorRect(QTextCursor(content)), contentRect);
+        const auto theme = core::builtinTheme(core::ColorScheme::Light);
+        QCOMPARE(test::formatAt(opening, 0).foreground().color(), qcolor(theme.marker));
+        QCOMPARE(test::formatAt(closing, 0).foreground().color(), qcolor(theme.marker));
         QCOMPARE(f.editor()->toPlainText(), QString::fromUtf8(markdown));
     }
 
@@ -139,9 +156,11 @@ private slots:
         const auto closing = f.editor()->document()->findBlockByNumber(4);
         const auto after = f.editor()->document()->findBlockByNumber(5);
 
-        // Fences are collapsed when caret is elsewhere
-        QVERIFY(test::isCollapsed(opening, 0));
-        QVERIFY(test::isCollapsed(closing, 0));
+        // Fences are concealed without collapsing when caret is outside
+        QVERIFY(!test::isCollapsed(opening, 0));
+        QVERIFY(!test::isCollapsed(closing, 0));
+        QCOMPARE(test::formatAt(opening, 4).foreground().color(), Qt::transparent);
+        QCOMPARE(test::formatAt(closing, 4).foreground().color(), Qt::transparent);
 
         // Content lines are styled as code
         QCOMPARE(test::formatAt(line1, 4).fontStyleHint(), QFont::TypeWriter);
@@ -155,11 +174,15 @@ private slots:
         // Raw document text is preserved exactly
         QCOMPARE(f.editor()->toPlainText(), QString::fromUtf8(markdown));
 
-        // Revealing the indented opening fence shows the raw source
-        f.placeCaret(1);
+        // When caret is on line 3 (return level == 2), both fences are revealed without geometry change
+        const auto line2RectBefore = f.editor()->cursorRect(QTextCursor(line2));
+        f.placeCaret(3);
         f.settle();
-        QVERIFY(!test::isCollapsed(opening, 0));
-        QCOMPARE(test::formatAt(opening, 0).fontStyleHint(), QFont::TypeWriter);
+        QCOMPARE(f.editor()->cursorRect(QTextCursor(line2)), line2RectBefore);
+        const auto theme = core::builtinTheme(core::ColorScheme::Light);
+        QCOMPARE(test::formatAt(opening, 4).foreground().color(), qcolor(theme.marker));
+        QCOMPARE(test::formatAt(closing, 4).foreground().color(), qcolor(theme.marker));
+        QCOMPARE(test::formatAt(opening, 4).fontStyleHint(), QFont::TypeWriter);
     }
 
     void removingOpeningFenceRestylesFollowingLines() {
@@ -279,6 +302,67 @@ private slots:
         QVERIFY(isCode(2) && isCode(3));
         QCOMPARE(test::blocksWithUserData(f.editor()->document()), (QList<int>{1, 2, 3, 4}));
         QCOMPARE(f.editor()->toPlainText(), QStringLiteral("x\n```\na\nb\n"));
+    }
+
+    void backticksShownWhenCursorInBlockAndBlockDoesNotExtendOrShrink() {
+        constexpr auto markdown =
+            "before\n"
+            "```python\n"
+            "def check_indentation(level: int) -> bool:\n"
+            "    return level == 2\n"
+            "```\n"
+            "after\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("code.md"), markdown)));
+        f.settle();
+
+        // 1. Caret outside the block: backticks are hidden (transparent), block has fixed height
+        f.placeCaret(0);
+        f.settle();
+        const auto opening = f.editor()->document()->findBlockByNumber(1);
+        const auto line1 = f.editor()->document()->findBlockByNumber(2);
+        const auto line2 = f.editor()->document()->findBlockByNumber(3);
+        const auto closing = f.editor()->document()->findBlockByNumber(4);
+
+        QCOMPARE(test::formatAt(opening, 0).foreground().color(), Qt::transparent);
+        QCOMPARE(test::formatAt(closing, 0).foreground().color(), Qt::transparent);
+
+        const QRect openingRectBefore = f.editor()->cursorRect(QTextCursor(opening));
+        const QRect line1RectBefore = f.editor()->cursorRect(QTextCursor(line1));
+        const QRect line2RectBefore = f.editor()->cursorRect(QTextCursor(line2));
+        const QRect closingRectBefore = f.editor()->cursorRect(QTextCursor(closing));
+
+        // 2. Caret on line 3 (return level == 2) inside the block:
+        // Backticks MUST be shown on both opening and closing lines
+        f.placeCaret(3, 10);
+        f.settle();
+
+        const auto theme = core::builtinTheme(core::ColorScheme::Light);
+        QCOMPARE(test::formatAt(opening, 0).foreground().color(), qcolor(theme.marker));
+        QCOMPARE(test::formatAt(closing, 0).foreground().color(), qcolor(theme.marker));
+
+        // The block must NOT extend or shrink (positions of all lines remain identical)
+        QCOMPARE(f.editor()->cursorRect(QTextCursor(opening)), openingRectBefore);
+        QCOMPARE(f.editor()->cursorRect(QTextCursor(line1)), line1RectBefore);
+        QCOMPARE(f.editor()->cursorRect(QTextCursor(line2)), line2RectBefore);
+        QCOMPARE(f.editor()->cursorRect(QTextCursor(closing)), closingRectBefore);
+
+        // 3. Move caret to line 2 (def check_indentation...): backticks remain shown
+        f.placeCaret(2, 5);
+        f.settle();
+        QCOMPARE(test::formatAt(opening, 0).foreground().color(), qcolor(theme.marker));
+        QCOMPARE(test::formatAt(closing, 0).foreground().color(), qcolor(theme.marker));
+        QCOMPARE(f.editor()->cursorRect(QTextCursor(line1)), line1RectBefore);
+
+        // 4. Move caret back outside (line 5): backticks hidden again without geometry change
+        f.placeCaret(5);
+        f.settle();
+        QCOMPARE(test::formatAt(opening, 0).foreground().color(), Qt::transparent);
+        QCOMPARE(test::formatAt(closing, 0).foreground().color(), Qt::transparent);
+        QCOMPARE(f.editor()->cursorRect(QTextCursor(opening)), openingRectBefore);
+        QCOMPARE(f.editor()->cursorRect(QTextCursor(line1)), line1RectBefore);
+        QCOMPARE(f.editor()->cursorRect(QTextCursor(line2)), line2RectBefore);
+        QCOMPARE(f.editor()->cursorRect(QTextCursor(closing)), closingRectBefore);
     }
 };
 
