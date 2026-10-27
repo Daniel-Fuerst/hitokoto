@@ -12,8 +12,9 @@
   spaces at the edges of a cell while typing, and typing in the blank line below a table starts a
   paragraph (user decision on 2026-10-27). Amended again on 2026-10-27: files whose text follows a
   table without a blank line (as Obsidian writes them) get the blank line when opened (user
-  decision; ADR 0002, decision 6). The status stays "In review": the user's test of the change
-  completes the review.
+  decision; ADR 0002, decision 6). Amended again on 2026-10-27: the blank line that separates a
+  table from the text below it is syntax and is hidden like the table's other syntax (user
+  decision). The status stays "In review": the user's test of the changes completes the review.
 - **Review basis:** Linux only (CI on `feature/tables` with Qt 6.12 and Qt 6.8.3; the Windows and
   macOS jobs are disabled in `ci.yml`), as for S019 by the user's decision of 2026-10-27; Windows
   and macOS run with the pull request to `main`.
@@ -49,10 +50,9 @@ Markdown that GitHub shows the same way.
   typing it
 - And the table view appears once the caret leaves the line (`Enter`, arrow keys, a click),
   with the caret where I moved it
-- And a line that is already part of the shown table does not switch it to its Markdown lines:
-  `Backspace` at the start of the line directly below a table joins that line to the last row,
-  as in any text, and the caret goes to the end of the last cell, where I type on (as in the
-  first version)
+- And a line that is already part of the shown table does not switch it to its Markdown lines;
+  `Backspace` below a table moves the caret to the end of the last cell, where I type on (as in
+  the first version; see "the blank line below a table")
 - And keys always reach the editor or a cell: when a table switches to its Markdown lines while
   the caret is in it, the caret goes into those lines
 
@@ -130,6 +130,19 @@ Markdown that GitHub shows the same way.
 - When I type, paste or commit input method text in it
 - Then hitokoto first adds a blank line, so the text is a paragraph below the table, and the
   table stays a table
+
+**Scenario: the blank line below a table**
+- Given a table followed by a blank line (GFM needs it before text that is not a row)
+- Then that one blank line is not shown: the next line follows the table at the distance of the
+  add-row bar's space, as close as a paragraph follows a paragraph; further blank lines show as
+  blank lines, as everywhere in the document
+- And the caret never lands on the hidden line: `Down` in the last row, `Right` in the last cell
+  and a click below the table go to the line after it (or onto a new line, see "leaving the
+  table"); `Up` and `Left` from that line go into the table
+- And `Backspace` at the start of the line after it moves the caret to the end of the last cell
+  and deletes nothing when the line has text; an empty line is removed, as in any text
+- And the file keeps the blank line, and the source view (`Ctrl+Shift+M`) shows it
+- And deleting a selection that includes the hidden line removes it like any text
 
 **Scenario: files from other editors**
 - Given a file in which a line without `|` directly follows a table's rows (Obsidian writes this
@@ -248,4 +261,8 @@ run; Windows and macOS with the pull request to `main`.
   file" and the source view; the cases of the first version's tests at 620b6cb for points 11 to
   21 (navigation, deleting with keys, leaving at the start and end of the document, the empty
   rows' height) are carried over.
+- UI, for the blank line below a table: it is hidden and the next line follows at the add-row
+  bar's distance; a second blank line stays visible; `Down`, `Right`, `Up`, `Left` and clicks skip
+  it; `Backspace` on a line with text and on an empty line; the source view shows it; the file is
+  unchanged.
 - Benchmark: `s018_table_typing_*` and `s018_table_open_ms` in `hitokoto-bench`.
