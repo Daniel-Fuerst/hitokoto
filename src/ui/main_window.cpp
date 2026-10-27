@@ -56,6 +56,9 @@ MainWindow::MainWindow(const core::ElementRegistry& registry, QWidget* parent)
     connect(session_, &DocumentSession::loadFailed, this,
             [this](const QString&, const QString& message) { showMessage(tr("Cannot open file"), message); });
     connect(session_, &DocumentSession::blankLinesAdded, this, [this](int count) {
+        if (!options_.reportBlankLinesAdded) {
+            return;  // the modified mark says it (S018); the message is a feature toggle, off
+        }
         showMessage(tr("Blank lines added"),
                     tr("%n blank line(s) added below tables, so that text written directly below a table "
                        "stays a paragraph as in other editors. Save to keep the change.",
