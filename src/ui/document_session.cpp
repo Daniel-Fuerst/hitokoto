@@ -2,6 +2,7 @@
 #include "document_session.hpp"
 
 #include "block_data.hpp"
+#include "block_styler.hpp"
 #include "editor_widget.hpp"
 #include "hitokoto/core/file_io.hpp"
 #include "qt_bridge.hpp"
@@ -13,6 +14,7 @@
 #include <QTextCursor>
 #include <QTextDocument>
 
+#include <algorithm>
 #include <filesystem>
 #include <iterator>
 
@@ -67,14 +69,26 @@ DocumentSession::~DocumentSession() {
 }
 
 void DocumentSession::waitForIdle() {
+    finishCopy();
     pool_.waitForDone();
     QCoreApplication::sendPostedEvents(this);
 }
 
+void DocumentSession::finishCopy() {
+    if (!copy_.active) {
+        return;
+    }
+    // A save whose copy is still running is written, not dropped: the rest is copied in one go
+    // (one short stall) and handed to the worker thread like a completed copy.
+    const QString path = copy_.path;
+    copyBlocks(true);
+    startWrite(takeSnapshot(), path);
+}
+
 void DocumentSession::newDocument() {
+    finishCopy();  // the document is about to be replaced; a pending save still belongs to it
     ++loadGeneration_;
     ++documentId_;
-    cancelCopy();
     insertTimer_.stop();
     pendingText_.clear();
     pendingPerBreak_.clear();
@@ -89,9 +103,9 @@ void DocumentSession::newDocument() {
 }
 
 void DocumentSession::load(const QString& path) {
+    finishCopy();  // the document is about to be replaced; a pending save still belongs to it
     const quint64 generation = ++loadGeneration_;
     // The current document is about to be replaced: no edits from here on (they would be lost).
-    cancelCopy();
     insertTimer_.stop();
     loading_ = true;
     editor_->setReadOnly(true);
@@ -221,6 +235,7 @@ void DocumentSession::finishInsert() {
 
 void DocumentSession::beginCopy(const QString& path) {
     cancelCopy();
+    copySetBacks_ = 0;
     copy_.active = true;
     copy_.path = path;
     copy_.text.reserve(editor_->document()->characterCount());
@@ -273,14 +288,17 @@ bool DocumentSession::copyBlocks(bool allAtOnce) {
 }
 
 void DocumentSession::onContentsChange(int position, int /*charsRemoved*/, int /*charsAdded*/) {
-    if (!copy_.active) {
+    // The styler's own document changes (format ranges, markContentsDirty) are not edits; as of
+    // Qt 6.8 and 6.12 they emit no contentsChange, the guard mirrors EditorWidget's for editCount.
+    if (!copy_.active || editor_->styler().isBusy()) {
         return;
     }
     // Blocks before the changed one are untouched: set the copy back to the start of the slice
     // that holds the changed block and let the slices copy from there again. Changes behind the
-    // copied part need nothing.
-    const int block = editor_->document()->findBlock(position).blockNumber();
-    if (block >= copy_.copiedBlocks) {
+    // copied part need nothing. An invalid block (position outside the document) sets back to the
+    // start rather than trusting the position.
+    const int block = std::max(editor_->document()->findBlock(position).blockNumber(), 0);
+    if (block >= copy_.copiedBlocks || copy_.slices.empty()) {
         return;
     }
     auto slice = copy_.slices.end();
@@ -293,6 +311,7 @@ void DocumentSession::onContentsChange(int position, int /*charsRemoved*/, int /
     copy_.copiedBlocks = slice->firstBlock;
     copy_.slices.erase(slice, copy_.slices.end());
     ++copy_.setBacks;
+    ++copySetBacks_;
 }
 
 DocumentSession::Snapshot DocumentSession::takeSnapshot() {
