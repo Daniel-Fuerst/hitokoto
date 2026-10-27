@@ -1,8 +1,11 @@
 # S019 — Editor surface with its own document layout
 
-- **Status:** In progress · **Order:** 19 · **Depends on:** S017
+- **Status:** In review · **Order:** 19 · **Depends on:** S017
 - **Basis:** S018 review (O2, O8) and the decision of 2026-10-27 to implement plan B of ADR 0001
   directly on `feature/tables`; ADR 0003. Confirmed by the user on 2026-10-27.
+- **Review basis:** Linux only (development VM, Qt 6.12.0, presets dev and ci, benchmarks in
+  `docs/performance.md`). The user waived the Windows and macOS CI runs on 2026-10-27; they run
+  with the next pull request to `main`.
 
 The tables story needs blocks that reserve space for an embedded table and pixel-based scrolling.
 `QPlainTextEdit` offers neither (ADR 0003). This story replaces the editor surface without

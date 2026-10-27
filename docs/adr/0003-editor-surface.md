@@ -1,6 +1,7 @@
 # ADR 0003: Editor surface: QTextEdit with our own document layout
 
-- **Status:** Proposed (accepted when S019 passes its scenarios and the budgets)
+- **Status:** Accepted (2026-10-27, on the Linux results of S019; the user waived the Windows and
+  macOS CI runs for this decision)
 - **Date:** 2026-10-27
 - **Deciders:** project owner
 
