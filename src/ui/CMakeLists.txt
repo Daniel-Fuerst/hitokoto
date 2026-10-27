@@ -9,9 +9,9 @@ qt_add_library(hitokoto_ui STATIC
     editor_widget.cpp editor_widget.hpp
     main_window.cpp main_window.hpp
     qt_bridge.hpp
-    table_controller.cpp table_controller.hpp
+    table_embedder.cpp table_embedder.hpp
     table_model.cpp table_model.hpp
-    table_painter.cpp table_painter.hpp
+    table_view.cpp table_view.hpp
     theme_applier.cpp theme_applier.hpp
     theme_manager.cpp theme_manager.hpp
 )

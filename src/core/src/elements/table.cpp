@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S018: GitHub Flavored Markdown pipe tables (GFM 4.10, ADR 0005).
-// Pipe delimiters, escaped-pipe backslashes and the delimiter row are always concealed.
+// S018: GitHub Flavored Markdown pipe tables (GFM 0.29 section 4.10, ADR 0005), following
+// cmark-gfm where the spec leaves room. The UI shows table lines in a table view; the lines carry
+// no formats of their own.
 #include "hitokoto/core/markdown.hpp"
 
 #include <algorithm>
@@ -9,54 +10,97 @@
 namespace hitokoto::core {
 namespace {
 
-// State layout (non-zero while a table is open):
-//   bit 31: 1 after the header row (the next line must be the delimiter row), 0 on delimiter/body rows
-//   bits 24..30: column count (1..64)
-//   bits 0..23: TableAlign (2 bits per column) for the first 12 columns
+// State while a table is open (non-zero):
+//   bit 31: set after the header row (the next line must be the delimiter row)
+//   bits 0..7: column count (1..kMaxColumns)
 constexpr std::uint32_t kDelimiterNext = 1U << 31U;
-constexpr std::uint32_t kColumnShift = 24U;
-constexpr std::uint32_t kColumnMask = 0x7FU;
-constexpr std::size_t kMaxColumns = 64;
-constexpr std::size_t kMaxPackedAlignColumns = 12;
+constexpr std::uint32_t kColumnMask = 0xFFU;
+constexpr std::size_t kMaxColumns = 255;
 
 bool isBlank(char16_t c) noexcept {
     return c == u' ' || c == u'\t';
 }
 
-bool escaped(std::u16string_view line, std::size_t pos) noexcept {
-    std::size_t slashes = 0;
-    while (pos > slashes && line[pos - slashes - 1] == u'\\') {
-        ++slashes;
+/// cmark-gfm: a pipe right after a backslash does not separate cells.
+bool escapedPipe(std::u16string_view line, std::size_t pos) noexcept {
+    return pos > 0 && line[pos - 1] == u'\\';
+}
+
+std::size_t firstNonBlank(std::u16string_view line) noexcept {
+    std::size_t i = 0;
+    while (i < line.size() && isBlank(line[i])) {
+        ++i;
     }
-    return (slashes % 2) != 0;
+    return i;
 }
 
-bool isSingleBacktick(std::u16string_view line, std::size_t i) noexcept {
-    return line[i] == u'`' && (i == 0 || line[i - 1] != u'`') && (i + 1 == line.size() || line[i + 1] != u'`');
+/// Index after the last non-blank character.
+std::size_t trimmedEnd(std::u16string_view line) noexcept {
+    std::size_t end = line.size();
+    while (end > 0 && isBlank(line[end - 1])) {
+        --end;
+    }
+    return end;
 }
 
-/// Finds the closing single backtick on `line` after `opener`, or npos if unmatched.
-std::size_t findClosingBacktick(std::u16string_view line, std::size_t opener) noexcept {
-    for (std::size_t i = opener + 1; i < line.size(); ++i) {
-        if (isSingleBacktick(line, i)) {
-            return i;
+std::size_t leadingSpaces(std::u16string_view line) noexcept {
+    std::size_t width = 0;
+    for (const char16_t c : line) {
+        if (c == u' ') {
+            ++width;
+        } else if (c == u'\t') {
+            width += 4 - (width % 4);
+        } else {
+            break;
         }
     }
-    return std::u16string_view::npos;
+    return width;
 }
 
-/// True if `line` starts with a fenced-code opener, ATX heading or bullet list marker.
-bool startsOtherBlockElement(std::u16string_view line, std::size_t firstNonBlank) noexcept {
-    if (firstNonBlank >= line.size()) {
+bool isThematicBreak(std::u16string_view line, std::size_t start) noexcept {
+    const char16_t c = line[start];
+    if (c != u'-' && c != u'*' && c != u'_') {
+        return false;
+    }
+    std::size_t count = 0;
+    for (std::size_t i = start; i < line.size(); ++i) {
+        if (line[i] == c) {
+            ++count;
+        } else if (!isBlank(line[i])) {
+            return false;
+        }
+    }
+    return count >= 3;
+}
+
+bool isOrderedListMarker(std::u16string_view line, std::size_t start) noexcept {
+    std::size_t i = start;
+    while (i < line.size() && i - start < 9 && line[i] >= u'0' && line[i] <= u'9') {
+        ++i;
+    }
+    if (i == start || i >= line.size() || (line[i] != u'.' && line[i] != u')')) {
+        return false;
+    }
+    return i + 1 == line.size() || isBlank(line[i + 1]);
+}
+
+/// True if `line` starts a block that ends a table (or is blank): indented code, fence, ATX
+/// heading, thematic break, list item, block quote or HTML block.
+bool startsOtherBlock(std::u16string_view line) noexcept {
+    const std::size_t start = firstNonBlank(line);
+    if (start >= line.size()) {
+        return true;  // blank
+    }
+    if (leadingSpaces(line) >= 4) {
         return true;
     }
-    const char16_t c = line[firstNonBlank];
+    const char16_t c = line[start];
     if (c == u'|') {
         return false;
     }
     if (c == u'`' || c == u'~') {
         std::size_t run = 0;
-        while (firstNonBlank + run < line.size() && line[firstNonBlank + run] == c) {
+        while (start + run < line.size() && line[start + run] == c) {
             ++run;
         }
         if (run >= 3) {
@@ -65,99 +109,76 @@ bool startsOtherBlockElement(std::u16string_view line, std::size_t firstNonBlank
     }
     if (c == u'#') {
         std::size_t hashes = 0;
-        while (firstNonBlank + hashes < line.size() && hashes < 7 && line[firstNonBlank + hashes] == u'#') {
+        while (start + hashes < line.size() && hashes < 7 && line[start + hashes] == u'#') {
             ++hashes;
         }
-        if (hashes >= 1 && hashes <= 6 &&
-            (firstNonBlank + hashes == line.size() || isBlank(line[firstNonBlank + hashes]))) {
+        if (hashes <= 6 && (start + hashes == line.size() || isBlank(line[start + hashes]))) {
             return true;
         }
     }
-    if ((c == u'-' || c == u'*' || c == u'+') && firstNonBlank + 1 < line.size() && isBlank(line[firstNonBlank + 1])) {
+    if (isThematicBreak(line, start)) {
         return true;
     }
-    if (c == u'>' && (firstNonBlank + 1 == line.size() || isBlank(line[firstNonBlank + 1]))) {
+    if ((c == u'-' || c == u'*' || c == u'+') && (start + 1 == line.size() || isBlank(line[start + 1]))) {
         return true;
+    }
+    if (isOrderedListMarker(line, start)) {
+        return true;
+    }
+    if (c == u'>') {
+        return true;
+    }
+    if (c == u'<' && start + 1 < line.size()) {
+        const char16_t n = line[start + 1];
+        if ((n >= u'a' && n <= u'z') || (n >= u'A' && n <= u'Z') || n == u'/' || n == u'!' || n == u'?') {
+            return true;
+        }
     }
     return false;
 }
 
+/// The cell-separating pipes of a row, without allocating.
 struct RowPipes {
-    std::size_t firstNonBlank = 0;
-    std::size_t lastNonBlank = 0;  ///< inclusive index of last non-blank character
+    std::size_t first = 0;  ///< first non-blank character
+    std::size_t end = 0;    ///< after the last non-blank character
     bool leadingPipe = false;
     bool trailingPipe = false;
-    std::size_t count = 0;  ///< number of internal cell-boundary pipes
+    std::size_t inner = 0;  ///< number of pipes between cells (capped)
     std::array<std::size_t, kMaxColumns> positions{};
-    bool valid = false;
+    std::size_t pipes = 0;  ///< all separating pipes, also beyond the cap
 };
 
-/// Scans `line` for unescaped pipes outside inline-code spans without heap allocation.
-RowPipes scanRowPipes(std::u16string_view line) noexcept {
-    RowPipes result;
-    if (line.find(u'|') == std::u16string_view::npos) {
-        return result;
-    }
-    std::size_t indent = 0;
-    while (indent < line.size() && indent < 4 && line[indent] == u' ') {
-        ++indent;
-    }
-    if (indent > 3 || indent == line.size() || line[indent] == u'\t') {
-        return result;
-    }
-    std::size_t first = indent;
-    while (first < line.size() && isBlank(line[first])) {
-        ++first;
-    }
-    if (first == line.size() || startsOtherBlockElement(line, first)) {
-        return result;
-    }
-    std::size_t last = line.size() - 1;
-    while (last > first && isBlank(line[last])) {
-        --last;
-    }
-    result.firstNonBlank = first;
-    result.lastNonBlank = last;
-
-    std::size_t totalPipes = 0;
-    for (std::size_t i = first; i <= last; ++i) {
-        if (isSingleBacktick(line, i) && !escaped(line, i)) {
-            if (const std::size_t closer = findClosingBacktick(line, i);
-                closer != std::u16string_view::npos && closer <= last) {
-                i = closer;
-                continue;
-            }
+RowPipes scanRow(std::u16string_view line) noexcept {
+    RowPipes r;
+    r.first = firstNonBlank(line);
+    r.end = std::max(trimmedEnd(line), r.first);
+    for (std::size_t i = r.first; i < r.end; ++i) {
+        if (line[i] != u'|' || escapedPipe(line, i)) {
+            continue;
         }
-        if (line[i] == u'|' && !escaped(line, i)) {
-            ++totalPipes;
-            if (i == first) {
-                result.leadingPipe = true;
-            } else if (i == last) {
-                result.trailingPipe = true;
-            } else if (result.count < kMaxColumns - 1) {
-                result.positions[result.count++] = i;
-            } else {
-                return result;
-            }
+        ++r.pipes;
+        if (i == r.first) {
+            r.leadingPipe = true;
+        } else if (i + 1 == r.end) {
+            r.trailingPipe = true;
+        } else if (r.inner < kMaxColumns - 1) {
+            r.positions[r.inner++] = i;
         }
     }
-    if (totalPipes == 0) {
-        return result;
+    return r;
+}
+
+std::size_t cellCount(const RowPipes& r) noexcept {
+    if (r.first >= r.end || (r.leadingPipe && r.end - r.first == 1)) {
+        return 0;  // blank, or a bare "|"
     }
-    result.valid = true;
-    return result;
+    return r.inner + 1;
 }
 
-std::size_t cellCount(const RowPipes& pipes) noexcept {
-    return pipes.valid ? pipes.count + 1 : 0;
-}
-
-Span cellRawSpan(const RowPipes& pipes, std::size_t index) noexcept {
-    const std::size_t rawStart = index == 0 ? (pipes.leadingPipe ? pipes.firstNonBlank + 1 : pipes.firstNonBlank)
-                                            : pipes.positions[index - 1] + 1;
-    const std::size_t rawEnd = index < pipes.count ? pipes.positions[index]
-                                                   : (pipes.trailingPipe ? pipes.lastNonBlank : pipes.lastNonBlank + 1);
-    return {static_cast<std::uint32_t>(rawStart), static_cast<std::uint32_t>(rawEnd - rawStart)};
+Span cellRawSpan(const RowPipes& r, std::size_t index) noexcept {
+    const std::size_t start = index == 0 ? (r.leadingPipe ? r.first + 1 : r.first) : r.positions[index - 1] + 1;
+    const std::size_t end = index < r.inner ? r.positions[index] : (r.trailingPipe ? r.end - 1 : r.end);
+    return {static_cast<std::uint32_t>(start), static_cast<std::uint32_t>(std::max(end, start) - start)};
 }
 
 Span cellContentSpan(std::u16string_view line, Span raw) noexcept {
@@ -172,98 +193,49 @@ Span cellContentSpan(std::u16string_view line, Span raw) noexcept {
     if (start < end) {
         return {start, end - start};
     }
-    // Empty cell: place the 0-length span after the leading space when `|  |` has at least 2 spaces.
+    // Empty cell: the empty span sits after the leading space when `|  |` has at least two.
     const std::uint32_t pos = raw.length >= 2 ? raw.start + 1 : raw.start;
     return {pos, 0};
 }
 
-struct DelimiterInfo {
-    std::size_t columns = 0;
-    std::array<TableAlign, kMaxColumns> aligns{};
-    bool valid = false;
-};
-
-DelimiterInfo parseDelimiterRow(std::u16string_view line) noexcept {
-    DelimiterInfo info;
-    const RowPipes pipes = scanRowPipes(line);
-    if (!pipes.valid) {
-        return info;
+/// Number of columns of a delimiter row, or 0 if `line` is not one.
+std::size_t delimiterColumns(std::u16string_view line, std::array<TableAlign, kMaxColumns>* aligns) noexcept {
+    const RowPipes r = scanRow(line);
+    if (r.pipes == 0) {
+        return 0;
     }
-    const std::size_t cols = cellCount(pipes);
-    if (cols == 0 || cols > kMaxColumns) {
-        return info;
+    const std::size_t columns = cellCount(r);
+    if (columns == 0 || columns > kMaxColumns) {
+        return 0;
     }
-    for (std::size_t c = 0; c < cols; ++c) {
-        const Span content = cellContentSpan(line, cellRawSpan(pipes, c));
+    for (std::size_t c = 0; c < columns; ++c) {
+        const Span content = cellContentSpan(line, cellRawSpan(r, c));
         if (content.length == 0) {
-            return info;
+            return 0;
         }
         const std::u16string_view token = line.substr(content.start, content.length);
-        const bool leftColon = token.front() == u':';
-        const bool rightColon = token.size() > 1 && token.back() == u':';
-        const std::size_t dashStart = leftColon ? 1 : 0;
-        const std::size_t dashEnd = rightColon ? token.size() - 1 : token.size();
-        if (dashStart >= dashEnd) {
-            return info;
+        const bool left = token.front() == u':';
+        const bool right = token.size() > 1 && token.back() == u':';
+        const std::size_t from = left ? 1 : 0;
+        const std::size_t to = right ? token.size() - 1 : token.size();
+        if (from >= to) {
+            return 0;
         }
-        for (std::size_t i = dashStart; i < dashEnd; ++i) {
+        for (std::size_t i = from; i < to; ++i) {
             if (token[i] != u'-') {
-                return info;
+                return 0;
             }
         }
-        info.aligns[c] = (leftColon && rightColon) ? TableAlign::Center
-                         : rightColon              ? TableAlign::Right
-                                                   : TableAlign::Left;
-    }
-    info.columns = cols;
-    info.valid = true;
-    return info;
-}
-
-std::uint32_t encodeState(const DelimiterInfo& delim, bool delimiterNext) noexcept {
-    std::uint32_t state = (static_cast<std::uint32_t>(delim.columns) & kColumnMask) << kColumnShift;
-    const std::size_t packed = std::min(delim.columns, kMaxPackedAlignColumns);
-    for (std::size_t c = 0; c < packed; ++c) {
-        state |= (static_cast<std::uint32_t>(delim.aligns[c]) & 0x3U) << (c * 2U);
-    }
-    if (delimiterNext) {
-        state |= kDelimiterNext;
-    }
-    return state;
-}
-
-std::size_t stateColumns(std::uint32_t state) noexcept {
-    return static_cast<std::size_t>((state >> kColumnShift) & kColumnMask);
-}
-
-TableAlign stateAlign(std::uint32_t state, std::size_t column) noexcept {
-    if (column >= kMaxPackedAlignColumns) {
-        return TableAlign::Left;
-    }
-    const std::uint32_t bits = (state >> (column * 2U)) & 0x3U;
-    return bits == 1 ? TableAlign::Center : bits == 2 ? TableAlign::Right : TableAlign::Left;
-}
-
-void hideEscapedPipeBackslashes(std::u16string_view line, Span content, std::vector<HiddenRange>& hidden) {
-    const std::size_t end = content.end();
-    for (std::size_t i = content.start; i < end; ++i) {
-        if (isSingleBacktick(line, i) && !escaped(line, i)) {
-            if (const std::size_t closer = findClosingBacktick(line, i);
-                closer != std::u16string_view::npos && closer < end) {
-                i = closer;
-                continue;
-            }
-        }
-        if (line[i] == u'|' && i > content.start && escaped(line, i)) {
-            hidden.push_back({{static_cast<std::uint32_t>(i - 1), 1}, HideMode::Collapse});
+        if (aligns != nullptr) {
+            (*aligns)[c] = left && right ? TableAlign::Center : right ? TableAlign::Right : TableAlign::Left;
         }
     }
+    return columns;
 }
 
 class TableElement final : public MultiLineElement {
 public:
     [[nodiscard]] std::string_view id() const noexcept override { return "table"; }
-    [[nodiscard]] bool allowsInlineElements() const noexcept override { return true; }
 
     [[nodiscard]] std::optional<BlockLine> parse(std::u16string_view line,
                                                  std::uint32_t state) const noexcept override {
@@ -272,35 +244,28 @@ public:
 
     [[nodiscard]] std::optional<BlockLine> parseWithNextLine(std::u16string_view line, std::uint32_t state,
                                                              std::u16string_view nextLine) const noexcept override {
-        if (state == 0 && nextLine.empty()) {
-            return std::nullopt;
-        }
-        if (line.find(u'|') == std::u16string_view::npos) {
-            return std::nullopt;
-        }
         if (state == 0) {
-            if (nextLine.find(u'-') == std::u16string_view::npos || nextLine.find(u'|') == std::u16string_view::npos) {
+            // A header row: pipes, not another block, and a delimiter row with as many cells below.
+            if (nextLine.empty() || line.find(u'|') == std::u16string_view::npos ||
+                nextLine.find(u'-') == std::u16string_view::npos || startsOtherBlock(line)) {
                 return std::nullopt;
             }
-            const DelimiterInfo delim = parseDelimiterRow(nextLine);
-            if (!delim.valid) {
+            const RowPipes header = scanRow(line);
+            const std::size_t columns = delimiterColumns(nextLine, nullptr);
+            if (header.pipes == 0 || columns == 0 || cellCount(header) != columns) {
                 return std::nullopt;
             }
-            const RowPipes header = scanRowPipes(line);
-            if (!header.valid || cellCount(header) != delim.columns) {
-                return std::nullopt;
-            }
-            return BlockLine{encodeState(delim, true), false};
+            return BlockLine{static_cast<std::uint32_t>(columns) | kDelimiterNext, false};
         }
         if ((state & kDelimiterNext) != 0) {
-            const DelimiterInfo delim = parseDelimiterRow(line);
-            if (!delim.valid || delim.columns != stateColumns(state)) {
+            if (delimiterColumns(line, nullptr) != (state & kColumnMask)) {
                 return std::nullopt;
             }
             return BlockLine{state & ~kDelimiterNext, true};
         }
-        const RowPipes body = scanRowPipes(line);
-        if (!body.valid) {
+        // A body row: anything up to a blank line or the start of another block, also without
+        // pipes; a bare "|" ends the table (cmark-gfm).
+        if (startsOtherBlock(line) || cellCount(scanRow(line)) == 0) {
             return std::nullopt;
         }
         return BlockLine{state, false};
@@ -311,41 +276,15 @@ public:
         out.table = true;
         if (parsed.delimiter) {
             out.tableDelimiter = true;
-            if (!line.empty()) {
-                out.hidden.push_back({{0, static_cast<std::uint32_t>(line.size())}, HideMode::Collapse});
-            }
             return;
         }
         out.tableHeader = (parsed.stateAfter & kDelimiterNext) != 0;
-        const std::size_t expectedCols = stateColumns(parsed.stateAfter);
-        const RowPipes pipes = scanRowPipes(line);
-        if (!pipes.valid) {
-            return;
-        }
-        const std::size_t cols = std::min(cellCount(pipes), expectedCols > 0 ? expectedCols : kMaxColumns);
-        out.cells.reserve(cols);
-        for (std::size_t c = 0; c < cols; ++c) {
-            const Span raw = cellRawSpan(pipes, c);
-            const Span content = cellContentSpan(line, raw);
-            out.cells.push_back({content, raw, stateAlign(parsed.stateAfter, c)});
-        }
-
-        // Conceal all pipe syntax and surrounding cell-padding whitespace (ADR 0005).
-        std::uint32_t cursor = 0;
-        const Role cellRole = out.tableHeader ? Role::TableHeader : Role::TableCell;
-        for (const auto& cell : out.cells) {
-            if (cell.content.start > cursor) {
-                out.hidden.push_back({{cursor, cell.content.start - cursor}, HideMode::Collapse});
-            }
-            if (cell.content.length > 0) {
-                out.runs.push_back({cell.content, cellRole, 0});
-                hideEscapedPipeBackslashes(line, cell.content, out.hidden);
-            }
-            cursor = cell.content.end();
-        }
-        const auto lineEnd = static_cast<std::uint32_t>(line.size());
-        if (cursor < lineEnd) {
-            out.hidden.push_back({{cursor, lineEnd - cursor}, HideMode::Collapse});
+        const RowPipes r = scanRow(line);
+        const std::size_t columns = std::min<std::size_t>(cellCount(r), parsed.stateAfter & kColumnMask);
+        out.cells.reserve(columns);
+        for (std::size_t c = 0; c < columns; ++c) {
+            const Span raw = cellRawSpan(r, c);
+            out.cells.push_back({cellContentSpan(line, raw), raw, TableAlign::Left});
         }
     }
 };
@@ -354,6 +293,101 @@ public:
 
 std::unique_ptr<MultiLineElement> makeTableElement() {
     return std::make_unique<TableElement>();
+}
+
+std::vector<TableCell> tableRowCells(std::u16string_view line) {
+    const RowPipes r = scanRow(line);
+    const std::size_t count = cellCount(r);
+    std::vector<TableCell> cells;
+    cells.reserve(count);
+    for (std::size_t c = 0; c < count; ++c) {
+        const Span raw = cellRawSpan(r, c);
+        cells.push_back({cellContentSpan(line, raw), raw, TableAlign::Left});
+    }
+    return cells;
+}
+
+std::optional<std::vector<TableAlign>> tableDelimiterAligns(std::u16string_view line) {
+    std::array<TableAlign, kMaxColumns> aligns{};
+    const std::size_t columns = delimiterColumns(line, &aligns);
+    if (columns == 0) {
+        return std::nullopt;
+    }
+    return std::vector<TableAlign>(aligns.begin(), aligns.begin() + static_cast<std::ptrdiff_t>(columns));
+}
+
+std::u16string tableCellToText(std::u16string_view markdown) {
+    std::u16string out;
+    out.reserve(markdown.size());
+    for (std::size_t i = 0; i < markdown.size(); ++i) {
+        const char16_t c = markdown[i];
+        if (c == u'\\' && i + 1 < markdown.size() && markdown[i + 1] == u'|') {
+            out += u'|';
+            ++i;
+            continue;
+        }
+        if (c == u'<' && i + 3 < markdown.size() && (markdown[i + 1] == u'b' || markdown[i + 1] == u'B') &&
+            (markdown[i + 2] == u'r' || markdown[i + 2] == u'R')) {
+            // <br>, <br/>, <br />
+            std::size_t j = i + 3;
+            while (j < markdown.size() && markdown[j] == u' ') {
+                ++j;
+            }
+            if (j < markdown.size() && markdown[j] == u'/') {
+                ++j;
+            }
+            if (j < markdown.size() && markdown[j] == u'>') {
+                out += u'\n';
+                i = j;
+                continue;
+            }
+        }
+        out += c;
+    }
+    return out;
+}
+
+std::u16string tableCellFromText(std::u16string_view text) {
+    std::u16string out;
+    out.reserve(text.size() + 8);
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        const char16_t c = text[i];
+        if (c == u'\r') {
+            if (i + 1 < text.size() && text[i + 1] == u'\n') {
+                ++i;
+            }
+            out += u"<br>";
+        } else if (c == u'\n' || c == u' ' || c == u' ') {
+            out += u"<br>";
+        } else if (c == u'|') {
+            out += u"\\|";
+        } else {
+            out += c;
+        }
+    }
+    return out;
+}
+
+std::u16string replaceTableCell(std::u16string_view line, std::size_t column, std::u16string_view markdown) {
+    const std::vector<TableCell> cells = tableRowCells(line);
+    if (column < cells.size()) {
+        const Span content = cells[column].content;
+        std::u16string out(line.substr(0, content.start));
+        out += markdown;
+        out += line.substr(content.end());
+        return out;
+    }
+    std::u16string out(line.substr(0, trimmedEnd(line)));
+    if (out.empty() || out.back() != u'|' || escapedPipe(out, out.size() - 1)) {
+        out += out.empty() ? u"|" : u" |";
+    }
+    for (std::size_t c = cells.size(); c < column; ++c) {
+        out += u"  |";
+    }
+    out += u' ';
+    out += markdown;
+    out += u" |";
+    return out;
 }
 
 std::u16string makeEmptyTableRow(std::size_t columns) {
@@ -367,11 +401,7 @@ std::u16string makeEmptyTableRow(std::size_t columns) {
 }
 
 std::u16string appendTableColumn(std::u16string_view line, bool delimiterRow) {
-    std::size_t end = line.size();
-    while (end > 0 && isBlank(line[end - 1])) {
-        --end;
-    }
-    std::u16string out(line.substr(0, end));
+    std::u16string out(line.substr(0, trimmedEnd(line)));
     if (out.empty() || out.back() != u'|') {
         out += u" |";
     }
@@ -380,18 +410,18 @@ std::u16string appendTableColumn(std::u16string_view line, bool delimiterRow) {
 }
 
 std::u16string removeTableColumn(std::u16string_view line, std::size_t column) {
-    const RowPipes pipes = scanRowPipes(line);
-    const std::size_t cols = cellCount(pipes);
-    if (!pipes.valid || cols <= 1 || column >= cols) {
+    const RowPipes r = scanRow(line);
+    const std::size_t cols = cellCount(r);
+    if (cols <= 1 || column >= cols) {
         return std::u16string(line);
     }
-    std::u16string out(line.substr(0, pipes.firstNonBlank));
+    std::u16string out(line.substr(0, r.first));
     out += u'|';
     for (std::size_t c = 0; c < cols; ++c) {
         if (c == column) {
             continue;
         }
-        const Span raw = cellRawSpan(pipes, c);
+        const Span raw = cellRawSpan(r, c);
         if (raw.length == 0) {
             out += u"  |";
         } else {
@@ -403,13 +433,8 @@ std::u16string removeTableColumn(std::u16string_view line, std::size_t column) {
 }
 
 std::u16string padTableRowCells(std::u16string_view line, std::size_t columns) {
-    const RowPipes pipes = scanRowPipes(line);
-    const std::size_t existing = pipes.valid ? cellCount(pipes) : 0;
-    std::size_t end = line.size();
-    while (end > 0 && isBlank(line[end - 1])) {
-        --end;
-    }
-    std::u16string out(line.substr(0, end));
+    const std::size_t existing = cellCount(scanRow(line));
+    std::u16string out(line.substr(0, trimmedEnd(line)));
     if (out.empty()) {
         return makeEmptyTableRow(columns);
     }
@@ -420,27 +445,6 @@ std::u16string padTableRowCells(std::u16string_view line, std::size_t columns) {
         out += u"  |";
     }
     return out;
-}
-
-// S018 revision: interface only (test first).
-std::vector<TableCell> tableRowCells(std::u16string_view /*line*/) {
-    return {};
-}
-
-std::optional<std::vector<TableAlign>> tableDelimiterAligns(std::u16string_view /*line*/) {
-    return std::nullopt;
-}
-
-std::u16string tableCellToText(std::u16string_view markdown) {
-    return std::u16string(markdown);
-}
-
-std::u16string tableCellFromText(std::u16string_view text) {
-    return std::u16string(text);
-}
-
-std::u16string replaceTableCell(std::u16string_view line, std::size_t /*column*/, std::u16string_view /*markdown*/) {
-    return std::u16string(line);
 }
 
 }  // namespace hitokoto::core

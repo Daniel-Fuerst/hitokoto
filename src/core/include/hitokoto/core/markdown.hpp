@@ -29,8 +29,6 @@ enum class Role : std::uint8_t {
     InlineCode,        ///< text inside a single-backtick code span; one delimiter character on each side
     InlineCodeMarker,  ///< a revealed inline-code delimiter (backtick)
     EmphasisMarker,    ///< a revealed emphasis delimiter (* _ ~~)
-    TableHeader,       ///< text inside a table header cell
-    TableCell,         ///< text inside a table body cell
 };
 
 enum class TableAlign : std::uint8_t {
@@ -208,8 +206,6 @@ public:
         (void)nextLine;
         return parse(line, state);
     }
-    /// Whether inline elements (emphasis, inline code) run inside non-delimiter lines of this block.
-    [[nodiscard]] virtual bool allowsInlineElements() const noexcept { return false; }
     /// Render rule: how to show a line the parse rule accepted.
     virtual void render(std::u16string_view line, const BlockLine& parsed, const LineContext& context,
                         LineRender& out) const = 0;

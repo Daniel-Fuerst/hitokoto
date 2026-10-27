@@ -57,6 +57,7 @@ private slots:
             "| :--- | :---: | ---: |\n"
             "| Alice | 95 | 1 |\n"
             "| Bob | 100 | 2 |\n"
+            "\n"
             "after\n";
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("table.md"), markdown)));
@@ -113,8 +114,9 @@ private slots:
         QCOMPARE(model->data(model->index(2, 1)).toString(), QStringLiteral("**bold**\nnext"));
         QCOMPARE(model->data(model->index(3, 0)).toString(), QStringLiteral("continued"));
         QCOMPARE(model->data(model->index(3, 1)).toString(), QString());
-        // The row with a line break is about twice as high as a one-line row.
-        QVERIFY(view->rowHeight(2) > view->rowHeight(3) * 1.6);
+        // The row with a line break is a line higher than a one-line row.
+        const int lineHeight = QFontMetrics(model->data(model->index(3, 0), Qt::FontRole).value<QFont>()).height();
+        QVERIFY(view->rowHeight(2) >= view->rowHeight(3) + lineHeight * 8 / 10);
         QVERIFY(f.editor()->tableViewAt(6) == nullptr);
         QVERIFY(f.editor()->document()->findBlockByNumber(6).isVisible());
     }
@@ -146,7 +148,7 @@ private slots:
         QVERIFY(editor != nullptr);
         test::keyClick(editor, Qt::Key_A, Qt::ControlModifier);
         test::keyClick(editor, Qt::Key_V, Qt::ControlModifier);
-        test::keyClick(editor, Qt::Key_Tab);
+        test::keyClick(editor, Qt::Key_Backtab);  // commits; Tab in the last cell would add a row
         f.settle();
         QCOMPARE(text(f), QStringLiteral("| Key | Value |\n| --- | --- |\n|foo2\\|x<br>y|  p\\|q<br>r  |\n"));
 
@@ -172,7 +174,7 @@ private slots:
         QInputMethodEvent commit;
         commit.setCommitString(QStringLiteral("仮名"));
         QCoreApplication::sendEvent(editor, &commit);
-        test::keyClick(editor, Qt::Key_Tab);
+        test::keyClick(editor, Qt::Key_Backtab);  // Tab in the last cell would append a row
         f.settle();
         QCOMPARE(text(f), QStringLiteral("| A |\n| --- |\n| x仮名 |\n"));
     }
@@ -184,6 +186,7 @@ private slots:
             "| --- | --- | --- |\n"
             "| a |\n"
             "| d | e | f |\n"
+            "\n"
             "below";
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("move.md"), markdown)));
@@ -213,6 +216,7 @@ private slots:
             "| --- | --- |\n"
             "| 1 | 2 |\n"
             "| 3 | 4 |\n"
+            "\n"
             "below\n";
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("updown.md"), markdown)));
@@ -229,7 +233,7 @@ private slots:
         QTRY_VERIFY(f.editor()->hasFocus());
         QCOMPARE(f.editor()->textCursor().blockNumber(), 0);
 
-        f.placeCaret(5, 1);
+        f.placeCaret(5, 0);
         test::keyClick(f.editor(), Qt::Key_Up);
         QTRY_VERIFY(view->hasFocus());
         QCOMPARE(view->currentIndex().row(), 2);
@@ -356,6 +360,7 @@ private slots:
             "| --- | --- |\n"
             "| R1 | B1 |\n"
             "| R2 | B2 |\n"
+            "\n"
             "after\n";
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("themed.md"), markdown)));

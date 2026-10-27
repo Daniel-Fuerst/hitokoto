@@ -2,8 +2,7 @@
 #include "editor_widget.hpp"
 
 #include "qt_bridge.hpp"
-#include "table_controller.hpp"
-#include "table_painter.hpp"
+#include "table_embedder.hpp"
 
 #include <QFontMetricsF>
 #include <QMouseEvent>
@@ -42,7 +41,7 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     setDocument(doc);
     setAcceptRichText(false);
     styler_ = new BlockStyler(document(), registry, [this] { return visibleBlockRange(); }, this);
-    tableController_ = std::make_unique<TableController>(this, styler_);
+    tables_ = std::make_unique<TableEmbedder>(this, styler_, layout_);
     connect(layout_, &BlockLayout::blockHeightChanged, this, &EditorWidget::keepContentStill);
     connect(layout_, &BlockLayout::batchFinished, this, &EditorWidget::applyPendingShift);
 
@@ -57,17 +56,21 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
         }
     });
     connect(this, &QTextEdit::cursorPositionChanged, this, &EditorWidget::updateReveal);
+    connect(this, &QTextEdit::cursorPositionChanged, tables_.get(), &TableEmbedder::caretMoved);
+    connect(document(), &QTextDocument::contentsChange, tables_.get(), &TableEmbedder::scheduleRefresh);
+    connect(styler_, &BlockStyler::completed, tables_.get(), &TableEmbedder::scheduleRefresh);
+    connect(layout_, &BlockLayout::documentSizeChanged, tables_.get(), &TableEmbedder::reposition);
     connect(this, &QTextEdit::selectionChanged, this, &EditorWidget::updateReveal);
 }
 
 EditorWidget::~EditorWidget() = default;
 
-QTableView* EditorWidget::tableViewAt(int /*blockNumber*/) const {
-    return nullptr;  // S018 revision: interface only (test first)
+QTableView* EditorWidget::tableViewAt(int blockNumber) const {
+    return tables_->viewAt(blockNumber);
 }
 
-bool EditorWidget::isTableSourceShown(int /*blockNumber*/) const {
-    return false;
+bool EditorWidget::isTableSourceShown(int blockNumber) const {
+    return tables_->isSourceShown(blockNumber);
 }
 
 QRectF EditorWidget::blockBoundingGeometry(const QTextBlock& block) const {
@@ -146,7 +149,8 @@ void EditorWidget::applyTheme(const core::Theme& theme) {
     document()->setDocumentMargin(theme.editorPadding);
     updateMargins();
     styler_->setFormats(formats);
-    styler_->setAvailableWidth(availableTableWidth(formats.baseFont().pointSizeF()));
+    tables_->setFormats(&styler_->formats());
+    tables_->setAvailableWidth(availableTableWidth());
     if (!wasModified) {
         document()->setModified(false);
     }
@@ -154,19 +158,19 @@ void EditorWidget::applyTheme(const core::Theme& theme) {
     viewport()->update();
 }
 
-double EditorWidget::availableTableWidth(double basePointSize) const {
-    // Reserve the vertical scroll bar even while it is hidden: a width that changed with the bar
-    // would change the table's wrapping and height, and so the bar again (review objection O2).
-    double viewW = static_cast<double>(viewport()->width());
+int EditorWidget::availableTableWidth() const {
+    // The text column, with the vertical scroll bar reserved even while it is hidden: a width that
+    // changed with the bar would change the table's wrapping and height, and so the bar again
+    // (review objection O2).
+    double width = static_cast<double>(viewport()->width());
     const QScrollBar* bar = verticalScrollBar();
     const bool barTakesSpace = verticalScrollBarPolicy() != Qt::ScrollBarAlwaysOff &&
                                style()->styleHint(QStyle::SH_ScrollBar_Transient, nullptr, bar) == 0;
     if (barTakesSpace && !bar->isVisibleTo(this)) {
-        viewW -= static_cast<double>(bar->sizeHint().width());
+        width -= static_cast<double>(bar->sizeHint().width());
     }
-    const double gutterPad = std::clamp(basePointSize * 1.3, 14.0, 22.0) + 6.0;
-    const double contentW = maxWidth_ > 0 ? std::min(viewW - padding_ * 2.0, maxWidth_) : viewW - padding_ * 2.0;
-    return std::max(120.0, contentW - gutterPad * 2.0);
+    width -= 2.0 * document()->documentMargin();
+    return std::max(120, static_cast<int>(width));
 }
 
 std::pair<int, int> EditorWidget::visibleBlockRange() const {
@@ -202,67 +206,20 @@ void EditorWidget::updateMargins() {
     setViewportMargins(side, 0, side, 0);
 }
 
-QRectF EditorWidget::tableRect(int blockNumber) const {
-    return tableController_->tableRect(blockNumber);
-}
-
-QRectF EditorWidget::cellRect(int blockNumber, int column) const {
-    return tableController_->cellRect(blockNumber, column);
-}
-
-QRectF EditorWidget::addRowButtonRect(int blockNumber) const {
-    return tableController_->addRowButtonRect(blockNumber);
-}
-
-QRectF EditorWidget::addColumnButtonRect(int blockNumber) const {
-    return tableController_->addColumnButtonRect(blockNumber);
-}
-
-QRectF EditorWidget::deleteRowButtonRect(int blockNumber) const {
-    return tableController_->deleteRowButtonRect(blockNumber);
-}
-
-QRectF EditorWidget::deleteColumnButtonRect(int blockNumber, int column) const {
-    return tableController_->deleteColumnButtonRect(blockNumber, column);
-}
-
-bool EditorWidget::isAddRowButtonVisible(int blockNumber) const {
-    return tableController_->isAddRowButtonVisible(blockNumber);
-}
-
-bool EditorWidget::isAddColumnButtonVisible(int blockNumber) const {
-    return tableController_->isAddColumnButtonVisible(blockNumber);
-}
-
-bool EditorWidget::isDeleteRowButtonVisible(int blockNumber) const {
-    return tableController_->isDeleteRowButtonVisible(blockNumber);
-}
-
-bool EditorWidget::isDeleteColumnButtonVisible(int blockNumber, int column) const {
-    return tableController_->isDeleteColumnButtonVisible(blockNumber, column);
-}
-
-bool EditorWidget::viewportEvent(QEvent* event) {
-    if (event->type() == QEvent::Leave) {
-        tableController_->updateHoverPos(std::nullopt);
-    }
-    return QTextEdit::viewportEvent(event);
-}
-
 void EditorWidget::resizeEvent(QResizeEvent* event) {
     const ScrollAnchor anchor = captureAnchor();
     QTextEdit::resizeEvent(event);
     updateMargins();
-    styler_->setAvailableWidth(availableTableWidth(styler_->formats().baseFont().pointSizeF()));
+    tables_->setAvailableWidth(availableTableWidth());
     restoreAnchor(anchor);
     styler_->styleVisible();
-    tableController_->refreshHoverState();
+    tables_->refresh();
 }
 
 void EditorWidget::scrollContentsBy(int dx, int dy) {
     QTextEdit::scrollContentsBy(dx, dy);
     styler_->styleVisible();
-    tableController_->refreshHoverState();
+    tables_->refresh();
 }
 
 void EditorWidget::paintEvent(QPaintEvent* event) {
@@ -272,18 +229,7 @@ void EditorWidget::paintEvent(QPaintEvent* event) {
     emit painted();
 }
 
-void EditorWidget::mouseMoveEvent(QMouseEvent* event) {
-    if (tableController_->handleMouseMove(event)) {
-        return;
-    }
-    QTextEdit::mouseMoveEvent(event);
-}
-
 void EditorWidget::mousePressEvent(QMouseEvent* event) {
-    if (tableController_->handleMousePress(event)) {
-        return;
-    }
-
     // S010: a click into a line whose markers are collapsed hits the concealed layout. The
     // character index is right, except left of the first visible character, where the hit
     // can land inside the collapsed marker; move it behind the marker.
@@ -293,10 +239,6 @@ void EditorWidget::mousePressEvent(QMouseEvent* event) {
     const auto render = wasConcealed ? styler_->renderFor(block) : core::LineRender{};
 
     QTextEdit::mousePressEvent(event);
-
-    if (event->button() == Qt::LeftButton && !(event->modifiers() & Qt::ShiftModifier)) {
-        tableController_->handlePostNavigation(nullptr);
-    }
 
     if (!wasConcealed || event->button() != Qt::LeftButton || (event->modifiers() & Qt::ShiftModifier)) {
         return;
@@ -315,24 +257,11 @@ void EditorWidget::mousePressEvent(QMouseEvent* event) {
     }
 }
 
-void EditorWidget::mouseReleaseEvent(QMouseEvent* event) {
-    tableController_->handleMouseRelease(event);
-    QTextEdit::mouseReleaseEvent(event);
-}
-
-void EditorWidget::contextMenuEvent(QContextMenuEvent* event) {
-    if (tableController_->handleContextMenu(event)) {
-        return;
-    }
-    QTextEdit::contextMenuEvent(event);
-}
-
 void EditorWidget::keyPressEvent(QKeyEvent* event) {
-    if (tableController_->handleKeyPress(event)) {
+    if (tables_->handleEditorKey(event)) {
         return;
     }
     QTextEdit::keyPressEvent(event);
-    tableController_->handlePostNavigation(event);
 }
 
 void EditorWidget::paintCodeBlockPanels() {
@@ -347,7 +276,6 @@ void EditorWidget::paintCodeBlockPanels() {
     const QPointF offset = contentOffset();
     QRectF panel;
     bool inPanel = false;
-    int lastPaintedTableEnd = -1;
     for (QTextBlock b = document()->findBlockByNumber(first); b.isValid() && b.blockNumber() <= last; b = b.next()) {
         const auto render = styler_->renderFor(b);
         const QRectF line = blockBoundingGeometry(b).translated(offset);
@@ -363,13 +291,6 @@ void EditorWidget::paintCodeBlockPanels() {
         if (inPanel) {
             drawBox(painter, panel.adjusted(-padding, -padding, padding, padding), block);
             inPanel = false;
-        }
-        if (render.table && b.blockNumber() > lastPaintedTableEnd) {
-            const TableMetrics metrics = styler_->tableMetrics(b);
-            if (metrics.firstBlock >= 0) {
-                TablePainter::paintTableBackgrounds(painter, document(), styler_, *tableController_, metrics);
-                lastPaintedTableEnd = metrics.lastBlock;
-            }
         }
         paintInlineCodeBoxes(painter, b, render, line.topLeft(), inlineCode);
     }
@@ -412,20 +333,12 @@ void EditorWidget::paintDecorations() {
     const QPointF offset = contentOffset();
     const qreal bottom = viewport()->height();
 
-    int lastPaintedTableEnd = -1;
     for (QTextBlock block = firstVisibleBlock(); block.isValid(); block = block.next()) {
         const QRectF rect = blockBoundingGeometry(block).translated(offset);
         if (rect.top() > bottom) {
             break;
         }
         const auto render = styler_->renderFor(block);
-        if (render.table && block.blockNumber() > lastPaintedTableEnd) {
-            const TableMetrics tm = styler_->tableMetrics(block);
-            if (tm.firstBlock >= 0) {
-                TablePainter::paintTableGridAndControls(painter, document(), styler_, *tableController_, tm);
-                lastPaintedTableEnd = tm.lastBlock;
-            }
-        }
         if (styler_->isRevealed(block.blockNumber()) || render.decorations.empty()) {
             continue;
         }

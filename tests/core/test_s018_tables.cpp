@@ -112,11 +112,11 @@ TEST(S018_Tables, DelimiterAlignmentsForEveryColumn) {
         delimiter += i == 13 ? u" ---: |" : (i == 12 ? u" :-: |" : u" --- |");
     }
     const auto aligns = tableDelimiterAligns(delimiter);
-    ASSERT_TRUE(aligns.has_value());
-    ASSERT_EQ(aligns->size(), 14u);
-    EXPECT_EQ((*aligns)[0], TableAlign::Left);
-    EXPECT_EQ((*aligns)[12], TableAlign::Center);
-    EXPECT_EQ((*aligns)[13], TableAlign::Right);
+    const std::vector<TableAlign> fourteen = aligns.value_or(std::vector<TableAlign>{});
+    ASSERT_EQ(fourteen.size(), 14u);
+    EXPECT_EQ(fourteen[0], TableAlign::Left);
+    EXPECT_EQ(fourteen[12], TableAlign::Center);
+    EXPECT_EQ(fourteen[13], TableAlign::Right);
     EXPECT_FALSE(tableDelimiterAligns(u"| a |").has_value());
     EXPECT_EQ(tableDelimiterAligns(u"|:-:| -: |"), (std::vector<TableAlign>{TableAlign::Center, TableAlign::Right}));
 }

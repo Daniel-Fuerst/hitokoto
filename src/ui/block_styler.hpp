@@ -10,22 +10,16 @@
 #include "hitokoto/core/reveal.hpp"
 
 #include <QObject>
+#include <QString>
 #include <QTimer>
 
 #include <functional>
 #include <utility>
-#include <vector>
 
 class QTextDocument;
 class QTextBlock;
 
 namespace hitokoto::ui {
-
-struct TableMetrics {
-    int firstBlock = -1;
-    int lastBlock = -1;
-    std::vector<double> columnWidths;  ///< content width W_c (excluding 2*padding) of each column
-};
 
 class BlockStyler : public QObject {
     Q_OBJECT
@@ -36,10 +30,6 @@ public:
 
     void setFormats(EditorFormats formats);
     [[nodiscard]] const EditorFormats& formats() const noexcept { return formats_; }
-
-    /// Maximum horizontal width (px) available for a table; wider tables wrap inside their columns.
-    void setAvailableWidth(double width);
-    [[nodiscard]] double availableWidth() const noexcept { return availableWidth_; }
 
     void setRevealed(core::LineRange range);
     [[nodiscard]] core::LineRange revealed() const noexcept { return revealed_; }
@@ -57,25 +47,8 @@ public:
     /// Number of blocks styled so far (instrumentation for tests and benchmarks).
     [[nodiscard]] quint64 styledCount() const noexcept { return styledCount_; }
 
-    /// RAII scope that suppresses repetitive restyling during multi-row batch mutations.
-    class BatchScope {
-    public:
-        explicit BatchScope(BlockStyler& styler);
-        ~BatchScope();
-        BatchScope(const BatchScope&) = delete;
-        BatchScope& operator=(const BatchScope&) = delete;
-
-    private:
-        BlockStyler& styler_;
-    };
-
-    /// Invalidates cached table dimensions.
-    void invalidateTableMetrics();
-
     /// How a block is shown right now (used for drawing decorations and hit testing).
     [[nodiscard]] core::LineRender renderFor(const QTextBlock& block);
-    /// Span of blocks and per-column content widths for the table containing `block`.
-    [[nodiscard]] TableMetrics tableMetrics(const QTextBlock& block);
 
 signals:
     void completed();
@@ -84,8 +57,9 @@ private:
     void onContentsChange(int position, int charsRemoved, int charsAdded);
     void styleRange(int first, int last);
     void styleBlock(const QTextBlock& block);
-    void layoutTableRow(QTextBlock& block, const core::LineRender& render, const TableMetrics& metrics);
     [[nodiscard]] core::BlockState blockStateBefore(const QTextBlock& block);
+    /// The line after `block` when the table element needs it as lookahead, else empty.
+    [[nodiscard]] static QString nextLineFor(const QTextBlock& block, core::BlockState state, const QString& text);
     [[nodiscard]] bool isStyled(const QTextBlock& block) const;
     void scheduleFrom(int blockNumber);
     void idleSlice();
@@ -94,14 +68,11 @@ private:
     const core::ElementRegistry& registry_;
     std::function<std::pair<int, int>()> visibleBlocks_;
     EditorFormats formats_;
-    double availableWidth_ = 0.0;
     core::LineRange revealed_{0, 0};
     QTimer idle_;
     int idleNext_ = 0;
     bool busy_ = false;
     quint64 styledCount_ = 0;
-    int batchNesting_ = 0;
-    mutable std::vector<TableMetrics> tableMetricsCache_;
 };
 
 }  // namespace hitokoto::ui

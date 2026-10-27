@@ -173,31 +173,6 @@ LineRender ElementRegistry::render(std::u16string_view line, const LineContext& 
         const auto& multi = multiLineElements_[block->element - 1U];
         multi->render(line, block->parsed, context, out);
         out.blockState = block->stateAfter();
-        if (multi->allowsInlineElements() && !out.cells.empty()) {
-            // GFM 4.10: inline elements are parsed independently inside each table cell.
-            const std::size_t firstInlineRun = out.runs.size();
-            const LineContext cellContext{context.revealed, {}};
-            for (const auto& cell : out.cells) {
-                if (cell.content.length == 0) {
-                    continue;
-                }
-                LineRender cellRender;
-                runInlineElements(line.substr(cell.content.start, cell.content.length), cellContext, cellRender);
-                for (auto run : cellRender.runs) {
-                    run.span.start += cell.content.start;
-                    out.runs.push_back(run);
-                }
-                for (auto style : cellRender.inlineStyles) {
-                    style.span.start += cell.content.start;
-                    out.inlineStyles.push_back(style);
-                }
-                for (auto hidden : cellRender.hidden) {
-                    hidden.span.start += cell.content.start;
-                    out.hidden.push_back(hidden);
-                }
-            }
-            splitAroundInlineRuns(out, firstInlineRun);
-        }
     } else {
         for (const auto& element : elements_) {
             if (auto match = element->parse(line)) {

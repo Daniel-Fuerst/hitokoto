@@ -58,6 +58,13 @@ changes are reported once per styler slice, not per block (each report relayouts
 bars). Enter rebuilds the prefix sums of all blocks, O(n) for 427,000 lines; whether that explains
 the higher p95 and p99 is not measured yet. All values stay well inside the budgets.
 
+### 2026-10-27, development VM, S018 (release build, offscreen)
+
+Tables (`hitokoto-bench`): opening a 1000-row table until the table view shows it 139 ms (budget
+500 ms); typing in a cell of a 200-row table, every 25th key Tab (writes the cell into its line
+and opens the next), key to paint median / p95 / p99 / max 3.5 / 7.3 / 8.5 / 12.0 ms (budget
+16 ms p95/p99, hard 50 ms max).
+
 ### 2026-10-26, development VM, S017 (release build, offscreen, 5 runs)
 
 Saving 10 MB: longest UI stall 6.7 ms (was 18.9 ms, measured as the duration of the save() call),
