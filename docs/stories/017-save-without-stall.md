@@ -1,6 +1,6 @@
 # S017 — Saving never stalls the UI
 
-- **Status:** In review · **Order:** 18 · **Depends on:** S004, S007
+- **Status:** Done (accepted by the user on 2026-10-27) · **Order:** 18 · **Depends on:** S004, S007
 
 Follow-up of S007 (`docs/performance.md`, "Known gaps"): saving a 10 MB file blocks the UI thread
 while the text is copied out of the `QTextDocument` (CI run #18: Linux 6 ms, macOS 24 ms, Windows

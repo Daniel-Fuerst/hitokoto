@@ -1,6 +1,6 @@
 # S015 — Inline Markdown code spans
 
-- **Status:** In review · **Order:** 16 · **Depends on:** S014
+- **Status:** Done (accepted by the user on 2026-10-27) · **Order:** 16 · **Depends on:** S014
 
 ## Story
 

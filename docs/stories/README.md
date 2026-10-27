@@ -24,11 +24,11 @@ story ID (see "Conventions").
 | 11 | [S007](007-large-files.md) | 10 MB files open within budget and type without lag | S006 | L | Partly done |
 | 12 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
 | 13 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |
-| 14 | [S013](013-inline-emphasis.md) | Inline bold, italic and strikethrough | S003 | M | In review |
-| 15 | [S014](014-fenced-code-blocks.md) | Fenced Markdown code blocks | S013 | M | In review |
-| 16 | [S015](015-inline-code.md) | Inline Markdown code spans | S014 | S | In review |
-| 17 | [S016](016-application-icon.md) | Show the application icon in the taskbar or dock | S000 | S | In progress |
-| 18 | [S017](017-save-without-stall.md) | Saving never stalls the UI (follow-up of S007) | S004, S007 | M | In review |
+| 14 | [S013](013-inline-emphasis.md) | Inline bold, italic and strikethrough | S003 | M | Done |
+| 15 | [S014](014-fenced-code-blocks.md) | Fenced Markdown code blocks | S013 | M | Done |
+| 16 | [S015](015-inline-code.md) | Inline Markdown code spans | S014 | S | Done |
+| 17 | [S016](016-application-icon.md) | Show the application icon in the taskbar or dock | S000 | S | Done |
+| 18 | [S017](017-save-without-stall.md) | Saving never stalls the UI (follow-up of S007) | S004, S007 | M | Done |
 | 19 | [S019](019-editor-surface.md) | Editor surface with its own document layout (ADR 0003) | S017 | L | In review |
 | 20 | [S018](018-tables.md) | Interactive Markdown pipe tables | S015, S019 | L | In review |
 
