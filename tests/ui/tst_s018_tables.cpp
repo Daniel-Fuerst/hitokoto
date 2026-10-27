@@ -2,6 +2,8 @@
 // S018: interactive Markdown pipe tables (ADR 0005).
 #include "ui_test_support.hpp"
 
+#include <QScrollBar>
+
 using namespace hitokoto;
 
 namespace {
@@ -668,6 +670,59 @@ private slots:
         f.settle();
         QCOMPARE(f.editor()->toPlainText(),
                  QStringLiteral("| ColA | ColC |\n| :--- | ---: |\n| a1 | c1 |\n| a2 | c2 |\n"));
+    }
+
+    // Review objection O2: the table width must not depend on whether the vertical scroll bar is
+    // shown. Otherwise showing the bar narrows the table, it wraps and grows, and hiding the bar
+    // widens it again: QAbstractScrollArea relayouts without end.
+    void tableWidthDoesNotDependOnScrollBarVisibility() {
+        constexpr auto markdown =
+            "| Name | Note |\n"
+            "| --- | --- |\n"
+            "| Alice | short |\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("bar.md"), markdown)));
+        f.settle();
+        QVERIFY(!f.editor()->verticalScrollBar()->isVisible());
+        const double withoutBar = f.editor()->styler().availableWidth();
+
+        f.editor()->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+        QTRY_VERIFY(f.editor()->verticalScrollBar()->isVisible());
+        f.settle();
+        QCOMPARE(f.editor()->styler().availableWidth(), withoutBar);
+    }
+
+    void typingInATableNearTheScrollBarThresholdSettles() {
+        QByteArray markdown = "| C1 | C2 | C3 | C4 | C5 |\n| --- | --- | --- | --- | --- |\n";
+        for (int i = 0; i < 50; ++i) {
+            markdown += "| alpha | beta gamma | delta | epsilon zeta eta | theta |\n";
+        }
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("threshold.md"), markdown)));
+        f.settle();
+
+        // Counts viewport resizes; once they run away, the bar is pinned so the test ends instead
+        // of hanging, and the count makes it fail.
+        constexpr int kRunaway = 20;
+        struct ResizeCounter : QObject {
+            QPlainTextEdit* editor = nullptr;
+            int count = 0;
+            bool eventFilter(QObject*, QEvent* event) override {
+                if (event->type() == QEvent::Resize && ++count == kRunaway) {
+                    editor->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+                }
+                return false;
+            }
+        } counter;
+        counter.editor = f.editor();
+        f.editor()->viewport()->installEventFilter(&counter);
+
+        f.placeCaret(27, 4);
+        test::keyClicks(f.editor(), QStringLiteral("q"));
+        f.settle();
+        QTest::qWait(200);
+        f.editor()->viewport()->removeEventFilter(&counter);
+        QVERIFY2(counter.count < kRunaway, qPrintable(QStringLiteral("%1 viewport resizes").arg(counter.count)));
     }
 };
 
