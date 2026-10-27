@@ -8,11 +8,15 @@
 #include <QClipboard>
 #include <QHeaderView>
 #include <QInputMethodEvent>
+#include <QMenu>
 #include <QPlainTextEdit>
 #include <QScrollBar>
 #include <QTableView>
 #include <QTextCursor>
+#include <QTimer>
 #include <QToolButton>
+
+#include <memory>
 
 using namespace hitokoto;
 
@@ -75,6 +79,64 @@ QString geometryOf(const QTableView* view) {
 
 QAction* action(QTableView* view, const char* name) {
     return view->findChild<QAction*>(QString::fromLatin1(name));
+}
+
+/// The text editor of the current cell, while a cell has the focus.
+QPlainTextEdit* focusedCell() {
+    return qobject_cast<QPlainTextEdit*>(QApplication::focusWidget());
+}
+
+/// Presses a key in whatever has the focus, as a user does.
+void press(Qt::Key key, Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
+    test::keyClick(QApplication::focusWidget(), key, modifiers);
+    QCoreApplication::processEvents();
+}
+
+/// Clicks at `point` of `root` on whatever widget is there, as a user does.
+void clickAt(QWidget* root, QPoint point) {
+    QWidget* target = root->childAt(point);
+    if (target == nullptr) {
+        target = root;
+    }
+    QTest::mouseClick(target, Qt::LeftButton, {}, target->mapFrom(root, point));
+    QCoreApplication::processEvents();
+}
+
+/// Clicks the middle of a cell; returns the editor of the cell then.
+QPlainTextEdit* clickCell(QTableView* view, int row, int column) {
+    clickAt(view->viewport(), view->visualRect(view->model()->index(row, column)).center());
+    return focusedCell();
+}
+
+/// The current cell as "row,column".
+QString current(const QTableView* view) {
+    return QStringLiteral("%1,%2").arg(view->currentIndex().row()).arg(view->currentIndex().column());
+}
+
+/// The caret's position in the text of the current cell; -1 without a cell editor.
+int caretInCell() {
+    const QPlainTextEdit* cell = focusedCell();
+    return cell != nullptr ? cell->textCursor().position() : -1;
+}
+
+/// The entries of the context menu that `widget` shows at `point`, without accelerators and
+/// shortcuts.
+QStringList contextMenuOf(QWidget* widget, QPoint point) {
+    auto texts = std::make_shared<QStringList>();
+    QTimer::singleShot(0, [texts] {
+        if (auto* menu = qobject_cast<QMenu*>(QApplication::activePopupWidget())) {
+            for (const QAction* entry : menu->actions()) {
+                if (!entry->isSeparator()) {
+                    *texts << entry->text().remove(u'&').section(u'\t', 0, 0);
+                }
+            }
+            menu->close();
+        }
+    });
+    QContextMenuEvent event(QContextMenuEvent::Mouse, point, widget->mapToGlobal(point));
+    QCoreApplication::sendEvent(widget, &event);
+    QCoreApplication::processEvents();
+    return *texts;
 }
 }  // namespace
 
@@ -295,12 +357,12 @@ private slots:
         QCOMPARE(view->currentIndex().row(), 2);
 
         // Enter in the empty last row removes it and moves below the table; at the end of the
-        // document an empty line is added for the caret.
+        // document a blank line and a line for the caret are added (kept from the first version, 13).
         test::keyClick(view, Qt::Key_Return);
         f.settle();
-        QCOMPARE(text(f), QStringLiteral("| A | B |\n| --- | --- |\n| 1 | 2 |\n"));
+        QCOMPARE(text(f), QStringLiteral("| A | B |\n| --- | --- |\n| 1 | 2 |\n\n"));
         QTRY_VERIFY(f.editor()->hasFocus());
-        QCOMPARE(f.editor()->textCursor().blockNumber(), 3);
+        QCOMPARE(f.editor()->textCursor().blockNumber(), 4);
 
         // The context menu actions add and delete columns and rows; undo restores.
         view = f.editor()->tableViewAt(0);
@@ -308,21 +370,21 @@ private slots:
         QVERIFY(action(view, "tableAddColumn") != nullptr);
         action(view, "tableAddColumn")->trigger();
         f.settle();
-        QCOMPARE(text(f), QStringLiteral("| A | B |  |\n| --- | --- | --- |\n| 1 | 2 |  |\n"));
+        QCOMPARE(text(f), QStringLiteral("| A | B |  |\n| --- | --- | --- |\n| 1 | 2 |  |\n\n"));
         view = f.editor()->tableViewAt(0);
         view->setCurrentIndex(view->model()->index(1, 0));
         action(view, "tableDeleteColumn")->trigger();
         f.settle();
-        QCOMPARE(text(f), QStringLiteral("| B |  |\n| --- | --- |\n| 2 |  |\n"));
+        QCOMPARE(text(f), QStringLiteral("| B |  |\n| --- | --- |\n| 2 |  |\n\n"));
         view = f.editor()->tableViewAt(0);
         view->setCurrentIndex(view->model()->index(1, 0));
         action(view, "tableDeleteRow")->trigger();
         f.settle();
-        QCOMPARE(text(f), QStringLiteral("| B |  |\n| --- | --- |\n"));
+        QCOMPARE(text(f), QStringLiteral("| B |  |\n| --- | --- |\n\n"));
         f.editor()->document()->undo();
         f.editor()->document()->undo();
         f.settle();
-        QCOMPARE(text(f), QStringLiteral("| A | B |  |\n| --- | --- | --- |\n| 1 | 2 |  |\n"));
+        QCOMPARE(text(f), QStringLiteral("| A | B |  |\n| --- | --- | --- |\n| 1 | 2 |  |\n\n"));
 
         // The graphical controls show only near their edge.
         view = f.editor()->tableViewAt(0);
@@ -335,7 +397,7 @@ private slots:
         QTRY_VERIFY(addRow->isVisible());
         addRow->click();
         f.settle();
-        QCOMPARE(text(f), QStringLiteral("| A | B |  |\n| --- | --- | --- |\n| 1 | 2 |  |\n|  |  |  |\n"));
+        QCOMPARE(text(f), QStringLiteral("| A | B |  |\n| --- | --- | --- |\n| 1 | 2 |  |\n|  |  |  |\n\n"));
     }
 
     void sourceViewShowsTheMarkdownLines() {
@@ -638,6 +700,496 @@ private slots:
         QTest::qWait(200);
         f.editor()->viewport()->removeEventFilter(&counter);
         QVERIFY2(counter.count < kRunaway, qPrintable(QStringLiteral("%1 viewport resizes").arg(counter.count)));
+    }
+    // --- Kept from the first version (story S018, points 11 to 21; Daniel's tests at 620b6cb) ---
+
+    // 11: every keystroke writes the cell at once, no editing mode; Backspace and Delete stop at
+    // the cell's edges; a typed pipe is escaped and deleted as one character; Ctrl+Z undoes.
+    void everyKeystrokeWritesTheCellAtOnce() {
+        constexpr auto markdown =
+            "| Key | Value |\n"
+            "| --- | --- |\n"
+            "| foo | bar |\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("live.md"), markdown)));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QVERIFY(clickCell(view, 1, 0) != nullptr);
+        press(Qt::Key_Home);
+        QCOMPARE(caretInCell(), 0);
+        press(Qt::Key_Backspace);
+        QCOMPARE(text(f), QString::fromUtf8(markdown));
+        press(Qt::Key_End);
+        QCOMPARE(caretInCell(), 3);
+        press(Qt::Key_Delete);
+        QCOMPARE(text(f), QString::fromUtf8(markdown));
+        QVERIFY(!f.editor()->document()->isModified());
+
+        typeAsUser(QStringLiteral("2"));  // still in the cell: the line has it already
+        QCOMPARE(text(f), QStringLiteral("| Key | Value |\n| --- | --- |\n| foo2 | bar |\n"));
+        QVERIFY(f.editor()->document()->isModified());
+        typeAsUser(QStringLiteral("|x"));
+        QCOMPARE(text(f), QStringLiteral("| Key | Value |\n| --- | --- |\n| foo2\\|x | bar |\n"));
+        press(Qt::Key_Left);
+        press(Qt::Key_Backspace);  // the escaped pipe goes as one character
+        QCOMPARE(text(f), QStringLiteral("| Key | Value |\n| --- | --- |\n| foo2x | bar |\n"));
+        QCOMPARE(current(view), QStringLiteral("1,0"));
+
+        for (int i = 0; i < 10 && text(f) != QString::fromUtf8(markdown); ++i) {
+            press(Qt::Key_Z, Qt::ControlModifier);
+        }
+        QCOMPARE(text(f), QString::fromUtf8(markdown));
+    }
+
+    // 11 (Daniel's navigatesCellsWithTabAndArrowsAndAppendsRowAtEnd): Tab and Shift+Tab go to the
+    // start of the next or previous cell, skipping the delimiter row; Home and End stay in the cell;
+    // Enter goes to the same column of the next row.
+    void tabEnterHomeAndEndMoveTheCaretInCells() {
+        constexpr auto markdown =
+            "| A | B |\n"
+            "| --- | --- |\n"
+            "| 1 | 2 |\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("nav.md"), markdown)));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QVERIFY(clickCell(view, 0, 0) != nullptr);
+        press(Qt::Key_Tab);
+        QCOMPARE(current(view), QStringLiteral("0,1"));
+        QCOMPARE(caretInCell(), 0);
+        press(Qt::Key_Tab);
+        QCOMPARE(current(view), QStringLiteral("1,0"));
+        QCOMPARE(caretInCell(), 0);
+        press(Qt::Key_Tab);
+        press(Qt::Key_Tab);  // the last cell: appends a row
+        f.settle();
+        QCOMPARE(current(view), QStringLiteral("2,0"));
+        typeAsUser(QStringLiteral("3"));
+        press(Qt::Key_Tab);
+        typeAsUser(QStringLiteral("4"));
+        QCOMPARE(text(f), QStringLiteral("| A | B |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |\n"));
+        press(Qt::Key_Backtab);
+        QCOMPARE(current(view), QStringLiteral("2,0"));
+        QCOMPARE(caretInCell(), 0);
+        press(Qt::Key_End);
+        QCOMPARE(caretInCell(), 1);
+        press(Qt::Key_Home);
+        QCOMPARE(caretInCell(), 0);
+
+        QVERIFY(clickCell(view, 0, 1) != nullptr);
+        press(Qt::Key_Return);
+        QCOMPARE(current(view), QStringLiteral("1,1"));
+        QCOMPARE(text(f), QStringLiteral("| A | B |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |\n"));
+    }
+
+    // 12 and 13 (Daniel's exitsTableViaEnterOnEmptyRowCtrlEnterEscapeAndClickingOutside): Escape,
+    // Ctrl+Enter and Enter in an empty last row leave the table below and keep what was typed; at
+    // the end of the document a blank line separates the new line, so text there is a paragraph.
+    void escapeCtrlEnterAndAnEmptyLastRowLeaveBelow() {
+        constexpr auto markdown =
+            "| a | b |\n"
+            "| --- | --- |\n"
+            "| 1 | 2 |";
+        {
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("enter.md"), markdown)));
+            f.settle();
+            QTableView* view = f.editor()->tableViewAt(0);
+            QVERIFY(view != nullptr);
+            QVERIFY(clickCell(view, 1, 0) != nullptr);
+            press(Qt::Key_End);
+            press(Qt::Key_Return);  // the last row has text: a new row
+            f.settle();
+            QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2 |\n|  |  |"));
+            QCOMPARE(current(view), QStringLiteral("2,0"));
+            press(Qt::Key_Return);  // the new row is empty: removed, and out below
+            f.settle();
+            QVERIFY(f.editor()->hasFocus());
+            QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2 |\n\n"));
+            QCOMPARE(f.editor()->textCursor().blockNumber(), 4);
+            typeAsUser(QStringLiteral("Paragraph below"));
+            typeAsUser(QStringLiteral("\n"));
+            f.settle();
+            QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2 |\n\nParagraph below\n"));
+            QCOMPARE(f.editor()->tableViewAt(0)->model()->rowCount(), 2);
+        }
+        {
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("escape.md"), markdown)));
+            f.settle();
+            QTableView* view = f.editor()->tableViewAt(0);
+            QVERIFY(view != nullptr);
+            QVERIFY(clickCell(view, 1, 1) != nullptr);
+            press(Qt::Key_End);
+            typeAsUser(QStringLiteral("x"));
+            press(Qt::Key_Escape);
+            f.settle();
+            QVERIFY(f.editor()->hasFocus());
+            QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2x |\n\n"));
+            QCOMPARE(f.editor()->textCursor().blockNumber(), 4);
+        }
+        {
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("ctrlenter.md"), markdown)));
+            f.settle();
+            QTableView* view = f.editor()->tableViewAt(0);
+            QVERIFY(view != nullptr);
+            QVERIFY(clickCell(view, 0, 0) != nullptr);
+            press(Qt::Key_Return, Qt::ControlModifier);
+            f.settle();
+            QVERIFY(f.editor()->hasFocus());
+            QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2 |\n\n"));
+            QCOMPARE(f.editor()->textCursor().blockNumber(), 4);
+        }
+    }
+
+    // 14: Left and Right at the edge of a cell's text move to the neighbouring cell, across rows,
+    // and out of the table at its first and last cell.
+    void leftAndRightCrossCellsAndLeaveTheTable() {
+        constexpr auto markdown =
+            "above\n"
+            "| A | B |\n"
+            "| --- | --- |\n"
+            "| 1 | 2 |\n"
+            "\n"
+            "below\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("leftright.md"), markdown)));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(1);
+        QVERIFY(view != nullptr);
+        QVERIFY(clickCell(view, 0, 0) != nullptr);
+        press(Qt::Key_Home);
+        press(Qt::Key_Right);  // past "A"
+        QCOMPARE(current(view), QStringLiteral("0,0"));
+        press(Qt::Key_Right);
+        QCOMPARE(current(view), QStringLiteral("0,1"));
+        QCOMPARE(caretInCell(), 0);
+        press(Qt::Key_Right);
+        press(Qt::Key_Right);  // from the end of the row's last cell to the next row
+        QCOMPARE(current(view), QStringLiteral("1,0"));
+        QCOMPARE(caretInCell(), 0);
+        press(Qt::Key_Left);
+        QCOMPARE(current(view), QStringLiteral("0,1"));
+        QCOMPARE(caretInCell(), 1);
+        press(Qt::Key_Left);
+        press(Qt::Key_Left);
+        QCOMPARE(current(view), QStringLiteral("0,0"));
+        QCOMPARE(caretInCell(), 1);
+        press(Qt::Key_Left);
+        press(Qt::Key_Left);  // from the start of the first cell to the end of the line above
+        QTRY_VERIFY(f.editor()->hasFocus());
+        QCOMPARE(f.editor()->textCursor().blockNumber(), 0);
+        QCOMPARE(f.editor()->textCursor().positionInBlock(), 5);
+
+        view = f.editor()->tableViewAt(1);
+        QVERIFY(clickCell(view, 1, 1) != nullptr);
+        press(Qt::Key_End);
+        press(Qt::Key_Right);  // from the end of the last cell to the line below
+        QTRY_VERIFY(f.editor()->hasFocus());
+        QCOMPARE(f.editor()->textCursor().blockNumber(), 4);
+        QCOMPARE(text(f), QString::fromUtf8(markdown));
+        QVERIFY(!f.editor()->document()->isModified());
+    }
+
+    // 15 (Daniel's wrapsLongColumnInsideItsColumnBoundsAndStaysInViewport, step 4): Up and Down
+    // move through the wrapped text of a cell first, then to the row above or below, and out of
+    // the table from its first and last row.
+    void upAndDownGoThroughWrappedTextThenRows() {
+        const QString longText = QStringLiteral("This text is very long ").repeated(20);
+        const QString markdown = QStringLiteral(
+                                     "above\n| Col 1 | Col 2 |\n| --- | --- |\n| Say yes | %1|\n"
+                                     "| x | y |\n\nbelow\n")
+                                     .arg(longText);
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("wrapped.md"), markdown.toUtf8())));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(1);
+        QVERIFY(view != nullptr);
+        QVERIFY(clickCell(view, 1, 1) != nullptr);
+        press(Qt::Key_Home);
+        const int firstLine = focusedCell()->cursorRect().top();
+        press(Qt::Key_Down);
+        QCOMPARE(current(view), QStringLiteral("1,1"));
+        QVERIFY(focusedCell()->cursorRect().top() > firstLine);
+        press(Qt::Key_Up);
+        QCOMPARE(current(view), QStringLiteral("1,1"));
+        QCOMPARE(focusedCell()->cursorRect().top(), firstLine);
+        press(Qt::Key_Up);
+        QCOMPARE(current(view), QStringLiteral("0,1"));
+        press(Qt::Key_Up);  // from the header row to the line above
+        QTRY_VERIFY(f.editor()->hasFocus());
+        QCOMPARE(f.editor()->textCursor().blockNumber(), 0);
+
+        view = f.editor()->tableViewAt(1);
+        QVERIFY(clickCell(view, 2, 0) != nullptr);
+        press(Qt::Key_Down);  // from the last row to the line below
+        QTRY_VERIFY(f.editor()->hasFocus());
+        QCOMPARE(f.editor()->textCursor().blockNumber(), 5);
+        QCOMPARE(text(f), markdown);
+    }
+
+    // 16 (Daniel's deletesRowsVia... step 3 and deletesColumnsVia... step 3): Backspace or Delete
+    // in an empty row or an empty column deletes it.
+    void backspaceOrDeleteInAnEmptyRowOrColumnDeletesIt() {
+        constexpr auto markdown =
+            "| Name | Role |\n"
+            "| --- | --- |\n"
+            "| Alice | Dev |\n"
+            "| Carol | Ops |\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("emptydelete.md"), markdown)));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QVERIFY(clickCell(view, 2, 1) != nullptr);
+        press(Qt::Key_Tab);  // appends an empty row
+        f.settle();
+        QCOMPARE(text(f),
+                 QStringLiteral("| Name | Role |\n| --- | --- |\n| Alice | Dev |\n| Carol | Ops |\n|  |  |\n"));
+        press(Qt::Key_Backspace);  // deletes it; the caret goes to the end of the row above
+        f.settle();
+        QCOMPARE(text(f), QString::fromUtf8(markdown));
+        QCOMPARE(current(view), QStringLiteral("2,0"));
+        QCOMPARE(caretInCell(), 5);
+
+        press(Qt::Key_Tab);
+        press(Qt::Key_Tab);  // appends an empty row again
+        f.settle();
+        QCOMPARE(current(view), QStringLiteral("3,0"));
+        press(Qt::Key_Delete);
+        f.settle();
+        QCOMPARE(text(f), QString::fromUtf8(markdown));
+        QCOMPARE(current(view), QStringLiteral("2,0"));
+
+        // An empty cell in a row with text deletes nothing.
+        press(Qt::Key_Home);
+        press(Qt::Key_Backspace);
+        QCOMPARE(text(f), QString::fromUtf8(markdown));
+
+        // A new, empty column: Backspace in it deletes it.
+        action(view, "tableAddColumn")->trigger();
+        f.settle();
+        QCOMPARE(text(f),
+                 QStringLiteral("| Name | Role |  |\n| --- | --- | --- |\n| Alice | Dev |  |\n| Carol | Ops |  |\n"));
+        view = f.editor()->tableViewAt(0);
+        QCOMPARE(current(view), QStringLiteral("0,2"));
+        QVERIFY(focusedCell() != nullptr);
+        press(Qt::Key_Backspace);
+        f.settle();
+        QCOMPARE(text(f), QString::fromUtf8(markdown));
+    }
+
+    // 17 (Daniel's deletesRowsVia... step 4 and deletesColumnsVia... step 4): Ctrl+Shift+Backspace
+    // or Delete deletes the row, in the header row the column; Ctrl+Alt+Backspace or Delete the
+    // column; the last column stays; Ctrl+Z restores.
+    void shortcutsDeleteRowsAndColumns() {
+        {
+            constexpr auto markdown =
+                "| Name | Role |\n"
+                "| --- | --- |\n"
+                "| Alice | Dev |\n"
+                "| Carol | Ops |\n";
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("rowkeys.md"), markdown)));
+            f.settle();
+            QTableView* view = f.editor()->tableViewAt(0);
+            QVERIFY(view != nullptr);
+            QVERIFY(clickCell(view, 2, 0) != nullptr);
+            press(Qt::Key_Backspace, Qt::ControlModifier | Qt::ShiftModifier);
+            f.settle();
+            QCOMPARE(text(f), QStringLiteral("| Name | Role |\n| --- | --- |\n| Alice | Dev |\n"));
+            QCOMPARE(current(view), QStringLiteral("1,0"));
+            press(Qt::Key_Delete, Qt::ControlModifier | Qt::ShiftModifier);
+            f.settle();
+            QCOMPARE(text(f), QStringLiteral("| Name | Role |\n| --- | --- |\n"));
+            QCOMPARE(current(view), QStringLiteral("0,0"));
+            press(Qt::Key_Z, Qt::ControlModifier);
+            f.settle();
+            QCOMPARE(text(f), QStringLiteral("| Name | Role |\n| --- | --- |\n| Alice | Dev |\n"));
+        }
+        {
+            constexpr auto markdown =
+                "| ColA | ColB | ColC |\n"
+                "| :--- | :---: | ---: |\n"
+                "| a1 | b1 | c1 |\n";
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("columnkeys.md"), markdown)));
+            f.settle();
+            QTableView* view = f.editor()->tableViewAt(0);
+            QVERIFY(view != nullptr);
+            QVERIFY(clickCell(view, 0, 0) != nullptr);
+            press(Qt::Key_Backspace, Qt::ControlModifier | Qt::ShiftModifier);  // header: the column
+            f.settle();
+            QCOMPARE(text(f), QStringLiteral("| ColB | ColC |\n| :---: | ---: |\n| b1 | c1 |\n"));
+            view = f.editor()->tableViewAt(0);
+            QVERIFY(clickCell(view, 1, 1) != nullptr);
+            press(Qt::Key_Delete, Qt::ControlModifier | Qt::AltModifier);
+            f.settle();
+            QCOMPARE(text(f), QStringLiteral("| ColB |\n| :---: |\n| b1 |\n"));
+            press(Qt::Key_Backspace, Qt::ControlModifier | Qt::AltModifier);  // the last column stays
+            f.settle();
+            QCOMPARE(text(f), QStringLiteral("| ColB |\n| :---: |\n| b1 |\n"));
+            press(Qt::Key_Z, Qt::ControlModifier);
+            f.settle();
+            QCOMPARE(text(f), QStringLiteral("| ColB | ColC |\n| :---: | ---: |\n| b1 | c1 |\n"));
+        }
+    }
+
+    // 18 (Daniel's exitsTableVia..., steps 2 and 3): a click below a table that ends the document
+    // or above one that starts it puts the caret on a new line there, apart from the table.
+    void clicksAboveOrBelowATableAtTheDocumentEdgesAddALine() {
+        constexpr auto markdown =
+            "| a | b |\n"
+            "| --- | --- |\n"
+            "| 1 | 2 |";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("clicks.md"), markdown)));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        const QRect table = view->parentWidget()->geometry();  // in the editor's viewport
+        clickAt(f.editor()->viewport(), QPoint(table.left() + 30, table.bottom() + 40));
+        f.settle();
+        QVERIFY(f.editor()->hasFocus());
+        QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2 |\n\n"));
+        QCOMPARE(f.editor()->textCursor().blockNumber(), 4);
+        typeAsUser(QStringLiteral("Clicked below"));
+        f.settle();
+        QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2 |\n\nClicked below"));
+
+        view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        clickAt(f.editor()->viewport(), QPoint(view->parentWidget()->geometry().left() + 30, 2));
+        f.settle();
+        QVERIFY(f.editor()->hasFocus());
+        QCOMPARE(f.editor()->textCursor().blockNumber(), 0);
+        typeAsUser(QStringLiteral("# Heading above"));
+        f.settle();
+        QVERIFY2(text(f).startsWith(QStringLiteral("# Heading above\n\n| a | b |\n")), qPrintable(text(f)));
+    }
+
+    // 19: Up in the header row or Left in the first cell of a table that starts the document put
+    // the caret on a new line above it.
+    void leavingUpwardsFromATableAtTheStartAddsALine() {
+        constexpr auto markdown =
+            "| a | b |\n"
+            "| --- | --- |\n"
+            "| 1 | 2 |\n";
+        for (const Qt::Key key : {Qt::Key_Up, Qt::Key_Left}) {
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("top.md"), markdown)));
+            f.settle();
+            QTableView* view = f.editor()->tableViewAt(0);
+            QVERIFY(view != nullptr);
+            QVERIFY(clickCell(view, 0, 0) != nullptr);
+            press(Qt::Key_Home);
+            press(key);
+            f.settle();
+            QVERIFY(f.editor()->hasFocus());
+            QCOMPARE(text(f), QStringLiteral("\n\n") + QString::fromUtf8(markdown));
+            QCOMPARE(f.editor()->textCursor().blockNumber(), 0);
+        }
+    }
+
+    // 20: the context menu of a cell has the text actions and the table actions.
+    void theContextMenuOfACellHasTextAndTableActions() {
+        constexpr auto markdown =
+            "| a | b |\n"
+            "| --- | --- |\n"
+            "| 1 | 2 |\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("menu.md"), markdown)));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QPlainTextEdit* cell = clickCell(view, 1, 0);
+        QVERIFY(cell != nullptr);
+        const QStringList entries = contextMenuOf(cell->viewport(), cell->viewport()->rect().center());
+        for (const char* expected :
+             {"Cut", "Copy", "Paste", "Add Row", "Delete Row", "Add Column", "Delete Column", "Show Markdown Source"}) {
+            QVERIFY2(
+                entries.contains(QString::fromLatin1(expected)),
+                qPrintable(QStringLiteral("%1 missing in: %2").arg(QString::fromLatin1(expected), entries.join(u'|'))));
+        }
+    }
+
+    // 21: text in a cell can be selected with the mouse, also starting in a cell that is not the
+    // current one, and with Shift.
+    void textInACellCanBeSelectedWithTheMouse() {
+        constexpr auto markdown =
+            "| Name |\n"
+            "| --- |\n"
+            "| Alice Smith |\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("select.md"), markdown)));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QVERIFY(clickCell(view, 0, 0) != nullptr);  // another cell is current
+
+        const QRect cell = view->visualRect(view->model()->index(1, 0));
+        const QPoint from(cell.left() + 1, cell.center().y());
+        const QPoint to(cell.right() - 1, cell.center().y());
+        QWidget* target = view->viewport()->childAt(from);
+        if (target == nullptr) {
+            target = view->viewport();
+        }
+        const auto local = [&](QPoint p) { return target->mapFrom(view->viewport(), p); };
+        QTest::mousePress(target, Qt::LeftButton, {}, local(from));
+        QMouseEvent drag(QEvent::MouseMove, QPointF(local(to)), QPointF(target->mapToGlobal(local(to))), Qt::NoButton,
+                         Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(target, &drag);
+        QTest::mouseRelease(target, Qt::LeftButton, {}, local(to));
+        QCoreApplication::processEvents();
+        QVERIFY(focusedCell() != nullptr);
+        QCOMPARE(focusedCell()->textCursor().selectedText(), QStringLiteral("Alice Smith"));
+
+        press(Qt::Key_End);
+        press(Qt::Key_Home, Qt::ShiftModifier);
+        QCOMPARE(focusedCell()->textCursor().selectedText(), QStringLiteral("Alice Smith"));
+        QCOMPARE(text(f), QString::fromUtf8(markdown));
+    }
+
+    // Daniel's emptyRowsCreatedWithEnterKeepFullRowAndCaretHeight: empty rows, also "|||" from a
+    // file, keep the full row height, and the caret in an empty cell its full height.
+    void emptyRowsKeepTheFullRowAndCaretHeight() {
+        constexpr auto markdown =
+            "| a | b |\n"
+            "| --- | --- |\n"
+            "| 1. Row | 2. Row |";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("emptyrows.md"), markdown)));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QVERIFY(clickCell(view, 1, 0) != nullptr);
+        const int caretHeight = focusedCell()->cursorRect().height();
+        const int populated = view->rowHeight(1);
+        press(Qt::Key_End);
+        press(Qt::Key_Return);
+        for (int i = 0; i < 3; ++i) {
+            press(Qt::Key_Tab);
+            press(Qt::Key_Tab);
+        }
+        f.settle();
+        view = f.editor()->tableViewAt(0);
+        QCOMPARE(view->model()->rowCount(), 6);
+        QVERIFY(focusedCell() != nullptr);
+        QVERIFY(std::abs(focusedCell()->cursorRect().height() - caretHeight) <= 2);
+        for (int row = 2; row <= 5; ++row) {
+            QVERIFY2(std::abs(view->rowHeight(row) - populated) <= 2,
+                     qPrintable(QStringLiteral("row %1: %2 vs %3").arg(row).arg(view->rowHeight(row)).arg(populated)));
+        }
+
+        test::Fixture f2;
+        QVERIFY(f2.open(f2.writeFile(QStringLiteral("compact.md"), "| a | b |\n|---|---|\n|||\n| x | y |\n")));
+        f2.settle();
+        QTableView* compact = f2.editor()->tableViewAt(0);
+        QVERIFY(compact != nullptr);
+        QVERIFY(std::abs(compact->rowHeight(1) - compact->rowHeight(2)) <= 2);
     }
 };
 
