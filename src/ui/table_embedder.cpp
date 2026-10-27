@@ -234,14 +234,18 @@ void TableEmbedder::release(Table& table) {
             const TableModel* model = table.widget->model();
             const QModelIndex current = table.widget->view()->currentIndex();
             const QTextBlock line = model->lineOfRow(std::max(current.row(), 0));
-            QTextCursor cursor = editor_->textCursor();
-            if (line.isValid()) {
+            editor_->setFocus();
+            // Only while that line is still in the document: a table that went with the whole
+            // text (another file opened) leaves the caret to whoever replaced the text.
+            const QTextDocument* document = editor_->document();
+            if (line.isValid() && line.position() + line.length() <= document->characterCount() &&
+                document->findBlock(line.position()) == line) {
+                QTextCursor cursor = editor_->textCursor();
                 cursor.setPosition(line.position() + std::min(model->positionOfCell(std::max(current.row(), 0),
                                                                                     std::max(current.column(), 0)),
                                                               line.length() - 1));
+                editor_->setTextCursor(cursor);
             }
-            editor_->setFocus();
-            editor_->setTextCursor(cursor);
         }
         table.widget->hide();
         table.widget->deleteLater();

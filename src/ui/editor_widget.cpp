@@ -215,13 +215,17 @@ void EditorWidget::resizeEvent(QResizeEvent* event) {
     tables_->setAvailableWidth(availableTableWidth());
     restoreAnchor(anchor);
     styler_->styleVisible();
-    tables_->refresh();
+    // The widgets follow at once; finding tables waits for the event loop, so it never runs in
+    // the middle of a document change (opening a file scrolls while it replaces the text).
+    tables_->reposition();
+    tables_->scheduleRefresh();
 }
 
 void EditorWidget::scrollContentsBy(int dx, int dy) {
     QTextEdit::scrollContentsBy(dx, dy);
     styler_->styleVisible();
-    tables_->refresh();
+    tables_->reposition();
+    tables_->scheduleRefresh();
 }
 
 void EditorWidget::paintEvent(QPaintEvent* event) {
