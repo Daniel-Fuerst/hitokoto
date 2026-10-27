@@ -4,6 +4,7 @@
 // cursor-aware reveal, bullet drawing and click handling.
 #pragma once
 
+#include "block_layout.hpp"
 #include "block_styler.hpp"
 #include "hitokoto/core/theme.hpp"
 
@@ -29,6 +30,8 @@ public:
     void applyTheme(const core::Theme& theme);
 
     [[nodiscard]] BlockStyler& styler() noexcept { return *styler_; }
+    /// The document layout (ADR 0003); null while the editor still uses QPlainTextDocumentLayout.
+    [[nodiscard]] BlockLayout* blockLayout() const;
     [[nodiscard]] TableController* tableController() const noexcept { return tableController_.get(); }
     /// Counts real text edits (not formatting); used to decide whether a save is current.
     [[nodiscard]] quint64 editCount() const noexcept { return editCount_; }

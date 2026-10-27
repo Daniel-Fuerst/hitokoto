@@ -2,6 +2,7 @@
 # The thin UI layer: Qt Widgets. All logic it needs comes from hitokoto_core.
 qt_add_library(hitokoto_ui STATIC
     application_icon.cpp application_icon.hpp
+    block_layout.cpp block_layout.hpp
     block_styler.cpp block_styler.hpp
     document_session.cpp document_session.hpp
     editor_formats.cpp editor_formats.hpp

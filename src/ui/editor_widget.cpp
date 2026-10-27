@@ -53,6 +53,10 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
 
 EditorWidget::~EditorWidget() = default;
 
+BlockLayout* EditorWidget::blockLayout() const {
+    return qobject_cast<BlockLayout*>(document()->documentLayout());
+}
+
 void EditorWidget::applyTheme(const core::Theme& theme) {
     EditorFormats formats(theme);
     // Changing fonts and margins marks the document as modified in Qt; a theme is not an edit.
