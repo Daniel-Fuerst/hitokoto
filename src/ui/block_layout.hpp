@@ -4,10 +4,10 @@
 #pragma once
 
 #include <QAbstractTextDocumentLayout>
+#include <QTextBlock>
 
 #include <vector>
 
-class QTextBlock;
 class QTextDocument;
 
 namespace hitokoto::ui {
@@ -61,9 +61,9 @@ public:
     [[nodiscard]] QRectF blockBoundingRect(const QTextBlock& block) const override;
 
 signals:
-    /// The height of a block changed by `delta`; `top` is the block's document y. Lets the view
-    /// keep its content still when blocks above the viewport change height.
-    void blockHeightChanged(qreal top, qreal delta);
+    /// A block at document y `top` changed from `oldHeight` to `newHeight`. Lets the view keep its
+    /// content still when blocks above the viewport change height.
+    void blockHeightChanged(qreal top, qreal oldHeight, qreal newHeight);
     /// A batch ended after the document size was reported.
     void batchFinished();
 
@@ -74,6 +74,9 @@ private:
     [[nodiscard]] qreal availableWidth() const;
     [[nodiscard]] qreal margin() const;
     void refreshMetrics();
+    [[nodiscard]] bool inSync() const;
+    void applyChange(int position, int charsRemoved, int charsAdded);
+    void storeDeferredHeights();
     [[nodiscard]] qreal estimatedHeight(const QTextBlock& block) const;
     /// Lays out the lines of `block` (wrapping at the available width) and returns its height.
     qreal layoutBlock(const QTextBlock& block) const;
@@ -91,6 +94,7 @@ private:
     mutable std::vector<qreal> sums_;
     mutable qreal total_ = 0;
     mutable bool sizeChangePending_ = false;
+    mutable std::vector<QTextBlock> deferred_;  ///< laid out while heights_ was stale
     qreal laidOutWidth_ = -1;
     qreal lineSpacing_ = 0;       ///< of the default font, for estimates
     qreal averageCharWidth_ = 0;  ///< of the default font, for estimates

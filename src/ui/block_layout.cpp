@@ -172,23 +172,48 @@ qreal BlockLayout::heightOf(const QTextBlock& block) const {
     return bottom;
 }
 
+bool BlockLayout::inSync() const {
+    // Qt emits QTextDocument::contentsChange before it calls documentChanged; slots that query the
+    // layout in between see the new blocks while heights_ still has the old numbering.
+    return heights_.size() == static_cast<std::size_t>(document()->blockCount());
+}
+
 void BlockLayout::ensureBlockLayout(const QTextBlock& block) const {
     if (!block.isValid() || block.layout()->lineCount() > 0) {
         return;
     }
     layoutBlock(block);
+    if (!inSync()) {
+        deferred_.push_back(block);  // stored once documentChanged has renumbered
+        return;
+    }
     setHeight(block.blockNumber(), heightOf(block), false);
 }
 
 void BlockLayout::blockLayoutChanged(const QTextBlock& block) {
-    if (block.isValid()) {
-        setHeight(block.blockNumber(), heightOf(block), true);
-        emit update();
+    if (!block.isValid()) {
+        return;
+    }
+    if (!inSync()) {
+        deferred_.push_back(block);
+        return;
+    }
+    setHeight(block.blockNumber(), heightOf(block), true);
+    emit update();
+}
+
+void BlockLayout::storeDeferredHeights() {
+    std::vector<QTextBlock> blocks;
+    blocks.swap(deferred_);
+    for (const QTextBlock& block : blocks) {
+        if (block.isValid()) {
+            setHeight(block.blockNumber(), heightOf(block), batch_ == 0);
+        }
     }
 }
 
 void BlockLayout::setHeight(int number, qreal height, bool emitNow) const {
-    if (number < 0 || static_cast<std::size_t>(number) >= heights_.size()) {
+    if (number < 0 || static_cast<std::size_t>(number) >= heights_.size() || !inSync()) {
         return;
     }
     const qreal delta = height - heights_[static_cast<std::size_t>(number)];
@@ -207,7 +232,7 @@ void BlockLayout::setHeight(int number, qreal height, bool emitNow) const {
     } else {
         scheduleSizeChange();
     }
-    emit self->blockHeightChanged(top, delta);
+    emit self->blockHeightChanged(top, height - delta, height);
 }
 
 void BlockLayout::scheduleSizeChange() const {
@@ -297,7 +322,9 @@ QRectF BlockLayout::blockBoundingRect(const QTextBlock& block) const {
     ensureBlockLayout(block);
     const qreal top = margin() + sumBefore(block.blockNumber());
     const qreal width = document()->textWidth() > 0 ? document()->textWidth() : availableWidth() + 2 * margin();
-    return {0, top, width, heights_[static_cast<std::size_t>(block.blockNumber())]};
+    const auto number = static_cast<std::size_t>(block.blockNumber());
+    const qreal height = inSync() && number < heights_.size() ? heights_[number] : heightOf(block);
+    return {0, top, width, height};
 }
 
 QSizeF BlockLayout::documentSize() const {
@@ -418,6 +445,11 @@ void BlockLayout::draw(QPainter* painter, const PaintContext& context) {
 // --- document changes -------------------------------------------------------------------------
 
 void BlockLayout::documentChanged(int position, int charsRemoved, int charsAdded) {
+    applyChange(position, charsRemoved, charsAdded);
+    storeDeferredHeights();
+}
+
+void BlockLayout::applyChange(int position, int charsRemoved, int charsAdded) {
     QTextDocument* doc = document();
     const int newCount = doc->blockCount();
     const int oldCount = static_cast<int>(heights_.size());

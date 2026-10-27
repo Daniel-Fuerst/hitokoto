@@ -9,13 +9,13 @@
 #include "hitokoto/core/theme.hpp"
 
 #include <QPointF>
+#include <QTextBlock>
 #include <QTextEdit>
 
 #include <memory>
 #include <optional>
 
 class QPainter;
-class QTextBlock;
 
 namespace hitokoto::ui {
 
@@ -81,7 +81,14 @@ private:
     [[nodiscard]] QRectF blockBoundingGeometry(const QTextBlock& block) const;
     [[nodiscard]] QPointF contentOffset() const;
     [[nodiscard]] QTextBlock firstVisibleBlock() const;
-    void keepContentStill(qreal top, qreal delta);
+    /// The line at the top of the viewport and how far into it the view starts.
+    struct ScrollAnchor {
+        QTextBlock block;
+        qreal fraction = 0;
+    };
+    [[nodiscard]] ScrollAnchor captureAnchor() const;
+    void restoreAnchor(const ScrollAnchor& anchor);
+    void keepContentStill(qreal top, qreal oldHeight, qreal newHeight);
     void applyPendingShift();
 
     void updateReveal();
@@ -93,7 +100,8 @@ private:
     void paintDecorations();
 
     BlockLayout* layout_ = nullptr;
-    qreal pendingShift_ = 0;  ///< height change above the viewport not yet scrolled away
+    qreal pendingShift_ = 0;
+    bool applyingShift_ = false;  ///< height change above the viewport not yet scrolled away
     BlockStyler* styler_ = nullptr;
     std::unique_ptr<TableController> tableController_;
     double padding_ = 0;

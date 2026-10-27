@@ -75,31 +75,59 @@ QTextBlock EditorWidget::firstVisibleBlock() const {
     return block.isValid() ? block : document()->lastBlock();
 }
 
-void EditorWidget::keepContentStill(qreal top, qreal delta) {
-    // A block above the viewport changed height (laid out lazily or restyled): scroll by the
-    // same amount so the text on screen does not move. Inside a layout batch the scroll range is
-    // not updated yet; the shift is applied when the batch ends.
-    QScrollBar* bar = verticalScrollBar();
-    if (top + 0.5 >= bar->value() || bar->value() <= 0) {
+void EditorWidget::keepContentStill(qreal top, qreal oldHeight, qreal newHeight) {
+    // A block wholly above the viewport changed height (laid out lazily or restyled): scroll by
+    // the same amount so the text on screen does not move. Blocks on screen are left alone; they
+    // are what the reader sees. Inside a layout batch the scroll range is not updated yet; the
+    // shift is applied when the batch ends.
+    const QScrollBar* bar = verticalScrollBar();
+    if (bar->value() <= 0 || top + oldHeight > bar->value() + 0.5) {
         return;
     }
-    pendingShift_ += delta;
+    pendingShift_ += newHeight - oldHeight;
     if (!layout_->inBatch()) {
         applyPendingShift();
     }
 }
 
 void EditorWidget::applyPendingShift() {
+    if (applyingShift_) {
+        return;  // scrolling restyles; a shift that causes reaches us again
+    }
     const int shift = static_cast<int>(std::lround(pendingShift_));
-    pendingShift_ = 0;
+    pendingShift_ -= shift;  // keep the fraction: lazily laid-out blocks change by parts of a pixel
     if (shift != 0) {
+        applyingShift_ = true;
         QScrollBar* bar = verticalScrollBar();
         bar->setMaximum(std::max(bar->maximum(), bar->value() + shift));
         bar->setValue(bar->value() + shift);
+        applyingShift_ = false;
     }
 }
 
+EditorWidget::ScrollAnchor EditorWidget::captureAnchor() const {
+    if (verticalScrollBar()->value() <= 0) {
+        return {};
+    }
+    const QTextBlock block = firstVisibleBlock();
+    const QRectF rect = blockBoundingGeometry(block);
+    const qreal into = verticalScrollBar()->value() - rect.top();
+    return {block, rect.height() > 0 ? into / rect.height() : 0.0};
+}
+
+void EditorWidget::restoreAnchor(const ScrollAnchor& anchor) {
+    // A new width or font re-estimates every block, so the same scroll value would show other
+    // text; scroll back to the line that was at the top.
+    if (!anchor.block.isValid()) {
+        return;
+    }
+    const QRectF rect = blockBoundingGeometry(anchor.block);
+    pendingShift_ = 0;
+    verticalScrollBar()->setValue(static_cast<int>(std::lround(rect.top() + anchor.fraction * rect.height())));
+}
+
 void EditorWidget::applyTheme(const core::Theme& theme) {
+    const ScrollAnchor anchor = captureAnchor();
     EditorFormats formats(theme);
     // Changing fonts and margins marks the document as modified in Qt; a theme is not an edit.
     const bool wasModified = document()->isModified();
@@ -114,6 +142,7 @@ void EditorWidget::applyTheme(const core::Theme& theme) {
     if (!wasModified) {
         document()->setModified(false);
     }
+    restoreAnchor(anchor);
     viewport()->update();
 }
 
@@ -213,9 +242,11 @@ bool EditorWidget::viewportEvent(QEvent* event) {
 }
 
 void EditorWidget::resizeEvent(QResizeEvent* event) {
+    const ScrollAnchor anchor = captureAnchor();
     QTextEdit::resizeEvent(event);
     updateMargins();
     styler_->setAvailableWidth(availableTableWidth(styler_->formats().baseFont().pointSizeF()));
+    restoreAnchor(anchor);
     styler_->styleVisible();
     tableController_->refreshHoverState();
 }
