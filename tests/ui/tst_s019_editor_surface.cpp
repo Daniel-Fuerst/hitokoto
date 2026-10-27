@@ -17,6 +17,46 @@ QByteArray numberedLines(int count) {
     }
     return text;
 }
+
+/// Every block's height must equal the extent of its lines (or its reserved height), tops must add
+/// up, and the document size must match. Empty when consistent.
+QString layoutErrors(ui::EditorWidget* editor) {
+    ui::BlockLayout* layout = editor->blockLayout();
+    const QTextDocument* doc = editor->document();
+    qreal y = doc->documentMargin();
+    QString errors;
+    int bad = 0;
+    for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+        const QRectF rect = layout->blockBoundingRect(b);
+        qreal expected = 0;
+        if (b.isVisible()) {
+            for (int i = 0; i < b.layout()->lineCount(); ++i) {
+                const QTextLine line = b.layout()->lineAt(i);
+                expected = std::max(expected, line.y() + line.height());
+            }
+            if (layout->reservedHeight(b) > 0) {
+                expected = layout->reservedHeight(b);
+            }
+        }
+        if (std::abs(rect.top() - y) > 0.01 || std::abs(rect.height() - expected) > 0.01) {
+            if (bad++ < 3) {
+                errors += QStringLiteral("block %1: top %2 (expected %3), height %4 (expected %5); ")
+                              .arg(b.blockNumber())
+                              .arg(rect.top())
+                              .arg(y)
+                              .arg(rect.height())
+                              .arg(expected);
+            }
+        }
+        y += expected;
+    }
+    if (std::abs(layout->documentSize().height() - (y + doc->documentMargin())) > 0.01) {
+        errors += QStringLiteral("document height %1 (expected %2)")
+                      .arg(layout->documentSize().height())
+                      .arg(y + doc->documentMargin());
+    }
+    return errors;
+}
 }  // namespace
 
 class tst_s019_editor_surface : public QObject {
@@ -94,6 +134,55 @@ private slots:
         }
         f.settle();
         QCOMPARE(layout->documentSize().height(), heightBefore);
+    }
+
+    // Qt emits contentsChange before it tells the layout; the styler lays out visible blocks in
+    // between (review of d11f16d, finding 1).
+    void heightsStayConsistentWhenManyLinesAreInsertedInView() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("insert.md"), numberedLines(1000))));
+        f.settle();
+        QString wrapped;
+        for (int i = 0; i < 600; ++i) {
+            wrapped += QStringLiteral("inserted %1 ").arg(i) +
+                       QString(300, QLatin1Char('w')).replace(QStringLiteral("wwww"), QStringLiteral("ww w")) +
+                       QLatin1Char('\n');
+        }
+        f.placeCaret(5, 0);
+        f.editor()->insertPlainText(wrapped);
+        f.settle();
+        QCOMPARE(layoutErrors(f.editor()), QString());
+        f.editor()->document()->undo();
+        f.settle();
+        QCOMPARE(layoutErrors(f.editor()), QString());
+    }
+
+    // A new width re-estimates every block; the first line on screen must stay (finding 2).
+    void resizingKeepsTheReadingPosition() {
+        QByteArray markdown;
+        for (int i = 0; i < 1500; ++i) {
+            markdown += i % 10 == 0 ? "## Heading " + QByteArray::number(i) + '\n'
+                                    : "line " + QByteArray::number(i) + ' ' +
+                                          QByteArray(i % 3 == 0 ? 180 : 10, 'a').replace("aaaa", "aa a") + '\n';
+        }
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("resize.md"), markdown)));
+        f.settle();
+        auto* bar = f.editor()->verticalScrollBar();
+        for (int page = 0; page < 60 && bar->value() < bar->maximum(); ++page) {
+            bar->triggerAction(QAbstractSlider::SliderPageStepAdd);
+            f.settle();
+        }
+        const auto topBlock = [&] { return f.editor()->cursorForPosition(QPoint(40, 2)).blockNumber(); };
+        const int before = topBlock();
+        QVERIFY(before > 100);
+
+        f.window->resize(f.window->width() - 40, f.window->height());
+        f.settle();
+        QCOMPARE(topBlock(), before);
+        f.window->resize(f.window->width() + 40, f.window->height());
+        f.settle();
+        QCOMPARE(topBlock(), before);
     }
 
     void inputMethodComposesAtTheCaret() {
