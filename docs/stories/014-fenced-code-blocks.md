@@ -55,7 +55,7 @@ without changing the plain Markdown source.
 ## Scope
 
 - This proposal covers fenced blocks only. An opening fence is a run of at least three backticks
-  or tildes, indented by at most three spaces; a backtick fence's info string cannot contain a
+  or tildes, optionally preceded by whitespace (spaces or tabs); a backtick fence's info string cannot contain a
   backtick. A closing fence uses the same character, has a run at least as long as the opener,
   and may have only whitespace after it.
 - The info string is preserved and revealed with the opening fence; language-specific syntax
