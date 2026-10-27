@@ -49,3 +49,16 @@ endif()
 if(HITOKOTO_BUILD_FUZZERS)
     add_subdirectory(fuzz)
 endif()
+
+set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_CONTACT "daniel@fuerst.priv.at")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
+
+# For Debian/Ubuntu (.deb): auto-detect shared library dependencies (like libqt6widgets6)
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+
+# Specify formats to generate (DEB, RPM, TGZ)
+set(CPACK_GENERATOR "DEB;TGZ")
+
+include(CPack)
