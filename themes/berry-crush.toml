@@ -1,0 +1,59 @@
+# hitokoto theme "Berry Crush" - a light theme built from a five-colour palette:
+#   Berry Crush  #b8336a   Dusty Grape  #726da8   Glaucous  #7d8cc4
+#   Frosted Blue #a0d2db   Wisteria     #c490d1
+# Neutrals (background, text, borders) are tints and shades of the palette, so
+# body text stays readable (WCAG AA) while the palette colours carry the accents.
+#
+# Install: copy to ~/.config/hitokoto/theme.toml (or start with --theme path/to/this/file)
+name = "Berry Crush"
+base = "light"
+
+[colors]
+primary        = "#b8336a"   # Berry Crush: focus rings, default buttons
+secondary      = "#7d8cc4"   # Glaucous: less prominent highlights
+accent         = "#726da8"   # Dusty Grape: links, checked states
+background     = "#fcfbfe"   # faint Wisteria tint
+surface        = "#eef6f8"   # faint Frosted Blue tint: menus, dialogs, code panels
+border         = "#dcd6ea"   # light Dusty Grape tint
+text           = "#2a2438"   # deep grape
+text-muted     = "#6b6582"
+selection      = "#ead6f0"   # light Wisteria
+selection-text = "#2a2438"
+marker         = "#9d98bf"   # muted Dusty Grape
+bullet         = "#b8336a"   # Berry Crush
+
+[fonts]
+ui-family     = ""
+ui-size       = 0
+editor-family = ""
+editor-size   = 12
+
+[headings]
+h1-scale = 1.9
+h2-scale = 1.55
+h3-scale = 1.3
+h4-scale = 1.15
+h5-scale = 1.05
+h6-scale = 1.0
+weight   = 700
+
+[layout]
+radius           = 6
+spacing          = 8
+editor-padding   = 32
+editor-max-width = 760
+
+[buttons]
+style = "filled"
+
+[code-block]
+border       = "#a0d2db"   # Frosted Blue
+border-width = 1
+
+[inline-code]
+background   = "#f5ebf8"   # light Wisteria
+text         = "#a02d5c"   # darkened Berry Crush (AA on the light Wisteria background)
+border-width = 0
+
+[emphasis]
+italic-text = "#5f5a96"    # darkened Dusty Grape
