@@ -16,6 +16,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QRegularExpression>
+#include <QScrollBar>
 #include <QSignalBlocker>
 #include <QTextBlock>
 #include <QTextBlockFormat>
@@ -40,6 +41,22 @@ CellEditor::CellEditor(TableView* view, QWidget* parent) : QPlainTextEdit(parent
     setLineWrapMode(QPlainTextEdit::WidgetWidth);
     setUndoRedoEnabled(false);  // Ctrl+Z undoes in the document (S018)
     document()->setDocumentMargin(0);
+    // A cell editor never scrolls: the cell's row height fits all lines (S018), and QPlainTextEdit
+    // scrolls by blocks, which would scroll block 0 out of view and leave the cell blank while editing.
+    connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this](int value) {
+        if (value != 0) {
+            verticalScrollBar()->setValue(0);
+        }
+    });
+    connect(horizontalScrollBar(), &QScrollBar::valueChanged, this, [this](int value) {
+        if (value != 0) {
+            horizontalScrollBar()->setValue(0);
+        }
+    });
+}
+
+void CellEditor::scrollContentsBy(int /*dx*/, int /*dy*/) {
+    // Keep the cell contents fixed at the top-left padding.
 }
 
 void CellEditor::keyPressEvent(QKeyEvent* event) {

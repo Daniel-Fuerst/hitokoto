@@ -1302,6 +1302,43 @@ private slots:
         QVERIFY(compact != nullptr);
         QVERIFY(std::abs(compact->rowHeight(1) - compact->rowHeight(2)) <= 2);
     }
+
+    // Daniel's report (2026-10-27): typing more than 1 character into a cell left it blank while
+    // editing because QPlainTextEdit wrapped and scrolled by block index to nonexistent block 1.
+    void typingMoreThanOneCharacterInCellDoesNotBlankCell() {
+        constexpr auto markdown =
+            "| Key | Value |\n"
+            "| --- | --- |\n"
+            "|  |  |\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("typing.md"), markdown)));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QVERIFY(clickCell(view, 1, 0) != nullptr);
+
+        typeAsUser(QStringLiteral("hello"));
+        QCOMPARE(focusedCell()->toPlainText(), QStringLiteral("hello"));
+        QCOMPARE(focusedCell()->verticalScrollBar()->value(), 0);
+        QCOMPARE(focusedCell()->horizontalScrollBar()->value(), 0);
+
+        const QImage rendered = focusedCell()->viewport()->grab().toImage();
+        const QRgb base = focusedCell()->palette().color(QPalette::Base).rgb();
+        int nonBackgroundPixels = 0;
+        for (int y = 0; y < rendered.height(); ++y) {
+            for (int x = 0; x < rendered.width(); ++x) {
+                if (rendered.pixel(x, y) != base) {
+                    ++nonBackgroundPixels;
+                }
+            }
+        }
+        QVERIFY2(nonBackgroundPixels > 0, "the cell editor renders visible text while editing");
+
+        // Switching cells commits the text and keeps it visible in the table.
+        press(Qt::Key_Tab);
+        f.settle();
+        QCOMPARE(text(f), QStringLiteral("| Key | Value |\n| --- | --- |\n| hello |  |\n"));
+    }
 };
 
 QTEST_MAIN(tst_s018_tables)

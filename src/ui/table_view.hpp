@@ -32,6 +32,7 @@ public:
 protected:
     void keyPressEvent(QKeyEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
+    void scrollContentsBy(int dx, int dy) override;
 
 private:
     TableView* view_;
