@@ -68,10 +68,15 @@ private:
         QTextBlock header;
         QTextBlock last;
         bool source = false;
-        bool held = false;               ///< shows its lines while the caret is in a line typed in the editor
-        TableWidget* widget = nullptr;   ///< owned by the table; deleted in release()
-        std::vector<QTextBlock> hidden;  ///< lines this table hides
-        quint64 signature = 0;           ///< of the lines and width the widget was fitted to
+        bool held = false;              ///< shows its lines while the caret is in a line typed in the editor
+        TableWidget* widget = nullptr;  ///< owned by the table; deleted in release()
+        quint64 signature = 0;          ///< of the lines and width the widget was fitted to
+        /// A change removed one of its lines (or the line break before it): its QTextBlocks may
+        /// no longer exist, so nothing touches them again; refresh() drops the table.
+        bool stale = false;
+        /// Positions of the line breaks before and in the table, kept up to date with each
+        /// change: removing one of them makes the table stale.
+        std::vector<int> breaks;
     };
 
     [[nodiscard]] Table* tableAt(int blockNumber);
@@ -81,6 +86,12 @@ private:
     [[nodiscard]] quint64 signatureOf(const Table& table) const;
     void apply(Table& table);
     void release(Table& table);
+    /// Forgets a stale table without touching its lines.
+    void drop(Table& table);
+    /// Records where the table's line breaks are (after it was found or changed).
+    void markBreaks(Table& table) const;
+    /// Shows lines in [from, to] that are hidden or reserve height but belong to no table.
+    void sweep(int from, int to);
     TableWidget* createWidget();
     void focusCell(Table& table, int row, int column, bool atEnd = false);
 

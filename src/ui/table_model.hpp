@@ -32,6 +32,8 @@ public:
     /// Reads the table whose header is `header` and whose last line is `last`. Keeps the view's
     /// current cell when the shape did not change.
     void setLines(const QTextBlock& header, const QTextBlock& last);
+    /// Forgets the lines at once (they may be gone from the document).
+    void clear();
     void setFormats(const EditorFormats* formats);
 
     [[nodiscard]] QTextBlock headerLine() const { return rows_.empty() ? QTextBlock{} : rows_.front(); }

@@ -51,8 +51,8 @@ TableEmbedder::~TableEmbedder() {
 
 TableEmbedder::Table* TableEmbedder::tableAt(int blockNumber) {
     for (Table& table : tables_) {
-        if (table.header.isValid() && table.last.isValid() && table.header.blockNumber() <= blockNumber &&
-            blockNumber <= table.last.blockNumber()) {
+        if (!table.stale && table.header.isValid() && table.last.isValid() &&
+            table.header.blockNumber() <= blockNumber && blockNumber <= table.last.blockNumber()) {
             return &table;
         }
     }
@@ -65,7 +65,7 @@ const TableEmbedder::Table* TableEmbedder::tableAt(int blockNumber) const {
 
 TableEmbedder::Table* TableEmbedder::tableOf(const TableWidget* widget) {
     for (Table& table : tables_) {
-        if (table.widget == widget) {
+        if (!table.stale && table.widget == widget) {
             return &table;
         }
     }
@@ -131,9 +131,34 @@ void TableEmbedder::scheduleRefresh() {
         Qt::QueuedConnection);
 }
 
-void TableEmbedder::documentChanged(int position, int /*charsRemoved*/, int charsAdded) {
-    // Only typing in the editor holds a table; loading, restyling and the table view's own
-    // changes do not.
+void TableEmbedder::documentChanged(int position, int charsRemoved, int charsAdded) {
+    // Restyling reports formats, not text; everything else may remove lines. A table whose line
+    // break went may hold QTextBlocks that no longer exist: from now on nothing touches them
+    // (Qt 6.8 crashed on them), its view forgets its lines at once, and refresh() drops it.
+    if (!styler_->isBusy()) {
+        const int removedEnd = position + charsRemoved;
+        for (Table& table : tables_) {
+            if (table.stale) {
+                continue;
+            }
+            for (int& at : table.breaks) {
+                if (charsRemoved > 0 && at >= position && at < removedEnd) {
+                    table.stale = true;
+                } else if (at >= removedEnd) {
+                    at += charsAdded - charsRemoved;
+                }
+            }
+            if (table.stale && table.widget != nullptr) {
+                if (table.widget->isAncestorOf(QApplication::focusWidget())) {
+                    editor_->setFocus();  // keys always reach the editor or a cell (S018)
+                }
+                table.widget->model()->clear();
+            }
+        }
+        if (charsRemoved > 0 && typingDepth_ == 0) {
+            typing_ = QTextBlock();  // may be gone
+        }
+    }
     if (typingDepth_ > 0 && !styler_->isBusy()) {
         // A line already in a shown table (Backspace below it joins the line to the last row)
         // keeps the table view; only a line that is becoming part of a table is held (S018).
@@ -144,11 +169,72 @@ void TableEmbedder::documentChanged(int position, int /*charsRemoved*/, int char
     scheduleRefresh();
 }
 
+void TableEmbedder::markBreaks(Table& table) const {
+    table.breaks.clear();
+    table.stale = false;
+    if (!table.header.isValid() || !table.last.isValid()) {
+        return;
+    }
+    if (table.header.previous().isValid()) {
+        table.breaks.push_back(table.header.position() - 1);
+    }
+    for (QTextBlock line = table.header; line.isValid() && line != table.last; line = line.next()) {
+        table.breaks.push_back(line.position() + line.length() - 1);
+    }
+}
+
+void TableEmbedder::drop(Table& table) {
+    if (table.widget != nullptr) {
+        if (table.widget->isAncestorOf(QApplication::focusWidget())) {
+            editor_->setFocus();
+        }
+        table.widget->hide();
+        table.widget->deleteLater();
+        table.widget = nullptr;
+    }
+}
+
+void TableEmbedder::sweep(int from, int to) {
+    // Lines that tables hid or reserved height on, and that no table shows now (its lines were
+    // removed or changed), become ordinary lines again. Taken fresh from the document, never
+    // from a stale table.
+    std::vector<char> hidden(static_cast<std::size_t>(std::max(0, to - from + 1)), 0);
+    std::vector<char> reserved(hidden.size(), 0);
+    for (const Table& table : tables_) {
+        if (table.stale || table.widget == nullptr || table.source || table.held) {
+            continue;
+        }
+        const int header = table.header.blockNumber();
+        if (header >= from && header <= to) {
+            reserved[static_cast<std::size_t>(header - from)] = 1;
+        }
+        for (int number = std::max(header + 1, from); number <= std::min(table.last.blockNumber(), to); ++number) {
+            hidden[static_cast<std::size_t>(number - from)] = 1;
+        }
+    }
+    QTextBlock block = editor_->document()->findBlockByNumber(from);
+    for (int number = from; block.isValid() && number <= to; ++number, block = block.next()) {
+        const auto index = static_cast<std::size_t>(number - from);
+        if (!block.isVisible() && hidden[index] == 0) {
+            layout_->setHidden(block, false);
+        }
+        if (layout_->reservedHeight(block) > 0 && reserved[index] == 0) {
+            layout_->setReservedHeight(block, 0);
+        }
+    }
+}
+
 void TableEmbedder::refresh() {
     if (refreshing_ || formats_ == nullptr) {
         return;
     }
     refreshing_ = true;
+    for (Table& table : tables_) {
+        if (table.stale) {
+            drop(table);
+        }
+    }
+    std::erase_if(tables_, [](const Table& table) { return table.stale; });
     QTextDocument* document = editor_->document();
     const auto [firstVisible, lastVisible] = editor_->visibleBlockRange();
     const int from = std::max(0, firstVisible - kMarginBlocks);
@@ -209,7 +295,9 @@ void TableEmbedder::refresh() {
         table.held = table.header.isValid() && table.last.isValid() && typing >= table.header.blockNumber() &&
                      typing <= table.last.blockNumber();
         apply(table);
+        markBreaks(table);
     }
+    sweep(from, to);
     refreshing_ = false;
     if (editor_->hasFocus()) {
         caretMoved();  // the caret may now be on lines a table view stands for
@@ -217,13 +305,13 @@ void TableEmbedder::refresh() {
 }
 
 void TableEmbedder::release(Table& table) {
-    for (const QTextBlock& line : table.hidden) {
-        if (line.isValid()) {
+    if (!table.stale && table.header.isValid()) {
+        for (QTextBlock line = table.header.next(); line.isValid() && !line.isVisible(); line = line.next()) {
             layout_->setHidden(line, false);
+            if (line == table.last) {
+                break;
+            }
         }
-    }
-    table.hidden.clear();
-    if (table.header.isValid()) {
         layout_->setReservedHeight(table.header, 0);
     }
     if (table.widget != nullptr) {
@@ -318,22 +406,13 @@ void TableEmbedder::apply(Table& table) {
         reposition();
         return;
     }
-    std::vector<QTextBlock> hide;
+    // Lines it no longer covers become visible in sweep(); never through blocks kept from before.
     for (QTextBlock line = table.header.next(); line.isValid(); line = line.next()) {
-        hide.push_back(line);
+        layout_->setHidden(line, true);
         if (line == table.last) {
             break;
         }
     }
-    for (const QTextBlock& line : table.hidden) {
-        if (line.isValid() && std::find(hide.begin(), hide.end(), line) == hide.end()) {
-            layout_->setHidden(line, false);
-        }
-    }
-    for (const QTextBlock& line : hide) {
-        layout_->setHidden(line, true);
-    }
-    table.hidden = std::move(hide);
     if (table.widget == nullptr) {
         table.widget = createWidget();
     }
@@ -349,7 +428,7 @@ void TableEmbedder::reposition() {
     const qreal margin = editor_->document()->documentMargin();
     const QPointF offset = editor_->contentOffset();
     for (const Table& table : tables_) {
-        if (table.widget == nullptr || table.source || !table.header.isValid()) {
+        if (table.stale || table.widget == nullptr || table.source || !table.header.isValid()) {
             continue;
         }
         const QRectF rect = layout_->blockBoundingRect(table.header);
@@ -359,9 +438,12 @@ void TableEmbedder::reposition() {
 }
 
 void TableEmbedder::update(Table& table) {
+    // Right after this embedder changed the table's lines: its header is still there.
+    table.stale = false;
     table.last = lastLineOf(table.header);
     table.signature = 0;
     apply(table);
+    markBreaks(table);
 }
 
 // --- caret and focus --------------------------------------------------------------------------
@@ -384,7 +466,7 @@ bool TableEmbedder::handleEditorClick(QPoint position) {
     // on a new line there (S018, kept from the first version).
     QTextDocument* document = editor_->document();
     for (Table& table : tables_) {
-        if (table.widget == nullptr || table.source) {
+        if (table.stale || table.widget == nullptr || table.source) {
             continue;
         }
         const QRect view = table.widget->view()->geometry().translated(table.widget->pos());

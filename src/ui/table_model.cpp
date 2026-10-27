@@ -60,6 +60,15 @@ void TableModel::setLines(const QTextBlock& header, const QTextBlock& last) {
     endResetModel();
 }
 
+void TableModel::clear() {
+    beginResetModel();
+    rows_.clear();
+    aligns_.clear();
+    columns_ = 0;
+    last_ = QTextBlock();
+    endResetModel();
+}
+
 QTextBlock TableModel::lineOfRow(int row) const {
     return row >= 0 && static_cast<std::size_t>(row) < rows_.size() ? rows_[static_cast<std::size_t>(row)]
                                                                     : QTextBlock{};
