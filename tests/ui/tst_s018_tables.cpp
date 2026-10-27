@@ -1241,6 +1241,81 @@ private slots:
         QTRY_VERIFY(f.editor()->hasFocus());
     }
 
+    // Armin's test (2026-10-27): a space at the end of a cell could not be typed; the cell read its
+    // text back without the space (GFM padding) and the editor took that over.
+    void spacesAtACellsEdgeCanBeTyped() {
+        constexpr auto markdown =
+            "| a | b |\n"
+            "| --- | --- |\n"
+            "| 1 |  |\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("spaces.md"), markdown)));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QVERIFY(clickCell(view, 1, 1) != nullptr);
+        typeAsUser(QStringLiteral("hello "));
+        f.settle();
+        QCOMPARE(focusedCell()->toPlainText(), QStringLiteral("hello "));
+        typeAsUser(QStringLiteral("world"));
+        f.settle();
+        QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n| 1 | hello world |\n"));
+
+        QVERIFY(clickCell(view, 1, 0) != nullptr);
+        press(Qt::Key_End);
+        typeAsUser(QStringLiteral(" "));  // padding only: the file stays as it is
+        f.settle();
+        QCOMPARE(focusedCell()->toPlainText(), QStringLiteral("1 "));
+        QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n| 1 | hello world |\n"));
+        typeAsUser(QStringLiteral("2"));
+        f.settle();
+        QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n| 1 2 | hello world |\n"));
+    }
+
+    // Armin's test (2026-10-27): typing in the blank line below a table made the text a row of the
+    // table (GFM) and showed the table's Markdown. The text becomes a paragraph instead: a blank
+    // line is added first (user decision).
+    void typingBelowATableStartsAParagraph() {
+        {
+            constexpr auto markdown =
+                "| a | b |\n"
+                "| --- | --- |\n"
+                "| 1 | 2 |\n"
+                "\n"
+                "below\n";
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("below.md"), markdown)));
+            f.settle();
+            f.editor()->setFocus();
+            f.placeCaret(3, 0);
+            typeAsUser(QStringLiteral("x"));
+            f.settle();
+            QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2 |\n\nx\nbelow\n"));
+            QTableView* view = f.editor()->tableViewAt(0);
+            QVERIFY2(view != nullptr, "the table shows its Markdown lines");
+            QCOMPARE(view->model()->rowCount(), 2);
+            QVERIFY(f.editor()->hasFocus());
+            QCOMPARE(f.editor()->textCursor().blockNumber(), 4);
+        }
+        {
+            constexpr auto markdown =
+                "| a | b |\n"
+                "| --- | --- |\n"
+                "| 1 | 2 |\n";
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("end.md"), markdown)));
+            f.settle();
+            f.editor()->setFocus();
+            f.placeCaret(3, 0);  // the empty line at the end of the document
+            typeAsUser(QStringLiteral("Text"));
+            f.settle();
+            QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2 |\n\nText"));
+            QTableView* view = f.editor()->tableViewAt(0);
+            QVERIFY(view != nullptr);
+            QCOMPARE(view->model()->rowCount(), 2);
+        }
+    }
+
     // The open cell keeps its column's alignment: the text does not jump when the caret enters.
     void anOpenCellKeepsItsColumnsAlignment() {
         constexpr auto markdown =

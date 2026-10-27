@@ -8,7 +8,9 @@
   typing a table, editing with one click, the controls' place and every column visible (confirmed
   by the user on 2026-10-27). Amended again on 2026-10-27: the editing behaviour of the first
   version (Daniel, before the revision) is restored where the revision had lost it; see "Kept from
-  the first version" (user decision on 2026-10-27).
+  the first version" (user decision on 2026-10-27). Amended on 2026-10-27 after the user's test:
+  spaces at the edges of a cell while typing, and typing in the blank line below a table starts a
+  paragraph (user decision on 2026-10-27).
 - **Renumbered:** from S017 on 2026-10-27, because S017 is "Saving never stalls the UI" on main.
   Commits 8130875 and a3def18 still say S017.
 
@@ -36,7 +38,7 @@ Markdown that GitHub shows the same way.
 
 **Scenario: typing a table in the editor**
 - Given the caret in a line I type in the editor
-- When that line becomes part of a table (header, delimiter or a row directly below a table)
+- When that line becomes part of a table (header or delimiter row)
 - Then the table shows its Markdown lines while the caret stays in that line, so I can finish
   typing it
 - And the table view appears once the caret leaves the line (`Enter`, arrow keys, a click),
@@ -65,6 +67,8 @@ Markdown that GitHub shows the same way.
   at its end change nothing, and an escaped pipe is deleted and stepped over as one character
 - And `Shift+Enter` and line breaks in pasted text are written as `<br>`, and every `|` typed or
   pasted is written as `\|`, so the row keeps its cells
+- And a space typed at the start or end of a cell's text stays in the cell while I type; GFM
+  treats spaces at a cell's edges as padding, so the file gets it with the next character
 - And I can select text in a cell by dragging with the mouse or with `Shift` and the arrow keys,
   `Home` or `End`
 - And the context menu of a cell has `Cut`, `Copy` and `Paste` for the cell's text and `Add Row`,
@@ -114,6 +118,12 @@ Markdown that GitHub shows the same way.
 - And `Ctrl+Shift+Backspace` or `Ctrl+Shift+Delete` deletes the caret's body row, or in the header
   row the caret's column; `Ctrl+Alt+Backspace` or `Ctrl+Alt+Delete` deletes the caret's column
   from any row; the last column is never deleted
+
+**Scenario: writing below a table**
+- Given the blank line directly below a table (GFM would make text there a row of the table)
+- When I type, paste or commit input method text in it
+- Then hitokoto first adds a blank line, so the text is a paragraph below the table, and the
+  table stays a table
 
 **Scenario: leaving the table**
 - Given the caret in a cell
@@ -188,6 +198,27 @@ decided to restore points 11 to 21, now in the scenarios above:
 
 Not restored, by the revision's decisions: navigation pads rows that lack cells (review objection
 O6: moving around never changes the file); pipes inside code spans do not split cells (O1, GFM).
+
+## Implementation
+
+On `feature/tables`, 2026-10-27, after the code review of the first version
+(`docs/reviews/018-tables-code.md`, all twelve objections fixed):
+
+- Core: table recognition follows GFM (cmark-gfm): pipes in code spans split cells, a line
+  without a pipe continues the table, up to 255 columns; cell text with `<br>` and `\|` in both
+  directions.
+- UI: `TableEmbedder` shows each table as a `TableWidget` (a `QTableView` with hover controls)
+  over the space its header line reserves in `BlockLayout` (S019); `TableModel` reads and writes
+  the cells in the Markdown lines. The current cell's editor stays open and writes every
+  keystroke at once; the keys of the first version work across cells and out of the table.
+- Robustness: a table whose lines a change removes is never touched again and is rebuilt; tables
+  are not looked for in the middle of a document change (crashes found by the CI benchmark and on
+  Qt 6.8.3).
+- Budgets on the development VM: opening a 1000-row table 110–130 ms (500 ms), typing in a
+  200-row table p95 about 4 ms, longest keystroke under 10 ms (50 ms hard).
+
+Next: the user's acceptance ("Done"); the benchmark baselines gain the `s018_*` values from a CI
+run; Windows and macOS with the pull request to `main`.
 
 ## Tests
 
