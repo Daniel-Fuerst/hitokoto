@@ -175,7 +175,9 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
         if (inlineRun != nullptr && !is(core::Role::InlineCode)) {
             const auto styles = inlineRun->style;
             if (core::hasStyle(styles, core::InlineStyle::Bold)) {
-                format.setFontWeight(emphasis_.boldWeight);
+                // Never lighter than the surrounding text: in a heading the bold weight applies only
+                // when it is above headings.weight (docs/theming.md).
+                format.setFontWeight(std::max(format.fontWeight(), emphasis_.boldWeight));
             }
             if (core::hasStyle(styles, core::InlineStyle::Italic)) {
                 format.setFontItalic(true);

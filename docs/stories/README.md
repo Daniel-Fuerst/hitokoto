@@ -28,6 +28,7 @@ story ID (see "Conventions").
 | 15 | [S014](014-fenced-code-blocks.md) | Fenced Markdown code blocks | S013 | M | In review |
 | 16 | [S015](015-inline-code.md) | Inline Markdown code spans | S014 | S | In review |
 | 17 | [S016](016-application-icon.md) | Show the application icon in the taskbar or dock | S000 | S | In progress |
+| 18 | [S017](017-save-without-stall.md) | Saving never stalls the UI (follow-up of S007) | S004, S007 | M | In review |
 | 18 | [S017](017-tables.md) | Interactive Markdown pipe tables | S015 | L | In review |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
@@ -52,6 +53,8 @@ sets it).
 
 - Story files: `docs/stories/NNN-title.md`, written before implementation and confirmed by the
   user. The confirmation may happen in conversation; it need not show in the commits.
+- Review records (Advocatus Diaboli): `docs/reviews/NNN-title-<mode>.md`, the objections as
+  delivered plus the disposition of each; the story links nothing, the file name carries the ID.
 - Scope changes: `docs/brief.md` stays the user's brief. Extensions become new stories here, with
   their reason. (The additions made to the brief together with S013–S015 stay for now.)
 - S009 is a standing quality gate, not a one-off story: its scenarios are extended whenever an

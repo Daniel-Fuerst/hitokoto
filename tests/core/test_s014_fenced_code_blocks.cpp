@@ -69,7 +69,8 @@ TEST(S014_FencedCodeBlocks, RevealedFenceShowsSourceWithoutLosingCodeStyle) {
 
 TEST(S014_FencedCodeBlocks, FenceRulesAndUnterminatedBlocksAreHandled) {
     EXPECT_TRUE(show(u"   ```").blockState.active());
-    EXPECT_FALSE(show(u"    ```").blockState.active());
+    EXPECT_TRUE(show(u"    ```").blockState.active());
+    EXPECT_TRUE(show(u"\t```").blockState.active());
     EXPECT_FALSE(show(u"```` `bad").blockState.active());
 
     const auto opened = show(u"~~~~");
@@ -77,6 +78,28 @@ TEST(S014_FencedCodeBlocks, FenceRulesAndUnterminatedBlocksAreHandled) {
     EXPECT_FALSE(show(u"~~~~~~", opened.blockState).blockState.active());
     EXPECT_TRUE(show(u"~~~ trailing", opened.blockState).blockState.active());
     EXPECT_TRUE(show(u"still code", opened.blockState).codeBlock);
+}
+
+TEST(S014_FencedCodeBlocks, IndentedFencesAreHandled) {
+    const auto opening = show(u"    ```python");
+    EXPECT_TRUE(opening.codeBlock);
+    EXPECT_TRUE(opening.fenceLine);
+    EXPECT_TRUE(opening.blockState.active());
+
+    const auto line1 = show(u"    def check_indentation(level: int) -> bool:", opening.blockState);
+    EXPECT_TRUE(line1.codeBlock);
+    EXPECT_FALSE(line1.fenceLine);
+    EXPECT_EQ(line1.blockState, opening.blockState);
+
+    const auto line2 = show(u"        return level == 2", line1.blockState);
+    EXPECT_TRUE(line2.codeBlock);
+    EXPECT_FALSE(line2.fenceLine);
+    EXPECT_EQ(line2.blockState, opening.blockState);
+
+    const auto closing = show(u"    ```", line2.blockState);
+    EXPECT_TRUE(closing.codeBlock);
+    EXPECT_TRUE(closing.fenceLine);
+    EXPECT_FALSE(closing.blockState.active());
 }
 
 // CommonMark 4.5: a fence is at least three backticks or tildes. Two neither open nor close a block

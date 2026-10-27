@@ -58,6 +58,10 @@ readable without changing the plain Markdown source.
   syntax such as links, inline code, or block-level constructs.
 - This is a focused inline subset, not a complete CommonMark delimiter-resolution implementation;
   delimiters that form a pair must use the same marker, and `~` remains a two-character delimiter.
+- Bold inside a heading never renders lighter than the heading. With the built-in themes it looks
+  like the heading (both weights are 700), as in Obsidian with its default settings; making it
+  visible by default would change every heading and is left to a later theme decision (review O6,
+  2026-10-26). `docs/theming.md` says how a theme makes it visible.
 
 ## Tests
 
@@ -70,7 +74,7 @@ readable without changing the plain Markdown source.
 
 ## Implementation
 
-Completed 2026-10-25. Core and UI tests pass on Linux. Bold weight, the three text colours and
+Implemented 2026-10-25. Core and UI tests pass on Linux. Bold weight, the three text colours and
 the colour of revealed delimiters come from `[emphasis]` (ADR 0004).
 
 CI run #18 (pull request #5, 2026-10-25) is green on Linux (Qt 6.12 and 6.8), Windows (Qt 6.8.3)

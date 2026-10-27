@@ -120,6 +120,48 @@ private slots:
         QCOMPARE(f.editor()->toPlainText(), QString::fromUtf8(markdown));
     }
 
+    void indentedFencedCodeBlockRendersAsCode() {
+        constexpr auto markdown =
+            "before\n"
+            "    ```python\n"
+            "    def check_indentation(level: int) -> bool:\n"
+            "        return level == 2\n"
+            "    ```\n"
+            "after\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("code.md"), markdown)));
+        f.settle();
+        f.placeCaret(0);
+
+        const auto opening = f.editor()->document()->findBlockByNumber(1);
+        const auto line1 = f.editor()->document()->findBlockByNumber(2);
+        const auto line2 = f.editor()->document()->findBlockByNumber(3);
+        const auto closing = f.editor()->document()->findBlockByNumber(4);
+        const auto after = f.editor()->document()->findBlockByNumber(5);
+
+        // Fences are collapsed when caret is elsewhere
+        QVERIFY(test::isCollapsed(opening, 0));
+        QVERIFY(test::isCollapsed(closing, 0));
+
+        // Content lines are styled as code
+        QCOMPARE(test::formatAt(line1, 4).fontStyleHint(), QFont::TypeWriter);
+        QCOMPARE(test::formatAt(line2, 8).fontStyleHint(), QFont::TypeWriter);
+        QVERIFY(!test::isCollapsed(line1, 0));
+        QVERIFY(!test::isCollapsed(line2, 0));
+
+        // After line is plain text
+        QVERIFY(test::formatAt(after, 0).fontStyleHint() != QFont::TypeWriter);
+
+        // Raw document text is preserved exactly
+        QCOMPARE(f.editor()->toPlainText(), QString::fromUtf8(markdown));
+
+        // Revealing the indented opening fence shows the raw source
+        f.placeCaret(1);
+        f.settle();
+        QVERIFY(!test::isCollapsed(opening, 0));
+        QCOMPARE(test::formatAt(opening, 0).fontStyleHint(), QFont::TypeWriter);
+    }
+
     void removingOpeningFenceRestylesFollowingLines() {
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("code.md"), "before\n```\n**text**\nafter\n")));

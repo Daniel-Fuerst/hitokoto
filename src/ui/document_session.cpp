@@ -2,6 +2,7 @@
 #include "document_session.hpp"
 
 #include "block_data.hpp"
+#include "block_styler.hpp"
 #include "editor_widget.hpp"
 #include "hitokoto/core/file_io.hpp"
 #include "qt_bridge.hpp"
@@ -13,7 +14,9 @@
 #include <QTextCursor>
 #include <QTextDocument>
 
+#include <algorithm>
 #include <filesystem>
+#include <iterator>
 
 namespace hitokoto::ui {
 namespace {
@@ -22,6 +25,15 @@ namespace {
 constexpr qsizetype kFirstChunk = qsizetype{64} * 1024;
 constexpr qsizetype kChunk = qsizetype{256} * 1024;
 constexpr qint64 kSliceNanoseconds = 8'000'000;
+
+// Saving copies the text out of the editor in slices of about this many characters, each in
+// its own event-loop turn (S017): a few milliseconds per slice. QTextCursor::selectedText() is
+// the only public way to copy a range; it costs about six times toRawText() per character, so
+// the whole copy takes more CPU than one toRawText(), spread so that nothing stalls
+// (docs/performance.md). After this many set-backs by edits the rest is copied in one go, so
+// that a save always finishes.
+constexpr qsizetype kCopySliceChars = qsizetype{128} * 1024;
+constexpr int kCopyMaxSetBacks = 8;
 
 std::filesystem::path toPath(const QString& p) {
     return std::filesystem::path(p.toStdU16String());
@@ -47,6 +59,9 @@ DocumentSession::DocumentSession(EditorWidget* editor, QObject* parent) : QObjec
     pool_.setMaxThreadCount(1);  // loads and saves run in order
     insertTimer_.setInterval(0);
     connect(&insertTimer_, &QTimer::timeout, this, &DocumentSession::insertSlice);
+    copyTimer_.setInterval(0);
+    connect(&copyTimer_, &QTimer::timeout, this, &DocumentSession::copySlice);
+    connect(editor_->document(), &QTextDocument::contentsChange, this, &DocumentSession::onContentsChange);
 }
 
 DocumentSession::~DocumentSession() {
@@ -54,11 +69,24 @@ DocumentSession::~DocumentSession() {
 }
 
 void DocumentSession::waitForIdle() {
+    finishCopy();
     pool_.waitForDone();
     QCoreApplication::sendPostedEvents(this);
 }
 
+void DocumentSession::finishCopy() {
+    if (!copy_.active) {
+        return;
+    }
+    // A save whose copy is still running is written, not dropped: the rest is copied in one go
+    // (one short stall) and handed to the worker thread like a completed copy.
+    const QString path = copy_.path;
+    copyBlocks(true);
+    startWrite(takeSnapshot(), path);
+}
+
 void DocumentSession::newDocument() {
+    finishCopy();  // the document is about to be replaced; a pending save still belongs to it
     ++loadGeneration_;
     ++documentId_;
     insertTimer_.stop();
@@ -75,6 +103,7 @@ void DocumentSession::newDocument() {
 }
 
 void DocumentSession::load(const QString& path) {
+    finishCopy();  // the document is about to be replaced; a pending save still belongs to it
     const quint64 generation = ++loadGeneration_;
     // The current document is about to be replaced: no edits from here on (they would be lost).
     insertTimer_.stop();
@@ -204,35 +233,111 @@ void DocumentSession::finishInsert() {
     emit loadFinished(pendingPath_);
 }
 
-DocumentSession::Snapshot DocumentSession::snapshot() const {
+void DocumentSession::beginCopy(const QString& path) {
+    cancelCopy();
+    copySetBacks_ = 0;
+    copy_.active = true;
+    copy_.path = path;
+    copy_.text.reserve(editor_->document()->characterCount());
+}
+
+void DocumentSession::cancelCopy() {
+    copyTimer_.stop();
+    copy_ = Copy{};
+}
+
+bool DocumentSession::copyBlocks(bool allAtOnce) {
+    QTextDocument* doc = editor_->document();
+    const int blockCount = doc->blockCount();
+    if (copy_.setBacks > kCopyMaxSetBacks) {
+        allAtOnce = true;  // starved by edits: finish in one go
+    }
+    QTextCursor cursor(doc);
+    do {
+        const QTextBlock first = doc->findBlockByNumber(copy_.copiedBlocks);
+        QTextBlock last =
+            allAtOnce ? doc->lastBlock() : doc->findBlock(first.position() + static_cast<int>(kCopySliceChars));
+        if (!last.isValid()) {
+            last = doc->lastBlock();  // the slice reaches past the end
+        }
+        copy_.slices.push_back({copy_.copiedBlocks, copy_.text.size(), copy_.perBreak.size()});
+        // selectedText() takes the same fast path as toRawText(): raw text, blocks separated by
+        // U+2029 (which a file never contains, ADR 0002).
+        cursor.setPosition(first.position());
+        cursor.setPosition(last.position() + last.length() - 1, QTextCursor::KeepAnchor);
+        QString part = cursor.selectedText();
+        part.replace(QChar::ParagraphSeparator, QLatin1Char('\n'));
+        copy_.text += part;
+        if (last.next().isValid()) {
+            copy_.text += QLatin1Char('\n');
+        }
+        if (format_.mixedEndings) {
+            for (QTextBlock b = first; b.isValid() && b.blockNumber() <= last.blockNumber(); b = b.next()) {
+                if (b.next().isValid()) {
+                    const auto* data = dynamic_cast<const BlockData*>(b.userData());
+                    copy_.perBreak.push_back(data && data->ending ? *data->ending : format_.ending);
+                }
+            }
+        }
+        copy_.copiedBlocks = last.blockNumber() + 1;
+        if (!allAtOnce && copy_.copiedBlocks < blockCount) {
+            return false;
+        }
+    } while (copy_.copiedBlocks < blockCount);
+    return true;
+}
+
+void DocumentSession::onContentsChange(int position, int /*charsRemoved*/, int /*charsAdded*/) {
+    // The styler's own document changes (format ranges, markContentsDirty) are not edits; as of
+    // Qt 6.8 and 6.12 they emit no contentsChange, the guard mirrors EditorWidget's for editCount.
+    if (!copy_.active || editor_->styler().isBusy()) {
+        return;
+    }
+    // Blocks before the changed one are untouched: set the copy back to the start of the slice
+    // that holds the changed block and let the slices copy from there again. Changes behind the
+    // copied part need nothing. An invalid block (position outside the document) sets back to the
+    // start rather than trusting the position.
+    const int block = std::max(editor_->document()->findBlock(position).blockNumber(), 0);
+    if (block >= copy_.copiedBlocks || copy_.slices.empty()) {
+        return;
+    }
+    auto slice = copy_.slices.end();
+    while (slice != copy_.slices.begin() && std::prev(slice)->firstBlock > block) {
+        --slice;
+    }
+    --slice;  // the slice whose firstBlock <= block
+    copy_.text.truncate(slice->textOffset);
+    copy_.perBreak.resize(slice->breaks);
+    copy_.copiedBlocks = slice->firstBlock;
+    copy_.slices.erase(slice, copy_.slices.end());
+    ++copy_.setBacks;
+    ++copySetBacks_;
+}
+
+DocumentSession::Snapshot DocumentSession::takeSnapshot() {
     Snapshot s;
     s.format = format_;
     s.editCount = editor_->editCount();
-    const QTextDocument* doc = editor_->document();
-    if (!format_.mixedEndings) {
-        s.text = doc->toRawText();
-        s.rawSeparators = true;
-        return s;
-    }
-    QString text;
-    text.reserve(doc->characterCount());
-    for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
-        text += b.text();
-        if (b.next().isValid()) {
-            text += QLatin1Char('\n');
-            const auto* data = dynamic_cast<const BlockData*>(b.userData());
-            s.perBreak.push_back(data && data->ending ? *data->ending : format_.ending);
-        }
-    }
-    s.text = std::move(text);
+    s.text = std::move(copy_.text);
+    s.perBreak = std::move(copy_.perBreak);
+    cancelCopy();
+    emit snapshotTaken();
     return s;
 }
 
-DocumentSession::WriteOutcome DocumentSession::write(Snapshot s, const QString& path) {
-    if (s.rawSeparators) {
-        // QTextDocument separates blocks with U+2029; files never contain it (rejected on load).
-        s.text.replace(QChar::ParagraphSeparator, QLatin1Char('\n'));
+void DocumentSession::copySlice() {
+    if (!copy_.active) {
+        copyTimer_.stop();
+        return;
     }
+    if (!copyBlocks(false)) {
+        return;
+    }
+    const QString path = copy_.path;
+    startWrite(takeSnapshot(), path);
+}
+
+DocumentSession::WriteOutcome DocumentSession::write(Snapshot s, const QString& path) {
     const auto bytes = core::encodeUtf8(view(s.text), s.format.hasBom, s.format.ending, s.perBreak);
     if (!bytes) {
         return {false, QStringLiteral("internal error: text could not be encoded")};
@@ -243,12 +348,7 @@ DocumentSession::WriteOutcome DocumentSession::write(Snapshot s, const QString& 
     return {true, {}};
 }
 
-void DocumentSession::save(const QString& path) {
-    if (loading_) {
-        emit saveFailed(path, QStringLiteral("The file is still loading."));
-        return;
-    }
-    Snapshot s = snapshot();
+void DocumentSession::startWrite(Snapshot s, const QString& path) {
     const quint64 editCount = s.editCount;
     const quint64 documentId = documentId_;
     ++savesInFlight_;
@@ -260,6 +360,16 @@ void DocumentSession::save(const QString& path) {
     });
 }
 
+void DocumentSession::save(const QString& path) {
+    if (loading_) {
+        emit saveFailed(path, QStringLiteral("The file is still loading."));
+        return;
+    }
+    // The copy runs in slices from the event loop; a newer request replaces a running copy.
+    beginCopy(path);
+    copyTimer_.start();
+}
+
 bool DocumentSession::saveNow(const QString& path, QString* error) {
     waitForIdle();
     if (loading_) {
@@ -267,7 +377,9 @@ bool DocumentSession::saveNow(const QString& path, QString* error) {
             *error = QStringLiteral("The file is still loading.");
         return false;
     }
-    Snapshot s = snapshot();
+    beginCopy(path);
+    copyBlocks(true);
+    Snapshot s = takeSnapshot();
     const quint64 editCount = s.editCount;
     ++savesInFlight_;
     const WriteOutcome outcome = write(std::move(s), path);

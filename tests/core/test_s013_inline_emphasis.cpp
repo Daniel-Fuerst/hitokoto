@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <iterator>
+#include <memory>
 #include <random>
 
 using namespace hitokoto::core;
@@ -144,7 +145,7 @@ TEST(S013_InlineEmphasis, EmphasisIsAppliedInsideHeadings) {
 
 TEST(S013_InlineEmphasis, PropertyRangesStayInsideLineAndDoNotOverlapHiddenMarkers) {
     std::mt19937 rng(73013);
-    constexpr char16_t alphabet[] = {u'*', u'*', u'_', u'~', u'\\', u' ', u'\t', u'a', u'b', u'\u00e4'};
+    constexpr char16_t alphabet[] = {u'*', u'*', u'_', u'~', u'\\', u'`', u' ', u'\t', u'a', u'b', u'\u00e4'};
     for (int iteration = 0; iteration < 5000; ++iteration) {
         std::u16string line(rng() % 32, u' ');
         for (auto& c : line) {
@@ -214,4 +215,126 @@ TEST(S013_InlineEmphasis, ThemeTokensFallBack) {
     EXPECT_FALSE(s.italicText);
     EXPECT_FALSE(s.strikethroughText);
     EXPECT_EQ(s.marker, t.marker);
+}
+
+// Review objection O4: an unmatched delimiter inside a valid pair does not cancel that pair.
+// Expectations checked against commonmark.js 0.31.2 and markdown-it (CommonMark mode): a `*` that
+// can both open and close does not pair with a run when the two lengths add up to a multiple of
+// three ("rule of 3"), so the outer pair wins and the inner delimiter stays literal.
+TEST(S013_InlineEmphasis, UnmatchedDelimiterInsidePairDoesNotCancelThePair) {
+    const auto product = show(u"**2*3 is six**");
+    EXPECT_EQ(spans(product.hidden), (std::vector<Span>{{0, 2}, {12, 2}}));
+    EXPECT_EQ(product.inlineStyles, (std::vector<InlineStyleRun>{{{2, 10}, InlineStyle::Bold}}));
+
+    const auto letters = show(u"**x*y**");
+    EXPECT_EQ(spans(letters.hidden), (std::vector<Span>{{0, 2}, {5, 2}}));
+    EXPECT_EQ(letters.inlineStyles, (std::vector<InlineStyleRun>{{{2, 3}, InlineStyle::Bold}}));
+
+    const auto strongInsideItalic = show(u"*2**3*");
+    EXPECT_EQ(spans(strongInsideItalic.hidden), (std::vector<Span>{{0, 1}, {5, 1}}));
+    EXPECT_EQ(strongInsideItalic.inlineStyles, (std::vector<InlineStyleRun>{{{1, 4}, InlineStyle::Italic}}));
+
+    // Two inner delimiters do pair with each other (lengths 1 + 1): bold a, bold italic b, bold c.
+    const auto innerPair = show(u"**a*b*c**");
+    EXPECT_EQ(spans(innerPair.hidden), (std::vector<Span>{{0, 2}, {3, 1}, {5, 1}, {7, 2}}));
+    EXPECT_EQ(innerPair.inlineStyles, (std::vector<InlineStyleRun>{{{2, 1}, InlineStyle::Bold},
+                                                                   {{4, 1}, InlineStyle::Bold | InlineStyle::Italic},
+                                                                   {{6, 1}, InlineStyle::Bold}}));
+}
+
+// Review objection O5: emphasis never styles the backticks of inline code. They are hidden when
+// concealed (styled runs and hidden ranges never overlap) and keep the inline-code.marker colour
+// when revealed.
+TEST(S013_InlineEmphasis, EmphasisLeavesInlineCodeDelimitersAlone) {
+    const auto concealed = show(u"**`code`**");
+    EXPECT_EQ(spans(concealed.hidden), (std::vector<Span>{{0, 2}, {2, 1}, {7, 1}, {8, 2}}));
+    EXPECT_TRUE(concealed.inlineStyles.empty()) << "nothing but code and delimiters between the markers";
+
+    const auto revealed = show(u"**`code`**", true);
+    EXPECT_TRUE(revealed.inlineStyles.empty());
+
+    const auto mixed = show(u"**a `b` c**");
+    EXPECT_EQ(mixed.inlineStyles,
+              (std::vector<InlineStyleRun>{{{2, 2}, InlineStyle::Bold}, {{7, 2}, InlineStyle::Bold}}));
+}
+
+namespace {
+/// A test-only inline element: `==text==` is a highlight whose revealed markers reuse the
+/// existing Marker role. It does not know headings; the registry must still split the heading
+/// text run around its runs (brief, section 5: adding an element never edits the core loop).
+class HighlightElement final : public InlineElement {
+public:
+    [[nodiscard]] std::string_view id() const noexcept override { return "test-highlight"; }
+    [[nodiscard]] std::u16string_view triggerCharacters() const noexcept override { return u"="; }
+    void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
+        const auto open = line.find(u"==");
+        const auto close = open == std::u16string_view::npos ? open : line.find(u"==", open + 2);
+        if (close == std::u16string_view::npos) {
+            return;
+        }
+        for (const auto start : {open, close}) {
+            out.runs.push_back({{static_cast<std::uint32_t>(start), 2}, Role::Marker, 0});
+            if (!context.revealed) {
+                out.hidden.push_back({{static_cast<std::uint32_t>(start), 2}, HideMode::Collapse});
+            }
+        }
+    }
+};
+}  // namespace
+
+// Review objection O3: the registry gives inline runs precedence over the block element's runs
+// without a list of inline roles in its core loop.
+TEST(S013_InlineEmphasis, InlineElementsAreAddedByRegistrationOnly) {
+    ElementRegistry r = ElementRegistry::withBuiltins();
+    r.addInline(std::make_unique<HighlightElement>());
+
+    EXPECT_EQ(r.render(u"# a ==b== c", {true}).runs, (std::vector<StyleRun>{{{0, 2}, Role::Marker, 1},
+                                                                            {{2, 2}, Role::HeadingText, 1},
+                                                                            {{4, 2}, Role::Marker, 0},
+                                                                            {{6, 1}, Role::HeadingText, 1},
+                                                                            {{7, 2}, Role::Marker, 0},
+                                                                            {{9, 2}, Role::HeadingText, 1}}))
+        << "inline markers take precedence over the heading text run; runs never overlap";
+    EXPECT_EQ(r.render(u"# a ==b== c", {false}).runs,
+              (std::vector<StyleRun>{
+                  {{2, 2}, Role::HeadingText, 1}, {{6, 1}, Role::HeadingText, 1}, {{9, 2}, Role::HeadingText, 1}}))
+        << "concealed markers (and the heading's own) are carved out of the heading run";
+}
+
+namespace {
+/// Hidden spans merged where they touch: how many ranges an element reports for one delimiter
+/// run is its business; what matters is which characters are concealed.
+std::vector<Span> concealed(const LineRender& r) {
+    std::vector<Span> out;
+    for (const auto& hidden : r.hidden) {
+        if (!out.empty() && out.back().end() == hidden.span.start) {
+            out.back().length += hidden.span.length;
+        } else {
+            out.push_back(hidden.span);
+        }
+    }
+    return out;
+}
+}  // namespace
+
+// Review objection O1: a delimiter run serves two pairs when it closes (or opens) nested emphasis
+// of different lengths, as in CommonMark and Obsidian. Delimiters are still paired by marker and
+// length; only the run is split.
+TEST(S013_InlineEmphasis, DelimiterRunClosesOrOpensNestedPairsOfDifferentLength) {
+    const auto closingRun = show(u"**bold *italic***");
+    EXPECT_EQ(concealed(closingRun), (std::vector<Span>{{0, 2}, {7, 1}, {14, 3}}));
+    EXPECT_EQ(
+        closingRun.inlineStyles,
+        (std::vector<InlineStyleRun>{{{2, 5}, InlineStyle::Bold}, {{8, 6}, InlineStyle::Bold | InlineStyle::Italic}}));
+
+    const auto closingRunReversed = show(u"*italic **bold***");
+    EXPECT_EQ(concealed(closingRunReversed), (std::vector<Span>{{0, 1}, {8, 2}, {14, 3}}));
+    EXPECT_EQ(closingRunReversed.inlineStyles,
+              (std::vector<InlineStyleRun>{{{1, 7}, InlineStyle::Italic},
+                                           {{10, 4}, InlineStyle::Bold | InlineStyle::Italic}}));
+
+    const auto openingRun = show(u"***bold** italic*");
+    EXPECT_EQ(concealed(openingRun), (std::vector<Span>{{0, 3}, {7, 2}, {16, 1}}));
+    EXPECT_EQ(openingRun.inlineStyles, (std::vector<InlineStyleRun>{{{3, 4}, InlineStyle::Bold | InlineStyle::Italic},
+                                                                    {{9, 7}, InlineStyle::Italic}}));
 }

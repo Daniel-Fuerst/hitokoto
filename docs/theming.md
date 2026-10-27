@@ -148,6 +148,11 @@ follows the general tokens above.
 | `table.font-family` | string | Font family of table cells; "" = editor font | "" |
 | `table.font-scale` | number | Font size of table cells relative to the editor font, 0.5 to 2 | 1 |
 
+Bold text is never lighter than the text around it: inside a heading the weight is the larger of
+`headings.weight` and `emphasis.bold-weight`. The built-in themes set both to 700, so bold inside a
+heading looks like the heading, as it does in Obsidian with its default settings; a theme that
+wants it visible sets `emphasis.bold-weight` above `headings.weight` (or lowers the heading weight).
+
 ## The built-in light theme
 
 The complete built-in light theme, a good starting point for your own:

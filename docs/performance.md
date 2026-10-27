@@ -5,7 +5,8 @@ Budgets come from the brief, section 4. They are checked by two tools:
 - `hitokoto_core_bench` (Google Benchmark): core costs for 10 MB files and theme parsing.
 - `hitokoto-bench`: end to end. Cold start (separate processes, time from exec to the first painted
   frame with the file shown), opening 1 MB and 10 MB files, key-to-paint latency while typing,
-  pressing Enter and moving across headings, and saving 10 MB.
+  pressing Enter and moving across headings, and saving 10 MB (longest stall of the UI thread and
+  time until the file is on disk, median of `--runs` saves).
 
 ```sh
 cmake --preset bench && cmake --build --preset bench
@@ -14,7 +15,12 @@ build/bench/bench/hitokoto-bench --fail-on-budget   # on a reference machine, wi
 ```
 
 CI runs both on Linux, Windows and macOS and compares with `bench/baselines/<os>.json`
-(tolerance 25 %, differences under 2 ms ignored). See `bench/baselines/README.md`.
+(tolerance 25 % on Linux, 50 % on Windows and macOS whose runners vary that much; differences
+under 2 ms ignored). Hard budgets fail the run on any machine:
+saving 10 MB stalls the UI for at most 16 ms, the file is on disk within 1 s, and no key event
+takes longer than 50 ms. Maxima of many samples (`typing_*_max_ms`, `save_10mb_total_ms`) are
+compared with the baseline for information only; p99 of the key-to-paint samples is the compared
+value. See `bench/baselines/README.md`.
 
 ## Measurements
 
@@ -30,7 +36,13 @@ Qt 6.12), release build, offscreen, 10 runs. These are the baselines in `bench/b
 | Open 10 MB, first screen editable | 65 ms | 79 ms | 79 ms | < 2–3 s |
 | Open 10 MB, fully loaded | 1.7 s | 1.9 s | 3.3 s | |
 | Key to paint, 10 MB file (median / p95) | 0.9 / 1.0 ms | 0.9 / 1.0 ms | 1.2 / 2.2 ms | ≤ 16 ms |
-| Save 10 MB: UI thread blocked | 6 ms | 36 ms | 24 ms | imperceptible |
+| Save 10 MB: UI thread blocked (duration of the save() call; S017 measures the longest stall instead) | 6 ms | 36 ms | 24 ms | imperceptible |
+
+### 2026-10-26, development VM, S017 (release build, offscreen, 5 runs)
+
+Saving 10 MB: longest UI stall 6.7 ms (was 18.9 ms, measured as the duration of the save() call),
+until on disk 190 ms (was 111 ms: the sliced copy costs about six times the CPU of a one-shot
+copy, see "Known gaps").
 
 ### 2026-10-24, development VM (not reference hardware)
 
@@ -68,10 +80,19 @@ endings only lines whose ending differs from the majority: none in that document
 
 ### Known gaps and next steps
 
-- **Saving 10 MB blocks the UI for about 25 ms** (copying the text out of `QTextDocument`). Under
-  1 MB this is below 3 ms. Options: copy in slices with the editor briefly read-only, or keep a
-  copy-on-write snapshot. To be decided in S007's follow-up.
+- **Saving 10 MB used to block the UI for about 25 ms** (copying the text out of
+  `QTextDocument` in one go). S017 copies in slices of about 128 K characters with the editor
+  editable: longest stall 4–5 ms on the development VM (Debug build), snapshot complete after
+  about 160 ms. The only public range copy, `QTextCursor::selectedText()`, costs about six times
+  `toRawText()` per character (10 MB: 124 ms against 21 ms; `QTextBlock::text()` per block
+  226 ms; `QTextDocumentFragment::toRawText()` 1.6 s), so the sliced copy spends more CPU in
+  total, spread so that nothing stalls.
 - **Loading and background styling of 10 MB are dominated by Qt** (inserting text into
   `QTextDocument` and relayouting styled blocks), not by the core (21 ms for all lines). The editor
   is usable after 95 ms, but read-only until the whole file is inserted (2.2 s here).
+- **After typing, the styler's catch-up stalls the event loop for about 17 ms** (development VM,
+  release build, seen as the longest gap between 1 ms timer ticks right after the 200 keystrokes
+  of the typing benchmark on the 10 MB file). Key-to-paint latency does not include it, because
+  the styling is deferred. Not measured before S017's save benchmark waited for the styler;
+  worth a look in S007's remaining work.
 - Measurements on reference hardware with a real display (S011), including cold-cache starts.

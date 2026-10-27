@@ -219,7 +219,10 @@ class ElementRegistry {
 public:
     /// Registers an element. Earlier registrations win when several elements match a line.
     void add(std::unique_ptr<LineElement> element);
-    /// Registers an inline element. All registered inline elements render after the block element.
+    /// Registers an inline element. Inline elements render after the block element, in registration
+    /// order, and each sees the runs the earlier ones produced (`LineRender::runs`). An element that
+    /// must not style another element's text, as emphasis must not style inline code, therefore
+    /// comes after it; `withBuiltins()` keeps that order.
     void addInline(std::unique_ptr<InlineElement> element);
     /// Registers a multi-line element. Multi-line elements are tried before line elements; earlier
     /// registrations win. At most 255 (throws std::length_error beyond).

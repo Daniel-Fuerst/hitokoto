@@ -1,12 +1,28 @@
 # Benchmark baselines
 
 CI compares `hitokoto-bench` results with `<os>.json` in this folder (`linux`, `windows`,
-`macos`) and fails if a value is more than 25 % slower (differences under 2 ms are ignored).
-`save_10mb_total_ms` is compared and reported (`info`) but never fails the run: it waits for the
-file to reach the runner's disk and swings too much on shared CI machines.
+`macos`) and fails if a value is more than 25 % slower on Linux or 50 % on Windows and macOS
+(differences under 2 ms are ignored). The wider tolerance is for the runners, not the code: the
+same commit ran 20-50 % slower across every value on a second Windows and macOS runner
+(2026-10-26); a baseline is one sample of a runner's speed. If this keeps failing, the
+comparison should normalise by the run's overall slowdown instead.
+`save_10mb_total_ms` is compared and reported (`info`) but never fails the comparison: it waits
+for the file to reach the runner's disk and swings too much on shared CI machines. Two hard
+budgets hold on every machine instead and fail the run without a baseline: the longest UI stall
+while saving 10 MB (`save_10mb_ui_blocked_ms`, 16 ms) and the time until the 10 MB file is on
+disk (`save_10mb_total_ms`, 1000 ms). Both are the median of `--runs` saves (S017). Likewise
+the maximum of the 200 key-to-paint samples (`typing_*_max_ms`) is `info` in the comparison, one
+scheduler hiccup on a shared runner would fail it, and has a hard budget of 50 ms instead (S007:
+no single event above 50 ms); `typing_*_p99_ms`, the maximum after dropping the worst 1 %, is
+compared with the baseline. `typing_*_over_16ms` counts the samples above the 16 ms budget, for
+information. `startup_p95_ms`, the p95 of 10 cold starts, is `info` as well (31.6 -> 127.2 ms on
+a Windows runner with the median unchanged); `startup_median_ms` is the gate. The rule: medians
+and percentiles of the 200 typing samples are compared, extremes of few samples are reported,
+and where the brief names an absolute limit, a hard budget applies.
 
-There are no baselines yet: CI runners differ from the development machine, so the first ones
-must come from CI itself. To create or update them:
+The baselines come from the review run of the S017 pull request (2026-10-27; Windows and macOS
+from single re-runs of their jobs). CI runners differ from the development machine, so
+baselines must come from CI itself. To create or update them:
 
 1. Open a successful CI run (on `main` or on a pull request; both use the same runners), download
    the artefacts `bench-linux`, `bench-windows`, `bench-macos`.
