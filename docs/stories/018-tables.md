@@ -41,6 +41,12 @@ Markdown that GitHub shows the same way.
   typing it
 - And the table view appears once the caret leaves the line (`Enter`, arrow keys, a click),
   with the caret where I moved it
+- And a line that is already part of the shown table does not switch it to its Markdown lines:
+  `Backspace` at the start of the line directly below a table joins that line to the last row,
+  as in any text, and the caret goes to the end of the last cell, where I type on (as in the
+  first version)
+- And keys always reach the editor or a cell: when a table switches to its Markdown lines while
+  the caret is in it, the caret goes into those lines
 
 **Scenario: cells show inline Markdown and line breaks**
 - Given cells with `**bold**`, `*italic*`, `~~strike~~`, `` `code` ``, `\|` and `<br>`

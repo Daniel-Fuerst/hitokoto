@@ -1157,6 +1157,61 @@ private slots:
         QCOMPARE(text(f), QString::fromUtf8(markdown));
     }
 
+    // Armin's report (2026-10-27): Backspace at the start of the line below a table joined it to
+    // the last row; the table then showed its Markdown lines and no key reached anything until a
+    // click. As in the first version, the table stays a table and the caret goes to the end of
+    // the last cell, where typing goes on.
+    void backspaceBelowATableJoinsTheLastRowAndStaysInTheTable() {
+        constexpr auto markdown =
+            "| a | b |\n"
+            "| --- | --- |\n"
+            "| 1 | 2 |\n"
+            "\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("backspace.md"), markdown)));
+        f.settle();
+        f.editor()->setFocus();
+        f.placeCaret(3, 0);
+        press(Qt::Key_Backspace);
+        f.settle();
+        QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2 |\n"));
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY2(view != nullptr, "the table shows its Markdown lines");
+        QVERIFY(focusedCell() != nullptr);
+        QCOMPARE(current(view), QStringLiteral("1,1"));
+        QCOMPARE(caretInCell(), 1);
+        typeAsUser(QStringLiteral("3"));
+        f.settle();
+        QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 23 |\n"));
+        press(Qt::Key_Z, Qt::ControlModifier);
+        press(Qt::Key_Z, Qt::ControlModifier);
+        f.settle();
+        QCOMPARE(text(f), QString::fromUtf8(markdown));
+    }
+
+    // Keys always reach the editor or a cell: a table that stops being one while the caret is in
+    // it (here its delimiter row goes, as an undo could do it) gives the caret back to the editor.
+    void aTableThatGoesAwayGivesTheCaretBackToTheEditor() {
+        constexpr auto markdown =
+            "| a | b |\n"
+            "| --- | --- |\n"
+            "| 1 | 2 |\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("goes.md"), markdown)));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QVERIFY(clickCell(view, 1, 0) != nullptr);
+        QTextCursor delimiter(f.editor()->document()->findBlockByNumber(1));
+        delimiter.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+        delimiter.insertText(QStringLiteral("x"));
+        f.settle();
+        QVERIFY(f.editor()->tableViewAt(0) == nullptr);
+        QTRY_VERIFY(f.editor()->hasFocus());
+        typeAsUser(QStringLiteral("y"));
+        QVERIFY(text(f).contains(u'y'));
+    }
+
     // The open cell keeps its column's alignment: the text does not jump when the caret enters.
     void anOpenCellKeepsItsColumnsAlignment() {
         constexpr auto markdown =
