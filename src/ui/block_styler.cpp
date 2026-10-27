@@ -22,34 +22,34 @@ namespace {
 // Bits 0-1: what the block was styled for (0 = not styled, 1 = concealed, 2 = revealed).
 // Bit 2: the block state after the line is known. Bit 3: that state is active; only then does
 // the block carry a BlockData holding it, so plain lines need no allocation.
-constexpr int kStyleMask = 0x3;
-constexpr int kUnstyled = 0;
-constexpr int kStyledConcealed = 1;
-constexpr int kStyledRevealed = 2;
-constexpr int kStateKnown = 0x4;
-constexpr int kStateActive = 0x8;
-constexpr int kTableContentRow = 0x10;
+constexpr unsigned int kStyleMask = 0x3U;
+constexpr unsigned int kUnstyled = 0U;
+constexpr unsigned int kStyledConcealed = 1U;
+constexpr unsigned int kStyledRevealed = 2U;
+constexpr unsigned int kStateKnown = 0x4U;
+constexpr unsigned int kStateActive = 0x8U;
+constexpr unsigned int kTableContentRow = 0x10U;
 // Ranges up to this size are styled synchronously; larger ones on screen + in idle slices.
 constexpr int kSynchronousLimit = 400;
 constexpr qint64 kSliceNanoseconds = 6'000'000;
 
-int stateBits(const QTextBlock& block) {
+unsigned int stateBits(const QTextBlock& block) {
     const int bits = block.userState();
-    return bits < 0 ? 0 : bits;
+    return bits < 0 ? 0U : static_cast<unsigned int>(bits);
 }
 
-void setStyled(QTextBlock& block, int style) {
-    block.setUserState((stateBits(block) & ~kStyleMask) | style);
+void setStyled(QTextBlock& block, unsigned int style) {
+    block.setUserState(static_cast<int>((stateBits(block) & ~kStyleMask) | style));
 }
 
 /// The cached block state after `block`, if known. Joining lines can pair the user state of one
 /// line with the BlockData of another; such a mix counts as unknown.
 std::optional<core::BlockState> cachedBlockState(const QTextBlock& block) {
-    const int bits = stateBits(block);
-    if ((bits & kStateKnown) == 0) {
+    const unsigned int bits = stateBits(block);
+    if ((bits & kStateKnown) == 0U) {
         return std::nullopt;
     }
-    if ((bits & kStateActive) == 0) {
+    if ((bits & kStateActive) == 0U) {
         return core::BlockState{};
     }
     const auto* data = dynamic_cast<const BlockData*>(block.userData());
@@ -61,14 +61,14 @@ std::optional<core::BlockState> cachedBlockState(const QTextBlock& block) {
 
 void cacheBlockState(QTextBlock& block, core::BlockState state) {
     auto* data = dynamic_cast<BlockData*>(block.userData());
-    const int preserved = stateBits(block) & (kStyleMask | kTableContentRow);
+    const unsigned int preserved = stateBits(block) & (kStyleMask | kTableContentRow);
     if (state.active()) {
         if (data == nullptr) {
             data = new BlockData;
             block.setUserData(data);
         }
         data->blockState = state;
-        block.setUserState(preserved | kStateKnown | kStateActive);
+        block.setUserState(static_cast<int>(preserved | kStateKnown | kStateActive));
         return;
     }
     if (data != nullptr) {
@@ -77,9 +77,25 @@ void cacheBlockState(QTextBlock& block, core::BlockState state) {
             block.setUserData(nullptr);  // deletes it
         }
     }
-    block.setUserState(preserved | kStateKnown);
+    block.setUserState(static_cast<int>(preserved | kStateKnown));
 }
 }  // namespace
+
+BlockStyler::BatchScope::BatchScope(BlockStyler& styler) : styler_(styler) {
+    ++styler_.batchNesting_;
+}
+
+BlockStyler::BatchScope::~BatchScope() {
+    --styler_.batchNesting_;
+    if (styler_.batchNesting_ == 0) {
+        styler_.invalidateTableMetrics();
+        styler_.styleVisible();
+    }
+}
+
+void BlockStyler::invalidateTableMetrics() {
+    tableMetricsCache_.clear();
+}
 
 BlockStyler::BlockStyler(QTextDocument* document, const core::ElementRegistry& registry,
                          std::function<std::pair<int, int>()> visibleBlocks, QObject* parent)
@@ -91,6 +107,7 @@ BlockStyler::BlockStyler(QTextDocument* document, const core::ElementRegistry& r
 
 void BlockStyler::setFormats(EditorFormats formats) {
     formats_ = std::move(formats);
+    invalidateTableMetrics();
     invalidateAll();
 }
 
@@ -99,8 +116,9 @@ void BlockStyler::setAvailableWidth(double width) {
         return;
     }
     availableWidth_ = width;
+    invalidateTableMetrics();
     for (QTextBlock b = document_->begin(); b.isValid(); b = b.next()) {
-        if ((stateBits(b) & kStateActive) != 0) {
+        if ((stateBits(b) & (kStateActive | kTableContentRow)) != 0U) {
             setStyled(b, kUnstyled);
         }
     }
@@ -109,6 +127,7 @@ void BlockStyler::setAvailableWidth(double width) {
 }
 
 void BlockStyler::invalidateAll() {
+    invalidateTableMetrics();
     for (QTextBlock b = document_->begin(); b.isValid(); b = b.next()) {
         setStyled(b, kUnstyled);
     }
@@ -127,28 +146,45 @@ core::BlockState BlockStyler::blockStateBefore(const QTextBlock& block) {
         uncached.push_back(previous);
     }
     for (auto it = uncached.rbegin(); it != uncached.rend(); ++it) {
-        const QTextBlock next = it->next();
         const QString lineText = it->text();
-        const QString nextText = next.isValid() ? next.text() : QString{};
-        state =
-            registry_.blockStateAfter(view(lineText), state, next.isValid() ? view(nextText) : std::u16string_view{});
+        QString nextText;
+        if (!state.active() && lineText.contains(QLatin1Char('|'))) {
+            const QTextBlock next = it->next();
+            if (next.isValid()) {
+                nextText = next.text();
+            }
+        }
+        state = registry_.blockStateAfter(view(lineText), state,
+                                          nextText.isEmpty() ? std::u16string_view{} : view(nextText));
         cacheBlockState(*it, state);
     }
     return state;
 }
 
 core::LineRender BlockStyler::renderFor(const QTextBlock& block) {
-    const QTextBlock next = block.next();
     const QString lineText = block.text();
-    const QString nextText = next.isValid() ? next.text() : QString{};
-    return registry_.render(view(lineText), {isRevealed(block.blockNumber()), blockStateBefore(block),
-                                             next.isValid() ? view(nextText) : std::u16string_view{}});
+    const auto stateBefore = blockStateBefore(block);
+    QString nextText;
+    if (!stateBefore.active() && lineText.contains(QLatin1Char('|'))) {
+        const QTextBlock next = block.next();
+        if (next.isValid()) {
+            nextText = next.text();
+        }
+    }
+    return registry_.render(view(lineText), {isRevealed(block.blockNumber()), stateBefore,
+                                             nextText.isEmpty() ? std::u16string_view{} : view(nextText)});
 }
 
 TableMetrics BlockStyler::tableMetrics(const QTextBlock& block) {
     TableMetrics metrics;
     if (!block.isValid() || !renderFor(block).table) {
         return metrics;
+    }
+    const int bNum = block.blockNumber();
+    for (const auto& cached : tableMetricsCache_) {
+        if (bNum >= cached.firstBlock && bNum <= cached.lastBlock) {
+            return cached;
+        }
     }
     QTextBlock first = block;
     for (int steps = 0; steps < kSynchronousLimit; ++steps) {
@@ -185,8 +221,10 @@ TableMetrics BlockStyler::tableMetrics(const QTextBlock& block) {
             metrics.columnWidths.resize(r.cells.size(), minWidth);
         }
         const QString text = b.text();
+        const auto rowRanges = formats_.ranges(r);
         for (std::size_t c = 0; c < r.cells.size(); ++c) {
-            metrics.columnWidths[c] = std::max(metrics.columnWidths[c], formats_.cellTextWidth(text, r, r.cells[c]));
+            metrics.columnWidths[c] =
+                std::max(metrics.columnWidths[c], formats_.cellTextWidth(text, rowRanges, r.cells[c]));
         }
     }
     if (availableWidth_ > 0.0 && !metrics.columnWidths.empty()) {
@@ -220,16 +258,19 @@ TableMetrics BlockStyler::tableMetrics(const QTextBlock& block) {
             }
         }
     }
+    if (metrics.firstBlock >= 0) {
+        tableMetricsCache_.push_back(metrics);
+    }
     return metrics;
 }
 
 bool BlockStyler::isStyled(const QTextBlock& block) const {
-    const int bits = stateBits(block);
-    const int expected = isRevealed(block.blockNumber()) ? kStyledRevealed : kStyledConcealed;
+    const unsigned int bits = stateBits(block);
+    const unsigned int expected = isRevealed(block.blockNumber()) ? kStyledRevealed : kStyledConcealed;
     if ((bits & kStyleMask) != expected) {
         return false;
     }
-    if ((bits & kTableContentRow) != 0) {
+    if ((bits & kTableContentRow) != 0U) {
         const QTextLayout* layout = block.layout();
         // QPlainTextDocumentLayout::layoutBlock sets leadingIncluded(true); layoutTableRow sets false.
         if (!layout || layout->lineCount() == 0 || layout->lineAt(0).leadingIncluded()) {
@@ -334,13 +375,13 @@ void BlockStyler::styleBlock(const QTextBlock& block) {
     const bool blockStateChanged = previousState && *previousState != render.blockState;
     cacheBlockState(mutableBlock, render.blockState);
     const auto ranges = formats_.ranges(render);
-    const bool wasTableRow = (stateBits(block) & kTableContentRow) != 0;
+    const bool wasTableRow = (stateBits(block) & kTableContentRow) != 0U;
     // Skip the relayout if nothing was and nothing is formatted (most body lines).
     const bool changed = wasTableRow || !(ranges.isEmpty() && layout->formats().isEmpty());
     const bool tableRow = render.table && !render.tableDelimiter && !render.cells.empty();
-    const int style = isRevealed(block.blockNumber()) ? kStyledRevealed : kStyledConcealed;
-    mutableBlock.setUserState((stateBits(mutableBlock) & ~(kStyleMask | kTableContentRow)) | style |
-                              (tableRow ? kTableContentRow : 0));
+    const unsigned int style = isRevealed(block.blockNumber()) ? kStyledRevealed : kStyledConcealed;
+    mutableBlock.setUserState(static_cast<int>((stateBits(mutableBlock) & ~(kStyleMask | kTableContentRow)) | style |
+                                               (tableRow ? kTableContentRow : 0U)));
     ++styledCount_;
     if (blockStateChanged) {
         // The next line's block membership may change too. Restyle onward lazily; each restyled
@@ -411,6 +452,21 @@ void BlockStyler::setRevealed(core::LineRange range) {
     if (range == revealed_) {
         return;
     }
+    const auto overlaps = [](core::LineRange a, int first, int last) {
+        return !a.empty() && first <= last &&
+               std::max<std::int64_t>(a.first, first) <= std::min<std::int64_t>(a.last, last);
+    };
+    bool overlapsTable = false;
+    for (const auto& tm : tableMetricsCache_) {
+        if (tm.firstBlock >= 0 &&
+            (overlaps(range, tm.firstBlock, tm.lastBlock) || overlaps(revealed_, tm.firstBlock, tm.lastBlock))) {
+            overlapsTable = true;
+            break;
+        }
+    }
+    if (overlapsTable) {
+        invalidateTableMetrics();
+    }
     const auto changes = core::revealChanges(revealed_, range);
     revealed_ = range;
     for (const auto& c : changes) {
@@ -419,7 +475,8 @@ void BlockStyler::setRevealed(core::LineRange range) {
 }
 
 void BlockStyler::onContentsChange(int position, int charsRemoved, int charsAdded) {
-    if (busy_) {
+    invalidateTableMetrics();
+    if (busy_ || batchNesting_ > 0) {
         return;
     }
     const QTextBlock first = document_->findBlock(position);
@@ -451,6 +508,7 @@ void BlockStyler::onContentsChange(int position, int charsRemoved, int charsAdde
             }
         }
     }
+    invalidateTableMetrics();
     styleRange(firstNumber, lastNumber);
     if (charsRemoved != charsAdded || lastNumber - firstNumber > kSynchronousLimit) {
         // Line numbers below may have shifted relative to the revealed range: re-check lazily.

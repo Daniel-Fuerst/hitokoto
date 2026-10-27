@@ -232,10 +232,21 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
 
 double EditorFormats::cellTextWidth(const QString& lineText, const core::LineRender& render,
                                     const core::TableCell& cell) const {
+    return cellTextWidth(lineText, ranges(render), cell);
+}
+
+double EditorFormats::cellTextWidth(const QString& lineText, const QList<QTextLayout::FormatRange>& fmtRanges,
+                                    const core::TableCell& cell) const {
     if (cell.content.length == 0) {
         return 0.0;
     }
-    const auto fmtRanges = ranges(render);
+    QFont defaultFont = baseFont_;
+    defaultFont.setPointSizeF(editorFontSize_ * table_.fontScale);
+    if (!tableFamilies_.isEmpty()) {
+        defaultFont.setFamilies(tableFamilies_);
+    }
+    const QFontMetricsF defaultMetrics(defaultFont);
+
     const int cellStart = static_cast<int>(cell.content.start);
     const int cellEnd = static_cast<int>(cell.content.end());
     double width = 0.0;
@@ -247,12 +258,7 @@ double EditorFormats::cellTextWidth(const QString& lineText, const core::LineRen
             continue;
         }
         if (rStart > pos) {
-            QFont f = baseFont_;
-            f.setPointSizeF(editorFontSize_ * table_.fontScale);
-            if (!tableFamilies_.isEmpty()) {
-                f.setFamilies(tableFamilies_);
-            }
-            width += QFontMetricsF(f).horizontalAdvance(lineText.mid(pos, rStart - pos));
+            width += defaultMetrics.horizontalAdvance(lineText.mid(pos, rStart - pos));
         }
         if (r.format.intProperty(QTextFormat::FontPixelSize) == 1) {
             // Concealed characters inside the cell (e.g. emphasis delimiters, backticks, '\|' backslash).
@@ -280,12 +286,7 @@ double EditorFormats::cellTextWidth(const QString& lineText, const core::LineRen
         pos = rEnd;
     }
     if (pos < cellEnd) {
-        QFont f = baseFont_;
-        f.setPointSizeF(editorFontSize_ * table_.fontScale);
-        if (!tableFamilies_.isEmpty()) {
-            f.setFamilies(tableFamilies_);
-        }
-        width += QFontMetricsF(f).horizontalAdvance(lineText.mid(pos, cellEnd - pos));
+        width += defaultMetrics.horizontalAdvance(lineText.mid(pos, cellEnd - pos));
     }
     return width;
 }

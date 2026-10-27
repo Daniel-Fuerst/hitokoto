@@ -76,6 +76,9 @@ bool startsOtherBlockElement(std::u16string_view line, std::size_t firstNonBlank
     if ((c == u'-' || c == u'*' || c == u'+') && firstNonBlank + 1 < line.size() && isBlank(line[firstNonBlank + 1])) {
         return true;
     }
+    if (c == u'>' && (firstNonBlank + 1 == line.size() || isBlank(line[firstNonBlank + 1]))) {
+        return true;
+    }
     return false;
 }
 
@@ -92,6 +95,9 @@ struct RowPipes {
 /// Scans `line` for unescaped pipes outside inline-code spans without heap allocation.
 RowPipes scanRowPipes(std::u16string_view line) noexcept {
     RowPipes result;
+    if (line.find(u'|') == std::u16string_view::npos) {
+        return result;
+    }
     std::size_t indent = 0;
     while (indent < line.size() && indent < 4 && line[indent] == u' ') {
         ++indent;
@@ -266,6 +272,9 @@ public:
 
     [[nodiscard]] std::optional<BlockLine> parseWithNextLine(std::u16string_view line, std::uint32_t state,
                                                              std::u16string_view nextLine) const noexcept override {
+        if (state == 0 && nextLine.empty()) {
+            return std::nullopt;
+        }
         if (line.find(u'|') == std::u16string_view::npos) {
             return std::nullopt;
         }

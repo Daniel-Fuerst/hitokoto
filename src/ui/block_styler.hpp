@@ -57,6 +57,21 @@ public:
     /// Number of blocks styled so far (instrumentation for tests and benchmarks).
     [[nodiscard]] quint64 styledCount() const noexcept { return styledCount_; }
 
+    /// RAII scope that suppresses repetitive restyling during multi-row batch mutations.
+    class BatchScope {
+    public:
+        explicit BatchScope(BlockStyler& styler);
+        ~BatchScope();
+        BatchScope(const BatchScope&) = delete;
+        BatchScope& operator=(const BatchScope&) = delete;
+
+    private:
+        BlockStyler& styler_;
+    };
+
+    /// Invalidates cached table dimensions.
+    void invalidateTableMetrics();
+
     /// How a block is shown right now (used for drawing decorations and hit testing).
     [[nodiscard]] core::LineRender renderFor(const QTextBlock& block);
     /// Span of blocks and per-column content widths for the table containing `block`.
@@ -85,6 +100,8 @@ private:
     int idleNext_ = 0;
     bool busy_ = false;
     quint64 styledCount_ = 0;
+    int batchNesting_ = 0;
+    mutable std::vector<TableMetrics> tableMetricsCache_;
 };
 
 }  // namespace hitokoto::ui

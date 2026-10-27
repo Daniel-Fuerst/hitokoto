@@ -36,6 +36,8 @@ public:
     /// Rendered width (px) of a table cell's content span.
     [[nodiscard]] double cellTextWidth(const QString& lineText, const core::LineRender& render,
                                        const core::TableCell& cell) const;
+    [[nodiscard]] double cellTextWidth(const QString& lineText, const QList<QTextLayout::FormatRange>& ranges,
+                                       const core::TableCell& cell) const;
 
 private:
     /// Font size of text at heading `level` (0 = body text).

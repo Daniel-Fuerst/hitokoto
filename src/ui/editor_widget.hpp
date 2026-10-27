@@ -10,6 +10,7 @@
 #include <QPlainTextEdit>
 #include <QPointF>
 
+#include <memory>
 #include <optional>
 
 class QPainter;
@@ -17,14 +18,18 @@ class QTextBlock;
 
 namespace hitokoto::ui {
 
+class TableController;
+
 class EditorWidget : public QPlainTextEdit {
     Q_OBJECT
 public:
     explicit EditorWidget(const core::ElementRegistry& registry, QWidget* parent = nullptr);
+    ~EditorWidget() override;
 
     void applyTheme(const core::Theme& theme);
 
     [[nodiscard]] BlockStyler& styler() noexcept { return *styler_; }
+    [[nodiscard]] TableController* tableController() const noexcept { return tableController_.get(); }
     /// Counts real text edits (not formatting); used to decide whether a save is current.
     [[nodiscard]] quint64 editCount() const noexcept { return editCount_; }
     /// First and last block number on screen.
@@ -60,46 +65,27 @@ protected:
     void resizeEvent(QResizeEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void scrollContentsBy(int dx, int dy) override;
 
 private:
+    friend class TableController;
+
     void updateReveal();
     void updateMargins();
     [[nodiscard]] double availableTableWidth(double basePointSize) const;
-    [[nodiscard]] QRectF addRowHoverRect(int blockNumber) const;
-    [[nodiscard]] QRectF addColumnHoverRect(int blockNumber) const;
-    [[nodiscard]] QRectF deleteRowHoverRect(int blockNumber) const;
-    [[nodiscard]] QRectF deleteColumnHoverRect(int blockNumber, int column) const;
-    void updateHoverPos(std::optional<QPointF> pos);
-    bool refreshHoverState();
-    [[nodiscard]] int tableHitPosition(int blockNumber, std::size_t colIdx, QPointF viewportPos) const;
     void paintCodeBlockPanels();
-    void paintTableBackgrounds(QPainter& painter, const TableMetrics& metrics);
-    void paintTableGridAndControls(QPainter& painter, const TableMetrics& metrics);
     void paintInlineCodeBoxes(QPainter& painter, const QTextBlock& block, const core::LineRender& render,
                               QPointF origin, const core::CodeStyle& style);
     void paintDecorations();
-    void placeCaretInCell(int blockNumber, std::size_t column, bool atEnd = false);
-    void appendRowToTable(int blockNumber, std::size_t targetColumn = 0);
-    void appendColumnToTable(int blockNumber);
-    void deleteTableRow(int rowBlockNumber, std::size_t targetColumn = 0, bool preferPreviousRow = false);
-    void deleteTableColumn(int blockNumber, std::size_t column);
-    void exitTableBelow(int blockNumber, bool removeEmptyLastRow = false);
-    void exitTableAbove(int blockNumber);
 
     BlockStyler* styler_ = nullptr;
+    std::unique_ptr<TableController> tableController_;
     double padding_ = 0;
     double maxWidth_ = 0;
     quint64 editCount_ = 0;
-    std::optional<QPointF> hoverPos_;
-    int hoveredAddRowBlock_ = -1;
-    int hoveredAddColBlock_ = -1;
-    int hoveredDeleteRowBlock_ = -1;
-    int hoveredDeleteColTable_ = -1;
-    int hoveredDeleteColIndex_ = -1;
-    bool overTableButton_ = false;
 };
 
 }  // namespace hitokoto::ui

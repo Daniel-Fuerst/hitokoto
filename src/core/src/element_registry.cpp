@@ -183,7 +183,7 @@ LineRender ElementRegistry::render(std::u16string_view line, const LineContext& 
         out.blockState = block->stateAfter();
         if (multi->allowsInlineElements() && !out.cells.empty()) {
             // GFM 4.10: inline elements are parsed independently inside each table cell.
-            const LineContext cellContext{false, {}};
+            const LineContext cellContext{context.revealed, {}};
             for (const auto& cell : out.cells) {
                 if (cell.content.length == 0) {
                     continue;
