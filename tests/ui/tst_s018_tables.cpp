@@ -705,7 +705,7 @@ private slots:
         // of hanging, and the count makes it fail.
         constexpr int kRunaway = 20;
         struct ResizeCounter : QObject {
-            QPlainTextEdit* editor = nullptr;
+            QAbstractScrollArea* editor = nullptr;
             int count = 0;
             bool eventFilter(QObject*, QEvent* event) override {
                 if (event->type() == QEvent::Resize && ++count == kRunaway) {

@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The editing surface: a QPlainTextEdit whose document is the only copy of the text
-// (ADR 0002). Rendering comes from the core through BlockStyler; this class adds the
-// cursor-aware reveal, bullet drawing and click handling.
+// The editing surface: a QTextEdit whose document is the only copy of the text (ADR 0002) and is
+// laid out by BlockLayout (ADR 0003). Rendering comes from the core through BlockStyler; this
+// class adds the cursor-aware reveal, bullet drawing and click handling.
 #pragma once
 
 #include "block_layout.hpp"
 #include "block_styler.hpp"
 #include "hitokoto/core/theme.hpp"
 
-#include <QPlainTextEdit>
 #include <QPointF>
+#include <QTextEdit>
 
 #include <memory>
 #include <optional>
@@ -21,7 +21,7 @@ namespace hitokoto::ui {
 
 class TableController;
 
-class EditorWidget : public QPlainTextEdit {
+class EditorWidget : public QTextEdit {
     Q_OBJECT
 public:
     explicit EditorWidget(const core::ElementRegistry& registry, QWidget* parent = nullptr);
@@ -30,8 +30,8 @@ public:
     void applyTheme(const core::Theme& theme);
 
     [[nodiscard]] BlockStyler& styler() noexcept { return *styler_; }
-    /// The document layout (ADR 0003); null while the editor still uses QPlainTextDocumentLayout.
-    [[nodiscard]] BlockLayout* blockLayout() const;
+    /// The document layout (ADR 0003).
+    [[nodiscard]] BlockLayout* blockLayout() const noexcept { return layout_; }
     [[nodiscard]] TableController* tableController() const noexcept { return tableController_.get(); }
     /// Counts real text edits (not formatting); used to decide whether a save is current.
     [[nodiscard]] quint64 editCount() const noexcept { return editCount_; }
@@ -76,6 +76,14 @@ protected:
 private:
     friend class TableController;
 
+    // Block geometry as QPlainTextEdit offered it: document coordinates, and the offset that maps
+    // them into the viewport.
+    [[nodiscard]] QRectF blockBoundingGeometry(const QTextBlock& block) const;
+    [[nodiscard]] QPointF contentOffset() const;
+    [[nodiscard]] QTextBlock firstVisibleBlock() const;
+    void keepContentStill(qreal top, qreal delta);
+    void applyPendingShift();
+
     void updateReveal();
     void updateMargins();
     [[nodiscard]] double availableTableWidth(double basePointSize) const;
@@ -84,6 +92,8 @@ private:
                               QPointF origin, const core::CodeStyle& style);
     void paintDecorations();
 
+    BlockLayout* layout_ = nullptr;
+    qreal pendingShift_ = 0;  ///< height change above the viewport not yet scrolled away
     BlockStyler* styler_ = nullptr;
     std::unique_ptr<TableController> tableController_;
     double padding_ = 0;

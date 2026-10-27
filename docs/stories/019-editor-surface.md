@@ -1,6 +1,6 @@
 # S019 — Editor surface with its own document layout
 
-- **Status:** Confirmed · **Order:** 19 · **Depends on:** S017
+- **Status:** In progress · **Order:** 19 · **Depends on:** S017
 - **Basis:** S018 review (O2, O8) and the decision of 2026-10-27 to implement plan B of ADR 0001
   directly on `feature/tables`; ADR 0003. Confirmed by the user on 2026-10-27.
 

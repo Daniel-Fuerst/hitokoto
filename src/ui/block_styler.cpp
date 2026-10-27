@@ -2,10 +2,10 @@
 #include "block_styler.hpp"
 
 #include "block_data.hpp"
+#include "block_layout.hpp"
 #include "qt_bridge.hpp"
 
 #include <QElapsedTimer>
-#include <QPlainTextEdit>
 #include <QTextBlock>
 #include <QTextDocument>
 #include <QTextLayout>
@@ -272,7 +272,7 @@ bool BlockStyler::isStyled(const QTextBlock& block) const {
     }
     if ((bits & kTableContentRow) != 0U) {
         const QTextLayout* layout = block.layout();
-        // QPlainTextDocumentLayout::layoutBlock sets leadingIncluded(true); layoutTableRow sets false.
+        // BlockLayout lays out lines with leadingIncluded(true); layoutTableRow sets false.
         if (!layout || layout->lineCount() == 0 || layout->lineAt(0).leadingIncluded()) {
             return false;
         }
@@ -358,9 +358,8 @@ void BlockStyler::layoutTableRow(QTextBlock& block, const core::LineRender& rend
         colLeft += colW + 2.0 * pad;
     }
     layout->endLayout();
-    block.setLineCount(1);
-    if (auto* plainLayout = qobject_cast<QPlainTextDocumentLayout*>(document_->documentLayout())) {
-        plainLayout->requestUpdate();
+    if (auto* blockLayout = qobject_cast<BlockLayout*>(document_->documentLayout())) {
+        blockLayout->blockLayoutChanged(block);
     }
 }
 
@@ -407,8 +406,8 @@ void BlockStyler::styleBlock(const QTextBlock& block) {
     layout->setFormats(ranges);
     document_->markContentsDirty(block.position(), block.length());
     if (render.table && !render.tableDelimiter && !render.cells.empty()) {
-        if (const auto* plainLayout = qobject_cast<const QPlainTextDocumentLayout*>(document_->documentLayout())) {
-            plainLayout->ensureBlockLayout(block);
+        if (const auto* blockLayout = qobject_cast<const BlockLayout*>(document_->documentLayout())) {
+            blockLayout->ensureBlockLayout(block);
         }
         layoutTableRow(mutableBlock, render, tableMetrics(block));
     }
@@ -422,6 +421,7 @@ void BlockStyler::styleRange(int first, int last) {
         return;
     }
     if (last - first + 1 <= kSynchronousLimit) {
+        const BlockLayout::Batch batch(qobject_cast<BlockLayout*>(document_->documentLayout()));
         for (QTextBlock b = document_->findBlockByNumber(first); b.isValid() && b.blockNumber() <= last; b = b.next()) {
             styleBlock(b);
         }
@@ -432,6 +432,7 @@ void BlockStyler::styleRange(int first, int last) {
 }
 
 void BlockStyler::styleVisible() {
+    const BlockLayout::Batch batch(qobject_cast<BlockLayout*>(document_->documentLayout()));
     // Styling can change line heights and therefore what is visible; settle in a few rounds.
     for (int round = 0; round < 3; ++round) {
         const auto [first, last] = visibleBlocks_();
@@ -524,6 +525,7 @@ void BlockStyler::scheduleFrom(int blockNumber) {
 }
 
 void BlockStyler::idleSlice() {
+    const BlockLayout::Batch batch(qobject_cast<BlockLayout*>(document_->documentLayout()));
     QElapsedTimer timer;
     timer.start();
     QTextBlock b = document_->findBlockByNumber(idleNext_);

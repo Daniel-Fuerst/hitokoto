@@ -40,7 +40,8 @@ decorations (`Bullet`), never in colours or fonts. The UI maps these to theme fo
 
 | Class | Responsibility |
 |---|---|
-| `EditorWidget` | `QPlainTextEdit` subclass; the `QTextDocument` inside is the only copy of the text. Updates the revealed range on caret/selection changes, paints padded code-block panels, tables (backgrounds, grid lines, hover-revealed `+` / `−` row and column controls) and decorations, handles S010 clicks and interactive S018 table cell editing/navigation, centres the text column. |
+| `EditorWidget` | `QTextEdit` subclass (ADR 0003) with rich text off; the `QTextDocument` inside is the only copy of the text. Keeps the text on screen still when blocks above the viewport change height. Updates the revealed range on caret/selection changes, paints padded code-block panels, tables (backgrounds, grid lines, hover-revealed `+` / `−` row and column controls) and decorations, handles S010 clicks and interactive S018 table cell editing/navigation, centres the text column. |
+| `BlockLayout` | The document's layout (ADR 0003, `QAbstractTextDocumentLayout`): one `QTextLayout` per block, laid out when drawn or queried; a keystroke lays out its block at once, wider changes and restyling only drop layouts. Heights in pixels per block with prefix sums (Fenwick tree), estimated from the default font until a block is laid out. A block can be hidden or reserve a height for an embedded widget. Size changes during the styler's slices are reported once per slice (`Batch`). |
 | `BlockStyler` | Applies `LineRender` to blocks as `QTextLayout` formats, including shared column-width alignment across table rows. Edited lines and lines entering/leaving the revealed range are styled at once; the rest lazily: visible blocks first, then idle slices of at most 6 ms. Each block's user state records what it was styled for and caches the block state after the line; only lines that leave a multi-line block open keep that state in a `BlockData`, so plain lines allocate nothing. Edits propagate restyling only while the state changes. |
 | `EditorFormats` | Theme tokens to `QTextCharFormat`s; `LineRender` to format ranges. |
 | `DocumentSession` | Open/save. Reading, decoding, encoding and writing run on a worker thread (`QThreadPool`, one thread, so operations stay in order). Large files are inserted in slices of about 8 ms; the first 64 KB appear at once. |
@@ -52,8 +53,8 @@ decorations (`Bullet`), never in colours or fonts. The UI maps these to theme fo
 
 Qt has no "invisible" character format. Collapsed markers (`#`) get a 1 px transparent font
 (ADR 0001); kept-space markers (`-`) only a transparent colour, with the bullet dot painted on top,
-so list text does not move when the caret enters the line. Story S009 decides whether the 1 px
-technique stays or a custom text surface replaces `QPlainTextEdit`; only `src/ui` would change.
+so list text does not move when the caret enters the line. Story S009 keeps checking the 1 px
+technique; since S019 it runs on `QTextEdit` with `BlockLayout` (ADR 0003).
 
 ## Adding a Markdown element
 

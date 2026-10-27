@@ -38,6 +38,26 @@ Qt 6.12), release build, offscreen, 10 runs. These are the baselines in `bench/b
 | Key to paint, 10 MB file (median / p95) | 0.9 / 1.0 ms | 0.9 / 1.0 ms | 1.2 / 2.2 ms | ≤ 16 ms |
 | Save 10 MB: UI thread blocked (duration of the save() call; S017 measures the longest stall instead) | 6 ms | 36 ms | 24 ms | imperceptible |
 
+### 2026-10-27, development VM, S019 (release build, offscreen, 5 runs, Qt 6.12.0)
+
+`QTextEdit` with `BlockLayout` (ADR 0003) against the `QPlainTextEdit` surface it replaced, same
+machine and run.
+
+| Measurement | QPlainTextEdit | QTextEdit + BlockLayout |
+|---|---|---|
+| Cold start, median | 34.8 ms | 34.6 ms |
+| Open 1 MB, fully loaded | 165 ms | 179 ms |
+| Open 10 MB, first screen / loaded / styled | 120 ms / 2.35 s / 4.0 s | 101 ms / 2.35 s / 3.6 s |
+| Key to paint, 10 MB (median / p95 / p99 / max) | 1.3 / 2.4 / 3.6 / 41.0 ms | 1.2 / 3.5 / 5.2 / 5.3 ms |
+| Save 10 MB, longest UI stall | 3.5 ms | 3.9 ms |
+
+Two things decided the numbers. Restyling must not lay out lines nobody sees: a first version
+laid out every restyled block and needed 17.6 s to style 10 MB; like Qt's own plain layout,
+`BlockLayout` now drops the layouts and lays a block out when it is drawn or queried. And size
+changes are reported once per styler slice, not per block (each report relayouts the scroll
+bars). Enter rebuilds the prefix sums of all blocks, O(n) for 427,000 lines; whether that explains
+the higher p95 and p99 is not measured yet. All values stay well inside the budgets.
+
 ### 2026-10-26, development VM, S017 (release build, offscreen, 5 runs)
 
 Saving 10 MB: longest UI stall 6.7 ms (was 18.9 ms, measured as the duration of the save() call),

@@ -10,6 +10,7 @@
 #include <QPainter>
 #include <QResizeEvent>
 #include <QScrollBar>
+#include <QStyle>
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextLayout>
@@ -32,13 +33,21 @@ void drawBox(QPainter& painter, const QRectF& rect, const core::CodeStyle& style
 
 }  // namespace
 
-EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* parent)
-    : QPlainTextEdit(parent),
-      styler_(new BlockStyler(
-          document(), registry, [this] { return visibleBlockRange(); }, this)),
-      tableController_(std::make_unique<TableController>(this, styler_)) {
+EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* parent) : QTextEdit(parent) {
+    // ADR 0003: our own layout on a plain document; QTextEdit connects to the layout of the
+    // document it is given, so the layout is set first.
+    auto* doc = new QTextDocument(this);
+    layout_ = new BlockLayout(doc);
+    doc->setDocumentLayout(layout_);
+    setDocument(doc);
+    setAcceptRichText(false);
+    styler_ = new BlockStyler(document(), registry, [this] { return visibleBlockRange(); }, this);
+    tableController_ = std::make_unique<TableController>(this, styler_);
+    connect(layout_, &BlockLayout::blockHeightChanged, this, &EditorWidget::keepContentStill);
+    connect(layout_, &BlockLayout::batchFinished, this, &EditorWidget::applyPendingShift);
+
     setFrameShape(QFrame::NoFrame);
-    setLineWrapMode(QPlainTextEdit::WidgetWidth);
+    setLineWrapMode(QTextEdit::WidgetWidth);
     setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
     setMouseTracking(true);
 
@@ -47,14 +56,47 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
             ++editCount_;
         }
     });
-    connect(this, &QPlainTextEdit::cursorPositionChanged, this, &EditorWidget::updateReveal);
-    connect(this, &QPlainTextEdit::selectionChanged, this, &EditorWidget::updateReveal);
+    connect(this, &QTextEdit::cursorPositionChanged, this, &EditorWidget::updateReveal);
+    connect(this, &QTextEdit::selectionChanged, this, &EditorWidget::updateReveal);
 }
 
 EditorWidget::~EditorWidget() = default;
 
-BlockLayout* EditorWidget::blockLayout() const {
-    return qobject_cast<BlockLayout*>(document()->documentLayout());
+QRectF EditorWidget::blockBoundingGeometry(const QTextBlock& block) const {
+    return layout_->blockBoundingRect(block);
+}
+
+QPointF EditorWidget::contentOffset() const {
+    return {-static_cast<qreal>(horizontalScrollBar()->value()), -static_cast<qreal>(verticalScrollBar()->value())};
+}
+
+QTextBlock EditorWidget::firstVisibleBlock() const {
+    QTextBlock block = layout_->blockAt(verticalScrollBar()->value());
+    return block.isValid() ? block : document()->lastBlock();
+}
+
+void EditorWidget::keepContentStill(qreal top, qreal delta) {
+    // A block above the viewport changed height (laid out lazily or restyled): scroll by the
+    // same amount so the text on screen does not move. Inside a layout batch the scroll range is
+    // not updated yet; the shift is applied when the batch ends.
+    QScrollBar* bar = verticalScrollBar();
+    if (top + 0.5 >= bar->value() || bar->value() <= 0) {
+        return;
+    }
+    pendingShift_ += delta;
+    if (!layout_->inBatch()) {
+        applyPendingShift();
+    }
+}
+
+void EditorWidget::applyPendingShift() {
+    const int shift = static_cast<int>(std::lround(pendingShift_));
+    pendingShift_ = 0;
+    if (shift != 0) {
+        QScrollBar* bar = verticalScrollBar();
+        bar->setMaximum(std::max(bar->maximum(), bar->value() + shift));
+        bar->setValue(bar->value() + shift);
+    }
 }
 
 void EditorWidget::applyTheme(const core::Theme& theme) {
@@ -76,7 +118,15 @@ void EditorWidget::applyTheme(const core::Theme& theme) {
 }
 
 double EditorWidget::availableTableWidth(double basePointSize) const {
-    const double viewW = static_cast<double>(viewport()->width());
+    // Reserve the vertical scroll bar even while it is hidden: a width that changed with the bar
+    // would change the table's wrapping and height, and so the bar again (review objection O2).
+    double viewW = static_cast<double>(viewport()->width());
+    const QScrollBar* bar = verticalScrollBar();
+    const bool barTakesSpace = verticalScrollBarPolicy() != Qt::ScrollBarAlwaysOff &&
+                               style()->styleHint(QStyle::SH_ScrollBar_Transient, nullptr, bar) == 0;
+    if (barTakesSpace && !bar->isVisibleTo(this)) {
+        viewW -= static_cast<double>(bar->sizeHint().width());
+    }
     const double gutterPad = std::clamp(basePointSize * 1.3, 14.0, 22.0) + 6.0;
     const double contentW = maxWidth_ > 0 ? std::min(viewW - padding_ * 2.0, maxWidth_) : viewW - padding_ * 2.0;
     return std::max(120.0, contentW - gutterPad * 2.0);
@@ -93,7 +143,7 @@ std::pair<int, int> EditorWidget::visibleBlockRange() const {
     qreal top = blockBoundingGeometry(block).translated(contentOffset()).top();
     while (block.isValid() && top <= bottom) {
         last = block.blockNumber();
-        top += blockBoundingRect(block).height();
+        top += blockBoundingGeometry(block).height();
         block = block.next();
     }
     return {first, last};
@@ -159,11 +209,11 @@ bool EditorWidget::viewportEvent(QEvent* event) {
     if (event->type() == QEvent::Leave) {
         tableController_->updateHoverPos(std::nullopt);
     }
-    return QPlainTextEdit::viewportEvent(event);
+    return QTextEdit::viewportEvent(event);
 }
 
 void EditorWidget::resizeEvent(QResizeEvent* event) {
-    QPlainTextEdit::resizeEvent(event);
+    QTextEdit::resizeEvent(event);
     updateMargins();
     styler_->setAvailableWidth(availableTableWidth(styler_->formats().baseFont().pointSizeF()));
     styler_->styleVisible();
@@ -171,14 +221,14 @@ void EditorWidget::resizeEvent(QResizeEvent* event) {
 }
 
 void EditorWidget::scrollContentsBy(int dx, int dy) {
-    QPlainTextEdit::scrollContentsBy(dx, dy);
+    QTextEdit::scrollContentsBy(dx, dy);
     styler_->styleVisible();
     tableController_->refreshHoverState();
 }
 
 void EditorWidget::paintEvent(QPaintEvent* event) {
     paintCodeBlockPanels();
-    QPlainTextEdit::paintEvent(event);
+    QTextEdit::paintEvent(event);
     paintDecorations();
     emit painted();
 }
@@ -187,7 +237,7 @@ void EditorWidget::mouseMoveEvent(QMouseEvent* event) {
     if (tableController_->handleMouseMove(event)) {
         return;
     }
-    QPlainTextEdit::mouseMoveEvent(event);
+    QTextEdit::mouseMoveEvent(event);
 }
 
 void EditorWidget::mousePressEvent(QMouseEvent* event) {
@@ -203,7 +253,7 @@ void EditorWidget::mousePressEvent(QMouseEvent* event) {
     const bool wasConcealed = !styler_->isRevealed(block.blockNumber());
     const auto render = wasConcealed ? styler_->renderFor(block) : core::LineRender{};
 
-    QPlainTextEdit::mousePressEvent(event);
+    QTextEdit::mousePressEvent(event);
 
     if (event->button() == Qt::LeftButton && !(event->modifiers() & Qt::ShiftModifier)) {
         tableController_->handlePostNavigation(nullptr);
@@ -228,21 +278,21 @@ void EditorWidget::mousePressEvent(QMouseEvent* event) {
 
 void EditorWidget::mouseReleaseEvent(QMouseEvent* event) {
     tableController_->handleMouseRelease(event);
-    QPlainTextEdit::mouseReleaseEvent(event);
+    QTextEdit::mouseReleaseEvent(event);
 }
 
 void EditorWidget::contextMenuEvent(QContextMenuEvent* event) {
     if (tableController_->handleContextMenu(event)) {
         return;
     }
-    QPlainTextEdit::contextMenuEvent(event);
+    QTextEdit::contextMenuEvent(event);
 }
 
 void EditorWidget::keyPressEvent(QKeyEvent* event) {
     if (tableController_->handleKeyPress(event)) {
         return;
     }
-    QPlainTextEdit::keyPressEvent(event);
+    QTextEdit::keyPressEvent(event);
     tableController_->handlePostNavigation(event);
 }
 

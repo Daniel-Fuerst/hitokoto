@@ -79,13 +79,13 @@ void MainWindow::createMenus() {
     quit->setMenuRole(QAction::QuitRole);
 
     QMenu* edit = menuBar()->addMenu(tr("&Edit"));
-    edit->addAction(tr("&Undo"), QKeySequence::Undo, editor_, &QPlainTextEdit::undo);
-    edit->addAction(tr("&Redo"), QKeySequence::Redo, editor_, &QPlainTextEdit::redo);
+    edit->addAction(tr("&Undo"), QKeySequence::Undo, editor_, &QTextEdit::undo);
+    edit->addAction(tr("&Redo"), QKeySequence::Redo, editor_, &QTextEdit::redo);
     edit->addSeparator();
-    edit->addAction(tr("Cu&t"), QKeySequence::Cut, editor_, &QPlainTextEdit::cut);
-    edit->addAction(tr("&Copy"), QKeySequence::Copy, editor_, &QPlainTextEdit::copy);
-    edit->addAction(tr("&Paste"), QKeySequence::Paste, editor_, &QPlainTextEdit::paste);
-    edit->addAction(tr("Select &All"), QKeySequence::SelectAll, editor_, &QPlainTextEdit::selectAll);
+    edit->addAction(tr("Cu&t"), QKeySequence::Cut, editor_, &QTextEdit::cut);
+    edit->addAction(tr("&Copy"), QKeySequence::Copy, editor_, &QTextEdit::copy);
+    edit->addAction(tr("&Paste"), QKeySequence::Paste, editor_, &QTextEdit::paste);
+    edit->addAction(tr("Select &All"), QKeySequence::SelectAll, editor_, &QTextEdit::selectAll);
 
     QMenu* view = menuBar()->addMenu(tr("&View"));
     view->addAction(tr("&Reload Theme"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R), this,
