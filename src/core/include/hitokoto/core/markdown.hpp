@@ -233,6 +233,8 @@ public:
                                              std::u16string_view nextLine = {}) const noexcept;
 
     [[nodiscard]] std::size_t size() const noexcept { return elements_.size(); }
+    /// `BlockState::element` of the multi-line element with this id, or 0 if none is registered.
+    [[nodiscard]] std::uint8_t blockElement(std::string_view id) const noexcept;
 
     /// Registry with all built-in elements of this version.
     static ElementRegistry withBuiltins();
@@ -268,12 +270,12 @@ std::unique_ptr<InlineElement> makeEmphasisElement();
 std::unique_ptr<MultiLineElement> makeFencedCodeElement();
 std::unique_ptr<MultiLineElement> makeTableElement();
 
-/// Returns a blank GFM pipe-table row with `columns` empty cells, e.g. "|  |  |".
 /// ADR 0002, decision 6 (S018): adds a blank line before each line without `|` that directly
 /// follows a table's rows, which GFM would make a row and Obsidian ends the table with. Added
 /// breaks take the majority ending in `decoded.perBreak`. Returns how many lines were added.
 std::size_t separateTextAfterTables(DecodedText& decoded, const ElementRegistry& registry);
 
+/// Returns a blank GFM pipe-table row with `columns` empty cells, e.g. "|  |  |".
 [[nodiscard]] std::u16string makeEmptyTableRow(std::size_t columns);
 /// Appends one new column to a table line (`|  |` for header/body rows, `| --- |` for delimiter rows).
 [[nodiscard]] std::u16string appendTableColumn(std::u16string_view line, bool delimiterRow);

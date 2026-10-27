@@ -447,8 +447,62 @@ std::u16string padTableRowCells(std::u16string_view line, std::size_t columns) {
     return out;
 }
 
-std::size_t separateTextAfterTables(DecodedText& /*decoded*/, const ElementRegistry& /*registry*/) {
-    return 0;
+std::size_t separateTextAfterTables(DecodedText& decoded, const ElementRegistry& registry) {
+    const std::uint8_t table = registry.blockElement("table");
+    const std::u16string_view text = decoded.text;
+    if (table == 0 || text.find(u'|') == std::u16string_view::npos) {
+        return 0;
+    }
+    std::u16string out;
+    std::vector<LineEnding> perBreak;
+    std::size_t added = 0;
+    std::size_t line = 0;  // index of the current line = breaks before it
+    BlockState state;
+    std::size_t start = 0;
+    while (true) {
+        const std::size_t end = std::min(text.find(u'\n', start), text.size());
+        const std::u16string_view current = text.substr(start, end - start);
+        const std::size_t nextStart = end < text.size() ? end + 1 : text.size();
+        const std::u16string_view next =
+            end < text.size() ? text.substr(nextStart, std::min(text.find(u'\n', nextStart), text.size()) - nextStart)
+                              : std::u16string_view{};
+        BlockState after = registry.blockStateAfter(current, state, next);
+        // A body row keeps the table's state unchanged; one without a pipe is text to Obsidian.
+        if (state.element == table && after == state && current.find(u'|') == std::u16string_view::npos) {
+            if (added == 0) {
+                out.assign(text.substr(0, start));
+                if (!decoded.perBreak.empty()) {
+                    perBreak.assign(decoded.perBreak.begin(),
+                                    decoded.perBreak.begin() + static_cast<std::ptrdiff_t>(line));
+                }
+            }
+            out.push_back(u'\n');
+            if (!decoded.perBreak.empty()) {
+                perBreak.push_back(decoded.uniformEnding);
+            }
+            ++added;
+            after = registry.blockStateAfter(current, registry.blockStateAfter({}, state, current), next);
+        }
+        if (added > 0) {
+            out.append(text.substr(start, nextStart - start));
+            if (end < text.size() && line < decoded.perBreak.size()) {
+                perBreak.push_back(decoded.perBreak[line]);
+            }
+        }
+        if (end >= text.size()) {
+            break;
+        }
+        state = after;
+        start = nextStart;
+        ++line;
+    }
+    if (added > 0) {
+        decoded.text = std::move(out);
+        if (!decoded.perBreak.empty()) {
+            decoded.perBreak = std::move(perBreak);
+        }
+    }
+    return added;
 }
 
 }  // namespace hitokoto::core

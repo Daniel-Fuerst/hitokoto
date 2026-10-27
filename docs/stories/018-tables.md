@@ -231,6 +231,9 @@ On `feature/tables`, 2026-10-27, after the code review of the first version
 - Robustness: a table whose lines a change removes is never touched again and is rebuilt; tables
   are not looked for in the middle of a document change (crashes found by the CI benchmark and on
   Qt 6.8.3).
+- Files from other editors (ADR 0002, decision 6): `core::separateTextAfterTables` adds the
+  blank lines on the loading thread right after decoding; `DocumentSession` then marks the
+  document modified and `MainWindow` says how many lines were added.
 - Budgets on the development VM: opening a 1000-row table 110–130 ms (500 ms), typing in a
   200-row table p95 about 4 ms, longest keystroke under 10 ms (50 ms hard).
 

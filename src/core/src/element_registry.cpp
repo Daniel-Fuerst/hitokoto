@@ -119,6 +119,15 @@ void ElementRegistry::addMultiLine(std::unique_ptr<MultiLineElement> element) {
     multiLineElements_.push_back(std::move(element));
 }
 
+std::uint8_t ElementRegistry::blockElement(std::string_view id) const noexcept {
+    for (std::size_t i = 0; i < multiLineElements_.size(); ++i) {
+        if (multiLineElements_[i]->id() == id) {
+            return static_cast<std::uint8_t>(i + 1U);
+        }
+    }
+    return 0;
+}
+
 std::optional<ElementRegistry::BlockMatch> ElementRegistry::matchBlock(std::u16string_view line, BlockState state,
                                                                        std::u16string_view nextLine) const noexcept {
     if (state.active() && state.element <= multiLineElements_.size()) {

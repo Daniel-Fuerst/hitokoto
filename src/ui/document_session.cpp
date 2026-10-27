@@ -15,8 +15,10 @@
 #include <QTextDocument>
 
 #include <algorithm>
+#include <climits>
 #include <filesystem>
 #include <iterator>
+#include <utility>
 
 namespace hitokoto::ui {
 namespace {
@@ -55,7 +57,8 @@ QString describe(const QString& path, const std::string& message) {
 
 }  // namespace
 
-DocumentSession::DocumentSession(EditorWidget* editor, QObject* parent) : QObject(parent), editor_(editor) {
+DocumentSession::DocumentSession(EditorWidget* editor, const core::ElementRegistry& registry, QObject* parent)
+    : QObject(parent), editor_(editor), registry_(registry) {
     pool_.setMaxThreadCount(1);  // loads and saves run in order
     insertTimer_.setInterval(0);
     connect(&insertTimer_, &QTimer::timeout, this, &DocumentSession::insertSlice);
@@ -138,14 +141,16 @@ void DocumentSession::load(const QString& path) {
                 Qt::QueuedConnection);
             return;
         }
+        // ADR 0002, decision 6: text directly below a table gets a blank line, as Obsidian reads it.
+        const std::size_t added = core::separateTextAfterTables(*decoded.value, registry_);
         QString text = toQString(std::u16string_view(decoded.value->text));
         decoded.value->text.clear();
         decoded.value->text.shrink_to_fit();
         QMetaObject::invokeMethod(
             this,
-            [this, text = std::move(text), meta = std::move(*decoded.value), path, generation]() mutable {
+            [this, text = std::move(text), meta = std::move(*decoded.value), path, generation, added]() mutable {
                 if (generation == loadGeneration_)
-                    beginInsert(std::move(text), std::move(meta), path);
+                    beginInsert(std::move(text), std::move(meta), path, added);
             },
             Qt::QueuedConnection);
     });
@@ -157,8 +162,10 @@ void DocumentSession::abortLoad(const QString& path, const QString& message) {
     emit loadFailed(path, message);
 }
 
-void DocumentSession::beginInsert(QString text, core::DecodedText meta, const QString& path) {
+void DocumentSession::beginInsert(QString text, core::DecodedText meta, const QString& path,
+                                  std::size_t blankLinesAdded) {
     loading_ = true;
+    pendingBlankLines_ = blankLinesAdded;
     ++documentId_;
     pendingText_ = std::move(text);
     pendingPath_ = path;
@@ -222,7 +229,9 @@ void DocumentSession::finishInsert() {
     pendingText_.clear();
     pendingText_.squeeze();
     doc->setUndoRedoEnabled(true);
-    doc->setModified(false);
+    // Lines added on opening are a change the file does not have yet (ADR 0002, decision 6).
+    const std::size_t added = std::exchange(pendingBlankLines_, 0);
+    doc->setModified(added > 0);
     editor_->setReadOnly(false);
     editor_->moveCursor(QTextCursor::Start);
     loading_ = false;
@@ -231,6 +240,9 @@ void DocumentSession::finishInsert() {
         emit firstChunkShown();
     }
     emit loadFinished(pendingPath_);
+    if (added > 0) {
+        emit blankLinesAdded(static_cast<int>(std::min<std::size_t>(added, INT_MAX)));
+    }
 }
 
 void DocumentSession::beginCopy(const QString& path) {
