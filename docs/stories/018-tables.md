@@ -138,7 +138,9 @@ Markdown that GitHub shows the same way.
   blank lines, as everywhere in the document
 - And the caret never lands on the hidden line: `Down` in the last row, `Right` in the last cell
   and a click below the table go to the line after it (or onto a new line, see "leaving the
-  table"); `Up` and `Left` from that line go into the table
+  table"); `Up` and `Left` from that line go into the table. Where no line follows it, and right
+  after I pressed `Enter` below a table I typed, the caret is on that line, which then shows
+  until the caret leaves it (moving around never changes the file)
 - And `Backspace` at the start of the line after it moves the caret to the end of the last cell
   and deletes nothing when the line has text; an empty line is removed, as in any text
 - And the file keeps the blank line, and the source view (`Ctrl+Shift+M`) shows it
@@ -247,6 +249,8 @@ On `feature/tables`, 2026-10-27, after the code review of the first version
 - Files from other editors (ADR 0002, decision 6): `core::separateTextAfterTables` adds the
   blank lines on the loading thread right after decoding; `DocumentSession` then marks the
   document modified and `MainWindow` says how many lines were added.
+- The blank line below a table: `TableEmbedder` hides it with the table's lines while the view
+  shows the table and the caret is not on it; keys and caret moves go over it.
 - Budgets on the development VM: opening a 1000-row table 110–130 ms (500 ms), typing in a
   200-row table p95 about 4 ms, longest keystroke under 10 ms (50 ms hard).
 

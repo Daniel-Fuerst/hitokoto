@@ -1349,7 +1349,8 @@ private slots:
         press(Qt::Key_Up);
         QTRY_VERIFY(focusedCell() != nullptr);
         view = f.editor()->tableViewAt(1);
-        QCOMPARE(current(view), QStringLiteral("1,1"));
+        QCOMPARE(current(view), QStringLiteral("1,0"));  // the last row, as from any line below
+        QVERIFY(clickCell(view, 1, 1) != nullptr);
         press(Qt::Key_End);
         press(Qt::Key_Right);
         QTRY_VERIFY(f.editor()->hasFocus());
@@ -1382,6 +1383,19 @@ private slots:
         QVERIFY(!f.editor()->isTableSourceShown(1));
         QVERIFY(!doc->findBlockByNumber(4).isVisible());
         QCOMPARE(text(f), QString::fromUtf8(markdown));
+
+        // Where no line follows it, Down puts the caret on it, and it shows.
+        test::Fixture g;
+        QVERIFY(g.open(g.writeFile(QStringLiteral("end.md"), "| a |\n| --- |\n| 1 |\n")));
+        g.settle();
+        QVERIFY(!g.editor()->document()->findBlockByNumber(3).isVisible());
+        QVERIFY(clickCell(g.editor()->tableViewAt(0), 1, 0) != nullptr);
+        press(Qt::Key_Down);
+        g.settle();
+        QTRY_VERIFY(g.editor()->hasFocus());
+        QCOMPARE(g.editor()->textCursor().blockNumber(), 3);
+        QVERIFY(g.editor()->document()->findBlockByNumber(3).isVisible());
+        QVERIFY(!g.editor()->document()->isModified());
     }
 
     // ADR 0002, decision 6 (S018, files from other editors): Obsidian writes text directly below a
