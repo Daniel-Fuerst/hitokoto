@@ -1,6 +1,6 @@
 # S018 — Markdown tables
 
-- **Status:** In progress · **Order:** 20 · **Depends on:** S015, S019
+- **Status:** In review · **Order:** 20 · **Depends on:** S015, S019
 - **Basis:** User request and confirmation on 2026-10-26; ADR 0005. Revised on 2026-10-27 after the
   code review (`docs/reviews/018-tables-code.md`) for the editor surface of S019: the table is an
   embedded Qt table view; GFM rules throughout; line breaks in cells; a source view. The revision
@@ -11,6 +11,9 @@
   the first version" (user decision on 2026-10-27). Amended on 2026-10-27 after the user's test:
   spaces at the edges of a cell while typing, and typing in the blank line below a table starts a
   paragraph (user decision on 2026-10-27).
+- **Review basis:** Linux only (CI on `feature/tables` with Qt 6.12 and Qt 6.8.3; the Windows and
+  macOS jobs are disabled in `ci.yml`), as for S019 by the user's decision of 2026-10-27; Windows
+  and macOS run with the pull request to `main`.
 - **Renumbered:** from S017 on 2026-10-27, because S017 is "Saving never stalls the UI" on main.
   Commits 8130875 and a3def18 still say S017.
 

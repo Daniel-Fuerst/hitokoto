@@ -30,7 +30,7 @@ story ID (see "Conventions").
 | 17 | [S016](016-application-icon.md) | Show the application icon in the taskbar or dock | S000 | S | In progress |
 | 18 | [S017](017-save-without-stall.md) | Saving never stalls the UI (follow-up of S007) | S004, S007 | M | In review |
 | 19 | [S019](019-editor-surface.md) | Editor surface with its own document layout (ADR 0003) | S017 | L | In review |
-| 20 | [S018](018-tables.md) | Interactive Markdown pipe tables | S015, S019 | L | In progress |
+| 20 | [S018](018-tables.md) | Interactive Markdown pipe tables | S015, S019 | L | In review |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 

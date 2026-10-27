@@ -273,16 +273,25 @@ void EditorWidget::keyPressEvent(QKeyEvent* event) {
         return;
     }
     const TableEmbedder::Typing typing(tables_.get());
+    const QString typed = event->text();
+    if (!typed.isEmpty() && typed.at(0).isPrint() &&
+        (event->modifiers() & (Qt::ControlModifier | Qt::AltModifier)) == 0) {
+        tables_->beforeWritingBelow();
+    }
     QTextEdit::keyPressEvent(event);
 }
 
 void EditorWidget::inputMethodEvent(QInputMethodEvent* event) {
     const TableEmbedder::Typing typing(tables_.get());
+    if (!event->commitString().isEmpty()) {
+        tables_->beforeWritingBelow();
+    }
     QTextEdit::inputMethodEvent(event);
 }
 
 void EditorWidget::insertFromMimeData(const QMimeData* source) {
     const TableEmbedder::Typing typing(tables_.get());
+    tables_->beforeWritingBelow();
     QTextEdit::insertFromMimeData(source);
 }
 

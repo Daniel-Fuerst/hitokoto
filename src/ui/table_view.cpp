@@ -86,6 +86,23 @@ void CellEditor::contextMenuEvent(QContextMenuEvent* event) {
     menu->exec(event->globalPos());
 }
 
+namespace {
+
+/// Text without the spaces and tabs at its edges, which GFM treats as a cell's padding.
+QString withoutPadding(const QString& text) {
+    qsizetype start = 0;
+    qsizetype end = text.size();
+    while (start < end && (text.at(start) == u' ' || text.at(start) == u'\t')) {
+        ++start;
+    }
+    while (end > start && (text.at(end - 1) == u' ' || text.at(end - 1) == u'\t')) {
+        --end;
+    }
+    return text.mid(start, end - start);
+}
+
+}  // namespace
+
 // --- TableDelegate ----------------------------------------------------------------------------
 
 TableDelegate::TableDelegate(QObject* parent) : QStyledItemDelegate(parent) {}
@@ -227,8 +244,10 @@ void TableDelegate::setEditorData(QWidget* editor, const QModelIndex& index) con
         return;
     }
     const QString value = index.data(Qt::EditRole).toString();
-    if (text->toPlainText() == value) {
-        return;  // the line changed because of this editor: keep the caret where it is
+    if (withoutPadding(text->toPlainText()) == value) {
+        // The line changed because of this editor (a space at the cell's edge is GFM padding and
+        // reads back without it): keep the text and the caret as they are.
+        return;
     }
     // Changed from elsewhere (undo, a new row): keep the caret's place as far as possible.
     const int position = text->textCursor().position();

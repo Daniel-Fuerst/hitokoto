@@ -169,6 +169,22 @@ void TableEmbedder::documentChanged(int position, int charsRemoved, int charsAdd
     scheduleRefresh();
 }
 
+void TableEmbedder::beforeWritingBelow() {
+    QTextCursor cursor = editor_->textCursor();
+    const QTextBlock block = cursor.block();
+    if (cursor.hasSelection() || !block.text().trimmed().isEmpty() || !block.previous().isValid()) {
+        return;
+    }
+    const Table* table = tableAt(block.previous().blockNumber());
+    if (table == nullptr || table->widget == nullptr || table->source || table->last != block.previous()) {
+        return;
+    }
+    // GFM would continue the table on this line: keep it blank and write on a new line below.
+    cursor.setPosition(block.position() + block.length() - 1);
+    cursor.insertText(QStringLiteral("\n"));
+    editor_->setTextCursor(cursor);
+}
+
 void TableEmbedder::markBreaks(Table& table) const {
     table.breaks.clear();
     table.stale = false;

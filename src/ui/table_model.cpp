@@ -189,12 +189,19 @@ bool TableModel::setData(const QModelIndex& index, const QVariant& value, int ro
     if (role != Qt::EditRole || !index.isValid() || index.row() >= rowCount() || index.column() >= columnCount()) {
         return false;
     }
-    if (value.toString() == data(index, Qt::EditRole).toString()) {
+    QString text = value.toString();
+    while (!text.isEmpty() && (text.back() == u' ' || text.back() == u'\t')) {
+        text.chop(1);  // GFM padding: written with the next character (S018)
+    }
+    while (!text.isEmpty() && (text.front() == u' ' || text.front() == u'\t')) {
+        text.remove(0, 1);
+    }
+    if (text == data(index, Qt::EditRole).toString()) {
         return true;  // unchanged, also for a cell the row lacks: the file stays as it is (S018)
     }
     QTextBlock line = lineOfRow(index.row());
     const QString before = line.text();
-    const std::u16string markdown = core::tableCellFromText(view(value.toString()));
+    const std::u16string markdown = core::tableCellFromText(view(text));
     const QString after =
         toQString(core::replaceTableCell(view(before), static_cast<std::size_t>(index.column()), markdown));
     if (after == before) {

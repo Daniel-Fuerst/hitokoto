@@ -548,23 +548,8 @@ private slots:
         QVERIFY(f.editor()->hasFocus());
         QCOMPARE(f.editor()->textCursor().blockNumber(), 2);
 
-        // A line typed directly under the table is a row (GFM); it stays text while typed.
-        QTextCursor end(f.editor()->document());
-        end.movePosition(QTextCursor::End);
-        f.editor()->setTextCursor(end);
-        f.editor()->setFocus();
-        typeAsUser(QStringLiteral("|c"));
-        f.settle();
-        QCOMPARE(text(f), QStringLiteral("|a|b|\n|---|---|\n|c"));
-        QVERIFY(f.editor()->hasFocus());
-        QVERIFY(f.editor()->tableViewAt(0) == nullptr);
-        typeAsUser(QStringLiteral("|d|\n"));
-        f.settle();
-        QCOMPARE(text(f), QStringLiteral("|a|b|\n|---|---|\n|c|d|\n"));
-        QTableView* view = f.editor()->tableViewAt(0);
-        QVERIFY(view != nullptr);
-        QCOMPARE(view->model()->rowCount(), 2);
-        QVERIFY(f.editor()->hasFocus());
+        // Typing in the blank line below the table starts a paragraph instead of a row
+        // (typingBelowATableStartsAParagraph).
     }
 
     // Only typing in the editor holds a table: a change made otherwise (loading in slices, the

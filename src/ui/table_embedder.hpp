@@ -40,6 +40,11 @@ public:
     /// to as Markdown lines until the caret leaves that line (S018, "typing a table").
     void documentChanged(int position, int charsRemoved, int charsAdded);
 
+    /// Before text goes into the blank line directly below a table (keys, input method, paste):
+    /// adds a blank line, so the text becomes a paragraph and not a row of the table (S018,
+    /// "writing below a table").
+    void beforeWritingBelow();
+
     /// Marks changes as typed in the editor (keys, input method, paste) while it exists; loading
     /// a file or the table view's own changes are not typing.
     class Typing {
