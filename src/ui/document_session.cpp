@@ -126,6 +126,10 @@ void DocumentSession::load(const QString& path) {
                 Qt::QueuedConnection);
             return;
         }
+        // Only a file with a pipe can hold a table. memchr on the bytes takes about 1 ms for 10 MB;
+        // looking for it in the decoded text took about 10 ms before the first screen (CI benchmark
+        // open_10mb_first_chunk_ms on 0511251).
+        const bool mayHoldTables = read.bytes->find('|') != std::string::npos;
         auto decoded = core::decodeUtf8(*read.bytes);
         read.bytes.reset();
         if (!decoded.value) {
@@ -142,7 +146,7 @@ void DocumentSession::load(const QString& path) {
             return;
         }
         // ADR 0002, decision 6: text directly below a table gets a blank line, as Obsidian reads it.
-        const std::size_t added = core::separateTextAfterTables(*decoded.value, registry_);
+        const std::size_t added = mayHoldTables ? core::separateTextAfterTables(*decoded.value, registry_) : 0;
         QString text = toQString(std::u16string_view(decoded.value->text));
         decoded.value->text.clear();
         decoded.value->text.shrink_to_fit();

@@ -73,6 +73,12 @@ Tables (`hitokoto-bench`): opening a 1000-row table until the table view shows i
 and opens the next), key to paint median / p95 / p99 / max 3.5 / 7.3 / 8.5 / 12.0 ms (budget
 16 ms p95/p99, hard 50 ms max).
 
+Opening a file adds blank lines below tables first (ADR 0002, decision 6), on the loading thread
+before the first screen. A file without `|` skips it after a `memchr` over its bytes (about 1 ms
+for 10 MB); looking in the decoded text instead had cost about 10 ms and failed the CI
+regression check of `open_10mb_first_chunk_ms` (66 -> 87 ms, tolerance 25 %). A 10 MB file with a
+table walks every line's block state once: 18-22 ms (one VM outlier at 56 ms).
+
 ### 2026-10-26, development VM, S017 (release build, offscreen, 5 runs)
 
 Saving 10 MB: longest UI stall 6.7 ms (was 18.9 ms, measured as the duration of the save() call),
