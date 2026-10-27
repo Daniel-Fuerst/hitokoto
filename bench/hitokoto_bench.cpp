@@ -152,7 +152,16 @@ OpenTiming measureOpen(ui::MainWindow& w, const QString& path) {
 // and 89 ms in two runs, decoding alone 12 and 24 ms; S018).
 constexpr int kOpenRuns = 5;
 
-OpenTiming medianOpen(ui::MainWindow& w, const QString& path) {
+/// Prints every sample of a median, in measuring order, so a CI log shows how they spread.
+void printSamples(const char* name, const std::vector<double>& samples) {
+    std::printf("samples %-28s", name);
+    for (const double ms : samples) {
+        std::printf(" %8.2f", ms);
+    }
+    std::printf("\n");
+}
+
+OpenTiming medianOpen(ui::MainWindow& w, const QString& path, const char* name) {
     std::vector<double> first;
     std::vector<double> loaded;
     std::vector<double> styled;
@@ -163,6 +172,9 @@ OpenTiming medianOpen(ui::MainWindow& w, const QString& path) {
         loaded.push_back(t.loadedMs);
         styled.push_back(t.styledMs);
     }
+    printSamples((std::string(name) + "_first_chunk_ms").c_str(), first);
+    printSamples((std::string(name) + "_loaded_ms").c_str(), loaded);
+    printSamples((std::string(name) + "_styled_ms").c_str(), styled);
     return {stats(first).median, stats(loaded).median, stats(styled).median};
 }
 
@@ -212,6 +224,7 @@ double medianTableOpen(ui::MainWindow& w, const QString& path) {
         w.session()->newDocument();
         samples.push_back(measureTableOpen(w, path));
     }
+    printSamples("s018_table_open_ms", samples);
     return stats(samples).median;
 }
 
@@ -404,11 +417,11 @@ int main(int argc, char* argv[]) {
     w.editor()->document()->setModified(false);
     w.session()->newDocument();
 
-    const auto open1 = medianOpen(w, oneMb);
+    const auto open1 = medianOpen(w, oneMb, "open_1mb");
     r["open_1mb_loaded_ms"] = open1.loadedMs;
     w.session()->newDocument();
 
-    const auto open10 = medianOpen(w, tenMb);
+    const auto open10 = medianOpen(w, tenMb, "open_10mb");
     r["open_10mb_first_chunk_ms"] = open10.firstChunkMs;
     r["open_10mb_loaded_ms"] = open10.loadedMs;
     r["open_10mb_styled_ms"] = open10.styledMs;
