@@ -28,7 +28,10 @@ fails the comparison; the baselines changed with this measurement and come from 
 with it.
 
 The baselines come from the review run of the S017 pull request (2026-10-27; Windows and macOS
-from single re-runs of their jobs). CI runners differ from the development machine, so
+from single re-runs of their jobs); Linux since 2026-10-28 from the run on `e5ae913` of
+`feature/tables`, the first with the opening medians timed in the signal, which also added the
+`s018_*` values. Windows and macOS still hold values of the earlier measurement and get new ones
+with the pull request that runs their jobs again. CI runners differ from the development machine, so
 baselines must come from CI itself. To create or update them:
 
 1. Open a successful CI run (on `main` or on a pull request; both use the same runners), download
