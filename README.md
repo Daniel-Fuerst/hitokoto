@@ -1,106 +1,54 @@
 # hitokoto
 
-**hitokoto** (一言, "a single word") is a fast, native Markdown editor for one file at a time,
-with Obsidian-style live preview: the document is always plain Markdown, rendered as you type,
-and the raw syntax shows only on the line where your cursor is.
+**hitokoto** (一言, "a single word") is a fast, native desktop Markdown editor for one file at a
+time, with Obsidian-style live preview: the document is always plain Markdown, rendered inline as
+you type, with raw syntax revealed only on the active line.
+
+> **About this project:** hitokoto is an experiment to test out human-driven AI development and see
+> how it holds up in practice. Instead of unguided generation, a human sets the product vision, hard
+> constraints, architecture gates, and acceptance criteria ([`docs/brief.md`](docs/brief.md)), while
+> coding agents write the ADRs, tests, and C++/Qt implementation story by story under strict TDD,
+> linting, and performance budgets ([`CLAUDE.md`](CLAUDE.md), [`docs/stories/`](docs/stories/)).
 
 ![hitokoto, light theme](docs/assets/screenshot-light.png)
 
-Version 0.1 (MVP): headings, bullet lists, bold, italic and strikethrough render inline; inline code
-spans and fenced code blocks render in a fixed-width style; open, edit, save and save as; light and
-dark themes plus your own theme file; native on Linux (Wayland and X11), Windows and macOS.
-
-Licence: GPL-3.0-or-later (see `LICENSE`). hitokoto uses Qt under the LGPLv3.
-
-## Using it
+## Usage
 
 ```sh
 hitokoto notes.md                 # open a file
 hitokoto                          # start with an empty document
-hitokoto --theme my-theme.toml    # use a specific theme file
+hitokoto --theme my-theme.toml    # use a custom theme (see docs/theming.md)
 ```
-
-Your own look goes into a theme file; see [docs/theming.md](docs/theming.md).
 
 ## Building
 
-Requirements: a C++20 compiler, CMake 3.25 or newer, Qt 6.8 or newer (Core, Gui, Widgets, Svg;
-Test for the tests). Tests and benchmarks fetch GoogleTest and Google Benchmark automatically if
-they are not installed.
-
-### Linux
-
-Debian 13 (trixie) or newer:
+Requires a C++20 compiler, CMake 3.25+, and Qt 6.8+ (Core, Gui, Widgets, Svg; Test for tests).
 
 ```sh
-sudo apt install build-essential cmake ninja-build qt6-base-dev qt6-svg-dev qt6-wayland
-cmake --preset release -G Ninja
+# Release build
+cmake --preset release
 cmake --build --preset release
-./build/release/src/app/hitokoto
-```
 
-Distributions with an older Qt (Ubuntu 24.04 ships 6.4): install Qt 6.8+ with the Qt Online
-Installer, including the Qt SVG module, and add `-DCMAKE_PREFIX_PATH=$HOME/Qt/6.12.0/gcc_64`.
-
-hitokoto runs natively on Wayland and on X11; Qt picks the right one. Force one with
-`QT_QPA_PLATFORM=wayland` or `QT_QPA_PLATFORM=xcb`.
-
-### Windows
-
-Install Visual Studio 2022 (workload "Desktop development with C++") and Qt 6.12 for
-"MSVC 2022 64-bit" with the Qt Online Installer, including the Qt SVG module. In an
-"x64 Native Tools Command Prompt for VS 2022":
-
-```bat
-cmake --preset release -DCMAKE_PREFIX_PATH=C:\Qt\6.12.0\msvc2022_64
-cmake --build --preset release
-build\release\src\app\Release\hitokoto.exe
-```
-
-To start it from Explorer, either add `C:\Qt\6.12.0\msvc2022_64\bin` to `PATH` or create a
-distributable folder (below).
-
-### macOS
-
-With Xcode Command Line Tools and Homebrew:
-
-```sh
-brew install cmake qt
-cmake --preset release -DCMAKE_PREFIX_PATH="$(brew --prefix qt)"
-cmake --build --preset release
-open build/release/src/app/hitokoto.app
-```
-
-## Development
-
-The working agreement is in [CLAUDE.md](CLAUDE.md), the brief in [docs/brief.md](docs/brief.md),
-decisions in [docs/adr](docs/adr), the backlog in [docs/stories](docs/stories), the design in
-[docs/architecture.md](docs/architecture.md).
-
-```sh
-cmake --preset dev            # Debug, tests, warnings as errors
+# Development build & tests (core + headless UI tests)
+cmake --preset dev
 cmake --build --preset dev
-ctest --preset dev            # core and UI tests (UI tests run headless)
-
-cmake --preset core-sanitize  # core only, ASan/UBSan, no Qt needed
-cmake --preset fuzz           # libFuzzer targets for the core (Clang)
-cmake --preset bench          # benchmarks, see docs/performance.md
+ctest --preset dev
 ```
 
-Code is formatted with `clang-format` (`.clang-format`) and linted with `clang-tidy`
-(`.clang-tidy`); CI enforces both. CI builds and tests on Linux (Qt 6.12 and 6.8), Windows and
-macOS, runs sanitizers and fuzzers, and benchmarks on all three systems.
+On Windows or macOS (or with a custom Qt install), pass `-DCMAKE_PREFIX_PATH=/path/to/Qt` when
+configuring. On Debian 13+, install `build-essential cmake ninja-build qt6-base-dev qt6-svg-dev qt6-wayland`.
 
-## Distributable builds
+For packaging/distributable builds, see [`docs/stories/012-distributable-builds.md`](docs/stories/012-distributable-builds.md) (`windeployqt` on Windows, `macdeployqt` on macOS, `linuxdeploy` on Linux).
 
-Packaging in CI is story S012 and not automated yet. Until then, by hand from a release build:
+## Documentation
 
-- **Windows:** `windeployqt --release --no-translations build\release\src\app\Release\hitokoto.exe`
-  copies the Qt DLLs and plugins next to the executable; zip that folder.
-- **macOS:** `macdeployqt build/release/src/app/hitokoto.app -dmg` creates a `.dmg`
-  (unsigned; signing and notarisation need an Apple developer account).
-- **Linux:** an AppImage with [linuxdeploy](https://github.com/linuxdeploy/linuxdeploy) and its Qt
-  plugin: `cmake --install build/release --prefix AppDir/usr`, then
-  `linuxdeploy --appdir AppDir --plugin qt --output appimage`. A Debian package is planned separately.
+- [`CLAUDE.md`](CLAUDE.md) — Working agreement for coding agents
+- [`docs/brief.md`](docs/brief.md) — Original human brief and constraints
+- [`docs/architecture.md`](docs/architecture.md) & [`docs/adr/`](docs/adr/) — Architecture and decision records
+- [`docs/stories/`](docs/stories/) — Story backlog and acceptance scenarios
+- [`docs/theming.md`](docs/theming.md) — Theme file reference
+- [`docs/performance.md`](docs/performance.md) — Performance budgets and benchmarks
 
-Every distribution must include `LICENSE` and the Qt LGPLv3 notice.
+## License
+
+GPL-3.0-or-later (see [`LICENSE`](LICENSE)). Uses Qt under the LGPLv3.
