@@ -197,6 +197,14 @@ private slots:
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("gfm.md"), markdown)));
         f.settle();
+        // Opening separates "continued" from the table (ADR 0002, decision 6) ...
+        QCOMPARE(f.editor()->document()->findBlockByNumber(4).text(), QString());
+        QVERIFY(f.editor()->document()->findBlockByNumber(5).isVisible());
+        QCOMPARE(f.editor()->tableViewAt(0)->model()->rowCount(), 3);
+        // ... and once that blank line is gone, GFM makes it a row again.
+        QTextCursor blank(f.editor()->document()->findBlockByNumber(4));
+        blank.deletePreviousChar();
+        f.settle();
         QTableView* view = f.editor()->tableViewAt(0);
         QVERIFY(view != nullptr);
         QAbstractItemModel* model = view->model();
