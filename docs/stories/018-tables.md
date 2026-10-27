@@ -4,7 +4,9 @@
 - **Basis:** User request and confirmation on 2026-10-26; ADR 0005. Revised on 2026-10-27 after the
   code review (`docs/reviews/018-tables-code.md`) for the editor surface of S019: the table is an
   embedded Qt table view; GFM rules throughout; line breaks in cells; a source view. The revision
-  was confirmed by the user on 2026-10-27.
+  was confirmed by the user on 2026-10-27. Amended on 2026-10-27 after Daniel's test recording:
+  typing a table, editing with one click, the controls' place and every column visible (confirmed
+  by the user on 2026-10-27).
 - **Renumbered:** from S017 on 2026-10-27, because S017 is "Saving never stalls the UI" on main.
   Commits 8130875 and a3def18 still say S017.
 
@@ -27,6 +29,16 @@ Markdown that GitHub shows the same way.
   following line without a pipe is still a row; the table ends at a blank line or the start of
   another block; missing cells are empty; a table may directly follow a paragraph
 - And the file still contains exactly the lines it had
+- And the table is as wide as its columns: every column is visible without horizontal
+  scrolling unless the table is wider than the text column, also after adding a column
+
+**Scenario: typing a table in the editor**
+- Given the caret in a line I type in the editor
+- When that line becomes part of a table (header, delimiter or a row directly below a table)
+- Then the table shows its Markdown lines while the caret stays in that line, so I can finish
+  typing it
+- And the table view appears once the caret leaves the line (`Enter`, arrow keys, a click),
+  with the caret where I moved it
 
 **Scenario: cells show inline Markdown and line breaks**
 - Given cells with `**bold**`, `*italic*`, `~~strike~~`, `` `code` ``, `\|` and `<br>`
@@ -36,7 +48,7 @@ Markdown that GitHub shows the same way.
 
 **Scenario: editing a cell changes only that cell**
 - Given a table
-- When I click a cell, or move into it, and type, delete, paste or press `Shift+Enter`
+- When I click a cell once (the caret goes where I clicked), or move into it, and type, delete, paste or press `Shift+Enter`
 - Then the text changes in that cell of that row and nowhere else in the file
 - And `Shift+Enter` and line breaks in pasted text are written as `<br>`, and every `|` typed or
   pasted is written as `\|`, so the row keeps its cells
@@ -53,7 +65,10 @@ Markdown that GitHub shows the same way.
 **Scenario: adding and removing rows and columns**
 - Given a table
 - Then add-row (`+`), add-column (`+`), delete-row (`−`) and delete-column (`−`) controls appear
-  only while the pointer is near them, and the context menu has `Add Row`, `Delete Row`,
+  only while the pointer is near them, each along the edge it acts on: add-row as a bar under the
+  table and add-column as a bar to its right, as wide and as high as the table; delete-row left
+  of its row and delete-column above its column, as high or as wide as they are (drawn in the
+  table's header colours, as before the revision), and the context menu has `Add Row`, `Delete Row`,
   `Add Column`, `Delete Column`
 - When I use them, or press `Tab` in the last cell, or `Enter` in the last row while it is not
   empty

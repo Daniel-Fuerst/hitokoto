@@ -11,6 +11,7 @@
 #include <QPlainTextEdit>
 #include <QScrollBar>
 #include <QTableView>
+#include <QTextCursor>
 #include <QToolButton>
 
 using namespace hitokoto;
@@ -40,6 +41,36 @@ QWidget* editCell(QTableView* view, int row, int column) {
 
 QToolButton* control(QTableView* view, const char* name) {
     return view->parentWidget()->findChild<QToolButton*>(QString::fromLatin1(name));
+}
+
+/// Types into whatever has the focus, as a user does; "\n" is Enter.
+void typeAsUser(const QString& keys) {
+    for (const QChar c : keys) {
+        QWidget* target = QApplication::focusWidget();
+        if (c == u'\n') {
+            test::keyClick(target, Qt::Key_Return);
+        } else {
+            test::keyClicks(target, QString(c));
+        }
+        QCoreApplication::processEvents();
+    }
+}
+
+/// Every column lies inside the view, without horizontal scrolling.
+bool showsEveryColumn(const QTableView* view) {
+    const int last = view->model()->columnCount() - 1;
+    return view->horizontalScrollBar()->maximum() == 0 && view->columnViewportPosition(0) == 0 &&
+           view->columnViewportPosition(last) + view->columnWidth(last) <= view->viewport()->width();
+}
+
+QString geometryOf(const QTableView* view) {
+    QString out = QStringLiteral("viewport %1, scroll max %2, columns")
+                      .arg(view->viewport()->width())
+                      .arg(view->horizontalScrollBar()->maximum());
+    for (int c = 0; c < view->model()->columnCount(); ++c) {
+        out += QStringLiteral(" %1@%2").arg(view->columnWidth(c)).arg(view->columnViewportPosition(c));
+    }
+    return out;
 }
 
 QAction* action(QTableView* view, const char* name) {
@@ -428,6 +459,133 @@ private slots:
         QTRY_VERIFY(f.editor()->verticalScrollBar()->isVisible());
         f.settle();
         QCOMPARE(f.editor()->tableViewAt(0)->width(), withoutBar);
+    }
+
+    // Daniel's recording (2026-10-27): typing the delimiter row pulled the caret into the table
+    // after "|---|-", and the rest of the row landed in a cell.
+    void typingATableKeepsTheSourceUntilTheCaretLeavesTheLine() {
+        test::Fixture f;
+        f.editor()->setFocus();
+        typeAsUser(QStringLiteral("|a|b|\n|---|-"));
+        f.settle();
+        QVERIFY(f.editor()->hasFocus());
+        QVERIFY(f.editor()->tableViewAt(0) == nullptr);  // still the Markdown lines
+        typeAsUser(QStringLiteral("--|"));
+        f.settle();
+        QCOMPARE(text(f), QStringLiteral("|a|b|\n|---|---|"));
+        QVERIFY(f.editor()->tableViewAt(0) == nullptr);
+
+        typeAsUser(QStringLiteral("\n"));  // leaving the line shows the table
+        f.settle();
+        QCOMPARE(text(f), QStringLiteral("|a|b|\n|---|---|\n"));
+        QVERIFY(f.editor()->tableViewAt(0) != nullptr);
+        QVERIFY(f.editor()->hasFocus());
+        QCOMPARE(f.editor()->textCursor().blockNumber(), 2);
+
+        // A line typed directly under the table is a row (GFM); it stays text while typed.
+        QTextCursor end(f.editor()->document());
+        end.movePosition(QTextCursor::End);
+        f.editor()->setTextCursor(end);
+        f.editor()->setFocus();
+        typeAsUser(QStringLiteral("|c"));
+        f.settle();
+        QCOMPARE(text(f), QStringLiteral("|a|b|\n|---|---|\n|c"));
+        QVERIFY(f.editor()->hasFocus());
+        QVERIFY(f.editor()->tableViewAt(0) == nullptr);
+        typeAsUser(QStringLiteral("|d|\n"));
+        f.settle();
+        QCOMPARE(text(f), QStringLiteral("|a|b|\n|---|---|\n|c|d|\n"));
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QCOMPARE(view->model()->rowCount(), 2);
+        QVERIFY(f.editor()->hasFocus());
+    }
+
+    // Daniel's recording: the view was narrower than its columns and scrolled horizontally. The
+    // header's minimum section size widened narrow columns beyond what the view was sized for.
+    void theTableIsAsWideAsItsColumns() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("narrow.md"), "|a|b|\n|---|---|\n")));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QVERIFY2(showsEveryColumn(view), qPrintable(geometryOf(view)));
+        view->setCurrentIndex(view->model()->index(0, 1));
+        action(view, "tableAddColumn")->trigger();  // an empty column: narrower than the minimum
+        f.settle();
+        view = f.editor()->tableViewAt(0);
+        QCOMPARE(view->model()->columnCount(), 3);
+        QVERIFY2(showsEveryColumn(view), qPrintable(geometryOf(view)));
+        QVERIFY(view->columnWidth(2) < view->horizontalHeader()->defaultSectionSize());
+    }
+
+    // Daniel's recording: editing a cell needed a double click.
+    void oneClickEditsTheCellWhereClicked() {
+        constexpr auto markdown = "| Name |\n| --- |\n| Alice |\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("click.md"), markdown)));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        const QRect cell = view->visualRect(view->model()->index(1, 0));
+        QTest::mouseClick(view->viewport(), Qt::LeftButton, {}, QPoint(cell.left() + 2, cell.center().y()));
+        QCoreApplication::processEvents();
+        auto* editor = qobject_cast<QPlainTextEdit*>(QApplication::focusWidget());
+        QVERIFY(editor != nullptr);
+        QCOMPARE(editor->textCursor().position(), 0);  // where clicked, not at the end
+        typeAsUser(QStringLiteral("x"));
+        test::keyClick(QApplication::focusWidget(), Qt::Key_Return);
+        f.settle();
+        QCOMPARE(text(f), QStringLiteral("| Name |\n| --- |\n| xAlice |\n"));
+    }
+
+    // Daniel's recording: the controls moved. They sit along the edge they act on, as before the
+    // revision: bars under and to the right of the table, delete buttons outside the row and column.
+    void controlsSitAlongTheEdgeTheyActOn() {
+        constexpr auto markdown = "| A | B |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("controls.md"), markdown)));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QWidget* table = view->parentWidget();
+        const QRect v = view->geometry();  // in the table widget
+        const auto hover = [&](QPoint inTable) {
+            QTest::mouseMove(table, inTable);
+            QCoreApplication::processEvents();
+        };
+
+        hover(QPoint(v.center().x(), v.bottom() - 2));
+        QToolButton* addRow = control(view, "tableAddRow");
+        QTRY_VERIFY(addRow->isVisible());
+        QCOMPARE(addRow->geometry().left(), v.left());
+        QCOMPARE(addRow->geometry().width(), v.width());
+        QVERIFY(addRow->geometry().top() > v.bottom());
+
+        hover(QPoint(v.right() - 2, v.center().y()));
+        QToolButton* addColumn = control(view, "tableAddColumn");
+        QTRY_VERIFY(addColumn->isVisible());
+        QCOMPARE(addColumn->geometry().top(), v.top());
+        QCOMPARE(addColumn->geometry().height(), v.height());
+        QVERIFY(addColumn->geometry().left() > v.right());
+
+        const QRect row1 =
+            view->visualRect(view->model()->index(1, 0)).translated(v.topLeft() + QPoint(1, 1) * view->frameWidth());
+        hover(QPoint(v.left() + 3, row1.center().y()));
+        QToolButton* deleteRow = control(view, "tableDeleteRow");
+        QTRY_VERIFY(deleteRow->isVisible());
+        QCOMPARE(deleteRow->geometry().top(), row1.top());
+        QCOMPARE(deleteRow->geometry().height(), row1.height());
+        QVERIFY(deleteRow->geometry().right() < v.left());
+
+        const QRect column1 =
+            view->visualRect(view->model()->index(0, 1)).translated(v.topLeft() + QPoint(1, 1) * view->frameWidth());
+        hover(QPoint(column1.center().x(), v.top() + 3));
+        QToolButton* deleteColumn = control(view, "tableDeleteColumn");
+        QTRY_VERIFY(deleteColumn->isVisible());
+        QCOMPARE(deleteColumn->geometry().left(), column1.left());
+        QCOMPARE(deleteColumn->geometry().width(), column1.width());
+        QVERIFY(deleteColumn->geometry().bottom() < v.top());
     }
 
     void typingInATableNearTheScrollBarThresholdSettles() {
