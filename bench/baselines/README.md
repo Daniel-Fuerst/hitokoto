@@ -18,7 +18,11 @@ compared with the baseline. `typing_*_over_16ms` and `s018_table_typing_over_16m
 information. `startup_p95_ms`, the p95 of 10 cold starts, is `info` as well (31.6 -> 127.2 ms on
 a Windows runner with the median unchanged); `startup_median_ms` is the gate. The rule: medians
 and percentiles of the 200 typing samples are compared, extremes of few samples are reported,
-and where the brief names an absolute limit, a hard budget applies.
+and where the brief names an absolute limit, a hard budget applies. Opening (`open_*`,
+`s018_table_open_ms`) is the median of 5 opens, each from an empty document (S018: one open of
+10 MB gave a first screen after 51 and 89 ms in two runs without a code change). A runner that
+is slower as a whole still fails the comparison; the baselines changed with this measurement and
+come from the first run with it.
 
 The baselines come from the review run of the S017 pull request (2026-10-27; Windows and macOS
 from single re-runs of their jobs). CI runners differ from the development machine, so

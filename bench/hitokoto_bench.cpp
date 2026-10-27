@@ -147,6 +147,25 @@ OpenTiming measureOpen(ui::MainWindow& w, const QString& path) {
     return r;
 }
 
+// Opening is measured this many times, each from an empty document, and the medians compared: one
+// open of 10 MB on shared runners swung by more than 25 % without a code change (first chunk 51
+// and 89 ms in two runs, decoding alone 12 and 24 ms; S018).
+constexpr int kOpenRuns = 5;
+
+OpenTiming medianOpen(ui::MainWindow& w, const QString& path) {
+    std::vector<double> first;
+    std::vector<double> loaded;
+    std::vector<double> styled;
+    for (int i = 0; i < kOpenRuns; ++i) {
+        w.session()->newDocument();
+        const OpenTiming t = measureOpen(w, path);
+        first.push_back(t.firstChunkMs);
+        loaded.push_back(t.loadedMs);
+        styled.push_back(t.styledMs);
+    }
+    return {stats(first).median, stats(loaded).median, stats(styled).median};
+}
+
 std::vector<double> measureTyping(ui::MainWindow& w, int keys) {
     ui::EditorWidget* e = w.editor();
     QTextCursor c(e->document()->findBlockByNumber(e->document()->blockCount() / 2));
@@ -184,6 +203,16 @@ double measureTableOpen(ui::MainWindow& w, const QString& path) {
     (void)QTest::qWaitFor([&] { return w.editor()->tableViewAt(2) != nullptr; }, 120000);
     w.editor()->viewport()->repaint();
     return static_cast<double>(t.nsecsElapsed()) / 1e6;
+}
+
+/// Median of kOpenRuns table opens, each from an empty document.
+double medianTableOpen(ui::MainWindow& w, const QString& path) {
+    std::vector<double> samples;
+    for (int i = 0; i < kOpenRuns; ++i) {
+        w.session()->newDocument();
+        samples.push_back(measureTableOpen(w, path));
+    }
+    return stats(samples).median;
 }
 
 /// S018: key-to-paint in a table cell. Puts the caret into a cell in the middle of the table and
@@ -363,7 +392,7 @@ int main(int argc, char* argv[]) {
     r["typing_small_over_16ms"] = typingSmall.over16;
     w.session()->newDocument();
 
-    r["s018_table_open_ms"] = measureTableOpen(w, table1000);
+    r["s018_table_open_ms"] = medianTableOpen(w, table1000);
     w.session()->newDocument();
     (void)measureTableOpen(w, table200);
     const auto typingTable = stats(measureTableTyping(w, 200));
@@ -375,11 +404,11 @@ int main(int argc, char* argv[]) {
     w.editor()->document()->setModified(false);
     w.session()->newDocument();
 
-    const auto open1 = measureOpen(w, oneMb);
+    const auto open1 = medianOpen(w, oneMb);
     r["open_1mb_loaded_ms"] = open1.loadedMs;
     w.session()->newDocument();
 
-    const auto open10 = measureOpen(w, tenMb);
+    const auto open10 = medianOpen(w, tenMb);
     r["open_10mb_first_chunk_ms"] = open10.firstChunkMs;
     r["open_10mb_loaded_ms"] = open10.loadedMs;
     r["open_10mb_styled_ms"] = open10.styledMs;
