@@ -1212,6 +1212,35 @@ private slots:
         QVERIFY(text(f).contains(u'y'));
     }
 
+    // CI benchmark on bac0ca3 (2026-10-27): opening another file while a cell had the caret
+    // crashed. The view scrolled to the top while the document was being replaced, the table went
+    // and its caret was moved into lines that were no longer there.
+    void openingAnotherFileWhileACellHasTheCaret() {
+        QByteArray markdown = "Text\n\n| a | b |\n| --- | --- |\n";
+        for (int i = 0; i < 60; ++i) {
+            markdown += "| row " + QByteArray::number(i) + " | x |\n";
+        }
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("first.md"), markdown)));
+        f.settle();
+        f.editor()->verticalScrollBar()->setValue(f.editor()->verticalScrollBar()->maximum());
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(2);
+        QVERIFY(view != nullptr);
+        QVERIFY(clickCell(view, 50, 0) != nullptr);
+        typeAsUser(QStringLiteral("z"));
+        f.editor()->document()->setModified(false);
+        f.session()->newDocument();  // as the benchmark does before the next file
+        QByteArray second;
+        for (int i = 0; i < 20000; ++i) {
+            second += "Line " + QByteArray::number(i) + " of plain text\n";
+        }
+        QVERIFY(f.open(f.writeFile(QStringLiteral("second.md"), second)));
+        f.settle();
+        QCOMPARE(text(f), QString::fromUtf8(second));
+        QTRY_VERIFY(f.editor()->hasFocus());
+    }
+
     // The open cell keeps its column's alignment: the text does not jump when the caret enters.
     void anOpenCellKeepsItsColumnsAlignment() {
         constexpr auto markdown =
