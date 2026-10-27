@@ -47,6 +47,28 @@ qint64 longestStallMs(F&& run) {
     return longest;
 }
 
+/// The longest UI stall of one save to `path`, in an event loop without sleeps.
+qint64 saveStallMs(test::Fixture& f, const QString& path) {
+    QEventLoop untilSaved;
+    QObject::connect(f.session(), &ui::DocumentSession::saveFinished, &untilSaved, &QEventLoop::quit);
+    QTimer::singleShot(120000, &untilSaved, &QEventLoop::quit);
+    return longestStallMs([&] {
+        f.session()->save(path);
+        untilSaved.exec();
+    });
+}
+
+/// The smallest of three saves' longest stalls: the VM running the tests preempts the thread
+/// for 20 ms and more now and then (seen inside one QTextCursor::selectedText() call), which no
+/// mechanism can avoid; a stall the mechanism causes shows up in every run.
+qint64 bestOfThreeSaveStallMs(test::Fixture& f, const QString& path) {
+    qint64 best = saveStallMs(f, path);
+    for (int i = 0; i < 2; ++i) {
+        best = std::min(best, saveStallMs(f, path));
+    }
+    return best;
+}
+
 void insertAtBlock(ui::EditorWidget* editor, int blockNumber, const QString& text) {
     QTextCursor c(editor->document()->findBlockByNumber(blockNumber));
     c.insertText(text);
@@ -74,15 +96,9 @@ private slots:
 
         QSignalSpy done(f.session(), &ui::DocumentSession::saveFinished);
         const QString path = f.dir.filePath(QStringLiteral("copy.md"));
-        QEventLoop untilSaved;
-        connect(f.session(), &ui::DocumentSession::saveFinished, &untilSaved, &QEventLoop::quit);
-        QTimer::singleShot(120000, &untilSaved, &QEventLoop::quit);
-        const qint64 stall = longestStallMs([&] {
-            f.session()->save(path);
-            untilSaved.exec();
-        });
-        QCOMPARE(done.size(), 1);
-        qInfo("10 MB: one-shot copy %lld ms, longest UI stall while saving %lld ms", copyMs, stall);
+        const qint64 stall = bestOfThreeSaveStallMs(f, path);
+        QCOMPARE(done.size(), 3);
+        qInfo("10 MB: one-shot copy %lld ms, longest UI stall while saving %lld ms (best of 3)", copyMs, stall);
         QVERIFY2(stall < std::max<qint64>(copyMs / 2, 16), qPrintable(QString::number(stall)));
         QCOMPARE(test::Fixture::readFile(path), bytes);
     }
@@ -179,6 +195,65 @@ private slots:
         QCOMPARE(f.session()->path(), second);
     }
 
+    // Review (docs/reviews/017-save-without-stall-code.md, O1): the styler's markContentsDirty()
+    // emits contentsChange for every block it styles; those are not edits and must not set the
+    // copy back (eight of them would make the rest copy in one go: the stall S017 removes).
+    void stylerWorkDuringTheCopyIsNotAnEdit() {
+        test::Fixture f;
+        const QByteArray bytes = largeDocument(qsizetype{10} * 1024 * 1024);
+        QVERIFY(f.open(f.writeFile(QStringLiteral("big.md"), bytes), 120000));
+        f.settle();
+
+        const QString path = f.dir.filePath(QStringLiteral("copy.md"));
+        quint64 setBacks = 0;
+        qint64 stall = 0;
+        for (int i = 0; i < 3; ++i) {
+            f.editor()->styler().invalidateAll();  // restyles every block lazily, as after a theme change
+            const qint64 s = saveStallMs(f, path);
+            stall = i == 0 ? s : std::min(stall, s);
+            setBacks += f.session()->copySetBacks();
+        }
+        qInfo("styler working: %llu set-backs, longest UI stall %lld ms (best of 3)", setBacks, stall);
+        QCOMPARE(setBacks, quint64{0});
+        QVERIFY2(stall < 16, qPrintable(QString::number(stall)));
+        QCOMPARE(test::Fixture::readFile(path), bytes);
+    }
+
+    // Review O3: a save whose copy is still running is not lost when the window closes or
+    // another document replaces this one; before S017 the snapshot was taken at once, so the
+    // write always happened.
+    void pendingSaveIsWrittenWhenTheWindowCloses() {
+        test::Fixture f;
+        const QByteArray bytes = largeDocument(qsizetype{10} * 1024 * 1024);
+        QVERIFY(f.open(f.writeFile(QStringLiteral("big.md"), bytes), 120000));
+        f.settle();
+
+        const QString saveAs = f.dir.filePath(QStringLiteral("save-as.md"));
+        f.session()->save(saveAs);  // Save As without edits: the window is not modified
+        QCoreApplication::processEvents();
+        QVERIFY(!f.window->isWindowModified());
+        QVERIFY(f.window->close());
+        QCOMPARE(test::Fixture::readFile(saveAs), bytes);
+    }
+
+    void pendingSaveIsWrittenWhenAnotherFileIsOpened() {
+        test::Fixture f;
+        const QByteArray bytes = largeDocument(qsizetype{10} * 1024 * 1024);
+        QVERIFY(f.open(f.writeFile(QStringLiteral("big.md"), bytes), 120000));
+        f.settle();
+        const QString other = f.writeFile(QStringLiteral("other.md"), "other\n");
+
+        QSignalSpy done(f.session(), &ui::DocumentSession::saveFinished);
+        const QString saveAs = f.dir.filePath(QStringLiteral("save-as.md"));
+        f.session()->save(saveAs);
+        QCoreApplication::processEvents();
+        QVERIFY(f.open(other));
+        QVERIFY(QTest::qWaitFor([&] { return !done.isEmpty(); }, 120000));
+        QCOMPARE(test::Fixture::readFile(saveAs), bytes);
+        QCOMPARE(f.session()->path(), other);
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("other\n"));
+    }
+
     void quitSavesSynchronouslyWhileACopyRuns() {
         test::Fixture f;
         const QByteArray bytes = largeDocument(qsizetype{10} * 1024 * 1024);
@@ -194,7 +269,9 @@ private slots:
         QCOMPARE(QString::fromUtf8(test::Fixture::readFile(path)), f.editor()->document()->toPlainText());
         QVERIFY(!f.editor()->document()->isModified());
         QTest::qWait(200);
-        QCOMPARE(done.size(), 1);
+        // The pending copy was completed and written first (review O3: never dropped), then the
+        // synchronous save; the file holds the later state.
+        QCOMPARE(done.size(), 2);
         QCOMPARE(QString::fromUtf8(test::Fixture::readFile(path)), f.editor()->document()->toPlainText());
     }
 };

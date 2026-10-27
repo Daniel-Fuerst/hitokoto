@@ -221,6 +221,8 @@ void DocumentSession::finishInsert() {
 
 void DocumentSession::beginCopy(const QString& path) {
     cancelCopy();
+    copySetBacks_ = 0;
+    copySetBacks_ = 0;
     copy_.active = true;
     copy_.path = path;
     copy_.text.reserve(editor_->document()->characterCount());
@@ -293,6 +295,8 @@ void DocumentSession::onContentsChange(int position, int /*charsRemoved*/, int /
     copy_.copiedBlocks = slice->firstBlock;
     copy_.slices.erase(slice, copy_.slices.end());
     ++copy_.setBacks;
+    ++copySetBacks_;
+    ++copySetBacks_;
 }
 
 DocumentSession::Snapshot DocumentSession::takeSnapshot() {

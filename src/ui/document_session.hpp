@@ -39,6 +39,8 @@ public:
     [[nodiscard]] const FileFormat& format() const noexcept { return format_; }
     [[nodiscard]] bool isLoading() const noexcept { return loading_; }
     [[nodiscard]] bool isSaving() const noexcept { return savesInFlight_ > 0 || copy_.active; }
+    /// How often edits set the running or last copy back (instrumentation for tests).
+    [[nodiscard]] quint64 copySetBacks() const noexcept { return copySetBacks_; }
 
     /// Empty, untitled document.
     void newDocument();
@@ -120,6 +122,7 @@ private:
     QTimer insertTimer_;
     Copy copy_;
     QTimer copyTimer_;
+    quint64 copySetBacks_ = 0;
     bool loading_ = false;
     bool firstChunk_ = false;
     quint64 loadGeneration_ = 0;
