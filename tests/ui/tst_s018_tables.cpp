@@ -16,6 +16,7 @@
 #include <QTimer>
 #include <QToolButton>
 
+#include <cstdlib>
 #include <memory>
 
 using namespace hitokoto;
@@ -338,13 +339,13 @@ private slots:
         QTRY_VERIFY(f.editor()->hasFocus());
         QCOMPARE(f.editor()->textCursor().blockNumber(), 0);
 
-        f.placeCaret(5, 0);
+        f.placeCaret(6, 0);  // "below"; the blank line before it is hidden
         press(Qt::Key_Up);
         QTRY_VERIFY(inTable());
         QCOMPARE(view->currentIndex().row(), 2);
         press(Qt::Key_Down);
         QTRY_VERIFY(f.editor()->hasFocus());
-        QCOMPARE(f.editor()->textCursor().blockNumber(), 5);
+        QCOMPARE(f.editor()->textCursor().blockNumber(), 6);
         QCOMPARE(text(f), QString::fromUtf8(markdown));
     }
 
@@ -884,9 +885,10 @@ private slots:
         view = f.editor()->tableViewAt(1);
         QVERIFY(clickCell(view, 1, 1) != nullptr);
         press(Qt::Key_End);
-        press(Qt::Key_Right);  // from the end of the last cell to the line below
+        press(Qt::Key_Right);  // from the end of the last cell to the line after the hidden blank line
         QTRY_VERIFY(f.editor()->hasFocus());
-        QCOMPARE(f.editor()->textCursor().blockNumber(), 4);
+        QCOMPARE(f.editor()->textCursor().blockNumber(), 5);
+        QCOMPARE(f.editor()->textCursor().positionInBlock(), 0);
         QCOMPARE(text(f), QString::fromUtf8(markdown));
         QVERIFY(!f.editor()->document()->isModified());
     }
@@ -922,9 +924,9 @@ private slots:
 
         view = f.editor()->tableViewAt(1);
         QVERIFY(clickCell(view, 2, 0) != nullptr);
-        press(Qt::Key_Down);  // from the last row to the line below
+        press(Qt::Key_Down);  // from the last row to the line after the hidden blank line
         QTRY_VERIFY(f.editor()->hasFocus());
-        QCOMPARE(f.editor()->textCursor().blockNumber(), 5);
+        QCOMPARE(f.editor()->textCursor().blockNumber(), 6);
         QCOMPARE(text(f), markdown);
     }
 
@@ -1153,7 +1155,8 @@ private slots:
     // Armin's report (2026-10-27): Backspace at the start of the line below a table joined it to
     // the last row; the table then showed its Markdown lines and no key reached anything until a
     // click. As in the first version, the table stays a table and the caret goes to the end of
-    // the last cell, where typing goes on.
+    // the last cell, where typing goes on. Since the blank line below a table is hidden, the empty
+    // line after it is the one Backspace removes.
     void backspaceBelowATableJoinsTheLastRowAndStaysInTheTable() {
         constexpr auto markdown =
             "| a | b |\n"
@@ -1164,7 +1167,7 @@ private slots:
         QVERIFY(f.open(f.writeFile(QStringLiteral("backspace.md"), markdown)));
         f.settle();
         f.editor()->setFocus();
-        f.placeCaret(3, 0);
+        f.placeCaret(4, 0);  // the empty line after the hidden blank line: removed, as in any text
         press(Qt::Key_Backspace);
         f.settle();
         QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2 |\n"));
@@ -1280,10 +1283,11 @@ private slots:
             QVERIFY(f.open(f.writeFile(QStringLiteral("below.md"), markdown)));
             f.settle();
             f.editor()->setFocus();
-            f.placeCaret(3, 0);
+            f.placeCaret(3, 0);  // the hidden blank line, as an undo can put the caret there
+            QCOMPARE(f.editor()->textCursor().blockNumber(), 4);  // the caret goes to the line after it
             typeAsUser(QStringLiteral("x"));
             f.settle();
-            QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2 |\n\nx\nbelow\n"));
+            QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2 |\n\nxbelow\n"));
             QTableView* view = f.editor()->tableViewAt(0);
             QVERIFY2(view != nullptr, "the table shows its Markdown lines");
             QCOMPARE(view->model()->rowCount(), 2);
@@ -1307,6 +1311,77 @@ private slots:
             QVERIFY(view != nullptr);
             QCOMPARE(view->model()->rowCount(), 2);
         }
+    }
+
+    // The blank line below a table is syntax (user decision 2026-10-27): hidden, never the caret's
+    // place, and Backspace below the table goes into it without deleting text.
+    void theBlankLineBelowATableIsHidden() {
+        constexpr auto markdown =
+            "above\n"
+            "| A | B |\n"
+            "| --- | --- |\n"
+            "| 1 | 2 |\n"
+            "\n"
+            "below\n"
+            "\n"
+            "\n"
+            "last\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("hidden.md"), markdown)));
+        f.settle();
+        const auto* doc = f.editor()->document();
+        QTableView* view = f.editor()->tableViewAt(1);
+        QVERIFY(view != nullptr);
+        QVERIFY(!doc->findBlockByNumber(4).isVisible());
+        QVERIFY(doc->findBlockByNumber(6).isVisible());  // further blank lines stay
+        QVERIFY(doc->findBlockByNumber(7).isVisible());
+
+        // "below" follows the table at the add-row bar's distance, the end of the table's space.
+        const int tableEnd = view->parentWidget()->geometry().bottom() + 1;
+        const int belowTop = f.editor()->cursorRect(QTextCursor(doc->findBlockByNumber(5))).top();
+        QVERIFY2(std::abs(belowTop - tableEnd) <= 2, qPrintable(QStringLiteral("%1 %2").arg(belowTop).arg(tableEnd)));
+
+        // Down and Right go to "below"; Up and Left come back into the table.
+        QVERIFY(clickCell(view, 1, 1) != nullptr);
+        press(Qt::Key_Down);
+        QTRY_VERIFY(f.editor()->hasFocus());
+        QCOMPARE(f.editor()->textCursor().blockNumber(), 5);
+        press(Qt::Key_Up);
+        QTRY_VERIFY(focusedCell() != nullptr);
+        view = f.editor()->tableViewAt(1);
+        QCOMPARE(current(view), QStringLiteral("1,1"));
+        press(Qt::Key_End);
+        press(Qt::Key_Right);
+        QTRY_VERIFY(f.editor()->hasFocus());
+        QCOMPARE(f.editor()->textCursor().blockNumber(), 5);
+        QCOMPARE(f.editor()->textCursor().positionInBlock(), 0);
+        press(Qt::Key_Left);
+        QTRY_VERIFY(focusedCell() != nullptr);
+        QCOMPARE(current(f.editor()->tableViewAt(1)), QStringLiteral("1,1"));
+        QCOMPARE(caretInCell(), 1);
+
+        // Backspace at the start of "below" goes to the end of the last cell and deletes nothing.
+        f.editor()->setFocus();
+        f.placeCaret(5, 0);
+        press(Qt::Key_Backspace);
+        f.settle();
+        QVERIFY(focusedCell() != nullptr);
+        QCOMPARE(current(f.editor()->tableViewAt(1)), QStringLiteral("1,1"));
+        QCOMPARE(caretInCell(), 1);
+        QCOMPARE(text(f), QString::fromUtf8(markdown));
+        QVERIFY(!doc->isModified());
+
+        // The source view shows the blank line; back in the table view it is hidden again.
+        press(Qt::Key_M, Qt::ControlModifier | Qt::ShiftModifier);
+        f.settle();
+        QVERIFY(f.editor()->isTableSourceShown(1));
+        QVERIFY(doc->findBlockByNumber(4).isVisible());
+        f.editor()->setFocus();
+        press(Qt::Key_M, Qt::ControlModifier | Qt::ShiftModifier);
+        f.settle();
+        QVERIFY(!f.editor()->isTableSourceShown(1));
+        QVERIFY(!doc->findBlockByNumber(4).isVisible());
+        QCOMPARE(text(f), QString::fromUtf8(markdown));
     }
 
     // ADR 0002, decision 6 (S018, files from other editors): Obsidian writes text directly below a
