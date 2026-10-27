@@ -33,6 +33,14 @@ depend on it.
 - When I read a heading line with the caret elsewhere and on it
 - Then the text is read sensibly (markers either skipped or read as Markdown, but consistently)
 
+**Scenario: table cells (S018)**
+- Given a table shown as a table view, with the caret moving into it from the line above and below
+- When I move between cells, compose text with an input method in a cell and read the table with
+  a screen reader
+- Then the caret is only ever in a cell or on a visible line, the pre-edit appears in the cell and
+  the committed text lands there, and the screen reader reads the cells (Qt's table view) instead
+  of pipes
+
 ## Outcome
 
 **ADR 0003 – concealment technique**: keep the `QPlainTextEdit` adapter, or switch to the

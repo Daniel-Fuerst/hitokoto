@@ -1,49 +1,47 @@
-# ADR 0005: Interactive Markdown tables without raw syntax reveal
+# ADR 0005: Interactive Markdown tables
 
-- **Status:** Accepted
-- **Date:** 2026-10-26
+- **Status:** Accepted 2026-10-26; revised and accepted 2026-10-27 after the code review of S018
+  and ADR 0003
 - **Deciders:** project owner
 
 ## Context
 
-The brief (section 1) defines a hybrid live-preview editing model where the document is always plain
-Markdown text, rendered inline, with syntax markers generally revealed where the cursor is.
+The brief (section 1) defines a hybrid editor: the document is plain Markdown, rendered inline,
+with syntax shown where the caret is. For GitHub Flavored Markdown pipe tables, showing pipes and
+delimiter rows while editing makes the writer manage column counts and alignment rows by hand.
+Editors such as Obsidian show tables as a grid of editable cells instead.
 
-For GitHub Flavored Markdown (GFM) pipe tables, revealing raw pipe (`|`) and delimiter-row
-(`| --- |`) syntax when the cursor enters a table forces the user to manage pipe characters, column
-counts and separator rows by hand. In editors such as Obsidian (1.5+), tables are an intentional
-exception to raw-syntax reveal: the table stays rendered as a visual grid of editable cells while
-the user types directly inside the fields and adds rows or columns graphically, and the underlying
-Markdown text is updated automatically.
+The first implementation (2026-10-26) laid out each cell as its own `QTextLine` inside a
+`QPlainTextEdit` block and rebuilt navigation, deletion and hit testing on top. The code review
+found that this fights Qt's text layout (scroll loop O2, design O8), lets typed-over selections
+and paste break rows (O4, O5), changes the file while navigating (O6), hides text for good (O7)
+and deviates from GFM for pipes in code spans (O1). Cells also need line breaks (`<br>`), which
+we do not want to render ourselves. ADR 0003 gave the editor a layout in which a line can
+reserve space for an embedded widget.
 
 ## Decision
 
-1. **Table syntax is never revealed.** Pipe delimiters (`|`), surrounding cell-padding whitespace,
-   escaped-pipe backslashes (`\|`) and the delimiter row (`| --- | :---: | ---: |`) remain
-   concealed even when the caret or selection is inside the table.
-2. **One copy of the text (ADR 0002) still holds.** Table rows remain ordinary lines (`QTextBlock`s)
-   of GFM pipe-table Markdown inside the editor's `QTextDocument`. No separate table document model
-   is kept.
-3. **Cell-addressed layout and editing.**
-   - `core` parses table headers (with one-line lookahead to the delimiter row), delimiter rows
-     (recording per-column alignment: left, centre, right) and body rows into `TableCell` spans,
-     runs inline elements independently within each cell, and provides pure helpers to add/remove
-     rows, add/remove columns and normalise cell counts in Markdown text.
-   - `ui` measures natural column widths across each contiguous table block and caps total table
-     width to the available content display width (preserving narrow columns while wrapping wide
-     ones), lays out each cell into its own column box via `QTextLayout` so wrapped lines stay
-     within their column's horizontal bounds, paints the table panel, header background, alternating
-     row stripes, cell grid lines and hover-revealed graphical `+` / `−` controls (plus buttons to
-     add rows and columns, a per-body-row minus button in the left gutter to delete a row, and a
-     per-column minus button above each column header to delete a column, as well as context-menu
-     `Add Row` / `Delete Row` / `Add Column` / `Delete Column` actions), confines typing, deletion
-     (`Backspace`/`Delete`, which delete a body row when all of its cells are empty or a column when
-     all of its cells are empty, or via `Ctrl+Shift+Backspace` / `Ctrl+Alt+Backspace`), arrow
-     navigation and `Tab`/`Shift+Tab` to the table cells, and lets the user exit the table
-     intuitively (pressing `Enter` on an empty last row removes that empty row and moves below the
-     table; `Ctrl+Enter`, `Escape` or clicking below/above the table also moves the caret onto a
-     plain line outside the table).
-4. **Element theme tokens (ADR 0004).** Tables have a `[table]` section with tokens and fallbacks:
+1. **A table is an embedded Qt table view.** The header line of a table reserves the height of a
+   `QTableView` in `BlockLayout` (ADR 0003); the delimiter and body lines are hidden. The view is
+   placed over the reserved space and scrolls with the text. Views exist only for tables on or
+   near the screen.
+2. **The Markdown lines stay the only copy (ADR 0002).** A table model (`QAbstractTableModel`)
+   reads cells from the lines through `hitokoto_core` and writes a changed cell back into its
+   span of its line with `QTextCursor`, in one edit block, so undo stays in the document. Moving,
+   selecting and scrolling never write. Writing escapes `|` as `\|` and line breaks as `<br>`;
+   rows with fewer cells are padded only when a missing cell is written.
+3. **GFM rules, checked against cmark-gfm.** Every unescaped `|` separates cells (also inside code
+   spans); a line without a pipe continues the table; the table ends at a blank line or another
+   block start; excess cells are not part of the table; alignment holds for every column.
+4. **Qt draws and edits the cells.** A delegate draws each cell with a `QTextDocument` filled by
+   `setMarkdown` (GitHub dialect), after replacing `<br>` with `<br/>`: Qt 6.12 drops the rest of
+   the input after a `<br>` without slash. Wrapping, row heights and column widths come from the
+   view. The cell editor is a Qt text editor showing the cell's Markdown with real line breaks;
+   `Shift+Enter` inserts one.
+5. **Source view.** A shortcut and a context-menu entry switch one table between the view and its
+   Markdown lines (`BlockLayout` shows the lines and releases the reserved height). Rows with text
+   the view does not show are marked in the view.
+6. **Theme tokens** stay as decided on 2026-10-26:
 
 | Token | Type | Fallback |
 |---|---|---|
@@ -62,14 +60,15 @@ Markdown text is updated automatically.
 
 ## Consequences
 
-- Users edit table fields directly and add rows or columns graphically without touching `|` or
-  `| --- |` syntax.
-- Saving (S004) writes valid GFM pipe-table Markdown byte for byte; untouched tables are preserved
-  unchanged.
-- Undo and redo work natively through `QTextDocument`.
+- Caret, selection, input methods and accessibility inside cells come from Qt's table view and
+  text editor; S009 checks them in a table scenario.
+- The cell-line layout, `TableController` and `TablePainter` of the first implementation go;
+  `hitokoto_core` keeps parsing and the row and column helpers.
+- A selection in the editor that spans a table copies its Markdown lines.
+- Saving writes the lines as they are: untouched tables and untouched cells stay byte for byte.
 
 ## Reconsider if
 
-- Users need multi-line block constructs inside individual table cells (which GFM pipe tables do not
-  support).
-- Users ask for a dedicated "source mode" toggle to edit raw table Markdown directly.
+- Users need block content in cells (lists, code blocks), which GFM tables do not support.
+- Embedded views cost too much for documents with many large tables; then draw inactive tables
+  and create a view only for the table being edited.
