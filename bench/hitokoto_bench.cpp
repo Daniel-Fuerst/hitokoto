@@ -6,7 +6,8 @@
 //
 // Measures cold start (separate processes), opening 1 MB and 10 MB files, key-to-paint
 // latency (typing, Enter, moving across headings), opening and typing in large tables (S018) and
-// saving (longest UI stall and total, median of --runs saves). Compares against a baseline (regression gate for CI) and
+// saving (longest UI stall and total, median of --runs saves) and moving, entering and typing in a
+// 10 MB code block (S021). Compares against a baseline (regression gate for CI) and
 // reports the brief's budgets (section 4); hard budgets fail the run on any machine.
 #include "document_session.hpp"
 #include "editor_widget.hpp"
@@ -31,6 +32,7 @@
 #include <QTimer>
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <iterator>
 #include <map>
@@ -79,6 +81,21 @@ QByteArray tableDocument(int rows) {
         out += "| row " + QByteArray::number(i) + " | " + QByteArray::number(i * 7) + " | *note* with `code` |\n";
     }
     out += "\nText after the table.\n";
+    return out;
+}
+
+/// S021: a paragraph, one fenced code block of about `target` bytes, a paragraph. Line 2 is the
+/// opening fence, with a blank line above it; a blank line follows the closing fence.
+QByteArray codeBlockDocument(qsizetype target) {
+    QByteArray out = "Text before the block.\n\n```cpp\n";
+    out.reserve(target + 512);
+    int i = 0;
+    while (out.size() < target) {
+        ++i;
+        out += "    const int value" + QByteArray::number(i) + " = compute(" + QByteArray::number(i) +
+               "); // # not a heading, *not* emphasis\n";
+    }
+    out += "```\n\nText after the block.\n";
     return out;
 }
 
@@ -271,6 +288,50 @@ std::vector<double> measureTableTyping(ui::MainWindow& w, int keys) {
     return samples;
 }
 
+/// S021: key-to-paint of caret moves inside a large code block (Down, Up, End, Home, Right, Left).
+std::vector<double> measureCodeBlockCaret(ui::MainWindow& w, int keys) {
+    ui::EditorWidget* e = w.editor();
+    e->setTextCursor(QTextCursor(e->document()->findBlockByNumber(e->document()->blockCount() / 2)));
+    QCoreApplication::processEvents();
+    constexpr std::array kKeys = {Qt::Key_Down, Qt::Key_Down,  Qt::Key_Down, Qt::Key_Up,   Qt::Key_End,
+                                  Qt::Key_Home, Qt::Key_Right, Qt::Key_Left, Qt::Key_Down, Qt::Key_Up};
+    std::vector<double> samples;
+    for (int i = 0; i < keys; ++i) {
+        QElapsedTimer t;
+        t.start();
+        test::keyClick(e, kKeys.at(static_cast<std::size_t>(i) % kKeys.size()));
+        e->viewport()->repaint();
+        samples.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
+    }
+    return samples;
+}
+
+/// S021: key-to-paint of entering and leaving a large code block, from below onto the closing
+/// fence and from above onto the opening fence; each round also scrolls to the other end.
+std::vector<double> measureCodeBlockEnter(ui::MainWindow& w, int rounds) {
+    ui::EditorWidget* e = w.editor();
+    QTextDocument* doc = e->document();
+    const auto press = [&](Qt::Key key, std::vector<double>& out) {
+        QElapsedTimer t;
+        t.start();
+        test::keyClick(e, key);
+        e->viewport()->repaint();
+        out.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
+    };
+    std::vector<double> samples;
+    for (int i = 0; i < rounds; ++i) {
+        e->setTextCursor(QTextCursor(doc->findBlockByNumber(doc->blockCount() - 3)));  // blank line below
+        QCoreApplication::processEvents();
+        press(Qt::Key_Up, samples);                                // onto the closing fence
+        press(Qt::Key_Down, samples);                              // out again
+        e->setTextCursor(QTextCursor(doc->findBlockByNumber(1)));  // blank line above
+        QCoreApplication::processEvents();
+        press(Qt::Key_Down, samples);  // onto the opening fence
+        press(Qt::Key_Up, samples);    // out again
+    }
+    return samples;
+}
+
 struct SaveTiming {
     double uiBlockedMs = 0;  ///< longest stall of the UI thread while saving
     double totalMs = 0;      ///< until the file is on disk (saveFinished)
@@ -336,9 +397,19 @@ struct Budget {
 // starts (31.6 -> 127.2 ms on a Windows runner, the median unchanged). Medians, and p95/p99 of
 // the 200 typing samples, are compared; extremes are reported, and where the brief names an
 // absolute limit they have a hard budget below. The counts of samples over 16 ms are information.
-constexpr std::string_view kReportOnly[] = {
-    "save_10mb_total_ms",     "typing_small_max_ms",   "typing_10mb_max_ms",          "s018_table_typing_max_ms",
-    "typing_small_over_16ms", "typing_10mb_over_16ms", "s018_table_typing_over_16ms", "startup_p95_ms"};
+constexpr std::string_view kReportOnly[] = {"save_10mb_total_ms",
+                                            "typing_small_max_ms",
+                                            "typing_10mb_max_ms",
+                                            "s018_table_typing_max_ms",
+                                            "s021_codeblock_caret_max_ms",
+                                            "s021_codeblock_enter_max_ms",
+                                            "s021_codeblock_typing_max_ms",
+                                            "typing_small_over_16ms",
+                                            "typing_10mb_over_16ms",
+                                            "s018_table_typing_over_16ms",
+                                            "s021_codeblock_caret_over_16ms",
+                                            "s021_codeblock_typing_over_16ms",
+                                            "startup_p95_ms"};
 
 // Brief, section 4. Most budgets are meaningful on reference hardware only (S011) and fail the run
 // with --fail-on-budget; the hard ones hold on any machine, CI runners included (S017): a save
@@ -358,6 +429,11 @@ const Budget kBudgets[] = {
     {"s018_table_typing_p95_ms", 16, "key to screen <= 16 ms (200-row table)"},
     {"s018_table_typing_p99_ms", 16, "key to screen <= 16 ms, p99 (200-row table)"},
     {"s018_table_typing_max_ms", 50, "no key event above 50 ms, table (hard)", true},
+    {"s021_codeblock_caret_p95_ms", 16, "key to screen <= 16 ms (10 MB code block)"},
+    {"s021_codeblock_caret_max_ms", 50, "no caret move above 50 ms, code block (hard)", true},
+    {"s021_codeblock_enter_max_ms", 50, "entering a 10 MB code block <= 50 ms (hard)", true},
+    {"s021_codeblock_typing_p95_ms", 16, "key to screen <= 16 ms (10 MB code block)"},
+    {"s021_codeblock_typing_max_ms", 50, "no key event above 50 ms, code block (hard)", true},
     {"save_10mb_ui_blocked_ms", 16, "saving never stalls the UI (hard)", true},
     {"save_10mb_total_ms", 1000, "10 MB on disk within 1 s (hard)", true},
 };
@@ -389,6 +465,8 @@ int main(int argc, char* argv[]) {
     const QString tenMb = writeFile(dir, QStringLiteral("10mb.md"), largeDocument(qsizetype{10} * 1024 * 1024));
     const QString table200 = writeFile(dir, QStringLiteral("table200.md"), tableDocument(200));
     const QString table1000 = writeFile(dir, QStringLiteral("table1000.md"), tableDocument(1000));
+    const QString codeBlock10 =
+        writeFile(dir, QStringLiteral("codeblock10mb.md"), codeBlockDocument(qsizetype{10} * 1024 * 1024));
 
     std::map<std::string, double> r;
     const auto startup = stats(measureStartup(parser.value(appOpt), small, parser.value(runsOpt).toInt()));
@@ -441,6 +519,28 @@ int main(int argc, char* argv[]) {
     const auto save10 = measureSaves(w, dir.filePath(QStringLiteral("10mb-copy.md")), parser.value(runsOpt).toInt());
     r["save_10mb_ui_blocked_ms"] = save10.uiBlockedMs;
     r["save_10mb_total_ms"] = save10.totalMs;
+    w.editor()->document()->setModified(false);
+    w.session()->newDocument();
+
+    // S021: a 10 MB document that is one code block. Caret steps, entering and typing.
+    (void)measureOpen(w, codeBlock10);
+    const auto caretCode = stats(measureCodeBlockCaret(w, 200));
+    r["s021_codeblock_caret_median_ms"] = caretCode.median;
+    r["s021_codeblock_caret_p95_ms"] = caretCode.p95;
+    r["s021_codeblock_caret_p99_ms"] = caretCode.p99;
+    r["s021_codeblock_caret_max_ms"] = caretCode.max;
+    r["s021_codeblock_caret_over_16ms"] = caretCode.over16;
+    const auto enterSamples = measureCodeBlockEnter(w, 10);
+    printSamples("s021_codeblock_enter_ms", enterSamples);
+    const auto enterCode = stats(enterSamples);
+    r["s021_codeblock_enter_median_ms"] = enterCode.median;
+    r["s021_codeblock_enter_max_ms"] = enterCode.max;
+    const auto typingCode = stats(measureTyping(w, 200));
+    r["s021_codeblock_typing_median_ms"] = typingCode.median;
+    r["s021_codeblock_typing_p95_ms"] = typingCode.p95;
+    r["s021_codeblock_typing_p99_ms"] = typingCode.p99;
+    r["s021_codeblock_typing_max_ms"] = typingCode.max;
+    r["s021_codeblock_typing_over_16ms"] = typingCode.over16;
     w.editor()->document()->setModified(false);
 
     QJsonObject json;

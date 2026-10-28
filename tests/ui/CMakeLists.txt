@@ -24,6 +24,7 @@ foreach(t IN ITEMS
         tst_s005_theme
         tst_s007_large_files
         tst_s008_unsaved
+        tst_s009_concealment
         tst_s010_click
         tst_s013_inline_emphasis
         tst_s014_fenced_code_blocks
@@ -32,7 +33,8 @@ foreach(t IN ITEMS
         tst_s017_save_without_stall
         tst_s018_tables
         tst_s019_editor_surface
-        tst_s020_backslash_escapes)
+        tst_s020_backslash_escapes
+        tst_s021_code_block_fences)
     hitokoto_ui_test(${t})
 endforeach()
 

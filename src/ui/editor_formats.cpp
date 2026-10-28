@@ -56,6 +56,15 @@ EditorFormats::EditorFormats(const core::Theme& theme)
     }
 }
 
+QFont EditorFormats::badgeFont() const {
+    QFont font = baseFont_;
+    if (!codeBlock_.badgeFontFamily.empty()) {
+        font.setFamilies({QString::fromStdString(codeBlock_.badgeFontFamily)});
+    }
+    font.setPointSizeF(editorFontSize_ * codeBlock_.badgeFontScale);
+    return font;
+}
+
 double EditorFormats::textSize(int level) const {
     return level >= 1 && level <= 6 ? heading_[static_cast<std::size_t>(level)].fontPointSize() : editorFontSize_;
 }
@@ -126,10 +135,12 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
         // -Wmaybe-uninitialized for the optional, which breaks the Release build with -Werror (CI).
         const core::Role* role = baseRun != nullptr ? &baseRun->role : nullptr;
         const auto is = [role](core::Role r) { return role != nullptr && *role == r; };
+        if (render.codeBlock) {
+            applyCodeFont(format, codeBlockFamilies_, editorFontSize_ * codeBlock_.fontScale);
+        }
         if (is(core::Role::Marker)) {
             format.setForeground(marker_);
         } else if (is(core::Role::CodeBlock)) {
-            applyCodeFont(format, codeBlockFamilies_, editorFontSize_ * codeBlock_.fontScale);
             format.setForeground(toQColor(render.fenceLine ? codeBlock_.marker : codeBlock_.text));
         } else if (is(core::Role::InlineCode) || is(core::Role::InlineCodeMarker)) {
             // The background is a box painted by EditorWidget (radius, border, padding).
@@ -164,7 +175,7 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
             }
         }
         if (hidden != nullptr) {
-            if (!is(core::Role::CodeBlock)) {
+            if (!is(core::Role::CodeBlock) && !render.codeBlock) {
                 format = lineFormat;
             }
             if (isInlineCodeDelimiter(render, start)) {

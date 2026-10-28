@@ -117,10 +117,14 @@ follows the general tokens above.
 | `code-block.border` | color | Border of the code block panel | `colors.border` |
 | `code-block.border-width` | number (px) | Border width of the panel, 0 to 8 | 0 |
 | `code-block.radius` | number (px) | Corner radius of the panel, 0 to 32 | `layout.radius` |
-| `code-block.padding` | number (px) | Space between the panel edge and the code, 0 to 64 | `layout.spacing` |
+| `code-block.padding` | number (px) | Space between the panel edge and the code on the left and right, 0 to 64; above and below, the fence lines give the space | `layout.spacing` |
+| `code-block.margin` | number (px) | Space above and below the panel, 0 to 64 | 3 |
 | `code-block.font-family` | string | Font family of the code; "" = system fixed-width font | "" |
 | `code-block.font-scale` | number | Font size relative to the editor font, 0.5 to 2 | 1 |
 | `code-block.marker` | color | Fence lines (fence characters and info string) when revealed | `colors.marker` |
+| `code-block.badge-text` | color | Language badge on the opening fence while it is concealed | `code-block.marker` |
+| `code-block.badge-font-family` | string | Font family of the language badge; "" = editor font | "" |
+| `code-block.badge-font-scale` | number | Size of the language badge relative to the editor font, 0.5 to 2 | 1 |
 | `inline-code.background` | color | Background of inline code | `code-block.background` |
 | `inline-code.text` | color | Inline code text | `code-block.text` |
 | `inline-code.border` | color | Border of the inline code background | `code-block.border` |
@@ -212,5 +216,9 @@ a test (`S005_NoStylingLiteralsInUi`) enforces that.
 
 Code blocks are drawn as one panel behind their lines, inline code as a box behind the span;
 both are painted by the editor, because character formats can neither round corners nor pad.
+The panel spans the fence lines too; while the caret is outside the block they are concealed but
+keep their height, and the opening fence shows the language, the first word of its info string,
+at the right (S021). The margin above and below the panel belongs to the first and last line, so
+the text below moves by it, as margins do in CSS.
 Inline code padding is reserved after the concealed backticks, so the following text moves by
 it; on a revealed line the box covers the backticks instead.

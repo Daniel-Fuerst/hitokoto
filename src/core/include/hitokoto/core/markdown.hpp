@@ -113,7 +113,7 @@ struct BlockState {
 struct LineRender {
     std::uint8_t headingLevel = 0;  ///< 1..6 if the whole line is a heading, else 0
     bool codeBlock = false;         ///< line belongs to a code block (the UI paints a panel)
-    bool fenceLine = false;         ///< opening or closing line of a code block (no panel)
+    bool fenceLine = false;         ///< opening or closing line of a code block (inside the panel, S021)
     bool table = false;             ///< line belongs to a Markdown table
     bool tableHeader = false;       ///< header row of a table
     bool tableDelimiter = false;    ///< delimiter row (| --- | --- |) of a table
@@ -123,6 +123,7 @@ struct LineRender {
     std::vector<InlineStyleRun> inlineStyles;
     std::vector<HiddenRange> hidden;
     std::vector<Decoration> decorations;
+    std::u16string codeLanguage;  ///< opening fence: language of the info string (S021), else empty
     [[nodiscard]] bool empty() const noexcept {
         return headingLevel == 0 && !codeBlock && !fenceLine && !table && runs.empty() && inlineStyles.empty() &&
                hidden.empty() && decorations.empty();

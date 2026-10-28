@@ -33,6 +33,10 @@ struct CodeTokens {
     std::optional<Color> background, text, border, marker;
     std::optional<double> borderWidth, radius, padding, fontScale;
     std::optional<std::string> fontFamily;
+    // `[code-block]` only (S021): space above and below the panel, the language badge.
+    std::optional<double> margin, badgeFontScale;
+    std::optional<Color> badgeText;
+    std::optional<std::string> badgeFontFamily;
     friend bool operator==(const CodeTokens&, const CodeTokens&) = default;
 };
 
@@ -125,6 +129,11 @@ struct CodeStyle {
     double padding = 0;
     double fontScale = 1;    ///< relative to the surrounding text
     std::string fontFamily;  ///< empty = system fixed-width font
+    // Code block only (S021).
+    double margin = 0;            ///< space above and below the panel
+    Color badgeText;              ///< language badge colour
+    std::string badgeFontFamily;  ///< empty = editor font
+    double badgeFontScale = 1;    ///< relative to the editor font
     friend bool operator==(const CodeStyle&, const CodeStyle&) = default;
 };
 

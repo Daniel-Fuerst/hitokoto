@@ -44,6 +44,8 @@ public:
     [[nodiscard]] quint64 editCount() const noexcept { return editCount_; }
     /// First and last block number on screen.
     [[nodiscard]] std::pair<int, int> visibleBlockRange() const;
+    /// The language badge painted on `block` (an opening fence while concealed), else empty (S021).
+    [[nodiscard]] QString codeBlockBadge(const QTextBlock& block);
 
 signals:
     void painted();

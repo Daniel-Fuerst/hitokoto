@@ -35,7 +35,10 @@ from single re-runs of their jobs); Linux since 2026-10-28 from the run on `e5ae
 reports is read by nobody. `windows.json` and `macos.json` keep values of the earlier
 measurement and need new ones from the first run after the jobs come back. Until then the hard
 budgets (saving, key events) are not checked on Windows and macOS either, nor the code that only
-runs there (`ReplaceFileW`, `F_FULLFSYNC`). CI runners differ from the development machine, so
+runs there (`ReplaceFileW`, `F_FULLFSYNC`). The `s021_codeblock_*` values (moving,
+entering and typing in a 10 MB code block, 2026-10-28) are in no baseline yet; until the next
+update from a CI run they are only checked against their hard budgets (50 ms per key event) and
+the p95 budgets with `--fail-on-budget`. CI runners differ from the development machine, so
 baselines must come from CI itself. To create or update them:
 
 1. Open a successful CI run (on `main` or on a pull request; both use the same runners), download

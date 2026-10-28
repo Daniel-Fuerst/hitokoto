@@ -1,6 +1,9 @@
 # S014 — Fenced Markdown code blocks
 
 - **Status:** Done (accepted by the user on 2026-10-27) · **Order:** 15 · **Depends on:** S013
+- **Changed by:** [S021](021-code-block-fences-in-panel.md) (fence lines inside the panel, revealed
+  from anywhere in the block, language badge). The scenarios below are the ones accepted on
+  2026-10-27; where S021 differs, S021 applies.
 
 ## Story
 

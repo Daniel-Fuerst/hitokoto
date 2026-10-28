@@ -308,27 +308,60 @@ void EditorWidget::paintCodeBlockPanels() {
     const QPointF offset = contentOffset();
     QRectF panel;
     bool inPanel = false;
+    struct Badge {
+        QRectF rect;
+        QString text;
+    };
+    std::vector<Badge> badges;
+
+    // The panel spans its lines from the opening to the closing fence; the margin above and below
+    // is part of the first and last line's geometry (BlockLayout, S021), so it stays outside.
     for (QTextBlock b = document()->findBlockByNumber(first); b.isValid() && b.blockNumber() <= last; b = b.next()) {
         const auto render = styler_->renderFor(b);
-        const QRectF line = blockBoundingGeometry(b).translated(offset);
-        if (render.codeBlock && !render.fenceLine) {
+        const QRectF rect = blockBoundingGeometry(b).translated(offset);
+        if (render.codeBlock) {
+            const qreal top = rect.top() + layout_->spaceAbove(b);
+            const qreal bottom = rect.bottom() - layout_->spaceBelow(b);
             if (!inPanel) {
-                panel = {outer, line.top(), width, line.height()};
+                panel = {outer, top, width, bottom - top};
                 inPanel = true;
             } else {
-                panel.setBottom(line.bottom());
+                panel.setBottom(bottom);
+            }
+            if (const QString badge = codeBlockBadge(b); !badge.isEmpty()) {
+                const QTextLine line = b.layout()->lineAt(0);
+                badges.push_back({QRectF(outer, rect.top() + line.y(), width, line.height()), badge});
             }
             continue;
         }
         if (inPanel) {
-            drawBox(painter, panel.adjusted(-padding, -padding, padding, padding), block);
+            drawBox(painter, panel.adjusted(-padding, 0, padding, 0), block);
             inPanel = false;
         }
-        paintInlineCodeBoxes(painter, b, render, line.topLeft(), inlineCode);
+        paintInlineCodeBoxes(painter, b, render, rect.topLeft(), inlineCode);
     }
     if (inPanel) {
-        drawBox(painter, panel.adjusted(-padding, -padding, padding, padding), block);
+        drawBox(painter, panel.adjusted(-padding, 0, padding, 0), block);
     }
+
+    if (!badges.empty()) {
+        painter.setFont(styler_->formats().badgeFont());
+        painter.setPen(toQColor(block.badgeText));
+        for (const auto& badge : badges) {
+            painter.drawText(badge.rect, Qt::AlignRight | Qt::AlignVCenter, badge.text);
+        }
+    }
+}
+
+QString EditorWidget::codeBlockBadge(const QTextBlock& block) {
+    // The language comes from core, which recognises the fences (review O7).
+    const auto render = styler_->renderFor(block);
+    if (render.codeLanguage.empty() || styler_->isRevealed(block.blockNumber())) {
+        return {};
+    }
+    QString language = toQString(render.codeLanguage);
+    language[0] = language[0].toUpper();
+    return language;
 }
 
 void EditorWidget::paintInlineCodeBoxes(QPainter& painter, const QTextBlock& block, const core::LineRender& render,
