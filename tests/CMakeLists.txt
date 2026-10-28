@@ -10,6 +10,7 @@ add_executable(hitokoto_core_tests
     core/test_s015_inline_code.cpp
     core/test_s018_tables.cpp
     core/test_s019_height_index.cpp
+    core/test_s020_backslash_escapes.cpp
     core/test_s004_save.cpp
     core/test_s005_theme.cpp
     core/test_s007_large_files.cpp

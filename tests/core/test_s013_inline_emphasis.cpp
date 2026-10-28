@@ -171,9 +171,13 @@ TEST(S013_InlineEmphasis, PropertyRangesStayInsideLineAndDoNotOverlapHiddenMarke
 
 TEST(S013_InlineEmphasis, UnmatchedEmptyWhitespaceAndEscapedDelimitersStayLiteral) {
     for (const auto line : {u"x *open", u"x **open", u"x open~~", u"x ****", u"x * *", u"x ** **", u"x * spaced*",
-                            u"x *spaced *", u"x \\*escaped\\*", u"x a_b_c"}) {
+                            u"x *spaced *", u"x a_b_c"}) {
         EXPECT_TRUE(show(line).empty()) << "unexpected emphasis in input";
     }
+    // S020: an escaped delimiter yields no emphasis; the backslashes are concealed by S020.
+    const auto escaped = show(u"x \\*escaped\\*");
+    EXPECT_TRUE(escaped.inlineStyles.empty());
+    EXPECT_EQ(escaped.hidden.size(), 2u);
 }
 
 // Theming baseline (ADR 0004): revealed delimiters carry their own role, so emphasis.marker

@@ -49,4 +49,5 @@ TEST(S007_LargeFiles, InlineElementsRunOnlyWhenTheirCharactersOccur) {
 TEST(S007_LargeFiles, BuiltinInlineElementsDeclareTheirTriggers) {
     EXPECT_EQ(makeInlineCodeElement()->triggerCharacters(), u"`");
     EXPECT_EQ(makeEmphasisElement()->triggerCharacters(), u"*_~");
+    EXPECT_EQ(makeEscapeElement()->triggerCharacters(), u"\\");
 }

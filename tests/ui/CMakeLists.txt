@@ -36,6 +36,7 @@ foreach(t IN ITEMS
         tst_s016_app_icon
         tst_s017_save_without_stall
         tst_s018_tables
-        tst_s019_editor_surface)
+        tst_s019_editor_surface
+        tst_s020_backslash_escapes)
     hitokoto_ui_test(${t})
 endforeach()

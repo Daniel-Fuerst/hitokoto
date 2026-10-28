@@ -31,6 +31,7 @@ story ID (see "Conventions").
 | 18 | [S017](017-save-without-stall.md) | Saving never stalls the UI (follow-up of S007) | S004, S007 | M | Done |
 | 19 | [S019](019-editor-surface.md) | Editor surface with its own document layout (ADR 0003) | S017 | L | Done |
 | 20 | [S018](018-tables.md) | Interactive Markdown pipe tables | S015, S019 | L | Done |
+| 21 | [S020](020-backslash-escapes.md) | Backslash escapes for ASCII punctuation | S013, S015 | S | In review |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 

@@ -40,6 +40,7 @@ EditorFormats::EditorFormats(const core::Theme& theme)
       inlineCode_(core::inlineCodeStyle(theme)),
       emphasis_(core::emphasisStyle(theme)),
       table_(core::tableStyle(theme)),
+      escape_(core::escapeStyle(theme)),
       codeBlockFamilies_(codeFamilies(codeBlock_.fontFamily)),
       inlineCodeFamilies_(codeFamilies(inlineCode_.fontFamily)) {
     baseFont_ = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
@@ -136,6 +137,8 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
             format.setForeground(toQColor(is(core::Role::InlineCode) ? inlineCode_.text : inlineCode_.marker));
         } else if (is(core::Role::EmphasisMarker)) {
             format.setForeground(toQColor(emphasis_.marker));
+        } else if (is(core::Role::EscapeMarker)) {
+            format.setForeground(toQColor(escape_.marker));
         }
         if (inlineRun != nullptr && !is(core::Role::InlineCode)) {
             const auto styles = inlineRun->style;
@@ -156,7 +159,7 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
                 : core::hasStyle(styles, core::InlineStyle::Italic) && emphasis_.italicText ? emphasis_.italicText
                 : core::hasStyle(styles, core::InlineStyle::Strikethrough) ? emphasis_.strikethroughText
                                                                            : std::nullopt;
-            if (color) {
+            if (color && !is(core::Role::EscapeMarker) && !is(core::Role::Marker)) {
                 format.setForeground(toQColor(*color));
             }
         }
