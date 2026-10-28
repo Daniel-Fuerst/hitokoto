@@ -73,7 +73,7 @@ public:
             return;
         }
         if (parsed.delimiter && !context.revealed) {
-            out.hidden.push_back({whole, HideMode::Collapse});
+            out.hidden.push_back({whole, HideMode::KeepSpace});
         } else {
             out.runs.push_back({whole, Role::CodeBlock, 0});
         }

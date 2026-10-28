@@ -210,7 +210,52 @@ void BlockStyler::styleVisible() {
     }
 }
 
+core::LineRange BlockStyler::expandCodeBlocks(core::LineRange range) {
+    if (range.empty() || document_->isEmpty()) {
+        return range;
+    }
+    int first = static_cast<int>(range.first);
+    int last = static_cast<int>(range.last);
+
+    QTextBlock bFirst = document_->findBlockByNumber(first);
+    if (bFirst.isValid()) {
+        const auto renderFirst = renderFor(bFirst);
+        if (renderFirst.codeBlock) {
+            if (!(renderFirst.fenceLine && !blockStateBefore(bFirst).active())) {
+                for (QTextBlock prev = bFirst.previous(); prev.isValid(); prev = prev.previous()) {
+                    if (!blockStateBefore(prev).active()) {
+                        first = prev.blockNumber();
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    QTextBlock bLast = document_->findBlockByNumber(last);
+    if (bLast.isValid()) {
+        const auto renderLast = renderFor(bLast);
+        if (renderLast.codeBlock) {
+            if (!(renderLast.fenceLine && blockStateBefore(bLast).active())) {
+                for (QTextBlock next = bLast.next(); next.isValid(); next = next.next()) {
+                    const auto renderNext = renderFor(next);
+                    if (!renderNext.codeBlock) {
+                        break;
+                    }
+                    last = next.blockNumber();
+                    if (renderNext.fenceLine) {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    return {first, last};
+}
+
 void BlockStyler::setRevealed(core::LineRange range) {
+    range = expandCodeBlocks(range);
     if (range == revealed_) {
         return;
     }

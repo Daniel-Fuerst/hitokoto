@@ -308,26 +308,69 @@ void EditorWidget::paintCodeBlockPanels() {
     const QPointF offset = contentOffset();
     QRectF panel;
     bool inPanel = false;
+    struct PendingBadge {
+        QRectF rect;
+        QString text;
+    };
+    std::vector<PendingBadge> badges;
+
     for (QTextBlock b = document()->findBlockByNumber(first); b.isValid() && b.blockNumber() <= last; b = b.next()) {
         const auto render = styler_->renderFor(b);
         const QRectF line = blockBoundingGeometry(b).translated(offset);
-        if (render.codeBlock && !render.fenceLine) {
+        QTextLayout* layout = b.layout();
+        if (layout != nullptr) {
+            const qreal targetY = render.codeBlock ? 3.0 : 0.0;
+            qreal curY = targetY;
+            for (int i = 0; i < layout->lineCount(); ++i) {
+                QTextLine l = layout->lineAt(i);
+                l.setPosition(QPointF(l.x(), curY));
+                curY += l.height();
+            }
+        }
+        if (render.codeBlock) {
             if (!inPanel) {
                 panel = {outer, line.top(), width, line.height()};
                 inPanel = true;
             } else {
                 panel.setBottom(line.bottom());
             }
+            if (render.fenceLine && !styler_->isRevealed(b.blockNumber()) && !styler_->blockStateBefore(b).active()) {
+                const QString text = b.text();
+                int idx = 0;
+                while (idx < text.size() && (text[idx] == QLatin1Char(' ') || text[idx] == QLatin1Char('\t'))) {
+                    ++idx;
+                }
+                if (idx < text.size() && (text[idx] == QLatin1Char('`') || text[idx] == QLatin1Char('~'))) {
+                    const QChar fenceChar = text[idx];
+                    while (idx < text.size() && text[idx] == fenceChar) {
+                        ++idx;
+                    }
+                    QString info = text.mid(idx).trimmed();
+                    if (!info.isEmpty()) {
+                        info[0] = info[0].toUpper();
+                        badges.push_back({line, info});
+                    }
+                }
+            }
             continue;
         }
         if (inPanel) {
-            drawBox(painter, panel.adjusted(-padding, -padding, padding, padding), block);
+            drawBox(painter, panel.adjusted(-padding, 3, padding, 3), block);
             inPanel = false;
         }
         paintInlineCodeBoxes(painter, b, render, line.topLeft(), inlineCode);
     }
     if (inPanel) {
-        drawBox(painter, panel.adjusted(-padding, -padding, padding, padding), block);
+        drawBox(painter, panel.adjusted(-padding, 3, padding, 3), block);
+    }
+
+    if (!badges.empty()) {
+        painter.setFont(styler_->formats().baseFont());
+        painter.setPen(toQColor(block.marker));
+        for (const auto& badge : badges) {
+            const QRectF badgeRect(outer, badge.rect.top() + 3, width, badge.rect.height());
+            painter.drawText(badgeRect, Qt::AlignRight | Qt::AlignVCenter, badge.text);
+        }
     }
 }
 
