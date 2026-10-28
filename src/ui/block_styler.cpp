@@ -156,6 +156,7 @@ void BlockStyler::styleBlock(const QTextBlock& block) {
     const auto previousState = cachedBlockState(block);
     const bool blockStateChanged = previousState && *previousState != render.blockState;
     cacheBlockState(mutableBlock, render.blockState);
+    applyCodeBlockMargin(block, render);
     const auto ranges = formats_.ranges(render);
     // Skip the relayout if nothing was and nothing is formatted (most body lines).
     const bool changed = !(ranges.isEmpty() && layout->formats().isEmpty());
@@ -179,6 +180,24 @@ void BlockStyler::styleBlock(const QTextBlock& block) {
     layout->setFormats(ranges);
     document_->markContentsDirty(block.position(), block.length());
     busy_ = false;
+}
+
+void BlockStyler::applyCodeBlockMargin(const QTextBlock& block, const core::LineRender& render) {
+    // S021: the panel's margin is part of the geometry of its first and last line (ADR 0003),
+    // never applied while painting (review O3).
+    auto* layout = qobject_cast<BlockLayout*>(document_->documentLayout());
+    if (layout == nullptr) {
+        return;
+    }
+    qreal above = 0;
+    qreal below = 0;
+    if (render.codeBlock) {
+        const qreal margin = formats_.codeBlock().margin;
+        const bool inside = blockStateBefore(block).active();
+        above = render.fenceLine && !inside ? margin : 0;
+        below = (render.fenceLine && inside) || !block.next().isValid() ? margin : 0;
+    }
+    layout->setBlockSpacing(block, above, below);
 }
 
 void BlockStyler::styleRange(int first, int last) {

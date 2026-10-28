@@ -233,10 +233,14 @@ const Token kTokens[] = {
     {{"code-block", "border", "color", "Border of the code block panel", "colors.border"}, &applyOptColor<&Theme::codeBlock, &CodeTokens::border>},
     {{"code-block", "border-width", "number (px)", "Border width of the panel, 0 to 8", "0"}, &applyOptNumber<&Theme::codeBlock, &CodeTokens::borderWidth, 0, 80>},
     {{"code-block", "radius", "number (px)", "Corner radius of the panel, 0 to 32", "layout.radius"}, &applyOptNumber<&Theme::codeBlock, &CodeTokens::radius, 0, 320>},
-    {{"code-block", "padding", "number (px)", "Space between the panel edge and the code, 0 to 64", "layout.spacing"}, &applyOptNumber<&Theme::codeBlock, &CodeTokens::padding, 0, 640>},
+    {{"code-block", "padding", "number (px)", "Space between the panel edge and the code on the left and right, 0 to 64; above and below, the fence lines give the space", "layout.spacing"}, &applyOptNumber<&Theme::codeBlock, &CodeTokens::padding, 0, 640>},
+    {{"code-block", "margin", "number (px)", "Space above and below the panel, 0 to 64", "3"}, &applyOptNumber<&Theme::codeBlock, &CodeTokens::margin, 0, 640>},
     {{"code-block", "font-family", "string", "Font family of the code; \"\" = system fixed-width font", "\"\""}, &applyOptString<&Theme::codeBlock, &CodeTokens::fontFamily>},
     {{"code-block", "font-scale", "number", "Font size relative to the editor font, 0.5 to 2", "1"}, &applyOptNumber<&Theme::codeBlock, &CodeTokens::fontScale, 5, 20>},
     {{"code-block", "marker", "color", "Fence lines (fence characters and info string) when revealed", "colors.marker"}, &applyOptColor<&Theme::codeBlock, &CodeTokens::marker>},
+    {{"code-block", "badge-text", "color", "Language badge on the opening fence while it is concealed", "code-block.marker"}, &applyOptColor<&Theme::codeBlock, &CodeTokens::badgeText>},
+    {{"code-block", "badge-font-family", "string", "Font family of the language badge; \"\" = editor font", "\"\""}, &applyOptString<&Theme::codeBlock, &CodeTokens::badgeFontFamily>},
+    {{"code-block", "badge-font-scale", "number", "Size of the language badge relative to the editor font, 0.5 to 2", "1"}, &applyOptNumber<&Theme::codeBlock, &CodeTokens::badgeFontScale, 5, 20>},
     {{"inline-code", "background", "color", "Background of inline code", "code-block.background"}, &applyOptColor<&Theme::inlineCode, &CodeTokens::background>},
     {{"inline-code", "text", "color", "Inline code text", "code-block.text"}, &applyOptColor<&Theme::inlineCode, &CodeTokens::text>},
     {{"inline-code", "border", "color", "Border of the inline code background", "code-block.border"}, &applyOptColor<&Theme::inlineCode, &CodeTokens::border>},
@@ -644,20 +648,21 @@ ThemeParseResult parseTheme(std::string_view source, const Theme& base, bool req
 
 CodeStyle codeBlockStyle(const Theme& t) {
     const CodeTokens& c = t.codeBlock;
+    const Color marker = c.marker.value_or(t.marker);
     return {
         .background = c.background.value_or(t.surface),
         .text = c.text.value_or(t.text),
         .border = c.border.value_or(t.border),
-        .marker = c.marker.value_or(t.marker),
+        .marker = marker,
         .borderWidth = c.borderWidth.value_or(0),
         .radius = c.radius.value_or(t.radius),
         .padding = c.padding.value_or(t.spacing),
         .fontScale = c.fontScale.value_or(1),
         .fontFamily = c.fontFamily.value_or(""),
-        .margin = 0,
-        .badgeText = {},
-        .badgeFontFamily = "",
-        .badgeFontScale = 1,
+        .margin = c.margin.value_or(3),
+        .badgeText = c.badgeText.value_or(marker),
+        .badgeFontFamily = c.badgeFontFamily.value_or(""),
+        .badgeFontScale = c.badgeFontScale.value_or(1),
     };
 }
 

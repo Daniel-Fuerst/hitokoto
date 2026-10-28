@@ -66,6 +66,46 @@ void BlockLayout::setHidden(const QTextBlock& block, bool hidden) {
     emit update();
 }
 
+void BlockLayout::setBlockSpacing(const QTextBlock& block, qreal above, qreal below) {
+    if (!block.isValid() ||
+        (std::abs(spaceAbove(block) - above) < 1e-6 && std::abs(spaceBelow(block) - below) < 1e-6)) {
+        return;
+    }
+    auto* data = dynamic_cast<BlockData*>(block.userData());
+    if (data == nullptr) {
+        data = new BlockData;
+        const_cast<QTextBlock&>(block).setUserData(data);
+    }
+    data->spaceAbove = above;
+    data->spaceBelow = below;
+    if (data->empty()) {
+        const_cast<QTextBlock&>(block).setUserData(nullptr);  // deletes it
+    }
+    if (block.layout()->lineCount() > 0 && reservedHeight(block) <= 0) {
+        layoutBlock(block);  // the lines move down by the space above
+    }
+    if (!inSync()) {
+        deferred_.push_back(block);
+        return;
+    }
+    setHeight(block.blockNumber(), heightOf(block), true);
+    if (batch_ > 0) {
+        batchNeedsRepaint_ = true;
+    } else {
+        emit update();
+    }
+}
+
+qreal BlockLayout::spaceAbove(const QTextBlock& block) const {
+    const BlockData* data = dataOf(block);
+    return data != nullptr ? data->spaceAbove : 0.0;
+}
+
+qreal BlockLayout::spaceBelow(const QTextBlock& block) const {
+    const BlockData* data = dataOf(block);
+    return data != nullptr ? data->spaceBelow : 0.0;
+}
+
 BlockLayout::Batch::Batch(BlockLayout* layout) : layout_(layout) {
     if (layout_ != nullptr) {
         ++layout_->batch_;
@@ -119,7 +159,7 @@ qreal BlockLayout::estimatedHeight(const QTextBlock& block) const {
     }
     const qreal textWidth = averageCharWidth_ * block.length();
     const qreal lines = std::max<qreal>(1.0, std::ceil(textWidth / availableWidth()));
-    return lines * lineSpacing_;
+    return lines * lineSpacing_ + spaceAbove(block) + spaceBelow(block);
 }
 
 qreal BlockLayout::layoutBlock(const QTextBlock& block) const {
@@ -128,7 +168,7 @@ qreal BlockLayout::layoutBlock(const QTextBlock& block) const {
     layout->beginLayout();
     const qreal width = availableWidth();
     const qreal left = margin();
-    qreal height = 0;
+    qreal height = spaceAbove(block);
     while (true) {
         QTextLine line = layout->createLine();
         if (!line.isValid()) {
@@ -141,7 +181,7 @@ qreal BlockLayout::layoutBlock(const QTextBlock& block) const {
     }
     layout->endLayout();
     layout->setPosition(QPointF(0, 0));
-    return height;
+    return height + spaceBelow(block);
 }
 
 qreal BlockLayout::heightOf(const QTextBlock& block) const {
@@ -155,13 +195,14 @@ qreal BlockLayout::heightOf(const QTextBlock& block) const {
     if (layout->lineCount() == 0) {
         return estimatedHeight(block);
     }
-    // Lines may sit side by side (table cells, S018); the block ends below the lowest one.
+    // Lines may sit side by side (table cells, S018); the block ends below the lowest one, plus the
+    // space below it (S021).
     qreal bottom = 0;
     for (int i = 0; i < layout->lineCount(); ++i) {
         const QTextLine line = layout->lineAt(i);
         bottom = std::max(bottom, line.y() + line.height());
     }
-    return bottom;
+    return bottom + spaceBelow(block);
 }
 
 bool BlockLayout::inSync() const {

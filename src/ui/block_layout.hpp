@@ -29,6 +29,12 @@ public:
     /// Hides `block` (height 0, the caret skips it) or shows it again.
     void setHidden(const QTextBlock& block, bool hidden);
 
+    /// Space above the first and below the last line of `block`, part of its height (the margin
+    /// of a code block panel, S021). The lines start `above` pixels down.
+    void setBlockSpacing(const QTextBlock& block, qreal above, qreal below);
+    [[nodiscard]] qreal spaceAbove(const QTextBlock& block) const;
+    [[nodiscard]] qreal spaceBelow(const QTextBlock& block) const;
+
     /// The visible block at document y, or an invalid block below the last one.
     [[nodiscard]] QTextBlock blockAt(qreal y) const;
     /// Lays out `block` now unless it already has lines.

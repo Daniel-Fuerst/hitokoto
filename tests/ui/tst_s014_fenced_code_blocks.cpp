@@ -236,7 +236,8 @@ private slots:
     }
 
     // Per-block metadata exists only where a block state has to be kept: lines that leave a code
-    // block open. Plain documents carry none, however long (memory footprint, brief section 4).
+    // block open, and since S021 the closing fence (the panel margin below it). Plain documents
+    // carry none, however long (memory footprint, brief section 4).
     void blockDataOnlyOnLinesThatLeaveACodeBlockOpen() {
         test::Fixture f;
         QByteArray plain;
@@ -251,13 +252,13 @@ private slots:
 
         QVERIFY(f.open(f.writeFile(QStringLiteral("code.md"), "plain\n# h\n- b\n```\ncode\n```\nafter\n")));
         f.settle();
-        QCOMPARE(test::blocksWithUserData(f.editor()->document()), (QList<int>{3, 4}));
+        QCOMPARE(test::blocksWithUserData(f.editor()->document()), (QList<int>{3, 4, 5}));
 
         // Splitting a code line keeps both halves inside the block.
         f.placeCaret(4, 2);
         test::keyClick(f.editor(), Qt::Key_Return);
         f.settle();
-        QCOMPARE(test::blocksWithUserData(f.editor()->document()), (QList<int>{3, 4, 5}));
+        QCOMPARE(test::blocksWithUserData(f.editor()->document()), (QList<int>{3, 4, 5, 6}));
         QCOMPARE(f.editor()->toPlainText(), QStringLiteral("plain\n# h\n- b\n```\nco\nde\n```\nafter\n"));
     }
 

@@ -57,7 +57,12 @@ EditorFormats::EditorFormats(const core::Theme& theme)
 }
 
 QFont EditorFormats::badgeFont() const {
-    return baseFont_;
+    QFont font = baseFont_;
+    if (!codeBlock_.badgeFontFamily.empty()) {
+        font.setFamilies({QString::fromStdString(codeBlock_.badgeFontFamily)});
+    }
+    font.setPointSizeF(editorFontSize_ * codeBlock_.badgeFontScale);
+    return font;
 }
 
 double EditorFormats::textSize(int level) const {
