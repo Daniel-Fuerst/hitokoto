@@ -39,3 +39,14 @@ foreach(t IN ITEMS
         tst_s019_editor_surface)
     hitokoto_ui_test(${t})
 endforeach()
+
+if(WIN32)
+    # Qt's DLLs must be found beside the test executable: Visual Studio's Test Explorer starts the
+    # tests without Qt's bin folder on PATH; ctest's environment properties do not reach them there.
+    file(TO_NATIVE_PATH "$ENV{SystemRoot}/System32" hitokoto_system32)
+    add_test(NAME S000_UiTestsStartWithoutQtOnPath
+             COMMAND ${CMAKE_COMMAND} -E env --modify "PATH=set:${hitokoto_system32}"
+                     $<TARGET_FILE:tst_s000_skeleton>)
+    set_tests_properties(S000_UiTestsStartWithoutQtOnPath PROPERTIES
+                         ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
+endif()
