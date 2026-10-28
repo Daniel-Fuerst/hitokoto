@@ -30,8 +30,12 @@ with it.
 The baselines come from the review run of the S017 pull request (2026-10-27; Windows and macOS
 from single re-runs of their jobs); Linux since 2026-10-28 from the run on `e5ae913` of
 `feature/tables`, the first with the opening medians timed in the signal, which also added the
-`s018_*` values. Windows and macOS still hold values of the earlier measurement and get new ones
-with the pull request that runs their jobs again. CI runners differ from the development machine, so
+`s018_*` values. Since 2026-10-28 the Windows and macOS benchmarks are off until further notice
+(user decision, `ci.yml`): their runners swing too much for a gate, and a comparison that only
+reports is read by nobody. `windows.json` and `macos.json` keep values of the earlier
+measurement and need new ones from the first run after the jobs come back. Until then the hard
+budgets (saving, key events) are not checked on Windows and macOS either, nor the code that only
+runs there (`ReplaceFileW`, `F_FULLFSYNC`). CI runners differ from the development machine, so
 baselines must come from CI itself. To create or update them:
 
 1. Open a successful CI run (on `main` or on a pull request; both use the same runners), download
