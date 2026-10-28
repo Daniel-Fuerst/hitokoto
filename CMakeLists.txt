@@ -21,6 +21,7 @@ set(HITOKOTO_SANITIZE "" CACHE STRING "Comma-separated sanitizers, e.g. address,
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(HitokotoCompilerOptions)
 include(HitokotoDependencies)
+include(HitokotoQtRuntime)
 
 if(HITOKOTO_BUILD_FUZZERS)
     # Coverage instrumentation for everything the fuzzers link (the core).
