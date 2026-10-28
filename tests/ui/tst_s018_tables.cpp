@@ -1473,11 +1473,13 @@ private slots:
     }
 
     // The open cell keeps its column's alignment: the text does not jump when the caret enters.
+    // The centred cell is much narrower than its column, whatever font the platform has (the
+    // Windows test run has no font directory and measured "Alice" as wide as "Name").
     void anOpenCellKeepsItsColumnsAlignment() {
         constexpr auto markdown =
-            "| Name | Score |\n"
+            "| A long column name | Score |\n"
             "| :---: | ---: |\n"
-            "| Alice | 95 |\n";
+            "| Al | 95 |\n";
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("align.md"), markdown)));
         f.settle();
