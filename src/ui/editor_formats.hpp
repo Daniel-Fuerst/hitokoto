@@ -47,6 +47,7 @@ private:
     core::CodeStyle inlineCode_;
     core::EmphasisStyle emphasis_;
     core::TableStyle table_;
+    core::EscapeStyle escape_;
     QStringList codeBlockFamilies_;
     QStringList inlineCodeFamilies_;
 };

@@ -31,6 +31,7 @@ enum class Role : std::uint8_t {
     InlineCode,        ///< text inside a single-backtick code span; one delimiter character on each side
     InlineCodeMarker,  ///< a revealed inline-code delimiter (backtick)
     EmphasisMarker,    ///< a revealed emphasis delimiter (* _ ~~)
+    EscapeMarker,      ///< a revealed backslash escape delimiter (\)
 };
 
 enum class TableAlign : std::uint8_t {
@@ -267,6 +268,7 @@ std::unique_ptr<LineElement> makeHeadingElement();
 std::unique_ptr<LineElement> makeBulletElement();
 std::unique_ptr<InlineElement> makeInlineCodeElement();
 std::unique_ptr<InlineElement> makeEmphasisElement();
+std::unique_ptr<InlineElement> makeEscapeElement();
 std::unique_ptr<MultiLineElement> makeFencedCodeElement();
 std::unique_ptr<MultiLineElement> makeTableElement();
 

@@ -79,6 +79,43 @@ void carveRunsAroundHidden(LineRender& out) {
     out.runs = std::move(visibleRuns);
 }
 
+void carveInlineStylesAroundHidden(LineRender& out) {
+    if (out.hidden.empty() || out.inlineStyles.empty()) {
+        return;
+    }
+    const auto byStart = [](const HiddenRange& left, const HiddenRange& right) {
+        return left.span.start < right.span.start;
+    };
+    if (!std::is_sorted(out.hidden.begin(), out.hidden.end(), byStart)) {
+        std::sort(out.hidden.begin(), out.hidden.end(), byStart);
+    }
+    const bool overlap = std::any_of(out.inlineStyles.begin(), out.inlineStyles.end(), [&](const InlineStyleRun& run) {
+        return std::any_of(out.hidden.begin(), out.hidden.end(), [&](const HiddenRange& hidden) {
+            return hidden.span.start < run.span.end() && run.span.start < hidden.span.end();
+        });
+    });
+    if (!overlap) {
+        return;
+    }
+    std::vector<InlineStyleRun> visibleStyles;
+    for (const auto& run : out.inlineStyles) {
+        std::uint32_t start = run.span.start;
+        for (const auto& hidden : out.hidden) {
+            if (hidden.span.end() <= start || hidden.span.start >= run.span.end()) {
+                continue;
+            }
+            if (hidden.span.start > start) {
+                visibleStyles.push_back({{start, hidden.span.start - start}, run.style});
+            }
+            start = std::max(start, hidden.span.end());
+        }
+        if (start < run.span.end()) {
+            visibleStyles.push_back({{start, run.span.end() - start}, run.style});
+        }
+    }
+    out.inlineStyles = std::move(visibleStyles);
+}
+
 }  // namespace
 
 void ElementRegistry::add(std::unique_ptr<LineElement> element) {
@@ -194,6 +231,7 @@ LineRender ElementRegistry::render(std::u16string_view line, const LineContext& 
         splitAroundInlineRuns(out, firstInlineRun);
     }
     carveRunsAroundHidden(out);
+    carveInlineStylesAroundHidden(out);
     return out;
 }
 
@@ -205,6 +243,7 @@ ElementRegistry ElementRegistry::withBuiltins() {
     registry.add(makeBulletElement());
     registry.addInline(makeInlineCodeElement());
     registry.addInline(makeEmphasisElement());
+    registry.addInline(makeEscapeElement());
     return registry;
 }
 

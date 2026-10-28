@@ -51,6 +51,12 @@ struct TableTokens {
     friend bool operator==(const TableTokens&, const TableTokens&) = default;
 };
 
+/// Tokens of `[escape]`; resolved by escapeStyle().
+struct EscapeTokens {
+    std::optional<Color> marker;
+    friend bool operator==(const EscapeTokens&, const EscapeTokens&) = default;
+};
+
 /// Every value the UI uses for colours, fonts, radii and spacing. Hard-coded styling values
 /// in UI code are bugs; add a token instead.
 struct Theme {
@@ -85,6 +91,7 @@ struct Theme {
     CodeTokens inlineCode;
     EmphasisTokens emphasis;
     TableTokens table;
+    EscapeTokens escape;
 
     friend bool operator==(const Theme&, const Theme&) = default;
 };
@@ -139,10 +146,16 @@ struct TableStyle {
     friend bool operator==(const TableStyle&, const TableStyle&) = default;
 };
 
+struct EscapeStyle {
+    Color marker;
+    friend bool operator==(const EscapeStyle&, const EscapeStyle&) = default;
+};
+
 [[nodiscard]] CodeStyle codeBlockStyle(const Theme& theme);
 [[nodiscard]] CodeStyle inlineCodeStyle(const Theme& theme);
 [[nodiscard]] EmphasisStyle emphasisStyle(const Theme& theme);
 [[nodiscard]] TableStyle tableStyle(const Theme& theme);
+[[nodiscard]] EscapeStyle escapeStyle(const Theme& theme);
 
 /// All tokens of the theme format, in documentation order.
 std::span<const ThemeTokenInfo> themeTokens();

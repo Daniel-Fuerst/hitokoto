@@ -263,6 +263,7 @@ const Token kTokens[] = {
     {{"table", "padding", "number (px)", "Horizontal and vertical space inside cells, 0 to 64", "layout.spacing"}, &applyOptNumber<&Theme::table, &TableTokens::padding, 0, 640>},
     {{"table", "font-family", "string", "Font family of table cells; \"\" = editor font", "\"\""}, &applyOptString<&Theme::table, &TableTokens::fontFamily>},
     {{"table", "font-scale", "number", "Font size of table cells relative to the editor font, 0.5 to 2", "1"}, &applyOptNumber<&Theme::table, &TableTokens::fontScale, 5, 20>},
+    {{"escape", "marker", "color", "Backslash when revealed", "colors.marker"}, &applyOptColor<&Theme::escape, &EscapeTokens::marker>},
 };
 // clang-format on
 
@@ -700,6 +701,12 @@ TableStyle tableStyle(const Theme& t) {
         .padding = tb.padding.value_or(t.spacing),
         .fontScale = tb.fontScale.value_or(1),
         .fontFamily = tb.fontFamily.value_or(""),
+    };
+}
+
+EscapeStyle escapeStyle(const Theme& t) {
+    return {
+        .marker = t.escape.marker.value_or(t.marker),
     };
 }
 

@@ -35,15 +35,21 @@ TEST(S015_InlineCode, RevealedLineKeepsCodeStyleAndShowsBackticks) {
 }
 
 TEST(S015_InlineCode, NonMatchingAndEscapedBackticksStayLiteral) {
-    for (const auto line : {u"`unclosed", u"\\`escaped\\`"}) {
-        const auto render = show(line);
-        EXPECT_TRUE(render.runs.empty());
-        EXPECT_TRUE(render.hidden.empty());
-    }
+    const auto unclosed = show(u"`unclosed");
+    EXPECT_TRUE(unclosed.runs.empty());
+    EXPECT_TRUE(unclosed.hidden.empty());
+
+    // S020: escaped backticks do not start code; their backslashes are concealed.
+    const auto escaped = show(u"\\`escaped\\`");
+    EXPECT_TRUE(escaped.runs.empty());
+    EXPECT_EQ(escaped.hidden, (std::vector<HiddenRange>{{{0, 1}, HideMode::Collapse}, {{9, 1}, HideMode::Collapse}}));
+
     // An escaped backslash does not escape the backtick after it.
     const auto render = show(u"\\\\`code`");
     EXPECT_EQ(render.runs, (std::vector<StyleRun>{{{3, 4}, Role::InlineCode, 0}}));
-    EXPECT_EQ(render.hidden, (std::vector<HiddenRange>{{{2, 1}, HideMode::Collapse}, {{7, 1}, HideMode::Collapse}}));
+    EXPECT_EQ(render.hidden,
+              (std::vector<HiddenRange>{
+                  {{0, 1}, HideMode::Collapse}, {{2, 1}, HideMode::Collapse}, {{7, 1}, HideMode::Collapse}}));
 }
 
 // CommonMark, code spans: backslash escapes do not work inside a code span. A backslash can only
