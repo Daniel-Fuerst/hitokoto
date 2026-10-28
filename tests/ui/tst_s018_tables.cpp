@@ -4,6 +4,7 @@
 #include "ui_test_support.hpp"
 
 #include <QAbstractItemModel>
+#include <QAbstractTextDocumentLayout>
 #include <QAction>
 #include <QClipboard>
 #include <QHeaderView>
@@ -1234,6 +1235,40 @@ private slots:
         QVERIFY(f.open(f.writeFile(QStringLiteral("second.md"), second)));
         f.settle();
         QCOMPARE(text(f), QString::fromUtf8(second));
+        QTRY_VERIFY(f.editor()->hasFocus());
+    }
+
+    // Windows CI on 041b82c (2026-10-28): when a document is replaced, Qt lays out the emptied
+    // document (documentChanged 0, 0, 1) before it reports the removal through contentsChange. The
+    // layout's new size scrolled the view, and the table view was placed over lines that no longer
+    // existed; a debug Qt stops there (QFragmentMap: "!atEnd()"). The table forgets its lines
+    // before the layout reports anything.
+    void aTableForgetsItsLinesBeforeTheLayoutReportsAReplacedDocument() {
+        constexpr auto markdown =
+            "Text\n"
+            "\n"
+            "| a | b |\n"
+            "| --- | --- |\n"
+            "| 1 | 2 |\n"
+            "| 3 | 4 |\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("replaced.md"), markdown)));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(2);
+        QVERIFY(view != nullptr);
+        QVERIFY(clickCell(view, 1, 0) != nullptr);
+        // The view and its model go with deleteLater(), after newDocument() returns.
+        const QAbstractItemModel* model = view->model();
+        int rowsWhenLaidOut = -1;
+        const QMetaObject::Connection reported =
+            connect(f.editor()->blockLayout(), &QAbstractTextDocumentLayout::documentSizeChanged, this, [&] {
+                if (rowsWhenLaidOut < 0) {
+                    rowsWhenLaidOut = model->rowCount();
+                }
+            });
+        f.session()->newDocument();
+        disconnect(reported);
+        QCOMPARE(rowsWhenLaidOut, 0);
         QTRY_VERIFY(f.editor()->hasFocus());
     }
 
