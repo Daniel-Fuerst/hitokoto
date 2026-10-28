@@ -3,6 +3,7 @@ qt_add_executable(hitokoto WIN32 MACOSX_BUNDLE main.cpp)
 target_link_libraries(hitokoto PRIVATE hitokoto::ui)
 target_compile_definitions(hitokoto PRIVATE HITOKOTO_VERSION="${PROJECT_VERSION}")
 hitokoto_set_compile_options(hitokoto)
+hitokoto_qt_runtime_beside(hitokoto)
 
 if(WIN32)
     configure_file(hitokoto.rc.in "${CMAKE_CURRENT_BINARY_DIR}/hitokoto.rc" @ONLY)

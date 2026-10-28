@@ -12,12 +12,7 @@ function(hitokoto_ui_test name)
     endif()
     add_test(NAME ${name} COMMAND ${name})
     set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 300)
-    if(WIN32)
-        # Qt's DLLs: without them on PATH the tests do not start outside a prepared shell, e.g. in
-        # Visual Studio's Test Explorer (DLL not found, no output).
-        set_property(TEST ${name} PROPERTY ENVIRONMENT_MODIFICATION
-                     "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
-    endif()
+    hitokoto_qt_runtime_beside(${name})
 endfunction()
 
 foreach(t IN ITEMS
@@ -40,3 +35,14 @@ foreach(t IN ITEMS
         tst_s020_backslash_escapes)
     hitokoto_ui_test(${t})
 endforeach()
+
+if(WIN32)
+    # Qt's DLLs must be found beside the test executable: Visual Studio's Test Explorer starts the
+    # tests without Qt's bin folder on PATH; ctest's environment properties do not reach them there.
+    file(TO_NATIVE_PATH "$ENV{SystemRoot}/System32" hitokoto_system32)
+    add_test(NAME S000_UiTestsStartWithoutQtOnPath
+             COMMAND ${CMAKE_COMMAND} -E env --modify "PATH=set:${hitokoto_system32}"
+                     $<TARGET_FILE:tst_s000_skeleton>)
+    set_tests_properties(S000_UiTestsStartWithoutQtOnPath PROPERTIES
+                         ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
+endif()
