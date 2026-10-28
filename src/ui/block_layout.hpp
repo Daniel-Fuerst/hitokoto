@@ -68,6 +68,10 @@ signals:
     void blockHeightChanged(qreal top, qreal oldHeight, qreal newHeight);
     /// A batch ended after the document size was reported.
     void batchFinished();
+    /// Blocks are gone although the change reports nothing removed: Qt lays out a cleared document
+    /// (documentChanged 0, 0, 1) before it reports the removal through contentsChange. Emitted
+    /// before anything else of the change, so that nothing keeps using the old blocks (S018).
+    void blocksGoneUnreported();
 
 protected:
     void documentChanged(int position, int charsRemoved, int charsAdded) override;

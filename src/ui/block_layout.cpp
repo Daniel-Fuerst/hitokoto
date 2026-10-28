@@ -395,6 +395,9 @@ void BlockLayout::applyChange(int position, int charsRemoved, int charsAdded) {
     QTextDocument* doc = document();
     const int newCount = doc->blockCount();
     const int oldCount = static_cast<int>(heights_.size());
+    if (newCount < oldCount && charsRemoved == 0) {
+        emit blocksGoneUnreported();
+    }
     const qreal available = availableWidth();
     const bool wholeDocument = position == 0 && charsAdded >= doc->characterCount() - 1;
     if (wholeDocument) {

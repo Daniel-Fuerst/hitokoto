@@ -178,11 +178,8 @@ void TableEmbedder::documentChanged(int position, int charsRemoved, int charsAdd
                     at += charsAdded - charsRemoved;
                 }
             }
-            if (table.stale && table.widget != nullptr) {
-                if (table.widget->isAncestorOf(QApplication::focusWidget())) {
-                    editor_->setFocus();  // keys always reach the editor or a cell (S018)
-                }
-                table.widget->model()->clear();
+            if (table.stale) {
+                markStale(table);
             }
         }
         if (charsRemoved > 0 && typingDepth_ == 0) {
@@ -216,6 +213,27 @@ void TableEmbedder::beforeWritingBelow() {
     cursor.setPosition(block.position() + block.length() - 1);
     cursor.insertText(QStringLiteral("\n"));
     editor_->setTextCursor(cursor);
+}
+
+void TableEmbedder::markStale(Table& table) {
+    table.stale = true;
+    if (table.widget != nullptr) {
+        table.widget->model()->clear();
+        if (table.widget->isAncestorOf(QApplication::focusWidget())) {
+            editor_->setFocus();  // keys always reach the editor or a cell (S018)
+        }
+    }
+}
+
+void TableEmbedder::forgetAll() {
+    for (Table& table : tables_) {
+        if (!table.stale) {
+            markStale(table);
+        }
+    }
+    typing_ = QTextBlock();
+    revealed_ = QTextBlock();
+    scheduleRefresh();
 }
 
 void TableEmbedder::markBreaks(Table& table) const {

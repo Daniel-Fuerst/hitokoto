@@ -39,6 +39,9 @@ public:
     /// A change to the document: typing in the editor keeps a table that the typed line belongs
     /// to as Markdown lines until the caret leaves that line (S018, "typing a table").
     void documentChanged(int position, int charsRemoved, int charsAdded);
+    /// The layout found blocks gone that no change has reported yet (a replaced document): every
+    /// table forgets its lines at once (S018).
+    void forgetAll();
 
     /// Before text goes into the blank line directly below a table (keys, input method, paste):
     /// adds a blank line, so the text becomes a paragraph and not a row of the table (S018,
@@ -104,6 +107,8 @@ private:
     void release(Table& table);
     /// Forgets a stale table without touching its lines.
     void drop(Table& table);
+    /// Marks a table stale: its view forgets its lines, and keys go to the editor.
+    void markStale(Table& table);
     /// Records where the table's line breaks are (after it was found or changed).
     void markBreaks(Table& table) const;
     /// Shows lines in [from, to] that are hidden or reserve height but belong to no table.

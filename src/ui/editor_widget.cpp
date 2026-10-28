@@ -62,6 +62,7 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     connect(document(), &QTextDocument::contentsChange, tables_.get(), &TableEmbedder::documentChanged);
     connect(styler_, &BlockStyler::completed, tables_.get(), &TableEmbedder::scheduleRefresh);
     connect(layout_, &BlockLayout::documentSizeChanged, tables_.get(), &TableEmbedder::reposition);
+    connect(layout_, &BlockLayout::blocksGoneUnreported, tables_.get(), &TableEmbedder::forgetAll);
     connect(this, &QTextEdit::selectionChanged, this, &EditorWidget::updateReveal);
 }
 
