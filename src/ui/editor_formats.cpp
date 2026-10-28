@@ -39,6 +39,7 @@ EditorFormats::EditorFormats(const core::Theme& theme)
       codeBlock_(core::codeBlockStyle(theme)),
       inlineCode_(core::inlineCodeStyle(theme)),
       emphasis_(core::emphasisStyle(theme)),
+      table_(core::tableStyle(theme)),
       codeBlockFamilies_(codeFamilies(codeBlock_.fontFamily)),
       inlineCodeFamilies_(codeFamilies(inlineCode_.fontFamily)) {
     baseFont_ = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
@@ -178,6 +179,18 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
         out.append({static_cast<int>(start), static_cast<int>(end - start), format});
     }
     return out;
+}
+
+QFont EditorFormats::tableFont(bool header) const {
+    QFont font = baseFont_;
+    if (!table_.fontFamily.empty()) {
+        font.setFamilies({QString::fromStdString(table_.fontFamily)});
+    }
+    font.setPointSizeF(editorFontSize_ * table_.fontScale);
+    if (header) {
+        font.setWeight(static_cast<QFont::Weight>(table_.headerWeight));
+    }
+    return font;
 }
 
 }  // namespace hitokoto::ui

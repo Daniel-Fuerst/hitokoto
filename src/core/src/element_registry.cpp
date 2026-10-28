@@ -119,15 +119,24 @@ void ElementRegistry::addMultiLine(std::unique_ptr<MultiLineElement> element) {
     multiLineElements_.push_back(std::move(element));
 }
 
-std::optional<ElementRegistry::BlockMatch> ElementRegistry::matchBlock(std::u16string_view line,
-                                                                       BlockState state) const noexcept {
+std::uint8_t ElementRegistry::blockElement(std::string_view id) const noexcept {
+    for (std::size_t i = 0; i < multiLineElements_.size(); ++i) {
+        if (multiLineElements_[i]->id() == id) {
+            return static_cast<std::uint8_t>(i + 1U);
+        }
+    }
+    return 0;
+}
+
+std::optional<ElementRegistry::BlockMatch> ElementRegistry::matchBlock(std::u16string_view line, BlockState state,
+                                                                       std::u16string_view nextLine) const noexcept {
     if (state.active() && state.element <= multiLineElements_.size()) {
-        if (auto parsed = multiLineElements_[state.element - 1U]->parse(line, state.value)) {
+        if (auto parsed = multiLineElements_[state.element - 1U]->parseWithNextLine(line, state.value, nextLine)) {
             return BlockMatch{state.element, *parsed};
         }
     }
     for (std::size_t i = 0; i < multiLineElements_.size(); ++i) {
-        if (auto parsed = multiLineElements_[i]->parse(line, 0)) {
+        if (auto parsed = multiLineElements_[i]->parseWithNextLine(line, 0, nextLine)) {
             return BlockMatch{static_cast<std::uint8_t>(i + 1U), *parsed};
         }
     }
@@ -138,16 +147,40 @@ BlockState ElementRegistry::BlockMatch::stateAfter() const noexcept {
     return parsed.stateAfter == 0 ? BlockState{} : BlockState{element, parsed.stateAfter};
 }
 
-BlockState ElementRegistry::blockStateAfter(std::u16string_view line, BlockState state) const noexcept {
-    const auto block = matchBlock(line, state);
+BlockState ElementRegistry::blockStateAfter(std::u16string_view line, BlockState state,
+                                            std::u16string_view nextLine) const noexcept {
+    const auto block = matchBlock(line, state, nextLine);
     return block ? block->stateAfter() : BlockState{};
+}
+
+void ElementRegistry::runInlineElements(std::u16string_view line, const LineContext& context, LineRender& out) const {
+    // One table lookup per character tells which inline elements this line can trigger;
+    // most lines trigger none.
+    std::uint64_t triggered = 0;
+    bool nonAscii = false;
+    for (const char16_t c : line) {
+        if (c < asciiTriggers_.size()) {
+            triggered |= asciiTriggers_[c];
+        } else {
+            nonAscii = true;
+        }
+    }
+    for (std::size_t i = 0; i < inlineElements_.size(); ++i) {
+        const auto& entry = inlineElements_[i];
+        const bool run = entry.always || ((triggered >> i) & 1U) != 0 ||
+                         (nonAscii && hasOtherTriggers_ && !entry.otherTriggers.empty() &&
+                          line.find_first_of(entry.otherTriggers) != std::u16string_view::npos);
+        if (run) {
+            entry.element->render(line, context, out);
+        }
+    }
 }
 
 LineRender ElementRegistry::render(std::u16string_view line, const LineContext& context) const {
     LineRender out;
-    if (const auto block = matchBlock(line, context.blockState)) {
-        // The open block owns the line; line and inline elements do not run.
-        multiLineElements_[block->element - 1U]->render(line, block->parsed, context, out);
+    if (const auto block = matchBlock(line, context.blockState, context.nextLine)) {
+        const auto& multi = multiLineElements_[block->element - 1U];
+        multi->render(line, block->parsed, context, out);
         out.blockState = block->stateAfter();
     } else {
         for (const auto& element : elements_) {
@@ -156,27 +189,8 @@ LineRender ElementRegistry::render(std::u16string_view line, const LineContext& 
                 break;
             }
         }
-        // One table lookup per character tells which inline elements this line can trigger;
-        // most lines trigger none.
         const std::size_t firstInlineRun = out.runs.size();
-        std::uint64_t triggered = 0;
-        bool nonAscii = false;
-        for (const char16_t c : line) {
-            if (c < asciiTriggers_.size()) {
-                triggered |= asciiTriggers_[c];
-            } else {
-                nonAscii = true;
-            }
-        }
-        for (std::size_t i = 0; i < inlineElements_.size(); ++i) {
-            const auto& entry = inlineElements_[i];
-            const bool run = entry.always || ((triggered >> i) & 1U) != 0 ||
-                             (nonAscii && hasOtherTriggers_ && !entry.otherTriggers.empty() &&
-                              line.find_first_of(entry.otherTriggers) != std::u16string_view::npos);
-            if (run) {
-                entry.element->render(line, context, out);
-            }
-        }
+        runInlineElements(line, context, out);
         splitAroundInlineRuns(out, firstInlineRun);
     }
     carveRunsAroundHidden(out);
@@ -186,6 +200,7 @@ LineRender ElementRegistry::render(std::u16string_view line, const LineContext& 
 ElementRegistry ElementRegistry::withBuiltins() {
     ElementRegistry registry;
     registry.addMultiLine(makeFencedCodeElement());
+    registry.addMultiLine(makeTableElement());
     registry.add(makeHeadingElement());
     registry.add(makeBulletElement());
     registry.addInline(makeInlineCodeElement());

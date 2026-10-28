@@ -1,6 +1,7 @@
 # S016: Application icon
 
-- **Status:** In progress
+- **Status:** Done (closed by the user on 2026-10-27) · **Order:** 17 · **Depends on:** S000
+- **Note:** A new icon is being designed; it replaces `icons/hitokoto.svg` as a separate change.
 - **Basis:** User request on 2026-10-25; use `icons/hitokoto.svg` as the app icon.
 
 ## Story

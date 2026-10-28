@@ -10,6 +10,7 @@
 #include "hitokoto/core/reveal.hpp"
 
 #include <QObject>
+#include <QString>
 #include <QTimer>
 
 #include <functional>
@@ -57,6 +58,8 @@ private:
     void styleRange(int first, int last);
     void styleBlock(const QTextBlock& block);
     [[nodiscard]] core::BlockState blockStateBefore(const QTextBlock& block);
+    /// The line after `block` when the table element needs it as lookahead, else empty.
+    [[nodiscard]] static QString nextLineFor(const QTextBlock& block, core::BlockState state, const QString& text);
     [[nodiscard]] bool isStyled(const QTextBlock& block) const;
     void scheduleFrom(int blockNumber);
     void idleSlice();

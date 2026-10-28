@@ -251,6 +251,18 @@ const Token kTokens[] = {
     {{"emphasis", "italic-text", "color", "Colour of italic text (takes precedence over strikethrough)", "text colour of the surrounding element"}, &applyOptColor<&Theme::emphasis, &EmphasisTokens::italicText>},
     {{"emphasis", "strikethrough-text", "color", "Colour of struck-through text", "text colour of the surrounding element"}, &applyOptColor<&Theme::emphasis, &EmphasisTokens::strikethroughText>},
     {{"emphasis", "marker", "color", "Delimiters (* _ ~~) when revealed", "colors.marker"}, &applyOptColor<&Theme::emphasis, &EmphasisTokens::marker>},
+    {{"table", "background", "color", "Background of table body rows", "colors.background"}, &applyOptColor<&Theme::table, &TableTokens::background>},
+    {{"table", "header-background", "color", "Background of the table header row", "colors.surface"}, &applyOptColor<&Theme::table, &TableTokens::headerBackground>},
+    {{"table", "stripe-background", "color", "Background of alternating (even-numbered) body rows", "table.background"}, &applyOptColor<&Theme::table, &TableTokens::stripeBackground>},
+    {{"table", "text", "color", "Text colour of table body cells", "colors.text"}, &applyOptColor<&Theme::table, &TableTokens::text>},
+    {{"table", "header-text", "color", "Text colour of table header cells", "table.text"}, &applyOptColor<&Theme::table, &TableTokens::headerText>},
+    {{"table", "header-weight", "number", "Font weight of table header cells, 100 to 900", "headings.weight"}, &applyOptNumber<&Theme::table, &TableTokens::headerWeight, 1000, 9000>},
+    {{"table", "border", "color", "Outer border, cell grid lines and add-row/column controls", "colors.border"}, &applyOptColor<&Theme::table, &TableTokens::border>},
+    {{"table", "border-width", "number (px)", "Width of table and cell borders, 0 to 8", "1"}, &applyOptNumber<&Theme::table, &TableTokens::borderWidth, 0, 80>},
+    {{"table", "radius", "number (px)", "Corner radius of the outer table border, 0 to 32", "layout.radius"}, &applyOptNumber<&Theme::table, &TableTokens::radius, 0, 320>},
+    {{"table", "padding", "number (px)", "Horizontal and vertical space inside cells, 0 to 64", "layout.spacing"}, &applyOptNumber<&Theme::table, &TableTokens::padding, 0, 640>},
+    {{"table", "font-family", "string", "Font family of table cells; \"\" = editor font", "\"\""}, &applyOptString<&Theme::table, &TableTokens::fontFamily>},
+    {{"table", "font-scale", "number", "Font size of table cells relative to the editor font, 0.5 to 2", "1"}, &applyOptNumber<&Theme::table, &TableTokens::fontScale, 5, 20>},
 };
 // clang-format on
 
@@ -668,6 +680,26 @@ EmphasisStyle emphasisStyle(const Theme& t) {
         .italicText = e.italicText,
         .strikethroughText = e.strikethroughText,
         .marker = e.marker.value_or(t.marker),
+    };
+}
+
+TableStyle tableStyle(const Theme& t) {
+    const TableTokens& tb = t.table;
+    const Color bg = tb.background.value_or(t.background);
+    const Color txt = tb.text.value_or(t.text);
+    return {
+        .background = bg,
+        .headerBackground = tb.headerBackground.value_or(t.surface),
+        .stripeBackground = tb.stripeBackground.value_or(bg),
+        .text = txt,
+        .headerText = tb.headerText.value_or(txt),
+        .border = tb.border.value_or(t.border),
+        .headerWeight = static_cast<int>(tb.headerWeight.value_or(t.headingWeight)),
+        .borderWidth = tb.borderWidth.value_or(1),
+        .radius = tb.radius.value_or(t.radius),
+        .padding = tb.padding.value_or(t.spacing),
+        .fontScale = tb.fontScale.value_or(1),
+        .fontFamily = tb.fontFamily.value_or(""),
     };
 }
 

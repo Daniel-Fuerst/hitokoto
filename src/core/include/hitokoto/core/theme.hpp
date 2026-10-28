@@ -43,6 +43,14 @@ struct EmphasisTokens {
     friend bool operator==(const EmphasisTokens&, const EmphasisTokens&) = default;
 };
 
+/// Tokens of `[table]`; resolved by tableStyle().
+struct TableTokens {
+    std::optional<Color> background, headerBackground, stripeBackground, text, headerText, border;
+    std::optional<double> headerWeight, borderWidth, radius, padding, fontScale;
+    std::optional<std::string> fontFamily;
+    friend bool operator==(const TableTokens&, const TableTokens&) = default;
+};
+
 /// Every value the UI uses for colours, fonts, radii and spacing. Hard-coded styling values
 /// in UI code are bugs; add a token instead.
 struct Theme {
@@ -76,6 +84,7 @@ struct Theme {
     CodeTokens codeBlock;
     CodeTokens inlineCode;
     EmphasisTokens emphasis;
+    TableTokens table;
 
     friend bool operator==(const Theme&, const Theme&) = default;
 };
@@ -119,9 +128,21 @@ struct EmphasisStyle {
     friend bool operator==(const EmphasisStyle&, const EmphasisStyle&) = default;
 };
 
+struct TableStyle {
+    Color background, headerBackground, stripeBackground, text, headerText, border;
+    int headerWeight = 700;
+    double borderWidth = 1;
+    double radius = 0;
+    double padding = 0;
+    double fontScale = 1;    ///< relative to the editor font
+    std::string fontFamily;  ///< empty = editor font
+    friend bool operator==(const TableStyle&, const TableStyle&) = default;
+};
+
 [[nodiscard]] CodeStyle codeBlockStyle(const Theme& theme);
 [[nodiscard]] CodeStyle inlineCodeStyle(const Theme& theme);
 [[nodiscard]] EmphasisStyle emphasisStyle(const Theme& theme);
+[[nodiscard]] TableStyle tableStyle(const Theme& theme);
 
 /// All tokens of the theme format, in documentation order.
 std::span<const ThemeTokenInfo> themeTokens();

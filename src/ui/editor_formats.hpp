@@ -26,6 +26,9 @@ public:
     /// Resolved element tokens (ADR 0004) for what the editor paints itself (panels, boxes).
     [[nodiscard]] const core::CodeStyle& codeBlock() const noexcept { return codeBlock_; }
     [[nodiscard]] const core::CodeStyle& inlineCode() const noexcept { return inlineCode_; }
+    /// Resolved table tokens (ADR 0005) and the font of table cells (S018).
+    [[nodiscard]] const core::TableStyle& table() const noexcept { return table_; }
+    [[nodiscard]] QFont tableFont(bool header) const;
     [[nodiscard]] QTextCharFormat heading(int level) const;
 
     /// Format ranges for one line, ready for QTextLayout::setFormats().
@@ -43,6 +46,7 @@ private:
     core::CodeStyle codeBlock_;
     core::CodeStyle inlineCode_;
     core::EmphasisStyle emphasis_;
+    core::TableStyle table_;
     QStringList codeBlockFamilies_;
     QStringList inlineCodeFamilies_;
 };

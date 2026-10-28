@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Any text renders to well-formed spans, line by line, revealed or not, with the block state carried
 // from line to line as the editor does. Spans stay inside the line, hidden and styled ranges never
-// overlap, a revealed line hides nothing, and the registry's block-state shortcut agrees with render().
+// overlap, a revealed non-table line hides nothing, and the registry's block-state shortcut agrees with render().
 #include "hitokoto/core/markdown.hpp"
 
 #include <cstdlib>
@@ -20,8 +20,14 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         const auto nl = text.find(u'\n', start);
         const std::u16string_view line =
             std::u16string_view(text).substr(start, nl == std::u16string::npos ? std::u16string::npos : nl - start);
+        std::u16string_view nextLine{};
+        if (nl != std::u16string::npos) {
+            const auto nextNl = text.find(u'\n', nl + 1);
+            nextLine = std::u16string_view(text).substr(
+                nl + 1, nextNl == std::u16string::npos ? std::u16string::npos : nextNl - (nl + 1));
+        }
         for (bool revealed : {false, true}) {
-            const auto r = registry.render(line, {revealed, state});
+            const auto r = registry.render(line, {revealed, state, nextLine});
             std::vector<int> cover(line.size(), 0);
             for (const auto& run : r.runs) {
                 if (run.span.end() > line.size())
@@ -30,7 +36,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
                     ++cover[k];
             }
             for (const auto& h : r.hidden) {
-                if (revealed || h.span.end() > line.size())
+                if ((!r.table && revealed) || h.span.end() > line.size())
                     std::abort();
                 for (auto k = h.span.start; k < h.span.end(); ++k)
                     ++cover[k];
@@ -47,10 +53,10 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
                 if (c > 1)
                     std::abort();
             }
-            if (r.blockState != registry.blockStateAfter(line, state))
+            if (r.blockState != registry.blockStateAfter(line, state, nextLine))
                 std::abort();
         }
-        state = registry.blockStateAfter(line, state);
+        state = registry.blockStateAfter(line, state, nextLine);
         if (nl == std::u16string::npos)
             break;
         start = nl + 1;

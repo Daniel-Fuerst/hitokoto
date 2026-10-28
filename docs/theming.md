@@ -135,6 +135,18 @@ follows the general tokens above.
 | `emphasis.italic-text` | color | Colour of italic text (takes precedence over strikethrough) | text colour of the surrounding element |
 | `emphasis.strikethrough-text` | color | Colour of struck-through text | text colour of the surrounding element |
 | `emphasis.marker` | color | Delimiters (* _ ~~) when revealed | `colors.marker` |
+| `table.background` | color | Background of table body rows | `colors.background` |
+| `table.header-background` | color | Background of the table header row | `colors.surface` |
+| `table.stripe-background` | color | Background of alternating (even-numbered) body rows | `table.background` |
+| `table.text` | color | Text colour of table body cells | `colors.text` |
+| `table.header-text` | color | Text colour of table header cells | `table.text` |
+| `table.header-weight` | number | Font weight of table header cells, 100 to 900 | `headings.weight` |
+| `table.border` | color | Outer border, cell grid lines and row/column controls | `colors.border` |
+| `table.border-width` | number (px) | Width of table and cell borders, 0 to 8 | 1 |
+| `table.radius` | number (px) | Corner radius of the outer table border, 0 to 32 | `layout.radius` |
+| `table.padding` | number (px) | Horizontal and vertical space inside cells, 0 to 64 | `layout.spacing` |
+| `table.font-family` | string | Font family of table cells; "" = editor font | "" |
+| `table.font-scale` | number | Font size of table cells relative to the editor font, 0.5 to 2 | 1 |
 
 Bold text is never lighter than the text around it: inside a heading the weight is the larger of
 `headings.weight` and `emphasis.bold-weight`. The built-in themes set both to 700, so bold inside a

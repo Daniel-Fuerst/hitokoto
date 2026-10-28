@@ -84,7 +84,7 @@ QString makeStyleSheet(const core::Theme& t) {
     // %7 selection, %8 selection text, %9 radius.
     QString css = QStringLiteral(R"(
 QMainWindow, QDialog, QMessageBox { background: %1; color: %4; }
-QPlainTextEdit { background: %1; color: %4; border: none; selection-background-color: %7; selection-color: %8; }
+QPlainTextEdit, QTextEdit { background: %1; color: %4; border: none; selection-background-color: %7; selection-color: %8; }
 QMenuBar { background: %1; color: %4; border-bottom: 1px solid %3; }
 QMenuBar::item { background: transparent; border-radius: %9; }
 QMenuBar::item:selected { background: %2; }

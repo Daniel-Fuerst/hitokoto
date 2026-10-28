@@ -1,6 +1,6 @@
 # S014 — Fenced Markdown code blocks
 
-- **Status:** In review · **Order:** 15 · **Depends on:** S013
+- **Status:** Done (accepted by the user on 2026-10-27) · **Order:** 15 · **Depends on:** S013
 
 ## Story
 

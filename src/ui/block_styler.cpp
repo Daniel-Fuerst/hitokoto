@@ -2,6 +2,7 @@
 #include "block_styler.hpp"
 
 #include "block_data.hpp"
+#include "block_layout.hpp"
 #include "qt_bridge.hpp"
 
 #include <QElapsedTimer>
@@ -109,14 +110,30 @@ core::BlockState BlockStyler::blockStateBefore(const QTextBlock& block) {
         uncached.push_back(previous);
     }
     for (auto it = uncached.rbegin(); it != uncached.rend(); ++it) {
-        state = registry_.blockStateAfter(view(it->text()), state);
+        const QString text = it->text();
+        const QString next = nextLineFor(*it, state, text);
+        state = registry_.blockStateAfter(view(text), state, next.isEmpty() ? std::u16string_view{} : view(next));
         cacheBlockState(*it, state);
     }
     return state;
 }
 
+QString BlockStyler::nextLineFor(const QTextBlock& block, core::BlockState state, const QString& text) {
+    // A table header is recognised by the delimiter row below it (S018): only a line that could
+    // be one, outside an open block, needs the next line.
+    if (state.active() || !text.contains(QLatin1Char('|'))) {
+        return {};
+    }
+    const QTextBlock next = block.next();
+    return next.isValid() ? next.text() : QString();
+}
+
 core::LineRender BlockStyler::renderFor(const QTextBlock& block) {
-    return registry_.render(view(block.text()), {isRevealed(block.blockNumber()), blockStateBefore(block)});
+    const QString text = block.text();
+    const core::BlockState state = blockStateBefore(block);
+    const QString next = nextLineFor(block, state, text);
+    return registry_.render(
+        view(text), {isRevealed(block.blockNumber()), state, next.isEmpty() ? std::u16string_view{} : view(next)});
 }
 
 bool BlockStyler::isStyled(const QTextBlock& block) const {
@@ -165,6 +182,7 @@ void BlockStyler::styleRange(int first, int last) {
         return;
     }
     if (last - first + 1 <= kSynchronousLimit) {
+        const BlockLayout::Batch batch(qobject_cast<BlockLayout*>(document_->documentLayout()));
         for (QTextBlock b = document_->findBlockByNumber(first); b.isValid() && b.blockNumber() <= last; b = b.next()) {
             styleBlock(b);
         }
@@ -175,6 +193,7 @@ void BlockStyler::styleRange(int first, int last) {
 }
 
 void BlockStyler::styleVisible() {
+    const BlockLayout::Batch batch(qobject_cast<BlockLayout*>(document_->documentLayout()));
     // Styling can change line heights and therefore what is visible; settle in a few rounds.
     for (int round = 0; round < 3; ++round) {
         const auto [first, last] = visibleBlocks_();
@@ -206,7 +225,11 @@ void BlockStyler::onContentsChange(int position, int charsRemoved, int charsAdde
     if (busy_) {
         return;
     }
-    const QTextBlock first = document_->findBlock(position);
+    QTextBlock first = document_->findBlock(position);
+    // A table header depends on the line below it (S018): restyle the line above the change too.
+    if (first.isValid() && first.previous().isValid() && first.previous().text().contains(QLatin1Char('|'))) {
+        first = first.previous();
+    }
     QTextBlock last = document_->findBlock(position + charsAdded);
     if (!last.isValid()) {
         last = document_->lastBlock();
@@ -233,6 +256,7 @@ void BlockStyler::scheduleFrom(int blockNumber) {
 }
 
 void BlockStyler::idleSlice() {
+    const BlockLayout::Batch batch(qobject_cast<BlockLayout*>(document_->documentLayout()));
     QElapsedTimer timer;
     timer.start();
     QTextBlock b = document_->findBlockByNumber(idleNext_);

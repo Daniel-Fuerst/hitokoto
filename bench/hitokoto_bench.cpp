@@ -5,9 +5,9 @@
 //                  [--tolerance 0.2] [--fail-on-budget] [--app path/to/hitokoto]
 //
 // Measures cold start (separate processes), opening 1 MB and 10 MB files, key-to-paint
-// latency (typing, Enter, moving across headings) and saving (longest UI stall and total, median
-// of --runs saves). Compares against a baseline (regression gate for CI) and reports the brief's
-// budgets (section 4); hard budgets fail the run on any machine.
+// latency (typing, Enter, moving across headings), opening and typing in large tables (S018) and
+// saving (longest UI stall and total, median of --runs saves). Compares against a baseline (regression gate for CI) and
+// reports the brief's budgets (section 4); hard budgets fail the run on any machine.
 #include "document_session.hpp"
 #include "editor_widget.hpp"
 #include "hitokoto/core/markdown.hpp"
@@ -24,6 +24,7 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QSignalSpy>
+#include <QTableView>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTextBlock>
@@ -68,6 +69,16 @@ QByteArray largeDocument(qsizetype target) {
             "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore.\n\n";
         out += "- first item of the list\n- second item of the list\n\n";
     }
+    return out;
+}
+
+/// A paragraph, then a GFM table of `rows` body rows with three columns, then a paragraph (S018).
+QByteArray tableDocument(int rows) {
+    QByteArray out = "Text before the table.\n\n| Name | Value | Note |\n| :--- | ---: | --- |\n";
+    for (int i = 1; i <= rows; ++i) {
+        out += "| row " + QByteArray::number(i) + " | " + QByteArray::number(i * 7) + " | *note* with `code` |\n";
+    }
+    out += "\nText after the table.\n";
     return out;
 }
 
@@ -120,20 +131,58 @@ struct OpenTiming {
 };
 
 OpenTiming measureOpen(ui::MainWindow& w, const QString& path) {
-    QSignalSpy first(w.session(), &ui::DocumentSession::firstChunkShown);
     QSignalSpy done(w.session(), &ui::DocumentSession::loadFinished);
     QElapsedTimer t;
-    t.start();
     OpenTiming r;
+    // The first screen is painted and timed in the signal itself. Waiting for it with qWaitFor
+    // added the wait's own polling and the further slices of text that processEvents inserted in
+    // the meantime: 15-40 ms, and the share swung between runs (S018).
+    bool shown = false;
+    const QMetaObject::Connection first = QObject::connect(w.session(), &ui::DocumentSession::firstChunkShown, &w, [&] {
+        w.editor()->viewport()->repaint();
+        r.firstChunkMs = static_cast<double>(t.nsecsElapsed()) / 1e6;
+        shown = true;
+    });
+    t.start();
     w.openFile(path);
-    (void)QTest::qWaitFor([&] { return !first.isEmpty(); }, 120000);
-    w.editor()->viewport()->repaint();
-    r.firstChunkMs = static_cast<double>(t.nsecsElapsed()) / 1e6;
+    (void)QTest::qWaitFor([&] { return shown; }, 120000);
+    QObject::disconnect(first);
     (void)QTest::qWaitFor([&] { return !done.isEmpty(); }, 120000);
     r.loadedMs = static_cast<double>(t.nsecsElapsed()) / 1e6;
     (void)QTest::qWaitFor([&] { return w.editor()->styler().isComplete(); }, 120000);
     r.styledMs = static_cast<double>(t.nsecsElapsed()) / 1e6;
     return r;
+}
+
+// Opening is measured this many times, each from an empty document, and the medians compared: one
+// open of 10 MB on shared runners swung by more than 25 % without a code change (first chunk 51
+// and 89 ms in two runs, decoding alone 12 and 24 ms; S018).
+constexpr int kOpenRuns = 5;
+
+/// Prints every sample of a median, in measuring order, so a CI log shows how they spread.
+void printSamples(const char* name, const std::vector<double>& samples) {
+    std::printf("samples %-28s", name);
+    for (const double ms : samples) {
+        std::printf(" %8.2f", ms);
+    }
+    std::printf("\n");
+}
+
+OpenTiming medianOpen(ui::MainWindow& w, const QString& path, const char* name) {
+    std::vector<double> first;
+    std::vector<double> loaded;
+    std::vector<double> styled;
+    for (int i = 0; i < kOpenRuns; ++i) {
+        w.session()->newDocument();
+        const OpenTiming t = measureOpen(w, path);
+        first.push_back(t.firstChunkMs);
+        loaded.push_back(t.loadedMs);
+        styled.push_back(t.styledMs);
+    }
+    printSamples((std::string(name) + "_first_chunk_ms").c_str(), first);
+    printSamples((std::string(name) + "_loaded_ms").c_str(), loaded);
+    printSamples((std::string(name) + "_styled_ms").c_str(), styled);
+    return {stats(first).median, stats(loaded).median, stats(styled).median};
 }
 
 std::vector<double> measureTyping(ui::MainWindow& w, int keys) {
@@ -162,6 +211,63 @@ std::vector<double> measureTyping(ui::MainWindow& w, int keys) {
         e->viewport()->repaint();
         samples.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
     }
+    return samples;
+}
+
+/// S018: from openFile() until the table view shows the table.
+double measureTableOpen(ui::MainWindow& w, const QString& path) {
+    QElapsedTimer t;
+    t.start();
+    (void)measureOpen(w, path);
+    (void)QTest::qWaitFor([&] { return w.editor()->tableViewAt(2) != nullptr; }, 120000);
+    w.editor()->viewport()->repaint();
+    return static_cast<double>(t.nsecsElapsed()) / 1e6;
+}
+
+/// Median of kOpenRuns table opens, each from an empty document.
+double medianTableOpen(ui::MainWindow& w, const QString& path) {
+    std::vector<double> samples;
+    for (int i = 0; i < kOpenRuns; ++i) {
+        w.session()->newDocument();
+        samples.push_back(measureTableOpen(w, path));
+    }
+    printSamples("s018_table_open_ms", samples);
+    return stats(samples).median;
+}
+
+/// S018: key-to-paint in a table cell. Puts the caret into a cell in the middle of the table and
+/// types; every keystroke writes the cell into its Markdown line, so each sample includes the
+/// document change, re-styling and re-fitting the view; every 25th key is Tab to the next cell.
+std::vector<double> measureTableTyping(ui::MainWindow& w, int keys) {
+    ui::EditorWidget* e = w.editor();
+    QTableView* view = e->tableViewAt(2);
+    if (view == nullptr) {
+        std::fprintf(stderr, "no table view to type in\n");
+        return {};
+    }
+    const QModelIndex start = view->model()->index(view->model()->rowCount() / 2, 2);
+    view->scrollTo(start);
+    view->setCurrentIndex(start);
+    view->edit(start);
+    QCoreApplication::processEvents();
+    std::vector<double> samples;
+    const QString text = QStringLiteral("typed cell text ");
+    for (int i = 0; i < keys; ++i) {
+        QWidget* target = QApplication::focusWidget();
+        if (target == nullptr) {
+            target = view;
+        }
+        QElapsedTimer t;
+        t.start();
+        if (i % 25 == 24) {
+            test::keyClick(target, Qt::Key_Tab);
+        } else {
+            test::keyClick(target, text.at(i % text.size()).toLatin1());
+        }
+        e->viewport()->repaint();
+        samples.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
+    }
+    test::keyClick(QApplication::focusWidget() != nullptr ? QApplication::focusWidget() : view, Qt::Key_Return);
     return samples;
 }
 
@@ -230,8 +336,9 @@ struct Budget {
 // starts (31.6 -> 127.2 ms on a Windows runner, the median unchanged). Medians, and p95/p99 of
 // the 200 typing samples, are compared; extremes are reported, and where the brief names an
 // absolute limit they have a hard budget below. The counts of samples over 16 ms are information.
-constexpr std::string_view kReportOnly[] = {"save_10mb_total_ms",     "typing_small_max_ms",   "typing_10mb_max_ms",
-                                            "typing_small_over_16ms", "typing_10mb_over_16ms", "startup_p95_ms"};
+constexpr std::string_view kReportOnly[] = {
+    "save_10mb_total_ms",     "typing_small_max_ms",   "typing_10mb_max_ms",          "s018_table_typing_max_ms",
+    "typing_small_over_16ms", "typing_10mb_over_16ms", "s018_table_typing_over_16ms", "startup_p95_ms"};
 
 // Brief, section 4. Most budgets are meaningful on reference hardware only (S011) and fail the run
 // with --fail-on-budget; the hard ones hold on any machine, CI runners included (S017): a save
@@ -247,6 +354,10 @@ const Budget kBudgets[] = {
     {"typing_10mb_p99_ms", 16, "key to screen <= 16 ms, p99 (10 MB)"},
     {"typing_small_max_ms", 50, "no key event above 50 ms (hard)", true},
     {"typing_10mb_max_ms", 50, "no key event above 50 ms, 10 MB (hard)", true},
+    {"s018_table_open_ms", 500, "open a 1000-row table < 500 ms"},
+    {"s018_table_typing_p95_ms", 16, "key to screen <= 16 ms (200-row table)"},
+    {"s018_table_typing_p99_ms", 16, "key to screen <= 16 ms, p99 (200-row table)"},
+    {"s018_table_typing_max_ms", 50, "no key event above 50 ms, table (hard)", true},
     {"save_10mb_ui_blocked_ms", 16, "saving never stalls the UI (hard)", true},
     {"save_10mb_total_ms", 1000, "10 MB on disk within 1 s (hard)", true},
 };
@@ -276,6 +387,8 @@ int main(int argc, char* argv[]) {
     const QString small = writeFile(dir, QStringLiteral("small.md"), largeDocument(qsizetype{10} * 1024));
     const QString oneMb = writeFile(dir, QStringLiteral("1mb.md"), largeDocument(qsizetype{1024} * 1024));
     const QString tenMb = writeFile(dir, QStringLiteral("10mb.md"), largeDocument(qsizetype{10} * 1024 * 1024));
+    const QString table200 = writeFile(dir, QStringLiteral("table200.md"), tableDocument(200));
+    const QString table1000 = writeFile(dir, QStringLiteral("table1000.md"), tableDocument(1000));
 
     std::map<std::string, double> r;
     const auto startup = stats(measureStartup(parser.value(appOpt), small, parser.value(runsOpt).toInt()));
@@ -299,11 +412,23 @@ int main(int argc, char* argv[]) {
     r["typing_small_over_16ms"] = typingSmall.over16;
     w.session()->newDocument();
 
-    const auto open1 = measureOpen(w, oneMb);
+    r["s018_table_open_ms"] = medianTableOpen(w, table1000);
+    w.session()->newDocument();
+    (void)measureTableOpen(w, table200);
+    const auto typingTable = stats(measureTableTyping(w, 200));
+    r["s018_table_typing_median_ms"] = typingTable.median;
+    r["s018_table_typing_p95_ms"] = typingTable.p95;
+    r["s018_table_typing_p99_ms"] = typingTable.p99;
+    r["s018_table_typing_max_ms"] = typingTable.max;
+    r["s018_table_typing_over_16ms"] = typingTable.over16;
+    w.editor()->document()->setModified(false);
+    w.session()->newDocument();
+
+    const auto open1 = medianOpen(w, oneMb, "open_1mb");
     r["open_1mb_loaded_ms"] = open1.loadedMs;
     w.session()->newDocument();
 
-    const auto open10 = measureOpen(w, tenMb);
+    const auto open10 = medianOpen(w, tenMb, "open_10mb");
     r["open_10mb_first_chunk_ms"] = open10.firstChunkMs;
     r["open_10mb_loaded_ms"] = open10.loadedMs;
     r["open_10mb_styled_ms"] = open10.styledMs;

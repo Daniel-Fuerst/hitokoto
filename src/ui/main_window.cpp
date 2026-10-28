@@ -22,7 +22,9 @@ const QString kFilter = QStringLiteral("Markdown (*.md *.markdown *.mdown *.mkd 
 }
 
 MainWindow::MainWindow(const core::ElementRegistry& registry, QWidget* parent)
-    : QMainWindow(parent), editor_(new EditorWidget(registry, this)), session_(new DocumentSession(editor_, this)) {
+    : QMainWindow(parent),
+      editor_(new EditorWidget(registry, this)),
+      session_(new DocumentSession(editor_, registry, this)) {
     const QIcon icon = applicationIcon();
     QGuiApplication::setWindowIcon(icon);
     setWindowIcon(icon);
@@ -53,6 +55,15 @@ MainWindow::MainWindow(const core::ElementRegistry& registry, QWidget* parent)
     connect(session_, &DocumentSession::pathChanged, this, [this] { updateTitle(); });
     connect(session_, &DocumentSession::loadFailed, this,
             [this](const QString&, const QString& message) { showMessage(tr("Cannot open file"), message); });
+    connect(session_, &DocumentSession::blankLinesAdded, this, [this](int count) {
+        if (!options_.reportBlankLinesAdded) {
+            return;  // the modified mark says it (S018); the message is a feature toggle, off
+        }
+        showMessage(tr("Blank lines added"),
+                    tr("%n blank line(s) added below tables, so that text written directly below a table "
+                       "stays a paragraph as in other editors. Save to keep the change.",
+                       nullptr, count));
+    });
     connect(session_, &DocumentSession::saveFailed, this,
             [this](const QString&, const QString& message) { showMessage(tr("Cannot save file"), message); });
 
@@ -79,13 +90,13 @@ void MainWindow::createMenus() {
     quit->setMenuRole(QAction::QuitRole);
 
     QMenu* edit = menuBar()->addMenu(tr("&Edit"));
-    edit->addAction(tr("&Undo"), QKeySequence::Undo, editor_, &QPlainTextEdit::undo);
-    edit->addAction(tr("&Redo"), QKeySequence::Redo, editor_, &QPlainTextEdit::redo);
+    edit->addAction(tr("&Undo"), QKeySequence::Undo, editor_, &QTextEdit::undo);
+    edit->addAction(tr("&Redo"), QKeySequence::Redo, editor_, &QTextEdit::redo);
     edit->addSeparator();
-    edit->addAction(tr("Cu&t"), QKeySequence::Cut, editor_, &QPlainTextEdit::cut);
-    edit->addAction(tr("&Copy"), QKeySequence::Copy, editor_, &QPlainTextEdit::copy);
-    edit->addAction(tr("&Paste"), QKeySequence::Paste, editor_, &QPlainTextEdit::paste);
-    edit->addAction(tr("Select &All"), QKeySequence::SelectAll, editor_, &QPlainTextEdit::selectAll);
+    edit->addAction(tr("Cu&t"), QKeySequence::Cut, editor_, &QTextEdit::cut);
+    edit->addAction(tr("&Copy"), QKeySequence::Copy, editor_, &QTextEdit::copy);
+    edit->addAction(tr("&Paste"), QKeySequence::Paste, editor_, &QTextEdit::paste);
+    edit->addAction(tr("Select &All"), QKeySequence::SelectAll, editor_, &QTextEdit::selectAll);
 
     QMenu* view = menuBar()->addMenu(tr("&View"));
     view->addAction(tr("&Reload Theme"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R), this,

@@ -1,6 +1,6 @@
 # S013 — Inline bold, italic and strikethrough
 
-- **Status:** In review · **Order:** 14 · **Depends on:** S003
+- **Status:** Done (accepted by the user on 2026-10-27) · **Order:** 14 · **Depends on:** S003
 
 ## Story
 

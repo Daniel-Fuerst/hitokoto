@@ -28,8 +28,19 @@ Saving must write exactly the text, byte for byte (S004), including BOM and line
 5. **Line endings:** LF, CRLF and CR are preserved. Files with one kind keep it for all lines, new
    lines included. Files with mixed endings keep each existing line's ending (stored per block in
    `QTextBlockUserData`); new lines get the file's majority ending. New documents use LF.
+6. **One exception, for compatibility (added 2026-10-27, S018):** when a file is opened, a line
+   without `|` that directly follows a table's rows gets a blank line before it. GFM (and
+   GitHub) would make that line a row of the table; Obsidian, which writes such files, ends the
+   table there. With the blank line the text is a paragraph in every one of them. The document
+   is marked modified, without a message (a feature toggle, off until an options dialog offers
+   it); the file is written only when the user saves. Decided by the project owner as a
+   compromise for the best compatibility.
 
 ## Consequences
+
+- Opening and saving a file without editing writes it byte for byte, except for decision 6: a
+  file with text directly below a table is saved with the added blank lines (the editor shows
+  it as modified when opening it). The added lines take the file's majority ending.
 
 - No synchronisation code and no drift by construction.
 - Saving copies the document text once on the UI thread (`QTextDocument::toRawText`, about 25 ms

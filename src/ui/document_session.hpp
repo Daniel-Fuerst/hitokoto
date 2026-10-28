@@ -6,6 +6,7 @@
 // the file is always a state the document had (S017).
 #pragma once
 
+#include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/text_codec.hpp"
 
 #include <QElapsedTimer>
@@ -30,7 +31,8 @@ struct FileFormat {
 class DocumentSession : public QObject {
     Q_OBJECT
 public:
-    explicit DocumentSession(EditorWidget* editor, QObject* parent = nullptr);
+    /// `registry` must outlive the session; loading reads it on a worker thread (const use only).
+    DocumentSession(EditorWidget* editor, const core::ElementRegistry& registry, QObject* parent = nullptr);
     ~DocumentSession() override;
     DocumentSession(const DocumentSession&) = delete;
     DocumentSession& operator=(const DocumentSession&) = delete;
@@ -60,6 +62,9 @@ signals:
     void loadStarted(const QString& path);
     void firstChunkShown();
     void loadFinished(const QString& path);
+    /// Emitted after loadFinished() when opening added blank lines below tables (ADR 0002,
+    /// decision 6); the document is then modified.
+    void blankLinesAdded(int count);
     void loadFailed(const QString& path, const QString& message);
     /// The copy of the text a save will write is complete; the file will be this document state.
     void snapshotTaken();
@@ -109,11 +114,12 @@ private:
     static WriteOutcome write(Snapshot snapshot, const QString& path);
     void finishSave(const QString& path, const WriteOutcome& outcome, quint64 editCount, quint64 documentId);
     void abortLoad(const QString& path, const QString& message);
-    void beginInsert(QString text, core::DecodedText meta, const QString& path);
+    void beginInsert(QString text, core::DecodedText meta, const QString& path, std::size_t blankLinesAdded);
     void insertSlice();
     void finishInsert();
 
     EditorWidget* editor_;
+    const core::ElementRegistry& registry_;
     QThreadPool pool_;
     QString path_;
     FileFormat format_;
@@ -121,6 +127,7 @@ private:
     QString pendingText_;
     QString pendingPath_;
     qsizetype pendingOffset_ = 0;
+    std::size_t pendingBlankLines_ = 0;
     QTimer insertTimer_;
     Copy copy_;
     QTimer copyTimer_;

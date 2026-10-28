@@ -3,6 +3,7 @@
 
 #include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/theme.hpp"
+#include "options.hpp"
 
 #include <QMainWindow>
 
@@ -35,6 +36,10 @@ public:
     void setMessageSink(MessageFn fn) { message_ = std::move(fn); }
     void setPathPicker(PickPathFn fn) { pickPath_ = std::move(fn); }
 
+    /// Options (no options dialog yet: the defaults in options.hpp apply).
+    [[nodiscard]] const Options& options() const noexcept { return options_; }
+    void setOptions(const Options& options) { options_ = options; }
+
     void applyTheme(const core::Theme& theme);
     void showMessage(const QString& title, const QString& text);
 
@@ -65,6 +70,7 @@ private:
     AskSaveFn askSave_;
     MessageFn message_;
     PickPathFn pickPath_;
+    Options options_;
 };
 
 }  // namespace hitokoto::ui
