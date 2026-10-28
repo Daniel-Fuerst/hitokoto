@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Fenced code block (S014): ``` or ~~~ fences (CommonMark 4.5). Everything between the fences is
-// literal code; concealed fence lines are hidden, revealed ones show their source as code.
+// literal code; concealed fence lines keep their space but are hidden, revealed ones show their
+// source as code (S021). An opening fence reports the language of its info string.
 #include "hitokoto/core/markdown.hpp"
 
 #include <algorithm>
@@ -40,8 +41,33 @@ Fence fenceAt(std::u16string_view line) noexcept {
     return {c == u'`' ? kBacktick : kTilde, length, end};
 }
 
+bool isBlank(char16_t c) noexcept {
+    return c == u' ' || c == u'\t';
+}
+
 bool onlyBlanks(std::u16string_view text) noexcept {
-    return std::all_of(text.begin(), text.end(), [](char16_t c) { return c == u' ' || c == u'\t'; });
+    return std::all_of(text.begin(), text.end(), isBlank);
+}
+
+bool isAsciiPunctuation(char16_t c) noexcept {
+    return (c >= u'!' && c <= u'/') || (c >= u':' && c <= u'@') || (c >= u'[' && c <= u'`') || (c >= u'{' && c <= u'~');
+}
+
+/// The language of an info string: its first word, with backslash escapes resolved (CommonMark
+/// 4.5 and 2.4, as commonmark.js and markdown-it do). Entity references stay as written.
+std::u16string languageOf(std::u16string_view info) {
+    std::size_t start = 0;
+    while (start < info.size() && isBlank(info[start])) {
+        ++start;
+    }
+    std::u16string word;
+    for (std::size_t i = start; i < info.size() && !isBlank(info[i]); ++i) {
+        if (info[i] == u'\\' && i + 1 < info.size() && isAsciiPunctuation(info[i + 1])) {
+            ++i;
+        }
+        word.push_back(info[i]);
+    }
+    return word;
 }
 
 class FencedCodeElement final : public MultiLineElement {
@@ -68,6 +94,9 @@ public:
                 LineRender& out) const override {
         out.codeBlock = true;
         out.fenceLine = parsed.delimiter;
+        if (parsed.delimiter && !context.blockState.active()) {
+            out.codeLanguage = languageOf(line.substr(fenceAt(line).end));
+        }
         const Span whole{0, static_cast<std::uint32_t>(line.size())};
         if (whole.length == 0) {
             return;
