@@ -33,6 +33,14 @@ depend on it.
 - When I read a heading line with the caret elsewhere and on it
 - Then the text is read sensibly (markers either skipped or read as Markdown, but consistently)
 
+**Scenario: code block fences (S021)**
+- Given code blocks whose fences are concealed with their space kept (transparent text), with and
+  without an info string, a tilde fence and a block that runs to the end of the document
+- When the caret walks with arbitrary sequences of Up/Down/Left/Right/Home/End/PageUp/PageDown
+- Then whenever the caret is on a line of a block, both fences of that block are revealed, so the
+  caret never stands in concealed text
+- And no line of the block moves or changes height compared with the concealed state
+
 **Scenario: table cells (S018)**
 - Given a table shown as a table view, with the caret moving into it from the line above and below
 - When I move between cells, compose text with an input method in a cell and read the table with
@@ -50,5 +58,7 @@ concealment stays; this gate keeps checking it on the new surface.
 
 ## Tests
 
-- UI: `tst_s009_concealment` – residue measurement via `cursorRect`, randomised caret walks.
+- UI: `tst_s009_concealment` – randomised caret walks (since 2026-10-28, with S021: headings,
+  bullets, emphasis, inline code and code blocks; the caret never in concealed text, code block
+  fences revealed and the block still). Residue measurement via `cursorRect` is still to come.
 - IME and screen-reader checks are manual, documented with platform and version in the ADR.
