@@ -96,16 +96,24 @@ private:
     int revealedClose_ = -1;  ///< likewise
     // The extent of the code block last looked up. A caret step inside a block, and typing in it,
     // reuse it, so their cost does not depend on the size of the block (review O2).
-    CodeExtent extent_;
-    bool extentValid_ = false;
-    // A search for the fences that does not finish at once (a large block whose states are not
-    // cached yet) goes on in idle slices; the fences it finds are revealed then.
+    // The code block searched last, and while a search runs, how far it got. A caret step inside
+    // that block, and typing in it, reuse it, so their cost does not depend on the size of the
+    // block (review O2). A search that does not finish at once (a large block, or one whose states
+    // are not cached yet) goes on in idle slices; the fences it finds are revealed then.
+    struct FenceSearch {
+        core::BlockState inside;  ///< the state every line of the block carries
+        int from = -1;            ///< a line known to be inside (where the search started)
+        int open = -1;            ///< opening fence, once known
+        int close = -1;           ///< closing fence once known; -1 after the search: runs to the end
+        int back = -1;            ///< next line to look at above; -1 = the opening fence is known
+        int forward = -1;         ///< next line to look at below; -1 = the end is known
+        bool valid = false;
+        [[nodiscard]] bool contains(int number) const noexcept;
+        [[nodiscard]] CodeExtent known() const noexcept;
+    };
+    FenceSearch search_;
     QTimer fenceSearch_;
-    core::BlockState searchInside_;
-    CodeExtent search_;
-    int searchBack_ = -1;     ///< next line to look at above; -1 = the opening fence is known
-    int searchForward_ = -1;  ///< next line to look at below; -1 = the closing fence is known
-    int blockCount_ = 1;      ///< block count after the last change seen
+    int blockCount_ = 1;  ///< block count after the last change seen
     QTimer idle_;
     int idleNext_ = 0;
     bool busy_ = false;

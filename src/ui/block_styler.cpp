@@ -249,23 +249,24 @@ core::BlockState BlockStyler::blockStateAfter(const QTextBlock& block) {
     return registry_.blockStateAfter(view(text), before, lookahead.isEmpty() ? std::u16string_view{} : view(lookahead));
 }
 
+bool BlockStyler::FenceSearch::contains(int number) const noexcept {
+    const int low = back >= 0 ? back + 1 : open;
+    const int high = forward >= 0 ? std::max(forward - 1, from) : close;
+    return valid && number >= low && (high < 0 || number <= high);
+}
+
+BlockStyler::CodeExtent BlockStyler::FenceSearch::known() const noexcept {
+    return {back < 0 ? open : -1, forward < 0 ? close : -1};
+}
+
 BlockStyler::CodeExtent BlockStyler::codeExtentOf(const QTextBlock& block) {
     const int number = block.blockNumber();
-    if (extentValid_ && number >= extent_.open && (extent_.close < 0 || number <= extent_.close)) {
-        return extent_;
-    }
-    if (fenceSearch_.isActive()) {
-        // A search still running for this block: what it knows so far.
-        const int low = searchBack_ >= 0 ? searchBack_ + 1 : search_.open;
-        const int high = searchForward_ >= 0 ? searchForward_ - 1 : search_.close;
-        if (number >= low && (high < 0 || number <= high)) {
-            return {searchBack_ < 0 ? search_.open : -1, searchForward_ < 0 ? search_.close : -1};
-        }
-        fenceSearch_.stop();
+    if (search_.contains(number)) {
+        return search_.known();  // the block searched last: a caret step inside costs nothing
     }
     const auto render = renderFor(block);
     if (!render.codeBlock) {
-        return {};
+        return {};  // a search still running goes on, for when the caret comes back
     }
     // Every line of one code block carries the same block state; the line before the opening
     // fence and the closing fence carry another one. The search reads cached states and renders
@@ -273,18 +274,20 @@ BlockStyler::CodeExtent BlockStyler::codeExtentOf(const QTextBlock& block) {
     const core::BlockState before = blockStateBefore(block);
     const bool opening = render.fenceLine && !before.active();
     const bool closing = render.fenceLine && before.active();
-    searchInside_ = opening ? render.blockState : before;
-    search_ = {opening ? number : -1, closing ? number : -1};
-    searchBack_ = opening ? -1 : number - 1;
-    searchForward_ = closing ? -1 : number;
-    if (continueFenceSearch(kFenceSearchNanoseconds)) {
-        extent_ = search_;
-        extentValid_ = true;
-        return extent_;
+    fenceSearch_.stop();
+    search_ = {.inside = opening ? render.blockState : before,
+               .from = number,
+               .open = opening ? number : -1,
+               .close = closing ? number : -1,
+               .back = opening ? -1 : number - 1,
+               .forward = closing ? -1 : number,
+               .valid = true};
+    if (!continueFenceSearch(kFenceSearchNanoseconds)) {
+        // A large block (a warm walk takes about 150 ns per line) or one whose states are not
+        // cached yet (just opened): find the rest in idle slices.
+        fenceSearch_.start();
     }
-    // A large block whose states are not cached yet (just opened): find the rest in idle slices.
-    fenceSearch_.start();
-    return {searchBack_ < 0 ? search_.open : -1, searchForward_ < 0 ? search_.close : -1};
+    return search_.known();
 }
 
 bool BlockStyler::continueFenceSearch(qint64 nanoseconds) {
@@ -292,30 +295,30 @@ bool BlockStyler::continueFenceSearch(qint64 nanoseconds) {
     timer.start();
     int steps = 0;
     const auto overBudget = [&] { return ++steps % 256 == 0 && timer.nsecsElapsed() > nanoseconds; };
-    if (searchBack_ >= 0) {
-        // The states above `block` are cached: rendering it computed them.
-        QTextBlock b = document_->findBlockByNumber(searchBack_);
-        while (b.isValid() && blockStateAfter(b) == searchInside_) {
+    if (search_.back >= 0) {
+        // The states above the line the search started from are cached: rendering it computed them.
+        QTextBlock b = document_->findBlockByNumber(search_.back);
+        while (b.isValid() && blockStateAfter(b) == search_.inside) {
             b = b.previous();
             if (b.isValid() && overBudget()) {
-                searchBack_ = b.blockNumber();
+                search_.back = b.blockNumber();
                 return false;
             }
         }
         search_.open = b.isValid() ? b.blockNumber() + 1 : 0;
-        searchBack_ = -1;
+        search_.back = -1;
     }
-    if (searchForward_ >= 0) {
-        QTextBlock b = document_->findBlockByNumber(searchForward_);
-        while (b.isValid() && blockStateAfter(b) == searchInside_) {
+    if (search_.forward >= 0) {
+        QTextBlock b = document_->findBlockByNumber(search_.forward);
+        while (b.isValid() && blockStateAfter(b) == search_.inside) {
             b = b.next();
             if (b.isValid() && overBudget()) {
-                searchForward_ = b.blockNumber();
+                search_.forward = b.blockNumber();
                 return false;
             }
         }
         search_.close = b.isValid() ? b.blockNumber() : -1;  // -1: the block runs to the end
-        searchForward_ = -1;
+        search_.forward = -1;
     }
     return true;
 }
@@ -325,36 +328,44 @@ void BlockStyler::fenceSearchSlice() {
         return;
     }
     fenceSearch_.stop();
-    extent_ = search_;
-    extentValid_ = true;
     setRevealed(revealed_);  // reveals the fences just found
 }
 
 void BlockStyler::forgetExtent() {
-    extentValid_ = false;
+    search_.valid = false;
     fenceSearch_.stop();
 }
 
 void BlockStyler::updateExtentAfterEdit(int position, int charsAdded) {
     const int delta = document_->blockCount() - blockCount_;
     blockCount_ = document_->blockCount();
-    if (fenceSearch_.isActive()) {
-        forgetExtent();  // set off again by the caret move that follows the edit
-    }
-    if (!extentValid_) {
+    if (!search_.valid) {
         return;
     }
-    // An edit that stays between the fences and adds no fence keeps the extent; the closing
-    // fence moves by the number of lines added or removed.
     const QTextBlock first = document_->findBlock(position);
     QTextBlock last = document_->findBlock(position + charsAdded);
     if (!last.isValid()) {
         last = document_->lastBlock();
     }
-    const int close = extent_.close < 0 ? -1 : extent_.close + delta;
-    bool keep = first.isValid() && first.blockNumber() > extent_.open && (close < 0 || last.blockNumber() < close) &&
-                last.blockNumber() - first.blockNumber() <= kSynchronousLimit;
-    for (QTextBlock b = first; keep && b.isValid() && b.blockNumber() <= last.blockNumber(); b = b.next()) {
+    const int f = first.isValid() ? first.blockNumber() : 0;
+    const int l = last.blockNumber();
+    // Lines up to `top` are not known to be inside the block: an edit there changes what is known.
+    const int top = search_.back >= 0 ? search_.back : search_.open;
+    if (f <= top) {
+        forgetExtent();
+        return;
+    }
+    // Below the closing fence, or below the part a running search has looked at: nothing known
+    // changes.
+    if ((search_.forward < 0 && search_.close >= 0 && f > search_.close) ||
+        (search_.forward >= 0 && f >= search_.forward)) {
+        return;
+    }
+    // An edit between the fences that adds no fence keeps what is known; the closing fence moves
+    // by the number of lines added or removed (typing in a block never searches again).
+    const int close = search_.close >= 0 ? search_.close + delta : -1;
+    bool keep = l - f <= kSynchronousLimit && (close < 0 || l < close);
+    for (QTextBlock b = first; keep && b.isValid() && b.blockNumber() <= l; b = b.next()) {
         keep = !renderFor(b).fenceLine;
     }
     if (keep && close >= 0) {
@@ -365,10 +376,14 @@ void BlockStyler::updateExtentAfterEdit(int position, int charsAdded) {
         forgetExtent();
         return;
     }
-    if (revealedClose_ == extent_.close && revealedClose_ >= 0) {
+    if (revealedClose_ >= 0 && revealedClose_ == search_.close) {
         revealedClose_ = close;
     }
-    extent_.close = close;
+    search_.close = close;
+    if (search_.forward >= 0) {
+        search_.forward = std::min(search_.forward + delta, f);  // looks at the edited lines again
+    }
+    search_.from = std::min(search_.from, f);
 }
 
 void BlockStyler::setRevealed(core::LineRange range) {
