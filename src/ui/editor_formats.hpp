@@ -29,6 +29,8 @@ public:
     /// Resolved table tokens (ADR 0005) and the font of table cells (S018).
     [[nodiscard]] const core::TableStyle& table() const noexcept { return table_; }
     [[nodiscard]] QFont tableFont(bool header) const;
+    /// Font of the language badge on an opening fence (S021).
+    [[nodiscard]] QFont badgeFont() const;
     [[nodiscard]] QTextCharFormat heading(int level) const;
 
     /// Format ranges for one line, ready for QTextLayout::setFormats().

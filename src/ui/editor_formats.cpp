@@ -56,6 +56,10 @@ EditorFormats::EditorFormats(const core::Theme& theme)
     }
 }
 
+QFont EditorFormats::badgeFont() const {
+    return baseFont_;
+}
+
 double EditorFormats::textSize(int level) const {
     return level >= 1 && level <= 6 ? heading_[static_cast<std::size_t>(level)].fontPointSize() : editorFontSize_;
 }

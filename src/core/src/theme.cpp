@@ -654,6 +654,10 @@ CodeStyle codeBlockStyle(const Theme& t) {
         .padding = c.padding.value_or(t.spacing),
         .fontScale = c.fontScale.value_or(1),
         .fontFamily = c.fontFamily.value_or(""),
+        .margin = 0,
+        .badgeText = {},
+        .badgeFontFamily = "",
+        .badgeFontScale = 1,
     };
 }
 
@@ -670,6 +674,11 @@ CodeStyle inlineCodeStyle(const Theme& t) {
         .padding = c.padding.value_or(2),
         .fontScale = c.fontScale.value_or(1),
         .fontFamily = c.fontFamily.value_or(block.fontFamily),
+        // Code block only (S021).
+        .margin = 0,
+        .badgeText = {},
+        .badgeFontFamily = "",
+        .badgeFontScale = 1,
     };
 }
 

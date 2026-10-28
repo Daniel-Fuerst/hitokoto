@@ -129,6 +129,7 @@ QString BlockStyler::nextLineFor(const QTextBlock& block, core::BlockState state
 }
 
 core::LineRender BlockStyler::renderFor(const QTextBlock& block) {
+    ++renderCount_;
     const QString text = block.text();
     const core::BlockState state = blockStateBefore(block);
     const QString next = nextLineFor(block, state, text);

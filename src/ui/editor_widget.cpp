@@ -334,23 +334,8 @@ void EditorWidget::paintCodeBlockPanels() {
             } else {
                 panel.setBottom(line.bottom());
             }
-            if (render.fenceLine && !styler_->isRevealed(b.blockNumber()) && !styler_->blockStateBefore(b).active()) {
-                const QString text = b.text();
-                int idx = 0;
-                while (idx < text.size() && (text[idx] == QLatin1Char(' ') || text[idx] == QLatin1Char('\t'))) {
-                    ++idx;
-                }
-                if (idx < text.size() && (text[idx] == QLatin1Char('`') || text[idx] == QLatin1Char('~'))) {
-                    const QChar fenceChar = text[idx];
-                    while (idx < text.size() && text[idx] == fenceChar) {
-                        ++idx;
-                    }
-                    QString info = text.mid(idx).trimmed();
-                    if (!info.isEmpty()) {
-                        info[0] = info[0].toUpper();
-                        badges.push_back({line, info});
-                    }
-                }
+            if (const QString badge = codeBlockBadge(b); !badge.isEmpty()) {
+                badges.push_back({line, badge});
             }
             continue;
         }
@@ -372,6 +357,30 @@ void EditorWidget::paintCodeBlockPanels() {
             painter.drawText(badgeRect, Qt::AlignRight | Qt::AlignVCenter, badge.text);
         }
     }
+}
+
+QString EditorWidget::codeBlockBadge(const QTextBlock& b) {
+    const auto render = styler_->renderFor(b);
+    if (!render.fenceLine || styler_->isRevealed(b.blockNumber()) || styler_->blockStateBefore(b).active()) {
+        return {};
+    }
+    const QString text = b.text();
+    int idx = 0;
+    while (idx < text.size() && (text[idx] == QLatin1Char(' ') || text[idx] == QLatin1Char('\t'))) {
+        ++idx;
+    }
+    if (idx < text.size() && (text[idx] == QLatin1Char('`') || text[idx] == QLatin1Char('~'))) {
+        const QChar fenceChar = text[idx];
+        while (idx < text.size() && text[idx] == fenceChar) {
+            ++idx;
+        }
+        QString info = text.mid(idx).trimmed();
+        if (!info.isEmpty()) {
+            info[0] = info[0].toUpper();
+            return info;
+        }
+    }
+    return {};
 }
 
 void EditorWidget::paintInlineCodeBoxes(QPainter& painter, const QTextBlock& block, const core::LineRender& render,
