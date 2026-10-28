@@ -12,6 +12,12 @@ function(hitokoto_ui_test name)
     endif()
     add_test(NAME ${name} COMMAND ${name})
     set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 300)
+    if(WIN32)
+        # Qt's DLLs: without them on PATH the tests do not start outside a prepared shell, e.g. in
+        # Visual Studio's Test Explorer (DLL not found, no output).
+        set_property(TEST ${name} PROPERTY ENVIRONMENT_MODIFICATION
+                     "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    endif()
 endfunction()
 
 foreach(t IN ITEMS
