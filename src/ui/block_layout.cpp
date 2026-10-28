@@ -18,10 +18,6 @@
 namespace hitokoto::ui {
 namespace {
 
-// Changes touching more blocks than this (loading, a new width) only estimate heights; the blocks
-// are laid out when they are drawn or queried, or by the styler's idle slices.
-constexpr int kSynchronousBlocks = 64;
-
 const BlockData* dataOf(const QTextBlock& block) {
     return dynamic_cast<const BlockData*>(block.userData());
 }
