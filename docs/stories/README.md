@@ -32,6 +32,7 @@ story ID (see "Conventions").
 | 19 | [S019](019-editor-surface.md) | Editor surface with its own document layout (ADR 0003) | S017 | L | Done |
 | 20 | [S018](018-tables.md) | Interactive Markdown pipe tables | S015, S019 | L | Done |
 | 21 | [S020](020-backslash-escapes.md) | Backslash escapes for ASCII punctuation | S013, S015 | S | In review |
+| 22 | [S021](021-code-block-fences-in-panel.md) | Code block fences inside the panel, revealed from anywhere in the block | S014, S019 | M | Proposed |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 

@@ -1,6 +1,9 @@
 # S014 — Fenced Markdown code blocks
 
 - **Status:** Done (accepted by the user on 2026-10-27) · **Order:** 15 · **Depends on:** S013
+- **Changed by:** [S021](021-code-block-fences-in-panel.md) (fence lines inside the panel, revealed
+  from anywhere in the block, language badge). The scenarios below are the ones accepted on
+  2026-10-27; where S021 differs, S021 applies.
 
 ## Story
 
@@ -13,17 +16,15 @@ without changing the plain Markdown source.
 - Given a fenced block delimited by at least three matching backticks or tildes
 - When the caret is outside the block
 - Then its content is displayed in a monospace code style inside one continuous, padded,
-  theme-driven block panel spanning from opening fence to closing fence
-- And opening and closing fence markers are concealed without collapsing line height, so the block
-  preserves its geometry and does not extend or shrink when showing or hiding fences
-- And if the opening fence has an info string, the language name is shown in the top right
+  theme-driven block panel spanning the code lines
+- And opening and closing fence markers are concealed
+- And the concealed fence lines do not appear as panel content
 - And the document still contains the original Markdown
 
-**Scenario: source is revealed when caret is inside the block**
-- Given a fenced block
-- When the caret or selection is anywhere in the block (on a fence line or inside content)
-- Then opening and closing fences and any info string are revealed inside the block panel
-- And the block does not extend or shrink between revealed and concealed states
+**Scenario: source is revealed on a fence line**
+- Given a fenced block with concealed markers
+- When the caret or selection is on an opening or closing fence line
+- Then that line's raw fence and any info string are visible
 - And the block content remains styled as code
 
 **Scenario: Markdown syntax inside code stays literal**
@@ -80,11 +81,10 @@ without changing the plain Markdown source.
 
 ## Implementation
 
-Completed on Linux 2026-10-25; updated 2026-10-27. Code content and fences are rendered in a continuous rounded panel painted
-behind the text using the theme's surface, spacing and radius tokens; fence lines remain inside the panel. When the caret is outside,
-fences are concealed without collapsing line height (preserving block dimensions) and an info string language badge is displayed in the
-top-right corner. When the caret or selection enters anywhere in the block, both opening and closing fences are revealed. Panel and code
-take every `code-block.*` token (ADR 0004); revealed fence lines use `code-block.marker`.
+Completed on Linux 2026-10-25. Code content is rendered in a continuous rounded panel painted
+behind the text using the theme's surface, spacing and radius tokens; fence lines remain concealed
+and outside the panel. Panel and code take every `code-block.*` token (ADR 0004); revealed fence lines use
+`code-block.marker`.
 
 CI run #18 (pull request #5, 2026-10-25) is green on Linux (Qt 6.12 and 6.8), Windows (Qt 6.8.3)
 and macOS (Qt 6.12).

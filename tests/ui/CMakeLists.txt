@@ -32,7 +32,8 @@ foreach(t IN ITEMS
         tst_s017_save_without_stall
         tst_s018_tables
         tst_s019_editor_surface
-        tst_s020_backslash_escapes)
+        tst_s020_backslash_escapes
+        tst_s021_code_block_fences)
     hitokoto_ui_test(${t})
 endforeach()
 
