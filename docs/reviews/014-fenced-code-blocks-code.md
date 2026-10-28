@@ -12,7 +12,7 @@ objections:
     severity: major
     title: S014 (Done) rewritten in place instead of a new story
     disposition: fixed
-    disposition_rationale: "Daniel's change is story S021 with its reason; S014 keeps its accepted text and points to S021. Confirmation of S021 with Daniel is open."
+    disposition_rationale: "Daniel's change is story S021 with its reason; S014 keeps its accepted text and points to S021. Daniel confirmed S021 on 2026-10-28."
   - id: O2
     category: failure
     severity: major
@@ -86,9 +86,9 @@ stories with their reason; an accepted story's text is the record of what was ac
 **Disposition: fixed.** The change is story S021 (`docs/stories/021-code-block-fences-in-panel.md`)
 with its reason: a collapsing fence made the block jump on every entry and exit; Obsidian keeps
 it still. S014 is back to the text accepted on 2026-10-27 and names S021 as the story that changes
-it; the backlog lists S021 as Proposed. Daniel's new test moved to `tst_s021_code_block_fences`.
-His adjustments in `tst_s014_fenced_code_blocks` stay, they test what S021 changes. Open: Daniel
-confirms S021 (story text, margin and badge tokens, horizontal padding, O5).
+it. Daniel confirmed S021 on 2026-10-28. Daniel's new test moved to `tst_s021_code_block_fences`.
+His adjustments in `tst_s014_fenced_code_blocks` stay, they test what S021 changes. Daniel confirmed
+the story text, the margin and badge tokens and the horizontal padding (O5).
 
 ## O2 - failure - major
 
@@ -152,7 +152,7 @@ and the code, but now acts horizontally only.
 panel edge and the code above and below; padding on top of that would make the panel taller by
 twice `layout.spacing` (16 px in the built-in themes) than in b00ea24 and Obsidian.
 `code-block.padding` is now documented as horizontal (`docs/theming.md`, S021); the space outside
-the panel is `code-block.margin`. To be confirmed with S021.
+the panel is `code-block.margin`. Confirmed by Daniel on 2026-10-28.
 
 ## O6 - premise - minor
 

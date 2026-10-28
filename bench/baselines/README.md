@@ -27,19 +27,18 @@ inserted meanwhile, 15-40 ms that swung between runs. A runner that is slower as
 fails the comparison; the baselines changed with this measurement and come from the first run
 with it.
 
-The baselines come from the review run of the S017 pull request (2026-10-27; Windows and macOS
-from single re-runs of their jobs); Linux since 2026-10-28 from the run on `e5ae913` of
+The baselines come from the review run of the S017 pull request (2026-10-27; Windows and macOS from
+single re-runs of their jobs); Linux since 2026-10-28 from the run on `e5ae913` of
 `feature/tables`, the first with the opening medians timed in the signal, which also added the
-`s018_*` values. Since 2026-10-28 the Windows and macOS benchmarks are off until further notice
-(user decision, `ci.yml`): their runners swing too much for a gate, and a comparison that only
-reports is read by nobody. `windows.json` and `macos.json` keep values of the earlier
-measurement and need new ones from the first run after the jobs come back. Until then the hard
-budgets (saving, key events) are not checked on Windows and macOS either, nor the code that only
-runs there (`ReplaceFileW`, `F_FULLFSYNC`). The `s021_codeblock_*` values (moving,
-entering and typing in a 10 MB code block, 2026-10-28) are in no baseline yet; until the next
-update from a CI run they are only checked against their hard budgets (50 ms per key event) and
-the p95 budgets with `--fail-on-budget`. CI runners differ from the development machine, so
-baselines must come from CI itself. To create or update them:
+`s018_*` values; the `s021_codeblock_*` values (moving, entering and typing in a 10 MB code block)
+were added on their own from the CI run of pull request #19 (2026-10-28), the other values kept.
+Since 2026-10-28 the Windows and macOS benchmarks are off until further notice (user decision,
+`ci.yml`): their runners swing too much for a gate, and a comparison that only reports is read by
+nobody. `windows.json` and `macos.json` keep values of the earlier measurement and need new ones
+from the first run after the jobs come back. Until then the hard budgets (saving, key events) are
+not checked on Windows and macOS either, nor the code that only runs there (`ReplaceFileW`,
+`F_FULLFSYNC`), nor the `s021_codeblock_*` values. CI runners differ from the development machine,
+so baselines must come from CI itself. To create or update them:
 
 1. Open a successful CI run (on `main` or on a pull request; both use the same runners), download
    the artefacts `bench-linux`, `bench-windows`, `bench-macos`.
