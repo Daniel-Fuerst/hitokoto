@@ -1,7 +1,7 @@
 # S021 — Code block fences inside the panel
 
-- **Status:** Proposed (to be confirmed with Daniel; implemented on `agents/s014-fences-in-block`) ·
-  **Order:** 22 · **Depends on:** S014, S019
+- **Status:** Confirmed (by Daniel on 2026-10-28, including the 3 px margin and horizontal-only
+  padding; implemented on `agents/s014-fences-in-block`) · **Order:** 22 · **Depends on:** S014, S019
 - **Basis:** Daniel's commit b00ea24 on `fix/block-comments-backticks-and-margin` (2026-10-27),
   which changed S014's accepted behaviour to match Obsidian. Scope changes become new stories
   (review `docs/reviews/014-fenced-code-blocks-code.md`, O1); this story records the change and its
