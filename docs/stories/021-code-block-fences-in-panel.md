@@ -1,6 +1,7 @@
 # S021 — Code block fences inside the panel
 
-- **Status:** Proposed (to be confirmed with Daniel) · **Order:** 22 · **Depends on:** S014, S019
+- **Status:** Proposed (to be confirmed with Daniel; implemented on `agents/s014-fences-in-block`) ·
+  **Order:** 22 · **Depends on:** S014, S019
 - **Basis:** Daniel's commit b00ea24 on `fix/block-comments-backticks-and-margin` (2026-10-27),
   which changed S014's accepted behaviour to match Obsidian. Scope changes become new stories
   (review `docs/reviews/014-fenced-code-blocks-code.md`, O1); this story records the change and its
@@ -78,3 +79,24 @@ not make the text jump.
 - S009: `tst_s009_concealment` – the caret never stands in concealed text while walking through
   code blocks.
 - Benchmark: `s021_codeblock_*` on a 10 MB document that is one code block.
+
+## Implementation
+
+Daniel's commit b00ea24, reworked on `agents/s014-fences-in-block` after the review
+(`docs/reviews/014-fenced-code-blocks-code.md`), 2026-10-28, Linux only so far (development VM,
+Qt 6.12.0, presets dev and ci):
+
+- `BlockStyler` reveals the caret's lines plus the two fences of the code block that holds them.
+  It finds the fences by walking cached block states (no rendering) once per block and keeps the
+  result while the caret moves inside the block and while typing there adds no fence. A walk
+  that takes more than 4 ms (a large block, or one whose states are not known yet after opening)
+  goes on in idle slices; the fences are revealed when found.
+- The margin is space above the opening and below the closing fence line in `BlockLayout`, part
+  of the block heights in the height index; painting moves no line.
+- Core reports the language of an opening fence (`LineRender::codeLanguage`); the editor has no
+  fence parser of its own.
+
+Benchmark on a 10 MB document that is one code block (`s021_codeblock_*`, development VM, release
+build, offscreen), Daniel's commit against the rework: caret step median / p95 / max 71.8 / 87.1 /
+108.8 ms → 1.8 / 7.4 / 26.4 ms; entering the block max 134.6 → 8.6 ms; typing median / p95 / max
+72.4 / 83.5 / 102.8 → 1.9 / 2.5 / 8.5 ms (the slower of two runs, `docs/performance.md`).

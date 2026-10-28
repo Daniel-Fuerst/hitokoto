@@ -38,6 +38,26 @@ Qt 6.12), release build, offscreen, 10 runs. These are the baselines in `bench/b
 | Key to paint, 10 MB file (median / p95) | 0.9 / 1.0 ms | 0.9 / 1.0 ms | 1.2 / 2.2 ms | ≤ 16 ms |
 | Save 10 MB: UI thread blocked (duration of the save() call; S017 measures the longest stall instead) | 6 ms | 36 ms | 24 ms | imperceptible |
 
+### 2026-10-28, development VM, S021 (release build, offscreen, Qt 6.12.0)
+
+A 10 MB document that is one fenced code block (about 134,000 lines), `s021_codeblock_*`:
+200 caret moves in the middle of the block (Down, Up, End, Home, Right, Left), 40 times entering
+and leaving it at either fence, 200 keys typed in it. Daniel's commit b00ea24 walked the whole
+block on every caret move; the rework walks it once per block (review O2).
+
+| Measurement | b00ea24 | rework | Budget |
+|---|---|---|---|
+| Caret step, median / p95 / max | 71.8 / 87.1 / 108.8 ms | 1.8 / 2.6–7.4 / 5.3–26.4 ms | ≤ 16 ms p95, 50 ms max (hard) |
+| Entering the block, median / max | 8.5 / 134.6 ms | 2.8–6.0 / 6.5–8.6 ms | 50 ms max (hard) |
+| Typing, median / p95 / max | 72.4 / 83.5 / 102.8 ms | 1.9 / 2.3–2.5 / 4.8–8.5 ms | ≤ 16 ms p95, 50 ms max (hard) |
+
+A walk over cached block states costs about 150 ns per line here (about 20 ms for this block),
+over states not computed yet about 0.9 µs; so the walk runs for at most 4 ms on a key and goes
+on in idle slices. b00ea24 was measured once, merged with main 759a59d; the rework twice, on
+main 7f1a163 (ranges). The VM swings between runs: against one run of main (tolerance 25 %),
+two further runs of main itself failed the comparison (table typing p95 6.5 → 9.9 and 10.6 ms,
+save stall 4.1 → 6.6 ms) and the rework failed it in the same values by the same amounts.
+
 ### 2026-10-27, development VM, S019 (release build, offscreen, 5 runs, Qt 6.12.0)
 
 `QTextEdit` with `BlockLayout` (ADR 0003) against the `QPlainTextEdit` surface it replaced, same
