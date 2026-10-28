@@ -1,6 +1,6 @@
 # S018 — Markdown tables
 
-- **Status:** In review · **Order:** 20 · **Depends on:** S015, S019
+- **Status:** Done (accepted by the user on 2026-10-28) · **Order:** 20 · **Depends on:** S015, S019
 - **Basis:** User request and confirmation on 2026-10-26; ADR 0005. Revised on 2026-10-27 after the
   code review (`docs/reviews/018-tables-code.md`) for the editor surface of S019: the table is an
   embedded Qt table view; GFM rules throughout; line breaks in cells; a source view. The revision
@@ -260,8 +260,9 @@ On `feature/tables`, 2026-10-27, after the code review of the first version
 - Budgets on the development VM: opening a 1000-row table 110–130 ms (500 ms), typing in a
   200-row table p95 about 4 ms, longest keystroke under 10 ms (50 ms hard).
 
-Next: the user's acceptance ("Done"); the benchmark baselines gain the `s018_*` values from a CI
-run; Windows and macOS with the pull request to `main`.
+Accepted by the user on 2026-10-28; defects found later are handled separately. The Linux
+benchmark baseline holds the `s018_*` values since 9ddc0be (CI run on e5ae913); Windows and macOS
+run with the pull request to `main`.
 
 ## Tests
 

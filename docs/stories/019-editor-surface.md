@@ -1,6 +1,6 @@
 # S019 — Editor surface with its own document layout
 
-- **Status:** In review · **Order:** 19 · **Depends on:** S017
+- **Status:** Done (accepted by the user on 2026-10-28) · **Order:** 19 · **Depends on:** S017
 - **Basis:** S018 review (O2, O8) and the decision of 2026-10-27 to implement plan B of ADR 0001
   directly on `feature/tables`; ADR 0003. Confirmed by the user on 2026-10-27.
 - **Review basis:** Linux only (development VM, Qt 6.12.0, presets dev and ci, benchmarks in

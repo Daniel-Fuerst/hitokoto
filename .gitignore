@@ -8,5 +8,7 @@ CMakeUserPresets.json
 *.user
 .DS_Store
 
-# Files the Claude desktop app (Cowork) saves into the connected folder
+# Files the Claude desktop app (Cowork) saves into the connected folder, and files the user puts
+# there for Claude (CI artefacts, logs)
 /Claude outputs/
+/Claude inputs/
