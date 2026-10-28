@@ -141,6 +141,24 @@ private slots:
         }
     }
 
+    // A block whose states are not known yet (just opened) is searched for its closing fence in
+    // idle slices; the fence is revealed once found.
+    void aClosingFenceFarAwayIsRevealedOnceFound() {
+        test::Fixture f;
+        QSignalSpy loaded(f.session(), &ui::DocumentSession::loadFinished);
+        f.window->openFile(f.writeFile(QStringLiteral("large.md"), largeBlock(200000)));
+        QVERIFY(QTest::qWaitFor([&] { return !loaded.isEmpty(); }, 60000));
+        f.placeCaret(1);
+        f.settle();
+        auto& styler = f.editor()->styler();
+        QVERIFY(styler.isRevealed(200002));
+        QVERIFY(!styler.isRevealed(200003));
+        f.placeCaret(200003);
+        f.settle();
+        QVERIFY(!styler.isRevealed(1));
+        QVERIFY(!styler.isRevealed(200002));
+    }
+
     // Typing in a block keeps both fences revealed; typing a closing fence moves the reveal.
     void editsInsideTheBlockKeepTheFencesRevealed() {
         test::Fixture f;

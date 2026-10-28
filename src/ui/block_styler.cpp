@@ -29,6 +29,8 @@ constexpr int kStateActive = 0x8;
 // Ranges up to this size are styled synchronously; larger ones on screen + in idle slices.
 constexpr int kSynchronousLimit = 400;
 constexpr qint64 kSliceNanoseconds = 6'000'000;
+// Searching the fences of a code block (S021) runs synchronously for this long, then in slices.
+constexpr qint64 kFenceSearchNanoseconds = 4'000'000;
 
 int stateBits(const QTextBlock& block) {
     const int bits = block.userState();
@@ -83,6 +85,8 @@ BlockStyler::BlockStyler(QTextDocument* document, const core::ElementRegistry& r
     : QObject(parent), document_(document), registry_(registry), visibleBlocks_(std::move(visibleBlocks)) {
     idle_.setInterval(0);
     connect(&idle_, &QTimer::timeout, this, &BlockStyler::idleSlice);
+    fenceSearch_.setInterval(0);
+    connect(&fenceSearch_, &QTimer::timeout, this, &BlockStyler::fenceSearchSlice);
     connect(document_, &QTextDocument::contentsChange, this, &BlockStyler::onContentsChange);
 }
 
@@ -158,6 +162,7 @@ void BlockStyler::styleBlock(const QTextBlock& block) {
     setStyled(mutableBlock, isRevealed(block.blockNumber()) ? kStyledRevealed : kStyledConcealed);
     ++styledCount_;
     if (blockStateChanged) {
+        forgetExtent();  // a fence appeared or went away
         // The next line's block membership may change too. Restyle onward lazily; each restyled
         // line continues the chain only while its own block state changes. This must not depend on
         // the edit changing the text length (e.g. one backtick replaced by a letter).
@@ -211,59 +216,170 @@ void BlockStyler::styleVisible() {
     }
 }
 
-core::LineRange BlockStyler::expandCodeBlocks(core::LineRange range) {
-    if (range.empty() || document_->isEmpty()) {
-        return range;
+core::BlockState BlockStyler::blockStateAfter(const QTextBlock& block) {
+    if (const auto cached = cachedBlockState(block)) {
+        return *cached;
     }
-    int first = static_cast<int>(range.first);
-    int last = static_cast<int>(range.last);
+    const QTextBlock next = block.next();
+    if (next.isValid()) {
+        return blockStateBefore(next);  // computes and caches the states up to `block`
+    }
+    const QString text = block.text();
+    const core::BlockState before = blockStateBefore(block);
+    const QString lookahead = nextLineFor(block, before, text);
+    return registry_.blockStateAfter(view(text), before, lookahead.isEmpty() ? std::u16string_view{} : view(lookahead));
+}
 
-    QTextBlock bFirst = document_->findBlockByNumber(first);
-    if (bFirst.isValid()) {
-        const auto renderFirst = renderFor(bFirst);
-        if (renderFirst.codeBlock) {
-            if (!(renderFirst.fenceLine && !blockStateBefore(bFirst).active())) {
-                for (QTextBlock prev = bFirst.previous(); prev.isValid(); prev = prev.previous()) {
-                    if (!blockStateBefore(prev).active()) {
-                        first = prev.blockNumber();
-                        break;
-                    }
-                }
+BlockStyler::CodeExtent BlockStyler::codeExtentOf(const QTextBlock& block) {
+    const int number = block.blockNumber();
+    if (extentValid_ && number >= extent_.open && (extent_.close < 0 || number <= extent_.close)) {
+        return extent_;
+    }
+    if (fenceSearch_.isActive()) {
+        // A search still running for this block: what it knows so far.
+        const int low = searchBack_ >= 0 ? searchBack_ + 1 : search_.open;
+        const int high = searchForward_ >= 0 ? searchForward_ - 1 : search_.close;
+        if (number >= low && (high < 0 || number <= high)) {
+            return {searchBack_ < 0 ? search_.open : -1, searchForward_ < 0 ? search_.close : -1};
+        }
+        fenceSearch_.stop();
+    }
+    const auto render = renderFor(block);
+    if (!render.codeBlock) {
+        return {};
+    }
+    // Every line of one code block carries the same block state; the line before the opening
+    // fence and the closing fence carry another one. The search reads cached states and renders
+    // nothing; it runs once per block, not once per caret step (review O2).
+    const core::BlockState before = blockStateBefore(block);
+    const bool opening = render.fenceLine && !before.active();
+    const bool closing = render.fenceLine && before.active();
+    searchInside_ = opening ? render.blockState : before;
+    search_ = {opening ? number : -1, closing ? number : -1};
+    searchBack_ = opening ? -1 : number - 1;
+    searchForward_ = closing ? -1 : number;
+    if (continueFenceSearch(kFenceSearchNanoseconds)) {
+        extent_ = search_;
+        extentValid_ = true;
+        return extent_;
+    }
+    // A large block whose states are not cached yet (just opened): find the rest in idle slices.
+    fenceSearch_.start();
+    return {searchBack_ < 0 ? search_.open : -1, searchForward_ < 0 ? search_.close : -1};
+}
+
+bool BlockStyler::continueFenceSearch(qint64 nanoseconds) {
+    QElapsedTimer timer;
+    timer.start();
+    int steps = 0;
+    const auto overBudget = [&] { return ++steps % 256 == 0 && timer.nsecsElapsed() > nanoseconds; };
+    if (searchBack_ >= 0) {
+        // The states above `block` are cached: rendering it computed them.
+        QTextBlock b = document_->findBlockByNumber(searchBack_);
+        while (b.isValid() && blockStateAfter(b) == searchInside_) {
+            b = b.previous();
+            if (b.isValid() && overBudget()) {
+                searchBack_ = b.blockNumber();
+                return false;
             }
         }
+        search_.open = b.isValid() ? b.blockNumber() + 1 : 0;
+        searchBack_ = -1;
     }
-
-    QTextBlock bLast = document_->findBlockByNumber(last);
-    if (bLast.isValid()) {
-        const auto renderLast = renderFor(bLast);
-        if (renderLast.codeBlock) {
-            if (!(renderLast.fenceLine && blockStateBefore(bLast).active())) {
-                for (QTextBlock next = bLast.next(); next.isValid(); next = next.next()) {
-                    const auto renderNext = renderFor(next);
-                    if (!renderNext.codeBlock) {
-                        break;
-                    }
-                    last = next.blockNumber();
-                    if (renderNext.fenceLine) {
-                        break;
-                    }
-                }
+    if (searchForward_ >= 0) {
+        QTextBlock b = document_->findBlockByNumber(searchForward_);
+        while (b.isValid() && blockStateAfter(b) == searchInside_) {
+            b = b.next();
+            if (b.isValid() && overBudget()) {
+                searchForward_ = b.blockNumber();
+                return false;
             }
         }
+        search_.close = b.isValid() ? b.blockNumber() : -1;  // -1: the block runs to the end
+        searchForward_ = -1;
     }
+    return true;
+}
 
-    return {first, last};
+void BlockStyler::fenceSearchSlice() {
+    if (!continueFenceSearch(kSliceNanoseconds)) {
+        return;
+    }
+    fenceSearch_.stop();
+    extent_ = search_;
+    extentValid_ = true;
+    setRevealed(revealed_);  // reveals the fences just found
+}
+
+void BlockStyler::forgetExtent() {
+    extentValid_ = false;
+    fenceSearch_.stop();
+}
+
+void BlockStyler::updateExtentAfterEdit(int position, int charsAdded) {
+    const int delta = document_->blockCount() - blockCount_;
+    blockCount_ = document_->blockCount();
+    if (fenceSearch_.isActive()) {
+        forgetExtent();  // set off again by the caret move that follows the edit
+    }
+    if (!extentValid_) {
+        return;
+    }
+    // An edit that stays between the fences and adds no fence keeps the extent; the closing
+    // fence moves by the number of lines added or removed.
+    const QTextBlock first = document_->findBlock(position);
+    QTextBlock last = document_->findBlock(position + charsAdded);
+    if (!last.isValid()) {
+        last = document_->lastBlock();
+    }
+    const int close = extent_.close < 0 ? -1 : extent_.close + delta;
+    bool keep = first.isValid() && first.blockNumber() > extent_.open && (close < 0 || last.blockNumber() < close) &&
+                last.blockNumber() - first.blockNumber() <= kSynchronousLimit;
+    for (QTextBlock b = first; keep && b.isValid() && b.blockNumber() <= last.blockNumber(); b = b.next()) {
+        keep = !renderFor(b).fenceLine;
+    }
+    if (keep && close >= 0) {
+        const auto render = renderFor(document_->findBlockByNumber(close));
+        keep = render.codeBlock && render.fenceLine;
+    }
+    if (!keep) {
+        forgetExtent();
+        return;
+    }
+    if (revealedClose_ == extent_.close && revealedClose_ >= 0) {
+        revealedClose_ = close;
+    }
+    extent_.close = close;
 }
 
 void BlockStyler::setRevealed(core::LineRange range) {
-    range = expandCodeBlocks(range);
-    if (range == revealed_) {
+    int open = -1;
+    int close = -1;
+    if (!range.empty()) {
+        const QTextBlock first = document_->findBlockByNumber(static_cast<int>(range.first));
+        const QTextBlock last = document_->findBlockByNumber(static_cast<int>(range.last));
+        if (first.isValid()) {
+            open = codeExtentOf(first).open;
+        }
+        if (last.isValid()) {
+            close = codeExtentOf(last).close;
+        }
+    }
+    if (range == revealed_ && open == revealedOpen_ && close == revealedClose_) {
         return;
     }
     const auto changes = core::revealChanges(revealed_, range);
+    const int fences[] = {revealedOpen_, revealedClose_, open, close};
     revealed_ = range;
+    revealedOpen_ = open;
+    revealedClose_ = close;
     for (const auto& c : changes) {
         styleRange(static_cast<int>(c.first), static_cast<int>(c.last));
+    }
+    for (const int fence : fences) {
+        if (fence >= 0) {
+            styleRange(fence, fence);
+        }
     }
 }
 
@@ -271,6 +387,7 @@ void BlockStyler::onContentsChange(int position, int charsRemoved, int charsAdde
     if (busy_) {
         return;
     }
+    updateExtentAfterEdit(position, charsAdded);
     QTextBlock first = document_->findBlock(position);
     // A table header depends on the line below it (S018): restyle the line above the change too.
     if (first.isValid() && first.previous().isValid() && first.previous().text().contains(QLatin1Char('|'))) {
