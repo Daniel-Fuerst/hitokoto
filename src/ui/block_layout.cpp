@@ -106,6 +106,39 @@ qreal BlockLayout::spaceBelow(const QTextBlock& block) const {
     return data != nullptr ? data->spaceBelow : 0.0;
 }
 
+void BlockLayout::setWrapIndent(const QTextBlock& block, int columns) {
+    if (!block.isValid() || wrapIndent(block) == columns) {
+        return;
+    }
+    auto* data = dynamic_cast<BlockData*>(block.userData());
+    if (data == nullptr) {
+        data = new BlockData;
+        const_cast<QTextBlock&>(block).setUserData(data);
+    }
+    data->wrapIndent = columns;
+    if (data->empty()) {
+        const_cast<QTextBlock&>(block).setUserData(nullptr);  // deletes it
+    }
+    if (block.layout()->lineCount() > 0 && reservedHeight(block) <= 0) {
+        layoutBlock(block);
+    }
+    if (!inSync()) {
+        deferred_.push_back(block);
+        return;
+    }
+    setHeight(block.blockNumber(), heightOf(block), true);
+    if (batch_ > 0) {
+        batchNeedsRepaint_ = true;
+    } else {
+        emit update();
+    }
+}
+
+int BlockLayout::wrapIndent(const QTextBlock& block) const {
+    const BlockData* data = dataOf(block);
+    return data != nullptr ? data->wrapIndent : 0;
+}
+
 BlockLayout::Batch::Batch(BlockLayout* layout) : layout_(layout) {
     if (layout_ != nullptr) {
         ++layout_->batch_;
@@ -169,14 +202,34 @@ qreal BlockLayout::layoutBlock(const QTextBlock& block) const {
     const qreal width = availableWidth();
     const qreal left = margin();
     qreal height = spaceAbove(block);
+
+    QTextLine line0 = layout->createLine();
+    if (!line0.isValid()) {
+        layout->endLayout();
+        layout->setPosition(QPointF(0, 0));
+        return height + spaceBelow(block);
+    }
+    line0.setLeadingIncluded(true);
+    line0.setLineWidth(width);
+    line0.setPosition(QPointF(left, height));
+    height += line0.height();
+
+    qreal indent = 0;
+    const int wrapCols = wrapIndent(block);
+    if (wrapCols > 0 && wrapCols <= line0.textLength()) {
+        indent = std::max<qreal>(0, line0.cursorToX(wrapCols) - left);
+    }
+    const qreal subWidth = (indent > 0 && width > indent + 20) ? width - indent : width;
+    const qreal subLeft = (subWidth < width) ? left + indent : left;
+
     while (true) {
         QTextLine line = layout->createLine();
         if (!line.isValid()) {
             break;
         }
         line.setLeadingIncluded(true);
-        line.setLineWidth(width);
-        line.setPosition(QPointF(left, height));
+        line.setLineWidth(subWidth);
+        line.setPosition(QPointF(subLeft, height));
         height += line.height();
     }
     layout->endLayout();

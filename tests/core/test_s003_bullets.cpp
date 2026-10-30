@@ -58,6 +58,16 @@ TEST(S003_Bullets, IndentationIsNestingDepth) {
     EXPECT_EQ(show(u"\t+ a").decorations.at(0), (Decoration{DecorationKind::Bullet, 1, 2}));
 }
 
+TEST(S003_Bullets, WrapIndentPointsToContentStart) {
+    EXPECT_EQ(show(u"- milk").wrapIndent, 2u);
+    EXPECT_EQ(show(u"- milk", true).wrapIndent, 2u);
+    EXPECT_EQ(show(u"  - milk").wrapIndent, 4u);
+    EXPECT_EQ(show(u"    * item").wrapIndent, 6u);
+    EXPECT_EQ(show(u"-   three spaces").wrapIndent, 4u);
+    EXPECT_EQ(show(u"plain text").wrapIndent, 0u);
+    EXPECT_EQ(show(u"# Heading").wrapIndent, 0u);
+}
+
 TEST(S003_Bullets, NonItemsArePlainText) {
     for (std::u16string_view line : {u"-x", u"--", u"---", u"- - -", u"* * *", u"***", u"___", u"a - b", u"+1"}) {
         EXPECT_TRUE(show(line).empty()) << std::string(line.begin(), line.end());

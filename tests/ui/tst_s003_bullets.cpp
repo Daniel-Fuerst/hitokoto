@@ -67,6 +67,62 @@ private slots:
         const int revealedX = f.editor()->cursorRect(c).left();
         QCOMPARE(concealedX, revealedX);
     }
+
+    void wrappedContinuationLinesAlignWithItemText() {
+        test::Fixture f;
+        const auto line = QByteArrayLiteral(
+            "- Bullet with a very very very very very very very very very very very very very very very very very very "
+            "very very very very long text that wraps\nother\n");
+        QVERIFY(f.open(f.writeFile(QStringLiteral("wrap.md"), line)));
+        f.placeCaret(1);
+        f.settle();
+        const QTextBlock block = f.editor()->document()->firstBlock();
+        f.editor()->blockLayout()->ensureBlockLayout(block);
+        const QTextLayout* layout = block.layout();
+        QVERIFY(layout->lineCount() >= 2);
+        const QTextLine line0 = layout->lineAt(0);
+        const QTextLine line1 = layout->lineAt(1);
+        const qreal textStartX = line0.cursorToX(2);
+        QCOMPARE(line1.x(), textStartX);
+    }
+
+    void nestedWrappedBulletsAlignWithTheirOwnItemText() {
+        test::Fixture f;
+        const auto line = QByteArrayLiteral(
+            "  * Nested bullet with a very very very very very very very very very very very very very very very very "
+            "very very very very very very long text that wraps\nother\n");
+        QVERIFY(f.open(f.writeFile(QStringLiteral("wrap_nested.md"), line)));
+        f.placeCaret(1);
+        f.settle();
+        const QTextBlock block = f.editor()->document()->firstBlock();
+        f.editor()->blockLayout()->ensureBlockLayout(block);
+        const QTextLayout* layout = block.layout();
+        QVERIFY(layout->lineCount() >= 2);
+        const QTextLine line0 = layout->lineAt(0);
+        const QTextLine line1 = layout->lineAt(1);
+        const qreal textStartX = line0.cursorToX(4);
+        QCOMPARE(line1.x(), textStartX);
+    }
+
+    void wrappedContinuationLinesKeepAlignmentWhenRevealed() {
+        test::Fixture f;
+        const auto line = QByteArrayLiteral(
+            "- Bullet with a very very very very very very very very very very very very very very very very very very "
+            "very very very very long text that wraps\nother\n");
+        QVERIFY(f.open(f.writeFile(QStringLiteral("wrap_rev.md"), line)));
+        f.placeCaret(1);
+        f.settle();
+        const QTextBlock block = f.editor()->document()->firstBlock();
+        f.editor()->blockLayout()->ensureBlockLayout(block);
+        QVERIFY(block.layout()->lineCount() >= 2);
+        const qreal concealedLine1X = block.layout()->lineAt(1).x();
+        f.placeCaret(0, 10);
+        f.settle();
+        f.editor()->blockLayout()->ensureBlockLayout(block);
+        QVERIFY(block.layout()->lineCount() >= 2);
+        const qreal revealedLine1X = block.layout()->lineAt(1).x();
+        QCOMPARE(concealedLine1X, revealedLine1X);
+    }
 };
 
 QTEST_MAIN(tst_s003_bullets)

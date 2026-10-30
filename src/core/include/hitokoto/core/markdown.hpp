@@ -123,10 +123,11 @@ struct LineRender {
     std::vector<InlineStyleRun> inlineStyles;
     std::vector<HiddenRange> hidden;
     std::vector<Decoration> decorations;
-    std::u16string codeLanguage;  ///< opening fence: language of the info string (S021), else empty
+    std::u16string codeLanguage;   ///< opening fence: language of the info string (S021), else empty
+    std::uint32_t wrapIndent = 0;  ///< column where continuation lines align (hanging indent, S003); 0 = none
     [[nodiscard]] bool empty() const noexcept {
         return headingLevel == 0 && !codeBlock && !fenceLine && !table && runs.empty() && inlineStyles.empty() &&
-               hidden.empty() && decorations.empty();
+               hidden.empty() && decorations.empty() && wrapIndent == 0;
     }
     friend bool operator==(const LineRender&, const LineRender&) = default;
 };

@@ -22,9 +22,11 @@ public:
     double reservedHeight = 0;    ///< > 0: the block is this many pixels high, its text not drawn
     double spaceAbove = 0;        ///< pixels above the first line, part of the block's height
     double spaceBelow = 0;        ///< pixels below the last line, part of the block's height
+    int wrapIndent = 0;           ///< columns to indent continuation lines (hanging indent, S003)
 
     [[nodiscard]] bool empty() const noexcept {
-        return !ending && !blockState.active() && reservedHeight <= 0 && spaceAbove <= 0 && spaceBelow <= 0;
+        return !ending && !blockState.active() && reservedHeight <= 0 && spaceAbove <= 0 && spaceBelow <= 0 &&
+               wrapIndent <= 0;
     }
 };
 

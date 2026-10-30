@@ -66,6 +66,7 @@ private:
     void styleRange(int first, int last);
     void styleBlock(const QTextBlock& block);
     void applyCodeBlockMargin(const QTextBlock& block, const core::LineRender& render);
+    void applyWrapIndent(const QTextBlock& block, const core::LineRender& render);
     /// The line after `block` when the table element needs it as lookahead, else empty.
     [[nodiscard]] static QString nextLineFor(const QTextBlock& block, core::BlockState state, const QString& text);
     [[nodiscard]] bool isStyled(const QTextBlock& block) const;

@@ -77,6 +77,7 @@ public:
             out.hidden.push_back({markerChar, HideMode::KeepSpace});
             out.decorations.push_back({DecorationKind::Bullet, match.markerChar, match.level});
         }
+        out.wrapIndent = match.marker.end();
     }
 };
 

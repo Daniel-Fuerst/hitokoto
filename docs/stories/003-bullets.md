@@ -23,6 +23,10 @@ naturally while the source stays plain Markdown.
 - Given lines starting with `- `, `* `, `+ ` (optionally indented)
 - Then each renders a dot at its indentation level; `-x` and `--- ` are not list items
 
+**Scenario: wrapped lines have hanging indent**
+- Given a list item whose text wraps across multiple visual lines
+- Then the continuation lines start aligned with the item's text (hanging indent), whether the marker is concealed or revealed
+
 **Scenario: extension by addition (brief, section 5)**
 - Given the S002 heading element
 - When the bullet element is added
@@ -31,9 +35,9 @@ naturally while the source stays plain Markdown.
 
 ## Tests
 
-- Core: `S003_Bullets` – parse rule and render mapping (decoration "bullet at column n").
+- Core: `S003_Bullets` – parse rule, render mapping and `wrapIndent`.
 - Core: registry test with both elements on mixed documents.
-- UI: `tst_s003_bullets` – snapshot of dot vs. raw marker.
+- UI: `tst_s003_bullets` – snapshot of dot vs. raw marker, wrapped continuation line alignment.
 
 ## Notes
 

@@ -157,6 +157,7 @@ void BlockStyler::styleBlock(const QTextBlock& block) {
     const bool blockStateChanged = previousState && *previousState != render.blockState;
     cacheBlockState(mutableBlock, render.blockState);
     applyCodeBlockMargin(block, render);
+    applyWrapIndent(block, render);
     const auto ranges = formats_.ranges(render);
     // Skip the relayout if nothing was and nothing is formatted (most body lines).
     const bool changed = !(ranges.isEmpty() && layout->formats().isEmpty());
@@ -198,6 +199,14 @@ void BlockStyler::applyCodeBlockMargin(const QTextBlock& block, const core::Line
         below = (render.fenceLine && inside) || !block.next().isValid() ? margin : 0;
     }
     layout->setBlockSpacing(block, above, below);
+}
+
+void BlockStyler::applyWrapIndent(const QTextBlock& block, const core::LineRender& render) {
+    auto* layout = qobject_cast<BlockLayout*>(document_->documentLayout());
+    if (layout == nullptr) {
+        return;
+    }
+    layout->setWrapIndent(block, static_cast<int>(render.wrapIndent));
 }
 
 void BlockStyler::styleRange(int first, int last) {
