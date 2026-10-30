@@ -308,6 +308,45 @@ TEST(S023_ThematicBreaks, DashesUnderAListItem) {
     }
 }
 
+// Text after an ordered list item or a block quote (not rendered yet) continues it lazily and can
+// never be underlined; an item or quote without paragraph text, or with a break, heading or
+// indented code as its content, ends the paragraph. A line less indented than an item's content
+// starts any ordered item. Checked against commonmark.js 0.31.2 and markdown-it-py 4.2.0.
+TEST(S023_ThematicBreaks, LazyTextAfterUnrenderedBlocks) {
+    const std::vector<std::vector<std::u16string>> breaks = {
+        {u"> quote", u"bar", u"---"}, {u"1. foo", u"bar", u"---"}, {u"- foo", u"2. y", u"  ---"},
+        {u"-      code", u"  ---"},   {u"- # h", u"  ---"},
+    };
+    for (const auto& lines : breaks) {
+        const auto r = showAll(lines);
+        EXPECT_TRUE(r.back().thematicBreak) << context(lines);
+        for (std::size_t i = 0; i + 1 < lines.size(); ++i) {
+            EXPECT_EQ(r[i].headingLevel, 0) << context(lines) << " line " << i;
+        }
+    }
+    const std::vector<std::vector<std::u16string>> underlines = {
+        {u"> q", u"1.", u"bar", u"---"},
+        {u">", u"bar", u"---"},
+        {u"> ---", u"bar", u"---"},
+    };
+    for (const auto& lines : underlines) {
+        const auto r = showAll(lines);
+        EXPECT_EQ(r.back().setextUnderline, 2) << context(lines);
+        EXPECT_EQ(r[r.size() - 2].headingLevel, 2) << context(lines);
+        EXPECT_EQ(r[0].headingLevel, 0) << context(lines);
+    }
+}
+
+// An HTML block of type 7 (a lone tag) needs the whole line and never interrupts paragraph text or
+// a table row (CommonMark 4.6; cmark-gfm for tables): `<span>x</span>` is paragraph text and a row.
+TEST(S023_ThematicBreaks, InlineHtmlIsParagraphTextAndATableRow) {
+    EXPECT_EQ(showAll({u"<span>x</span>", u"---"}).back().setextUnderline, 2);
+    EXPECT_EQ(showAll({u"Foo", u"<span>x</span>", u"---"})[1].headingLevel, 2);
+    const auto table = showAll({u"| a |", u"| - |", u"<span>x</span>", u"---"});
+    EXPECT_TRUE(table[2].table) << "a row";
+    EXPECT_TRUE(table[3].thematicBreak);
+}
+
 // ---- Front matter (Obsidian) ---------------------------------------------------------------
 
 TEST(S023_ThematicBreaks, ClosedFrontMatterStaysText) {
