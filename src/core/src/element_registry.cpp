@@ -118,6 +118,10 @@ void carveInlineStylesAroundHidden(LineRender& out) {
     out.inlineStyles = std::move(visibleStyles);
 }
 
+/// Columns of indentation past a paragraph's content column from which a line is indented code,
+/// which cannot interrupt a paragraph (CommonMark 4.4).
+constexpr std::uint32_t kIndentedCode = 4;
+
 /// The paragraph value of `BlockState` for text at content column `column`.
 std::uint16_t paragraphAt(std::uint32_t column) noexcept {
     constexpr std::uint32_t kMaxColumn = BlockState::kLazyParagraph - 2U;
@@ -182,26 +186,42 @@ ElementRegistry::Classified ElementRegistry::classify(std::u16string_view line, 
             return c;
         }
     }
+    const std::uint32_t indent = blocks::indentWidth(line);
+    const auto continueParagraph = [&] {
+        c.kind = Kind::Text;
+        c.continues = true;
+        c.paragraphAfter = above;
+        return c;
+    };
+    const bool blank = blocks::firstNonBlank(line) == line.size();
+    if (!blank && state.underlinable() && indent >= state.paragraph - 1U + kIndentedCode) {
+        return continueParagraph();  // nothing starts this far past the content (CommonMark 4.4)
+    }
+    // A line less indented than the paragraph's content column can only continue it lazily.
+    const bool lazy = above == BlockState::kLazyParagraph || (above != 0 && indent + 1U < above);
     if (blocks::isThematicBreak(line)) {
         c.kind = Kind::Break;  // takes precedence over a list item (4.1, example 60)
         return c;
     }
     for (const auto& element : elements_) {
         if (auto match = element->parse(line)) {
+            if (above != 0 && !element->startsAfterParagraph(line, *match, lazy)) {
+                return continueParagraph();  // e.g. an empty list item (5.2)
+            }
             c.kind = Kind::Element;
             c.element = element.get();
             c.match = *match;
-            const auto column = element->paragraphColumn(line, *match);
-            c.paragraphAfter = column ? paragraphAt(*column) : 0;
+            const ParagraphRole role = element->paragraphRole(line, *match);
+            c.paragraphAfter = role.kind == ParagraphRole::Kind::Opens      ? paragraphAt(role.column)
+                               : role.kind == ParagraphRole::Kind::LazyText ? BlockState::kLazyParagraph
+                                                                            : std::uint16_t{0};
             c.textStart = match->marker.end();
             return c;
         }
     }
-    if (blocks::firstNonBlank(line) == line.size()) {
-        return c;  // blank
+    if (blank) {
+        return c;
     }
-    // A line less indented than the paragraph's content column can only continue it lazily.
-    const bool lazy = above == BlockState::kLazyParagraph || (above != 0 && blocks::indentWidth(line) + 1U < above);
     const blocks::After after = above == 0 ? blocks::After::Block
                                 : lazy     ? blocks::After::Lazy
                                            : blocks::After::Paragraph;
@@ -342,7 +362,9 @@ LineRender ElementRegistry::render(std::u16string_view line, const LineContext& 
     out.blockState = c.stateAfter();
     switch (c.kind) {
         case Kind::Block:
-            multiLineElements_[c.block->element - 1U]->render(line, c.block->parsed, context, out);
+            if (c.block) {
+                multiLineElements_[c.block->element - 1U]->render(line, c.block->parsed, context, out);
+            }
             break;
         case Kind::Underline:
             out.setextUnderline = c.underline;

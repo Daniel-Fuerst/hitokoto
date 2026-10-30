@@ -193,22 +193,19 @@ public:
     /// Render rule: how to show a matched line.
     virtual void render(std::u16string_view line, const LineMatch& match, const LineContext& context,
                         LineRender& out) const = 0;
-    /// Paragraph role (S023, ADR 0006): the content column of the paragraph text a matched line
-    /// opens (its text starts at `match.marker.end()`), or nothing if the line ends paragraph text,
-    /// as a heading does (the default). Lines no element matches are paragraph text.
-    [[nodiscard]] virtual std::optional<std::uint32_t> paragraphColumn(std::u16string_view line,
-                                                                       const LineMatch& match) const noexcept {
-        (void)line;
-        (void)match;
-        return std::nullopt;
-    }
-    /// S023 review O1 (code): the paragraph role (stub until implemented).
+    /// Paragraph role (S023, ADR 0006): whether a matched line ends paragraph text (the default, as
+    /// a heading does), opens paragraph text at a content column (a bullet with text), or has text
+    /// that lines below continue lazily but never underline. Lines no element matches are
+    /// paragraph text.
     [[nodiscard]] virtual ParagraphRole paragraphRole(std::u16string_view line, const LineMatch& match) const noexcept {
         (void)line;
         (void)match;
         return {};
     }
-    /// S023 review O1 (code): whether the line may start the element after paragraph text (stub).
+    /// Whether a matched line starts the element directly after paragraph text (CommonMark 5.2:
+    /// an empty list item does not; an ordered item only if numbered 1). `lazy`: the line is less
+    /// indented than the paragraph's content, so outside its container. If not, the line continues
+    /// the paragraph. Default: it does.
     [[nodiscard]] virtual bool startsAfterParagraph(std::u16string_view line, const LineMatch& match,
                                                     bool lazy) const noexcept {
         (void)line;
