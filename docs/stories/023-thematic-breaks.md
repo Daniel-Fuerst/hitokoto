@@ -1,6 +1,6 @@
 # S023 — Thematic breaks and setext headings
 
-- **Status:** In progress (implementation on `agents/s023-thematic-break`, 2026-10-30; confirmed by
+- **Status:** In review (CI green on Linux, Windows and macOS, PR #22, 2026-10-30; confirmed by
   Armin on 2026-10-30 after review `docs/reviews/023-thematic-breaks-spec.md`) · **Order:** 24 ·
   **Size:** L ·
   **Depends on:** S002, S003, S014, S018, S019, S021 · **Decision:** ADR 0006
@@ -205,3 +205,27 @@ here.
 - S009: `tst_s009_concealment::thematicBreaksAndSetextHeadingsWhileWalking`.
 - S003: `S003_Bullets.NonItemsArePlainText` no longer expects breaks to be plain text, only that they
   are no items.
+
+## Implementation
+
+On `agents/s023-thematic-break`, 2026-10-30, following ADR 0006 (section "Implementation"):
+
+- Core: one recogniser for breaks, setext underlines and the start of blocks hitokoto does not
+  render yet (`block_rules`), shared by the bullet and table elements and the registry. Each line
+  element states its paragraph role at registration (`paragraphRole`, `startsAfterParagraph`). The
+  paragraph context is its own `BlockState` field; `ElementRegistry::renderDocument` is the
+  reference for whole documents, including front matter and setext levels.
+- Editor: `BlockStyler` caches the paragraph context and the setext level in the user-state bits.
+  A forward search in slices finds the underline of a paragraph and passes the level upwards, at
+  most 2048 lines on a key and the rest in idle slices; front matter is checked at the start of the
+  document. The break line is drawn in the decorations pass, centred and on whole device pixels;
+  the margin is part of the block height in `BlockLayout`. Tokens `[thematic-break]` in
+  `docs/theming.md`.
+- Benchmark keys `s023_*` (opening, typing on a break, `- ` before a long paragraph, an underline
+  below a long paragraph); measurements in `docs/performance.md`, Linux baselines from the CI run
+  of PR #22.
+- Code review `docs/reviews/023-thematic-breaks-code.md`: every objection dispositioned. A fix to
+  S021 (a fence directly after a table) stays on this branch (O8).
+
+Next: Armin's test of the functionality and acceptance (Done); S024 (front matter shown as
+properties).
