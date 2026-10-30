@@ -4,9 +4,11 @@
 // lazy rendering equals the whole-document reference of the core (ADR 0006).
 #include "ui_test_support.hpp"
 
+#include <QRandomGenerator>
 #include <QScrollBar>
 
 #include <cmath>
+#include <functional>
 #include <tuple>
 
 using namespace hitokoto;
@@ -65,6 +67,38 @@ std::vector<std::u16string> linesOf(const QTextDocument* doc) {
         lines.push_back(b.text().toStdU16String());
     }
     return lines;
+}
+
+/// Every line as the styler renders it and as it is formatted equals the whole-document reference
+/// (ADR 0006); empty if so, else the first difference.
+QString differenceFromTheReference(ui::EditorWidget* editor) {
+    const auto* doc = editor->document();
+    const QTextCursor cursor = editor->textCursor();
+    const int anchor = doc->findBlock(cursor.anchor()).blockNumber();
+    const auto reference =
+        test::registry().renderDocument(linesOf(doc), core::revealedLines(anchor, cursor.blockNumber()));
+    auto& styler = editor->styler();
+    for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+        auto got = styler.renderFor(b);
+        auto want = reference.at(static_cast<std::size_t>(b.blockNumber()));
+        if (!got.table && b.layout()->formats() != styler.formats().ranges(got)) {
+            return QStringLiteral("line %1 \"%2\" is formatted for another render").arg(b.blockNumber()).arg(b.text());
+        }
+        got.blockState = {};
+        want.blockState = {};
+        if (!(got == want)) {
+            return QStringLiteral("line %1 \"%2\" differs (heading %3/%4, break %5/%6, underline %7/%8)")
+                .arg(b.blockNumber())
+                .arg(b.text())
+                .arg(got.headingLevel)
+                .arg(want.headingLevel)
+                .arg(got.thematicBreak)
+                .arg(want.thematicBreak)
+                .arg(got.setextUnderline)
+                .arg(want.setextUnderline);
+        }
+    }
+    return {};
 }
 
 QColor lineColour() {
@@ -416,6 +450,114 @@ private slots:
             test::keyClick(f.editor(), Qt::Key_Up);
             QVERIFY2(styler.isRevealed(kLines), qPrintable(QStringLiteral("step %1").arg(step)));
         }
+    }
+
+    // Review O7 (code): random edits of small documents, with the caret or a selection anywhere; after
+    // each, every line equals the reference and is formatted for it.
+    void randomEditsEqualTheReference() {
+        const QStringList pieces = {
+            "Foo",   "bar baz", "",      "---",       "***",       "___",     "===", "-",     "- foo", "* foo",
+            "  ---", "  ===",   "  bar", "    code",  "# H",       "1. x",    "> q", "<div>", "```",   "~~~",
+            "- - -", "| a |",   "| - |", "| 1 | 2 |", "*em* text", "-   foo", "x\\", "*"};
+        QRandomGenerator rng(20261030);
+        for (int round = 0; round < 12; ++round) {
+            QString document = rng.bounded(4) == 0 ? QStringLiteral("---\ntitle: x\n---\n") : QString();
+            for (int i = 2 + static_cast<int>(rng.bounded(12)); i > 0; --i) {
+                document += pieces.at(rng.bounded(pieces.size())) + QLatin1Char('\n');
+            }
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("random.md"), document.toUtf8())));
+            f.settle();
+            auto* doc = f.editor()->document();
+            for (int step = 0; step < 20; ++step) {
+                QTextCursor c(doc->findBlockByNumber(static_cast<int>(rng.bounded(doc->blockCount()))));
+                switch (rng.bounded(5)) {
+                    case 0:
+                        c.insertText(pieces.at(rng.bounded(pieces.size())));
+                        break;
+                    case 1:
+                        c.insertText(QStringLiteral("\n"));
+                        break;
+                    case 2:
+                        c.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+                        c.removeSelectedText();
+                        break;
+                    case 3:
+                        c.deletePreviousChar();
+                        break;
+                    default:
+                        c.movePosition(QTextCursor::EndOfBlock);
+                        c.insertText(rng.bounded(2) == 0 ? QStringLiteral("-") : QStringLiteral("="));
+                        break;
+                }
+                const int caret = static_cast<int>(rng.bounded(doc->blockCount()));
+                f.placeCaret(caret == 0 ? doc->blockCount() - 1 : 0);  // the reveal follows a moved caret
+                f.placeCaret(caret);
+                if (rng.bounded(3) == 0) {
+                    QTextCursor selection = f.editor()->textCursor();
+                    selection.setPosition(
+                        doc->findBlockByNumber(static_cast<int>(rng.bounded(doc->blockCount()))).position(),
+                        QTextCursor::KeepAnchor);
+                    f.editor()->setTextCursor(selection);
+                }
+                f.settle();
+                const QString difference = differenceFromTheReference(f.editor());
+                QVERIFY2(difference.isEmpty(), qPrintable(QStringLiteral("round %1, step %2: %3\n%4")
+                                                              .arg(round)
+                                                              .arg(step)
+                                                              .arg(difference, doc->toPlainText())));
+            }
+        }
+    }
+
+    // Review O7 (code): paragraphs and a heading longer than the walks on a key run their idle
+    // slices; front matter, typing "- " before a lazily continued paragraph, breaking and restoring
+    // an underline and typing inside the heading leave every line equal to the reference.
+    void longParagraphsEqualTheReference() {
+        constexpr int kLines = 12000;
+        QByteArray document = "---\ntitle: x\n---\n- an item\n";
+        for (int i = 0; i < kLines; ++i) {
+            document += "lazily continued text of the item, line " + QByteArray::number(i) + "\n";
+        }
+        document += "\n";
+        const int heading = kLines + 5;
+        for (int i = 0; i < kLines; ++i) {
+            document += "a long setext heading, line " + QByteArray::number(i) + "\n";
+        }
+        const int underline = heading + kLines;
+        document += "---\n\nafter\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), document)));
+        f.placeCaret(heading + kLines / 2);
+        f.settle();
+        QCOMPARE(differenceFromTheReference(f.editor()), QString());
+        auto* editor = f.editor();
+        const auto step = [&](const QString& what, const std::function<void()>& edit) {
+            edit();
+            f.settle();
+            const QString difference = differenceFromTheReference(editor);
+            QVERIFY2(difference.isEmpty(), qPrintable(what + QStringLiteral(": ") + difference));
+        };
+        step(QStringLiteral("\"- \" before the item's second line"), [&] {
+            f.placeCaret(4);
+            test::keyClicks(editor, QStringLiteral("- "));
+        });
+        step(QStringLiteral("removed again"), [&] {
+            test::keyClick(editor, Qt::Key_Backspace);
+            test::keyClick(editor, Qt::Key_Backspace);
+        });
+        step(QStringLiteral("the underline broken"), [&] {
+            f.placeCaret(underline);
+            test::keyClick(editor, Qt::Key_End);
+            test::keyClicks(editor, QStringLiteral("x"));
+        });
+        step(QStringLiteral("the underline restored"), [&] { test::keyClick(editor, Qt::Key_Backspace); });
+        step(QStringLiteral("typing inside the heading"), [&] {
+            f.placeCaret(heading + kLines / 3);
+            test::keyClicks(editor, QStringLiteral("abc"));
+        });
+        step(QStringLiteral("a blank line splitting the heading"), [&] { test::keyClick(editor, Qt::Key_Return); });
+        step(QStringLiteral("joined again"), [&] { test::keyClick(editor, Qt::Key_Backspace); });
     }
 
     // Theming baseline (ADR 0004): colour and width of the line, marker colour.
