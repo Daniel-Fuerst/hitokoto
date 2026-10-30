@@ -355,3 +355,29 @@ TEST(S022_InlineLinks, DestinationStartingWithQuotesOrParensParsedAsDestination)
         EXPECT_TRUE(r.links[0].title.empty());
     }
 }
+
+TEST(S022_InlineLinks, DestinationOrTitleIntersectingCodeSpanDoesNotFormLink) {
+    // Code spans take precedence over links (CommonMark 6.1, 6.3).
+    // An inline code span inside destination or title invalidates link delimiters and prevents span overlaps.
+    {
+        const auto r = show(u"[link](http://foo`bar`baz)", false);
+        EXPECT_TRUE(r.links.empty());
+        bool hasCode = false;
+        for (const auto& run : r.runs) {
+            if (run.role == Role::InlineCode) {
+                hasCode = true;
+            }
+        }
+        EXPECT_TRUE(hasCode);
+    }
+    {
+        const auto r = show(u"[link](http://foo \"my `code` title\")", false);
+        EXPECT_TRUE(r.links.empty());
+    }
+    {
+        // Unclosed backtick in URL is not a code span, so it remains a valid link
+        const auto r = show(u"[link](http://foo`bar)", false);
+        ASSERT_EQ(r.links.size(), 1u);
+        EXPECT_EQ(r.links[0].destination, u"http://foo`bar");
+    }
+}
