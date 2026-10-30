@@ -41,6 +41,7 @@ EditorFormats::EditorFormats(const core::Theme& theme)
       emphasis_(core::emphasisStyle(theme)),
       table_(core::tableStyle(theme)),
       escape_(core::escapeStyle(theme)),
+      thematicBreak_(core::thematicBreakStyle(theme)),
       codeBlockFamilies_(codeFamilies(codeBlock_.fontFamily)),
       inlineCodeFamilies_(codeFamilies(inlineCode_.fontFamily)) {
     baseFont_ = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
@@ -139,7 +140,9 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
             applyCodeFont(format, codeBlockFamilies_, editorFontSize_ * codeBlock_.fontScale);
         }
         if (is(core::Role::Marker)) {
-            format.setForeground(marker_);
+            // A revealed thematic break has its own marker token (S023); a setext underline uses
+            // colors.marker like an ATX heading's '#'.
+            format.setForeground(render.thematicBreak ? toQColor(thematicBreak_.marker) : marker_);
         } else if (is(core::Role::CodeBlock)) {
             format.setForeground(toQColor(render.fenceLine ? codeBlock_.marker : codeBlock_.text));
         } else if (is(core::Role::InlineCode) || is(core::Role::InlineCodeMarker)) {

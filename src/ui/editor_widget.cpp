@@ -233,6 +233,7 @@ void EditorWidget::paintEvent(QPaintEvent* event) {
     paintCodeBlockPanels();
     QTextEdit::paintEvent(event);
     paintDecorations();
+    paintThematicBreaks();
     emit painted();
 }
 
@@ -386,6 +387,41 @@ void EditorWidget::paintInlineCodeBoxes(QPainter& painter, const QTextBlock& blo
             const qreal x2 = line.cursorToX(z);
             drawBox(painter, QRectF(origin.x() + x1, origin.y() + line.y(), x2 - x1, line.height()), style);
         }
+    }
+}
+
+void EditorWidget::paintThematicBreaks() {
+    // S023: a concealed break is a line across the text column, centred vertically in its block
+    // (margins included), max(1, round(border-width x device pixel ratio)) device pixels thick and
+    // on whole device pixel rows, so it stays crisp at fractional scaling.
+    const core::ThematicBreakStyle& style = styler_->formats().thematicBreak();
+    if (style.borderWidth <= 0 || style.border.a == 0) {
+        return;
+    }
+    QPainter painter(viewport());
+    painter.setRenderHint(QPainter::Antialiasing, false);
+    const qreal dpr = viewport()->devicePixelRatioF();
+    const int thickness = std::max(1, static_cast<int>(std::lround(style.borderWidth * dpr)));
+    const QPointF offset = contentOffset();
+    const qreal bottom = viewport()->height();
+    const qreal right = viewport()->width();
+    for (QTextBlock block = firstVisibleBlock(); block.isValid(); block = block.next()) {
+        const QRectF rect = blockBoundingGeometry(block).translated(offset);
+        if (rect.top() > bottom) {
+            break;
+        }
+        if (styler_->isRevealed(block.blockNumber()) || !styler_->renderFor(block).thematicBreak) {
+            continue;
+        }
+        const QTextLayout* layout = block.layout();
+        if (layout == nullptr || layout->lineCount() == 0) {
+            continue;
+        }
+        const QTextLine line = layout->lineAt(0);
+        const qreal left = rect.left() + layout->position().x() + line.x();
+        const qreal end = std::min(left + line.width(), right);
+        const int top = static_cast<int>(std::lround(rect.center().y() * dpr - thickness / 2.0));
+        painter.fillRect(QRectF(left, top / dpr, end - left, thickness / dpr), toQColor(style.border));
     }
 }
 

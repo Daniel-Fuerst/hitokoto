@@ -84,6 +84,8 @@ private:
     void paintInlineCodeBoxes(QPainter& painter, const QTextBlock& block, const core::LineRender& render,
                               QPointF origin, const core::CodeStyle& style);
     void paintDecorations();
+    /// S023: the line of each concealed thematic break on screen.
+    void paintThematicBreaks();
 
     BlockLayout* layout_ = nullptr;
     qreal pendingShift_ = 0;  ///< height change above the viewport not yet scrolled away
