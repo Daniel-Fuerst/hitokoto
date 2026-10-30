@@ -68,9 +68,11 @@ pass, typing in a separate probe of 1,000 keys per run was as fast as on main. A
 paragraph costs about 0.3 µs per line; it runs for at most 2 ms on a key and goes on in idle
 slices, and a changed level is passed up at most 2,048 lines on a key (the rest in idle slices).
 Before that bound (code review O2), typing `-` under a paragraph of 150,000 lines took 37–44 ms per
-key on this VM, and over 50 ms from about 230,000 lines. The `s023_*` values are not in
-`bench/baselines/linux.json` yet; like `s021_codeblock_*`, they are added from the first CI run of
-the pull request, and until then only their hard budgets apply.
+key on this VM, and over 50 ms from about 230,000 lines. The `s023_*` values in
+`bench/baselines/linux.json` come from the CI run of pull request #22 (2026-10-30), added like
+`s021_codeblock_*`. In that run `open_10mb_styled_ms` was 3.06 s against 2.60 s in the baseline
+(+18 %, inside the 25 % tolerance) and `typing_small_p95_ms` 1.43 ms against 0.93 ms (under the
+2 ms the comparison ignores).
 
 ### 2026-10-28, development VM, S021 (release build, offscreen, Qt 6.12.0)
 
