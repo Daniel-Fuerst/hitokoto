@@ -34,9 +34,15 @@ foreach(t IN ITEMS
         tst_s018_tables
         tst_s019_editor_surface
         tst_s020_backslash_escapes
-        tst_s021_code_block_fences)
+        tst_s021_code_block_fences
+        tst_s023_thematic_breaks)
     hitokoto_ui_test(${t})
 endforeach()
+
+# S023: the line of a thematic break is crisp at fractional scaling too.
+add_test(NAME tst_s023_thematic_breaks_scaled COMMAND tst_s023_thematic_breaks aConcealedBreakIsCrispAtTheDeviceScale)
+set_tests_properties(tst_s023_thematic_breaks_scaled PROPERTIES
+                     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=1.5" TIMEOUT 120)
 
 if(WIN32)
     # Qt's DLLs must be found beside the test executable: Visual Studio's Test Explorer starts the

@@ -95,6 +95,12 @@ Qt 6.12.0, presets dev and ci):
   of the block heights in the height index; painting moves no line.
 - Core reports the language of an opening fence (`LineRender::codeLanguage`); the editor has no
   fence parser of its own.
+- Fix on `agents/s023-thematic-break` (2026-10-30, found with the whole-document reference of
+  S023, kept on that branch with Armin's approval): a fence directly after a table was taken for a
+  closing fence, because the line before it leaves the table open. An opening fence is now told by
+  the block it leaves open: the margin goes above it, its language shows in the badge, and the caret
+  in the block reveals both fences. Tests `S021_CodeBlockFences.AFenceDirectlyAfterATableOpensABlock`
+  and `tst_s021_code_block_fences::aFenceDirectlyAfterATableOpensTheBlock`.
 
 Benchmark on a 10 MB document that is one code block (`s021_codeblock_*`, development VM, release
 build, offscreen), Daniel's commit against the rework: caret step median / p95 / max 71.8 / 87.1 /
