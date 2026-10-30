@@ -70,6 +70,26 @@ and the walk over block states must stay cheap (S021).
   ("Adding a Markdown element", `BlockState`) is updated with the implementation of S023, when the
   interfaces exist.
 
+## Implementation (S023, 2026-10-30)
+
+- `BlockState::paragraph` is 0, 1 + the content column, or `kLazyParagraph` for text after an
+  ordered list item or block quote (not rendered yet), which lines below continue lazily but never
+  underline; `underlinable()` tells the two apart. The UI caches it in bits 4-19 of the block's user
+  state.
+- The paragraph role is `LineElement::paragraphColumn()`; the shared rules (thematic breaks, setext
+  underlines, starts of unrendered blocks, content after a container marker) live in
+  `src/core/src/block_rules.hpp`, used by the registry, the bullet and the table element.
+- `ElementRegistry::paragraphLink()` tells the UI's walk whether a line continues the paragraph
+  above or underlines it. The UI caches each line's link and the level of its paragraph in its user
+  state; a level is reused from the line below, so typing in a paragraph walks nothing, and passed
+  up the paragraph when an underline appears or goes. The walk runs at most 2 ms on a key, then in
+  idle slices; only styling starts it (painting and tables use the level a line is shown with).
+- Front matter: `MultiLineElement::documentStartState()` and `ElementRegistry::documentStart()`; the
+  caller confirms the closing line by walking `blockStateAfter()`, the UI within the synchronous
+  budget and then in idle slices, again when an edit touches the first line, the lines up to the
+  closing one or, while it is open, a line that could close it.
+- `renderDocument()` also reveals the fences of the code block the range is in (S021).
+
 ## Alternatives considered
 
 - **`LineContext::previousLine`**: the line above as text. Rejected: an edit above would not
