@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S003: bullet list items ('-', '*', '+'). Indentation is treated as nesting depth; there are
 // no indented code blocks in this version. Thematic breaks ("---", "* * *") are not items.
+// S023: a bullet with text opens paragraph text at its content column (ADR 0006).
 #include "hitokoto/core/markdown.hpp"
+
+#include "../block_rules.hpp"
 
 #include <algorithm>
 
@@ -11,30 +14,7 @@ namespace {
 constexpr std::uint32_t kTabWidth = 4;
 constexpr std::uint32_t kIndentPerLevel = 2;
 
-bool isBlank(char16_t c) {
-    return c == u' ' || c == u'\t';
-}
-
-/// CommonMark thematic break: three or more of the same '-', '*' or '_', only blanks between.
-bool isThematicBreak(std::u16string_view line) {
-    char16_t marker = 0;
-    int count = 0;
-    for (char16_t c : line) {
-        if (isBlank(c)) {
-            continue;
-        }
-        if (c != u'-' && c != u'*' && c != u'_') {
-            return false;
-        }
-        if (marker == 0) {
-            marker = c;
-        } else if (c != marker) {
-            return false;
-        }
-        ++count;
-    }
-    return count >= 3;
-}
+using blocks::isBlank;
 
 class BulletElement final : public LineElement {
 public:
@@ -55,8 +35,8 @@ public:
         if (i < line.size() && !isBlank(line[i])) {
             return std::nullopt;
         }
-        if (isThematicBreak(line)) {
-            return std::nullopt;
+        if (blocks::isThematicBreakFrom(line, markerChar)) {
+            return std::nullopt;  // at any indentation: a break inside an item is no item either
         }
         while (i < line.size() && isBlank(line[i])) {
             ++i;
@@ -66,6 +46,18 @@ public:
         m.markerChar = static_cast<std::uint32_t>(markerChar);
         m.level = static_cast<std::uint8_t>(std::min<std::uint32_t>(column / kIndentPerLevel, 255));
         return m;
+    }
+
+    [[nodiscard]] std::optional<std::uint32_t> paragraphColumn(std::u16string_view line,
+                                                               const LineMatch& match) const noexcept override {
+        // CommonMark 5.2: the content column is after the marker and one to four columns of
+        // padding; with five or more the text is indented code inside the item.
+        const std::uint32_t markerColumn = blocks::columnAfterBlanks(line, 0, 0);
+        const std::int64_t column = blocks::paragraphColumnAfterMarker(line, match.markerChar + 1U, markerColumn + 1U);
+        if (column < 0) {
+            return std::nullopt;
+        }
+        return static_cast<std::uint32_t>(column);
     }
 
     void render(std::u16string_view /*line*/, const LineMatch& match, const LineContext& context,

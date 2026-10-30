@@ -102,12 +102,23 @@ struct Decoration {
     friend bool operator==(const Decoration&, const Decoration&) = default;
 };
 
-/// State carried from one line to the next while a multi-line element (fenced code block, ...)
-/// is open. Opaque outside the registry: compare it, store it per line, pass it back in.
+/// State carried from one line to the next: the multi-line element (fenced code block, ...) that
+/// is open, and the paragraph the line belongs to (S023, ADR 0006). Opaque outside the registry:
+/// compare it, store it per line, pass it back in.
 struct BlockState {
+    /// `paragraph` of text that only continues lazily (an ordered list item or block quote, which
+    /// hitokoto does not render yet): no setext underline can follow it.
+    static constexpr std::uint16_t kLazyParagraph = 0xFFFF;
+
     std::uint8_t element = 0;  ///< 0 = no block open, else which multi-line element owns it
     std::uint32_t value = 0;   ///< that element's own state (never 0 while open)
+    /// 0 = the line is no paragraph text; else 1 + the content column of its paragraph (0 for a
+    /// paragraph at the top level, the content column of a list item), or kLazyParagraph.
+    std::uint16_t paragraph = 0;
+    /// A multi-line block is open (independent of `paragraph`).
     [[nodiscard]] bool active() const noexcept { return element != 0; }
+    /// The line is paragraph text that a setext underline on the next line can underline.
+    [[nodiscard]] bool underlinable() const noexcept { return paragraph != 0 && paragraph != kLazyParagraph; }
     friend bool operator==(const BlockState&, const BlockState&) = default;
 };
 
@@ -140,9 +151,13 @@ struct LineContext {
     bool revealed = false;           ///< caret or selection is on this line: show raw syntax
     BlockState blockState;           ///< state entering this line (`LineRender::blockState` of the line above)
     std::u16string_view nextLine{};  ///< following line in the document (for 1-line lookahead elements)
+    /// S023 (ADR 0006): 1 or 2 if the paragraph this line belongs to ends in a setext underline of
+    /// that level, found by walking the lines below (`ElementRegistry::paragraphLink`); else 0.
+    /// Ignored on lines that are no paragraph text.
+    std::uint8_t setextLevel = 0;
 
-    LineContext(bool showSource = false, BlockState state = {}, std::u16string_view next = {})
-        : revealed(showSource), blockState(state), nextLine(next) {}
+    LineContext(bool showSource = false, BlockState state = {}, std::u16string_view next = {}, std::uint8_t setext = 0)
+        : revealed(showSource), blockState(state), nextLine(next), setextLevel(setext) {}
 };
 
 /// Result of a line element's parse rule.
@@ -167,6 +182,15 @@ public:
     /// Render rule: how to show a matched line.
     virtual void render(std::u16string_view line, const LineMatch& match, const LineContext& context,
                         LineRender& out) const = 0;
+    /// Paragraph role (S023, ADR 0006): the content column of the paragraph text a matched line
+    /// opens (its text starts at `match.marker.end()`), or nothing if the line ends paragraph text,
+    /// as a heading does (the default). Lines no element matches are paragraph text.
+    [[nodiscard]] virtual std::optional<std::uint32_t> paragraphColumn(std::u16string_view line,
+                                                                       const LineMatch& match) const noexcept {
+        (void)line;
+        (void)match;
+        return std::nullopt;
+    }
 };
 
 /// An inline Markdown element that decorates text spans without owning or changing the source.
@@ -217,6 +241,17 @@ public:
     /// Render rule: how to show a line the parse rule accepted.
     virtual void render(std::u16string_view line, const BlockLine& parsed, const LineContext& context,
                         LineRender& out) const = 0;
+    /// A non-zero state passed to `parse` for the first line of a document only (front matter,
+    /// S023). A block opened from it counts only if it ends before the document does; the caller
+    /// confirms that (`ElementRegistry::documentStart`). 0 = the element does not start documents.
+    [[nodiscard]] virtual std::uint32_t documentStartState() const noexcept { return 0; }
+};
+
+/// How a line relates to the paragraph text of the line above (S023, ADR 0006).
+struct ParagraphLink {
+    bool continues = false;      ///< the line is paragraph text of the same paragraph
+    std::uint8_t underline = 0;  ///< 1 or 2: the line is a setext underline of that paragraph
+    friend bool operator==(const ParagraphLink&, const ParagraphLink&) = default;
 };
 
 class ElementRegistry {
@@ -234,9 +269,21 @@ public:
 
     /// How to show `line`. Never throws for any input.
     [[nodiscard]] LineRender render(std::u16string_view line, const LineContext& context) const;
+    /// `render`, and `paragraphLink(line, context.blockState, context.nextLine)` from the same pass.
+    [[nodiscard]] LineRender render(std::u16string_view line, const LineContext& context, ParagraphLink& link) const;
     /// `render(line, {any, state, nextLine}).blockState`, without rendering (the UI walks lines with it).
     [[nodiscard]] BlockState blockStateAfter(std::u16string_view line, BlockState state = {},
                                              std::u16string_view nextLine = {}) const noexcept;
+    /// How `line`, entered with `state`, relates to the paragraph above it, without rendering. A
+    /// paragraph ends in a setext heading of level n if, walking down from it, the lines continue
+    /// it until one is an underline of level n (S023, ADR 0006).
+    [[nodiscard]] ParagraphLink paragraphLink(std::u16string_view line, BlockState state,
+                                              std::u16string_view nextLine = {}) const noexcept;
+    /// The state entering the first line of a document whose first block (front matter, S023) is
+    /// closed. A caller walks `blockStateAfter` from it: the block is closed if the state leaves its
+    /// element before the document ends; otherwise, and if no element starts documents, the first
+    /// line is entered with `BlockState{}`. Returns `BlockState{}` if no element starts documents.
+    [[nodiscard]] BlockState documentStart() const noexcept;
 
     [[nodiscard]] std::size_t size() const noexcept { return elements_.size(); }
     /// How every line of a whole document looks while the lines in `revealed` hold the caret or a
@@ -258,6 +305,10 @@ private:
     };
     [[nodiscard]] std::optional<BlockMatch> matchBlock(std::u16string_view line, BlockState state,
                                                        std::u16string_view nextLine) const noexcept;
+    /// What a line is, decided without rendering (S023, ADR 0006).
+    struct Classified;
+    [[nodiscard]] Classified classify(std::u16string_view line, BlockState state,
+                                      std::u16string_view nextLine) const noexcept;
     void runInlineElements(std::u16string_view line, const LineContext& context, LineRender& out) const;
 
     std::vector<std::unique_ptr<LineElement>> elements_;
@@ -281,6 +332,7 @@ std::unique_ptr<InlineElement> makeEmphasisElement();
 std::unique_ptr<InlineElement> makeEscapeElement();
 std::unique_ptr<MultiLineElement> makeFencedCodeElement();
 std::unique_ptr<MultiLineElement> makeTableElement();
+std::unique_ptr<MultiLineElement> makeFrontMatterElement();
 
 /// ADR 0002, decision 6 (S018): adds a blank line before each line without `|` that directly
 /// follows a table's rows, which GFM would make a row and Obsidian ends the table with. Added
