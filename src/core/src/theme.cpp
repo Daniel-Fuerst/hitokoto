@@ -58,7 +58,7 @@ std::optional<std::string> colorValue(const Value& v, Color& out) {
     return std::nullopt;
 }
 
-template <Color Theme::*Member>
+template <Color Theme::* Member>
 std::optional<std::string> applyColor(Theme& t, const Value& v) {
     return colorValue(v, t.*Member);
 }
@@ -84,7 +84,7 @@ std::optional<std::string> applyOptString(Theme& t, const Value& v) {
     return std::nullopt;
 }
 
-template <std::string Theme::*Member>
+template <std::string Theme::* Member>
 std::optional<std::string> applyString(Theme& t, const Value& v) {
     const auto* s = std::get_if<std::string>(&v);
     if (!s) {
@@ -108,7 +108,7 @@ std::optional<std::string> numberIn(const Value& v, double lo, double hi, double
     return std::nullopt;
 }
 
-template <double Theme::*Member, int Lo, int Hi>
+template <double Theme::* Member, int Lo, int Hi>
 std::optional<std::string> applyNumber(Theme& t, const Value& v) {
     return numberIn(v, Lo, Hi, t.*Member);
 }
@@ -268,6 +268,8 @@ const Token kTokens[] = {
     {{"table", "font-family", "string", "Font family of table cells; \"\" = editor font", "\"\""}, &applyOptString<&Theme::table, &TableTokens::fontFamily>},
     {{"table", "font-scale", "number", "Font size of table cells relative to the editor font, 0.5 to 2", "1"}, &applyOptNumber<&Theme::table, &TableTokens::fontScale, 5, 20>},
     {{"escape", "marker", "color", "Backslash when revealed", "colors.marker"}, &applyOptColor<&Theme::escape, &EscapeTokens::marker>},
+    {{"link", "text", "color", "Colour of link text", "colors.accent"}, &applyOptColor<&Theme::link, &LinkTokens::text>},
+    {{"link", "marker", "color", "Delimiters and destination when revealed", "colors.marker"}, &applyOptColor<&Theme::link, &LinkTokens::marker>},
 };
 // clang-format on
 
@@ -721,6 +723,13 @@ TableStyle tableStyle(const Theme& t) {
 EscapeStyle escapeStyle(const Theme& t) {
     return {
         .marker = t.escape.marker.value_or(t.marker),
+    };
+}
+
+LinkStyle linkStyle(const Theme& t) {
+    return {
+        .text = t.link.text.value_or(t.accent),
+        .marker = t.link.marker.value_or(t.marker),
     };
 }
 

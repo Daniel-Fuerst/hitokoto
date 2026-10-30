@@ -41,6 +41,7 @@ EditorFormats::EditorFormats(const core::Theme& theme)
       emphasis_(core::emphasisStyle(theme)),
       table_(core::tableStyle(theme)),
       escape_(core::escapeStyle(theme)),
+      link_(core::linkStyle(theme)),
       codeBlockFamilies_(codeFamilies(codeBlock_.fontFamily)),
       inlineCodeFamilies_(codeFamilies(inlineCode_.fontFamily)) {
     baseFont_ = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
@@ -77,7 +78,8 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
     QList<QTextLayout::FormatRange> out;
     const QTextCharFormat lineFormat = heading(render.headingLevel);
     std::vector<std::uint32_t> boundaries;
-    boundaries.reserve((render.runs.size() + render.inlineStyles.size() + render.hidden.size()) * 2);
+    boundaries.reserve((render.runs.size() + render.inlineStyles.size() + render.hidden.size() + render.links.size()) *
+                       2);
     for (const auto& run : render.runs) {
         boundaries.push_back(run.span.start);
         boundaries.push_back(run.span.end());
@@ -89,6 +91,10 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
     for (const auto& hidden : render.hidden) {
         boundaries.push_back(hidden.span.start);
         boundaries.push_back(hidden.span.end());
+    }
+    for (const auto& link : render.links) {
+        boundaries.push_back(link.span.start);
+        boundaries.push_back(link.span.end());
     }
     std::sort(boundaries.begin(), boundaries.end());
     boundaries.erase(std::unique(boundaries.begin(), boundaries.end()), boundaries.end());
@@ -150,6 +156,20 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
             format.setForeground(toQColor(emphasis_.marker));
         } else if (is(core::Role::EscapeMarker)) {
             format.setForeground(toQColor(escape_.marker));
+        } else if (is(core::Role::LinkText)) {
+            format.setForeground(toQColor(link_.text));
+        } else if (is(core::Role::LinkMarker)) {
+            format.setForeground(toQColor(link_.marker));
+        }
+        for (const auto& link : render.links) {
+            if (link.span.start <= start && link.span.end() >= end) {
+                format.setAnchor(true);
+                format.setAnchorHref(QString::fromStdU16String(link.destination));
+                if (!link.title.empty()) {
+                    format.setToolTip(QString::fromStdU16String(link.title));
+                }
+                break;
+            }
         }
         if (inlineRun != nullptr && !is(core::Role::InlineCode)) {
             const auto styles = inlineRun->style;
@@ -170,7 +190,7 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
                 : core::hasStyle(styles, core::InlineStyle::Italic) && emphasis_.italicText ? emphasis_.italicText
                 : core::hasStyle(styles, core::InlineStyle::Strikethrough) ? emphasis_.strikethroughText
                                                                            : std::nullopt;
-            if (color && !is(core::Role::EscapeMarker) && !is(core::Role::Marker)) {
+            if (color && !is(core::Role::EscapeMarker) && !is(core::Role::Marker) && !is(core::Role::LinkMarker)) {
                 format.setForeground(toQColor(*color));
             }
         }

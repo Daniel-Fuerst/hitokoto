@@ -4,7 +4,9 @@
 #include "qt_bridge.hpp"
 #include "table_embedder.hpp"
 
+#include <QDesktopServices>
 #include <QFontMetricsF>
+#include <QHelpEvent>
 #include <QInputMethodEvent>
 #include <QMimeData>
 #include <QMouseEvent>
@@ -15,6 +17,7 @@
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextLayout>
+#include <QToolTip>
 
 #include <algorithm>
 #include <cmath>
@@ -51,6 +54,8 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     setLineWrapMode(QTextEdit::WidgetWidth);
     setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
     setMouseTracking(true);
+    viewport()->setMouseTracking(true);
+    viewport()->setCursor(Qt::IBeamCursor);
 
     connect(document(), &QTextDocument::contentsChange, this, [this](int, int, int) {
         if (!styler_->isBusy()) {
@@ -237,6 +242,14 @@ void EditorWidget::paintEvent(QPaintEvent* event) {
 }
 
 void EditorWidget::mousePressEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton && !(event->modifiers() & Qt::ShiftModifier)) {
+        const QString href = anchorAt(event->position().toPoint());
+        if (!href.isEmpty()) {
+            QDesktopServices::openUrl(QUrl(href));
+            event->accept();
+            return;
+        }
+    }
     if (event->button() == Qt::LeftButton && event->modifiers() == Qt::NoModifier &&
         tables_->handleEditorClick(event->position().toPoint())) {
         event->accept();  // S018: a line above or below a table at the document's edge
@@ -267,6 +280,72 @@ void EditorWidget::mousePressEvent(QMouseEvent* event) {
             break;
         }
     }
+}
+
+void EditorWidget::mouseMoveEvent(QMouseEvent* event) {
+    if (!anchorAt(event->position().toPoint()).isEmpty()) {
+        viewport()->setCursor(Qt::PointingHandCursor);
+    } else {
+        viewport()->setCursor(Qt::IBeamCursor);
+    }
+    QTextEdit::mouseMoveEvent(event);
+}
+
+void EditorWidget::leaveEvent(QEvent* event) {
+    viewport()->setCursor(Qt::IBeamCursor);
+    QTextEdit::leaveEvent(event);
+}
+
+bool EditorWidget::viewportEvent(QEvent* event) {
+    if (event->type() == QEvent::ToolTip) {
+        auto* help = static_cast<QHelpEvent*>(event);
+        const QTextCharFormat fmt = formatAt(help->pos());
+        if (!fmt.toolTip().isEmpty()) {
+            QToolTip::showText(help->globalPos(), fmt.toolTip(), viewport());
+            return true;
+        }
+        QToolTip::hideText();
+        event->ignore();
+        return true;
+    }
+    return QTextEdit::viewportEvent(event);
+}
+
+QTextCharFormat EditorWidget::formatAt(const QPoint& pos) const {
+    const QPointF docPos(pos.x() + horizontalScrollBar()->value(), pos.y() + verticalScrollBar()->value());
+    const QTextBlock block = layout_->blockAt(docPos.y());
+    if (!block.isValid() || layout_->reservedHeight(block) > 0) {
+        return {};
+    }
+    layout_->ensureBlockLayout(block);
+    const QRectF rect = layout_->blockBoundingRect(block);
+    const QPointF local = docPos - rect.topLeft();
+    const QTextLayout* layout = block.layout();
+    for (int i = 0; i < layout->lineCount(); ++i) {
+        const QTextLine line = layout->lineAt(i);
+        if (local.y() >= line.y() && local.y() < line.y() + line.height()) {
+            if (local.x() < line.x() || local.x() >= line.x() + line.naturalTextWidth()) {
+                return {};
+            }
+            const int col = line.xToCursor(local.x(), QTextLine::CursorOnCharacter);
+            if (col < 0 || col >= block.length()) {
+                return {};
+            }
+            QTextCharFormat merged;
+            for (const auto& range : layout->formats()) {
+                if (col >= range.start && col < range.start + range.length) {
+                    merged.merge(range.format);
+                }
+            }
+            return merged;
+        }
+    }
+    return {};
+}
+
+QString EditorWidget::anchorAt(const QPoint& pos) const {
+    const QTextCharFormat fmt = formatAt(pos);
+    return fmt.isAnchor() ? fmt.anchorHref() : QString{};
 }
 
 void EditorWidget::keyPressEvent(QKeyEvent* event) {

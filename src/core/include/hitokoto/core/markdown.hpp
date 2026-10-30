@@ -32,6 +32,17 @@ enum class Role : std::uint8_t {
     InlineCodeMarker,  ///< a revealed inline-code delimiter (backtick)
     EmphasisMarker,    ///< a revealed emphasis delimiter (* _ ~~)
     EscapeMarker,      ///< a revealed backslash escape delimiter (\)
+    LinkText,          ///< text of an inline link
+    LinkMarker,        ///< a revealed link delimiter or target
+};
+
+/// An inline Markdown link with its text span, target URL and optional title.
+struct LinkTarget {
+    Span span;                   ///< span of the link text [start, length]
+    Span full;                   ///< full span [start of '[', length to closing ')']
+    std::u16string destination;  ///< URL / destination
+    std::u16string title;        ///< title, if any
+    friend bool operator==(const LinkTarget&, const LinkTarget&) = default;
 };
 
 enum class TableAlign : std::uint8_t {
@@ -123,10 +134,11 @@ struct LineRender {
     std::vector<InlineStyleRun> inlineStyles;
     std::vector<HiddenRange> hidden;
     std::vector<Decoration> decorations;
+    std::vector<LinkTarget> links;
     std::u16string codeLanguage;  ///< opening fence: language of the info string (S021), else empty
     [[nodiscard]] bool empty() const noexcept {
         return headingLevel == 0 && !codeBlock && !fenceLine && !table && runs.empty() && inlineStyles.empty() &&
-               hidden.empty() && decorations.empty();
+               hidden.empty() && decorations.empty() && links.empty();
     }
     friend bool operator==(const LineRender&, const LineRender&) = default;
 };
@@ -268,6 +280,7 @@ private:
 std::unique_ptr<LineElement> makeHeadingElement();
 std::unique_ptr<LineElement> makeBulletElement();
 std::unique_ptr<InlineElement> makeInlineCodeElement();
+std::unique_ptr<InlineElement> makeLinkElement();
 std::unique_ptr<InlineElement> makeEmphasisElement();
 std::unique_ptr<InlineElement> makeEscapeElement();
 std::unique_ptr<MultiLineElement> makeFencedCodeElement();

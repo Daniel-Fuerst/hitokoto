@@ -33,6 +33,7 @@ story ID (see "Conventions").
 | 20 | [S018](018-tables.md) | Interactive Markdown pipe tables | S015, S019 | L | Done |
 | 21 | [S020](020-backslash-escapes.md) | Backslash escapes for ASCII punctuation | S013, S015 | S | In review |
 | 22 | [S021](021-code-block-fences-in-panel.md) | Code block fences inside the panel, revealed from anywhere in the block | S014, S019 | M | Confirmed |
+| 23 | [S022](022-inline-links.md) | Inline Markdown links and titles | S013, S015, S020 | M | In review |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 

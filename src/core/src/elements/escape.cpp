@@ -22,9 +22,12 @@ public:
     void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
         std::vector<bool> codeCharacters(line.size(), false);
         for (const auto& run : out.runs) {
-            if (run.role == Role::InlineCode || run.role == Role::InlineCodeMarker) {
+            if (run.role == Role::InlineCode || run.role == Role::InlineCodeMarker || run.role == Role::LinkMarker) {
                 std::fill(codeCharacters.begin() + run.span.start, codeCharacters.begin() + run.span.end(), true);
             }
+        }
+        for (const auto& h : out.hidden) {
+            std::fill(codeCharacters.begin() + h.span.start, codeCharacters.begin() + h.span.end(), true);
         }
 
         for (std::size_t i = 0; i < line.size();) {

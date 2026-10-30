@@ -242,6 +242,7 @@ ElementRegistry ElementRegistry::withBuiltins() {
     registry.add(makeHeadingElement());
     registry.add(makeBulletElement());
     registry.addInline(makeInlineCodeElement());
+    registry.addInline(makeLinkElement());
     registry.addInline(makeEmphasisElement());
     registry.addInline(makeEscapeElement());
     return registry;

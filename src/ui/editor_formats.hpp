@@ -50,6 +50,7 @@ private:
     core::EmphasisStyle emphasis_;
     core::TableStyle table_;
     core::EscapeStyle escape_;
+    core::LinkStyle link_;
     QStringList codeBlockFamilies_;
     QStringList inlineCodeFamilies_;
 };
