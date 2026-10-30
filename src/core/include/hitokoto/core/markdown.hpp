@@ -167,6 +167,17 @@ struct LineMatch {
     std::uint32_t markerChar = 0;  ///< position of the significant marker character
 };
 
+/// How a line an element matched relates to paragraph text (S023, ADR 0006).
+struct ParagraphRole {
+    enum class Kind : std::uint8_t {
+        Ends,      ///< the line ends paragraph text (a heading)
+        Opens,     ///< its text is paragraph text at `column` (a bullet with text)
+        LazyText,  ///< its text continues lazily into the lines below, which never underline it
+    };
+    Kind kind = Kind::Ends;
+    std::uint32_t column = 0;  ///< Opens: the content column; the text starts at `LineMatch::marker.end()`
+};
+
 /// A block-level element that is decided by one line (heading, list item, ...).
 /// Adding an element = implementing this interface and registering it; nothing else changes.
 class LineElement {
@@ -190,6 +201,20 @@ public:
         (void)line;
         (void)match;
         return std::nullopt;
+    }
+    /// S023 review O1 (code): the paragraph role (stub until implemented).
+    [[nodiscard]] virtual ParagraphRole paragraphRole(std::u16string_view line, const LineMatch& match) const noexcept {
+        (void)line;
+        (void)match;
+        return {};
+    }
+    /// S023 review O1 (code): whether the line may start the element after paragraph text (stub).
+    [[nodiscard]] virtual bool startsAfterParagraph(std::u16string_view line, const LineMatch& match,
+                                                    bool lazy) const noexcept {
+        (void)line;
+        (void)match;
+        (void)lazy;
+        return true;
     }
 };
 

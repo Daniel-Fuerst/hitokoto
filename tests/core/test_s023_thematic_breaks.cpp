@@ -9,6 +9,7 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -345,6 +346,82 @@ TEST(S023_ThematicBreaks, InlineHtmlIsParagraphTextAndATableRow) {
     const auto table = showAll({u"| a |", u"| - |", u"<span>x</span>", u"---"});
     EXPECT_TRUE(table[2].table) << "a row";
     EXPECT_TRUE(table[3].thematicBreak);
+}
+
+// Review O3 (code): an empty list item may not interrupt a paragraph (CommonMark 5.2), and nothing
+// starts four or more columns past a paragraph's content column; such lines continue the paragraph.
+// Checked against commonmark.js 0.31.2 and markdown-it-py 4.2.0.
+TEST(S023_ThematicBreaks, LinesThatCannotInterruptAParagraphContinueIt) {
+    for (const auto& [lines, level] : std::vector<std::pair<std::vector<std::u16string>, std::uint8_t>>{
+             {{u"Foo", u"*", u"---"}, 2},
+             {{u"Foo", u"+", u"---"}, 2},
+             {{u"Foo", u"* ", u"==="}, 1},
+             {{u"Foo", u"    - bar", u"---"}, 2},
+             {{u"- foo", u"  bar", u"  *", u"  ---"}, 2},
+         }) {
+        const auto r = showAll(lines);
+        for (std::size_t i = 0; i + 1 < lines.size(); ++i) {
+            EXPECT_EQ(r[i].headingLevel, level) << context(lines) << " line " << i;
+            EXPECT_EQ(r[i].decorations.size(), i == 0 && lines[0].front() == u'-' ? 1U : 0U)
+                << context(lines) << " line " << i << ": a bullet only where an item starts";
+        }
+        EXPECT_EQ(r.back().setextUnderline, level) << context(lines);
+    }
+    // Outside the paragraph's container an empty item starts a list.
+    EXPECT_EQ(showAll({u"> q", u"*"})[1].decorations.size(), 1U);
+    EXPECT_EQ(showAll({u"- foo", u"-"})[1].decorations.size(), 1U);
+    const auto deep = showAll({u"- a", u"      - b", u"---"});
+    EXPECT_TRUE(deep[1].decorations.empty()) << "continues the item's text";
+    EXPECT_TRUE(deep[2].thematicBreak);
+}
+
+namespace {
+/// A test-only block element (`% text`) with the paragraph rules of an ordered list item: it starts
+/// after paragraph text only outside the paragraph's container, and its text continues lazily.
+class LazyItemElement final : public LineElement {
+public:
+    [[nodiscard]] std::string_view id() const noexcept override { return "test-lazy-item"; }
+    [[nodiscard]] std::optional<LineMatch> parse(std::u16string_view line) const override {
+        if (!line.starts_with(u"% ")) {
+            return std::nullopt;
+        }
+        LineMatch m;
+        m.marker = {0, 2};
+        return m;
+    }
+    void render(std::u16string_view /*line*/, const LineMatch& match, const LineContext& /*context*/,
+                LineRender& out) const override {
+        out.runs.push_back({match.marker, Role::Marker, 0});
+    }
+    [[nodiscard]] ParagraphRole paragraphRole(std::u16string_view /*line*/,
+                                              const LineMatch& /*match*/) const noexcept override {
+        return {ParagraphRole::Kind::LazyText, 0};
+    }
+    [[nodiscard]] bool startsAfterParagraph(std::u16string_view /*line*/, const LineMatch& /*match*/,
+                                            bool lazy) const noexcept override {
+        return lazy;
+    }
+};
+}  // namespace
+
+// Review O1 (code), brief section 5: an element brings its paragraph rules by registration alone.
+TEST(S023_ThematicBreaks, ParagraphRulesOfAnElementComeByRegistrationOnly) {
+    ElementRegistry r = ElementRegistry::withBuiltins();
+    r.add(std::make_unique<LazyItemElement>());
+    const std::vector<std::u16string> interrupting = {u"Foo", u"% x", u"---"};
+    const auto continued = r.renderDocument(interrupting);
+    EXPECT_EQ(continued[0].headingLevel, 2) << "the item cannot interrupt the paragraph";
+    EXPECT_EQ(continued[1].headingLevel, 2);
+    EXPECT_EQ(continued[2].setextUnderline, 2);
+    const std::vector<std::u16string> lazy = {u"% x", u"bar", u"---"};
+    const auto item = r.renderDocument(lazy);
+    EXPECT_FALSE(item[0].runs.empty()) << "the item renders";
+    EXPECT_EQ(item[1].headingLevel, 0) << "lazy text";
+    EXPECT_TRUE(item[2].thematicBreak) << "lazy text is never underlined";
+    const std::vector<std::u16string> outside = {u"- foo", u"% x", u"---"};
+    const auto started = r.renderDocument(outside);
+    EXPECT_FALSE(started[1].runs.empty()) << "outside the bullet's content the item starts";
+    EXPECT_TRUE(started[2].thematicBreak);
 }
 
 // ---- Front matter (Obsidian) ---------------------------------------------------------------

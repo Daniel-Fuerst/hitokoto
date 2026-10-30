@@ -749,6 +749,7 @@ void BlockStyler::propagateLevelUp(QTextBlock block, std::uint8_t level) {
             top = b.blockNumber();
         }
         setLevel(b, level, true);
+        ++levelSteps_;
         if (storedLink(b) != kLinkContinues) {
             break;  // the first line of the paragraph
         }

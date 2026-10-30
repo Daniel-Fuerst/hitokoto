@@ -62,6 +62,9 @@ public:
     [[nodiscard]] quint64 styledCount() const noexcept { return styledCount_; }
     /// Number of lines rendered so far (instrumentation for tests, S021).
     [[nodiscard]] quint64 renderCount() const noexcept { return renderCount_; }
+    /// Number of lines whose setext level was passed up a paragraph so far (instrumentation for
+    /// tests, S023 review O2).
+    [[nodiscard]] quint64 levelSteps() const noexcept { return levelSteps_; }
 
     /// How a block is shown right now (used for drawing decorations and hit testing).
     [[nodiscard]] core::LineRender renderFor(const QTextBlock& block);
@@ -224,6 +227,7 @@ private:
     bool busy_ = false;
     quint64 styledCount_ = 0;
     quint64 renderCount_ = 0;
+    quint64 levelSteps_ = 0;
 };
 
 }  // namespace hitokoto::ui

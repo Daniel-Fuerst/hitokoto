@@ -368,6 +368,56 @@ private slots:
         compareAll(QStringLiteral("after opening the front matter"));
     }
 
+    // Review O2 (code): typing or removing an underline under a long paragraph passes the new level
+    // up a bounded number of lines on the key; the rest is restyled in idle slices.
+    void anUnderlineUnderALongParagraphCostsBoundedWorkOnTheKey() {
+        constexpr int kLines = 20000;
+        QByteArray document = "intro\n\n";
+        for (int i = 0; i < kLines; ++i) {
+            document += "hard-wrapped text of a long paragraph, line " + QByteArray::number(i) + "\n";
+        }
+        document += "\nafter\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), document)));
+        f.placeCaret(kLines + 2);  // the blank line below the paragraph
+        f.settle();
+        auto& styler = f.editor()->styler();
+        const auto* doc = f.editor()->document();
+        for (const auto& [key, level] : {std::pair{Qt::Key_Minus, 2}, std::pair{Qt::Key_Backspace, 0}}) {
+            const quint64 before = styler.levelSteps();
+            test::keyClick(f.editor(), key);
+            QVERIFY2(styler.levelSteps() - before <= 4096,
+                     qPrintable(QStringLiteral("%1 lines on the key").arg(styler.levelSteps() - before)));
+            f.settle();
+            for (const int n : {2, kLines / 2, kLines + 1}) {
+                const QTextBlock block = doc->findBlockByNumber(n);
+                QCOMPARE(styler.renderFor(block).headingLevel, std::uint8_t(level));
+                QCOMPARE(test::formatAt(block, 0).fontPointSize(), styler.formats().heading(level).fontPointSize());
+            }
+        }
+    }
+
+    // Review O4 (code): inside a setext heading too long to walk on one key, a caret step up keeps
+    // its underline revealed at once.
+    void stepsUpInALongHeadingKeepItsUnderlineRevealed() {
+        constexpr int kLines = 60000;
+        QByteArray document;
+        for (int i = 0; i < kLines; ++i) {
+            document += "a long setext heading, line " + QByteArray::number(i) + "\n";
+        }
+        document += "---\n\nafter\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("heading.md"), document)));
+        f.placeCaret(kLines / 2);
+        f.settle();
+        auto& styler = f.editor()->styler();
+        QVERIFY(styler.isRevealed(kLines));
+        for (int step = 0; step < 3; ++step) {
+            test::keyClick(f.editor(), Qt::Key_Up);
+            QVERIFY2(styler.isRevealed(kLines), qPrintable(QStringLiteral("step %1").arg(step)));
+        }
+    }
+
     // Theming baseline (ADR 0004): colour and width of the line, marker colour.
     void theLookComesFromItsTokens() {
         test::Fixture f;
