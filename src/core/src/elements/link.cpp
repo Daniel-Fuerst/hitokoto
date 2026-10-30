@@ -36,21 +36,34 @@ std::u16string unescapePunctuation(std::u16string_view text) {
     return result;
 }
 
-std::size_t parseTitle(std::u16string_view line, std::size_t& pos, std::u16string& title) {
+std::size_t parseTitle(std::u16string_view line, std::size_t& pos, const std::vector<bool>& inCode,
+                       std::u16string& title) {
+    if (pos >= line.size() || inCode[pos]) {
+        return std::u16string_view::npos;
+    }
     const char16_t openDelim = line[pos];
     const char16_t closeDelim = (openDelim == u'(') ? u')' : openDelim;
     ++pos;
     const std::size_t titleStart = pos;
     while (pos < line.size()) {
+        if (inCode[pos]) {
+            return std::u16string_view::npos;
+        }
         if (line[pos] == u'\\' && pos + 1 < line.size()) {
+            if (inCode[pos + 1]) {
+                return std::u16string_view::npos;
+            }
             pos += 2;
         } else if (line[pos] == closeDelim) {
             title = unescapePunctuation(line.substr(titleStart, pos - titleStart));
             ++pos;
             while (pos < line.size() && (line[pos] == u' ' || line[pos] == u'\t')) {
+                if (inCode[pos]) {
+                    return std::u16string_view::npos;
+                }
                 ++pos;
             }
-            if (pos < line.size() && line[pos] == u')') {
+            if (pos < line.size() && !inCode[pos] && line[pos] == u')') {
                 return pos;
             }
             return std::u16string_view::npos;
@@ -69,11 +82,15 @@ struct DestinationAndTitle {
     std::size_t endParen = std::u16string_view::npos;
 };
 
-DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size_t pos) {
+DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size_t pos,
+                                             const std::vector<bool>& inCode) {
     while (pos < line.size() && (line[pos] == u' ' || line[pos] == u'\t')) {
+        if (inCode[pos]) {
+            return {};
+        }
         ++pos;
     }
-    if (pos >= line.size()) {
+    if (pos >= line.size() || inCode[pos]) {
         return {};
     }
 
@@ -88,7 +105,13 @@ DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size
         const std::size_t destStart = pos;
         bool validAngle = false;
         while (pos < line.size()) {
+            if (inCode[pos]) {
+                return {};
+            }
             if (line[pos] == u'\\' && pos + 1 < line.size()) {
+                if (inCode[pos + 1]) {
+                    return {};
+                }
                 pos += 2;
             } else if (line[pos] == u'<' || line[pos] == u'\n' || line[pos] == u'\r') {
                 break;
@@ -106,15 +129,19 @@ DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size
         }
         bool hadSpace = false;
         while (pos < line.size() && (line[pos] == u' ' || line[pos] == u'\t')) {
+            if (inCode[pos]) {
+                return {};
+            }
             hadSpace = true;
             ++pos;
         }
-        if (pos < line.size() && line[pos] == u')') {
+        if (pos < line.size() && !inCode[pos] && line[pos] == u')') {
             result.endParen = pos;
             return result;
         }
-        if (hadSpace && pos < line.size() && (line[pos] == u'"' || line[pos] == u'\'' || line[pos] == u'(')) {
-            result.endParen = parseTitle(line, pos, result.title);
+        if (hadSpace && pos < line.size() && !inCode[pos] &&
+            (line[pos] == u'"' || line[pos] == u'\'' || line[pos] == u'(')) {
+            result.endParen = parseTitle(line, pos, inCode, result.title);
             if (result.endParen != std::u16string_view::npos) {
                 return result;
             }
@@ -125,10 +152,16 @@ DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size
     const std::size_t destStart = pos;
     int parenDepth = 0;
     while (pos < line.size()) {
+        if (inCode[pos]) {
+            return {};
+        }
         if (line[pos] == u' ' || line[pos] == u'\t') {
             break;
         }
         if (line[pos] == u'\\' && pos + 1 < line.size()) {
+            if (inCode[pos + 1]) {
+                return {};
+            }
             pos += 2;
         } else if (line[pos] == u'(') {
             ++parenDepth;
@@ -151,15 +184,19 @@ DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size
     result.destination = unescapePunctuation(line.substr(destStart, pos - destStart));
     bool hadSpace = false;
     while (pos < line.size() && (line[pos] == u' ' || line[pos] == u'\t')) {
+        if (inCode[pos]) {
+            return {};
+        }
         hadSpace = true;
         ++pos;
     }
-    if (pos < line.size() && line[pos] == u')') {
+    if (pos < line.size() && !inCode[pos] && line[pos] == u')') {
         result.endParen = pos;
         return result;
     }
-    if (hadSpace && pos < line.size() && (line[pos] == u'"' || line[pos] == u'\'' || line[pos] == u'(')) {
-        result.endParen = parseTitle(line, pos, result.title);
+    if (hadSpace && pos < line.size() && !inCode[pos] &&
+        (line[pos] == u'"' || line[pos] == u'\'' || line[pos] == u'(')) {
+        result.endParen = parseTitle(line, pos, inCode, result.title);
         if (result.endParen != std::u16string_view::npos) {
             return result;
         }
@@ -216,8 +253,8 @@ public:
                     ++i;
                     continue;
                 }
-                if (i + 1 < line.size() && line[i + 1] == u'(') {
-                    auto parsed = parseDestinationAndTitle(line, i + 2);
+                if (i + 1 < line.size() && line[i + 1] == u'(' && !inCode[i + 1]) {
+                    auto parsed = parseDestinationAndTitle(line, i + 2, inCode);
                     if (parsed.endParen != std::u16string_view::npos) {
                         const auto open = openBrackets.back();
                         openBrackets.pop_back();
@@ -271,21 +308,17 @@ public:
 
             const std::uint32_t textStart = static_cast<std::uint32_t>(pl.openBracket + 1);
             const std::uint32_t textEnd = static_cast<std::uint32_t>(pl.closeBracket);
-            if (textStart < textEnd) {
-                std::uint32_t current = textStart;
-                for (std::size_t k = textStart; k < textEnd; ++k) {
-                    if (inCode[k]) {
-                        if (k > current) {
-                            newRuns.push_back({{current, static_cast<std::uint32_t>(k - current)}, Role::LinkText, 0});
-                        }
-                        while (k < textEnd && inCode[k]) {
-                            ++k;
-                        }
-                        current = static_cast<std::uint32_t>(k);
-                    }
+            std::uint32_t current = textStart;
+            while (current < textEnd) {
+                while (current < textEnd && inCode[current]) {
+                    ++current;
                 }
-                if (current < textEnd) {
-                    newRuns.push_back({{current, textEnd - current}, Role::LinkText, 0});
+                const std::uint32_t runStart = current;
+                while (current < textEnd && !inCode[current]) {
+                    ++current;
+                }
+                if (current > runStart) {
+                    newRuns.push_back({{runStart, current - runStart}, Role::LinkText, 0});
                 }
             }
         }
