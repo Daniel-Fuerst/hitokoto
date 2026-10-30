@@ -38,6 +38,8 @@ public:
     /// Columns in the block's first line up to which continuation lines indent (hanging indent, S003); 0 = none.
     void setWrapIndent(const QTextBlock& block, int columns);
     [[nodiscard]] int wrapIndent(const QTextBlock& block) const;
+    /// Default indent applied to the start of a bullet list item (S003).
+    [[nodiscard]] qreal bulletIndent() const;
 
     /// The visible block at document y, or an invalid block below the last one.
     [[nodiscard]] QTextBlock blockAt(qreal y) const;

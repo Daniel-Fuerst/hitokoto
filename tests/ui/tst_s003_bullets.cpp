@@ -193,6 +193,41 @@ private slots:
         const QTextCursor c = f.editor()->textCursor();
         QCOMPARE(c.positionInBlock(), 6);
     }
+
+    void bulletPointsHaveDefaultIndentComparedToParagraphs() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("indent.md"), "- bullet\nparagraph\n")));
+        f.placeCaret(1);
+        f.settle();
+        const QTextBlock bulletBlock = f.editor()->document()->firstBlock();
+        const QTextBlock paraBlock = bulletBlock.next();
+        f.editor()->blockLayout()->ensureBlockLayout(bulletBlock);
+        f.editor()->blockLayout()->ensureBlockLayout(paraBlock);
+        const qreal bulletX = bulletBlock.layout()->lineAt(0).x();
+        const qreal paraX = paraBlock.layout()->lineAt(0).x();
+        QVERIFY2(bulletX > paraX, "bullet items must have a slight default indent compared to paragraphs");
+    }
+
+    void spaceAfterBulletHasAdditionalSeparation() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("sep.md"), "- milk\nother\n")));
+        f.placeCaret(1);
+        f.settle();
+        const QTextBlock block = f.editor()->document()->firstBlock();
+        f.editor()->blockLayout()->ensureBlockLayout(block);
+        const auto spaceFmt = test::formatAt(block, 1);
+        QCOMPARE(spaceFmt.fontLetterSpacingType(), QFont::AbsoluteSpacing);
+        QVERIFY(spaceFmt.fontLetterSpacing() > 0);
+
+        const QTextLayout* layout = block.layout();
+        const QTextLine line = layout->lineAt(0);
+        const qreal markerCenter = (line.cursorToX(0) + line.cursorToX(1)) / 2.0;
+        const qreal textX = line.cursorToX(2);
+        const QFontMetricsF metrics(f.editor()->document()->defaultFont());
+        const qreal standardSpace = metrics.horizontalAdvance(QLatin1Char(' '));
+        QVERIFY2(textX - markerCenter > standardSpace,
+                 "distance from bullet dot center to text must be greater than a standard space");
+    }
 };
 
 QTEST_MAIN(tst_s003_bullets)

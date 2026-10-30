@@ -61,13 +61,14 @@ std::optional<core::BlockState> cachedBlockState(const QTextBlock& block) {
 void cacheBlockState(QTextBlock& block, core::BlockState state) {
     auto* data = dynamic_cast<BlockData*>(block.userData());
     const int style = stateBits(block) & kStyleMask;
+    const int preserved = stateBits(block) & ~(kStyleMask | kStateKnown | kStateActive);
     if (state.active()) {
         if (data == nullptr) {
             data = new BlockData;
             block.setUserData(data);
         }
         data->blockState = state;
-        block.setUserState(style | kStateKnown | kStateActive);
+        block.setUserState(preserved | style | kStateKnown | kStateActive);
         return;
     }
     if (data != nullptr) {
@@ -76,7 +77,7 @@ void cacheBlockState(QTextBlock& block, core::BlockState state) {
             block.setUserData(nullptr);  // deletes it
         }
     }
-    block.setUserState(style | kStateKnown);
+    block.setUserState(preserved | style | kStateKnown);
 }
 }  // namespace
 

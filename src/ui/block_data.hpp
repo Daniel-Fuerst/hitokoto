@@ -22,12 +22,18 @@ public:
     double reservedHeight = 0;    ///< > 0: the block is this many pixels high, its text not drawn
     double spaceAbove = 0;        ///< pixels above the first line, part of the block's height
     double spaceBelow = 0;        ///< pixels below the last line, part of the block's height
-    int wrapIndent = 0;           ///< columns to indent continuation lines (hanging indent, S003)
 
     [[nodiscard]] bool empty() const noexcept {
-        return !ending && !blockState.active() && reservedHeight <= 0 && spaceAbove <= 0 && spaceBelow <= 0 &&
-               wrapIndent <= 0;
+        return !ending && !blockState.active() && reservedHeight <= 0 && spaceAbove <= 0 && spaceBelow <= 0;
     }
 };
+
+// QTextBlock::userState() bit layout:
+// Bits 0-1 (0x3): style (0 = unstyled, 1 = concealed, 2 = revealed)
+// Bit 2 (0x4): block state after line is known
+// Bit 3 (0x8): block state is active (block carries BlockData)
+// Bits 4-15 (0xFFF0): wrapIndent columns for hanging indent (S003); 0 = none
+constexpr int kWrapIndentShift = 4;
+constexpr int kWrapIndentMask = 0xFFF << kWrapIndentShift;
 
 }  // namespace hitokoto::ui

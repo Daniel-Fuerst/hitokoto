@@ -110,15 +110,9 @@ void BlockLayout::setWrapIndent(const QTextBlock& block, int columns) {
     if (!block.isValid() || wrapIndent(block) == columns) {
         return;
     }
-    auto* data = dynamic_cast<BlockData*>(block.userData());
-    if (data == nullptr) {
-        data = new BlockData;
-        const_cast<QTextBlock&>(block).setUserData(data);
-    }
-    data->wrapIndent = columns;
-    if (data->empty()) {
-        const_cast<QTextBlock&>(block).setUserData(nullptr);  // deletes it
-    }
+    const int state = block.userState() < 0 ? 0 : block.userState();
+    const int updated = (state & ~kWrapIndentMask) | ((columns & 0xFFF) << kWrapIndentShift);
+    const_cast<QTextBlock&>(block).setUserState(updated);
     if (block.layout()->lineCount() > 0 && reservedHeight(block) <= 0) {
         layoutBlock(block);
     }
@@ -135,8 +129,15 @@ void BlockLayout::setWrapIndent(const QTextBlock& block, int columns) {
 }
 
 int BlockLayout::wrapIndent(const QTextBlock& block) const {
-    const BlockData* data = dataOf(block);
-    return data != nullptr ? data->wrapIndent : 0;
+    if (!block.isValid()) {
+        return 0;
+    }
+    const int state = block.userState();
+    return state < 0 ? 0 : (state & kWrapIndentMask) >> kWrapIndentShift;
+}
+
+qreal BlockLayout::bulletIndent() const {
+    return std::round(averageCharWidth_ * 2.0);
 }
 
 BlockLayout::Batch::Batch(BlockLayout* layout) : layout_(layout) {
@@ -203,6 +204,11 @@ qreal BlockLayout::layoutBlock(const QTextBlock& block) const {
     const qreal left = margin();
     qreal height = spaceAbove(block);
 
+    const int wrapCols = wrapIndent(block);
+    const qreal baseIndent = (wrapCols > 0) ? bulletIndent() : 0.0;
+    const qreal line0Width = (baseIndent > 0 && width > baseIndent + 20) ? width - baseIndent : width;
+    const qreal line0Left = (line0Width < width) ? left + baseIndent : left;
+
     QTextLine line0 = layout->createLine();
     if (!line0.isValid()) {
         layout->endLayout();
@@ -210,12 +216,11 @@ qreal BlockLayout::layoutBlock(const QTextBlock& block) const {
         return height + spaceBelow(block);
     }
     line0.setLeadingIncluded(true);
-    line0.setLineWidth(width);
-    line0.setPosition(QPointF(left, height));
+    line0.setLineWidth(line0Width);
+    line0.setPosition(QPointF(line0Left, height));
     height += line0.height();
 
     qreal indent = 0;
-    const int wrapCols = wrapIndent(block);
     if (wrapCols > 0 && wrapCols <= line0.textLength()) {
         indent = std::max<qreal>(0, line0.cursorToX(wrapCols) - left);
     }
