@@ -1,11 +1,11 @@
 # Not yet refined
 
-Points noticed in use or during an implementation that are not specified yet. An entry says what
-was seen, what CommonMark (or GFM, where hitokoto follows it) says, and what is open. When an entry
-is refined, it becomes a story in this folder and is removed here, with the story ID in the commit
-message. This file may be updated on any branch; it needs no branch of its own (Armin, 2026-10-30).
-Expectations are checked against commonmark.js or markdown-it-py (mode `commonmark`) before they
-are written here.
+Points noticed in use or during an implementation that are not specified yet, including known
+failures whose cause or remedy is still open. An entry says what was seen, what CommonMark (or GFM,
+where hitokoto follows it) says, and what is open. When an entry is refined, it becomes a story in
+this folder and is removed here, with the story ID in the commit message. This file may be updated
+on any branch; it needs no branch of its own (Armin, 2026-10-30). Expectations are checked against
+commonmark.js or markdown-it-py (mode `commonmark`) before they are written here.
 
 ## Soft line breaks: paragraphs flow
 
@@ -63,3 +63,20 @@ are written here.
 - **hitokoto:** every blank line is a line of its own; S018 hides the one blank line below a table.
 - **Open:** whether blank lines between paragraphs are concealed and replaced by paragraph spacing
   (a token), and what the caret does there. To decide with Daniel.
+
+## tst_s017 fails locally on Windows
+
+- **Seen:** 2026-10-28 (Armin, ttv-e0536, Visual Studio 2022, Qt 6.12.0 MSVC), again 2026-10-30 in the
+  Test Explorer. CI (Release, Qt 6.8.3 on Windows) is green.
+- **What fails:** in the Debug build (preset `win-dev`) the test runs into the ctest timeout of 300 s
+  and reports a stall of 61 ms; in a Release build that inherits `ci` the test
+  `savingTenMegabytesDoesNotStallTheEventLoop` reports a longest stall of 18 ms (best of three)
+  against the bound `max(copyMs / 2, 16)` = 16 ms, with a one-shot copy of 16 ms; the other nine
+  cases pass. On this fast machine (22 threads) the stall is longer than the whole copy, so it does
+  not come from the slices.
+- **Cause:** open. Guesses without evidence: the virus scanner closing the 10 MB file in the temp
+  folder (outside the excluded `C:\Dev`), freeing large strings on the UI thread, Qt 6.12 instead of
+  6.8.3. The 1 ms ticker is no artefact: Qt uses multimedia timers for coarse timers up to 20 ms on
+  Windows (`qeventdispatcher_win.cpp`).
+- **Open:** find the cause on Windows; Armin's goal is a green `win-dev`, for example by skipping
+  timing assertions in unoptimised builds (`QSKIP`), without weakening the gate in CI.
