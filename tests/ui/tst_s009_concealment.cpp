@@ -28,7 +28,8 @@ constexpr auto kDocument =
     "```c\n"
     "int main() {}\n"
     "```\n"
-    "Last line with ~~strike~~ and a [link](https://example.com).\n"
+    "Lines with links: a standard [link](https://example.com) and a [titled link](https://example.com \"Title\").\n"
+    "Badge link: [![CI](https://x/badge.svg)](https://github.com/x) and [nested **bold** link](https://nested.org).\n"
     "```\n"
     "unterminated block\n";
 
