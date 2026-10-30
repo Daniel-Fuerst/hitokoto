@@ -62,8 +62,8 @@ belong to has a story:
   text;
 - breaks and underlines indented four or more spaces inside a list item (`- foo` / `    ***`): text;
 - list membership across blank lines is not tracked: after a blank line a paragraph counts as top
-  level, so `- foo` / `` / `  bar` / `---` shows a setext heading where CommonMark ends the list with
-  a break;
+  level, so `- foo`, a blank line, `  bar` / `---` shows a setext heading where CommonMark ends the
+  list with a break;
 - HTML blocks are not tracked beyond their first line: `<div>` / `---` shows a break, where
   CommonMark keeps `---` as raw HTML of the block;
 - link reference definitions: the reference parsers disagree for `[a]: /url` / `---` (commonmark.js
