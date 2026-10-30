@@ -234,6 +234,17 @@ void EditorWidget::scrollContentsBy(int dx, int dy) {
     tables_->scheduleRefresh();
 }
 
+namespace {
+bool isBrowserUrl(const QString& href) {
+    const QUrl url(href);
+    if (!url.isValid()) {
+        return false;
+    }
+    const QString scheme = url.scheme().toLower();
+    return scheme == QLatin1String("http") || scheme == QLatin1String("https");
+}
+}  // namespace
+
 void EditorWidget::paintEvent(QPaintEvent* event) {
     paintCodeBlockPanels();
     QTextEdit::paintEvent(event);
@@ -242,12 +253,20 @@ void EditorWidget::paintEvent(QPaintEvent* event) {
 }
 
 void EditorWidget::mousePressEvent(QMouseEvent* event) {
-    if (event->button() == Qt::LeftButton && !(event->modifiers() & Qt::ControlModifier)) {
-        const QString href = anchorAt(event->position().toPoint());
-        if (!href.isEmpty()) {
-            QDesktopServices::openUrl(QUrl(href));
-            event->accept();
-            return;
+    const QTextCursor hit = cursorForPosition(event->position().toPoint());
+    const QTextBlock block = hit.block();
+    const bool wasConcealed = block.isValid() && !styler_->isRevealed(block.blockNumber());
+
+    if (event->button() == Qt::LeftButton) {
+        const bool wantsOpen =
+            (wasConcealed && event->modifiers() == Qt::NoModifier) || (event->modifiers() & Qt::ControlModifier);
+        if (wantsOpen) {
+            const QString href = anchorAt(event->position().toPoint());
+            if (!href.isEmpty() && isBrowserUrl(href)) {
+                QDesktopServices::openUrl(QUrl(href));
+                event->accept();
+                return;
+            }
         }
     }
     if (event->button() == Qt::LeftButton && event->modifiers() == Qt::NoModifier &&
@@ -258,9 +277,6 @@ void EditorWidget::mousePressEvent(QMouseEvent* event) {
     // S010: a click into a line whose markers are collapsed hits the concealed layout. The
     // character index is right, except left of the first visible character, where the hit
     // can land inside the collapsed marker; move it behind the marker.
-    const QTextCursor hit = cursorForPosition(event->position().toPoint());
-    const QTextBlock block = hit.block();
-    const bool wasConcealed = !styler_->isRevealed(block.blockNumber());
     const auto render = wasConcealed ? styler_->renderFor(block) : core::LineRender{};
 
     QTextEdit::mousePressEvent(event);
@@ -283,7 +299,12 @@ void EditorWidget::mousePressEvent(QMouseEvent* event) {
 }
 
 void EditorWidget::mouseMoveEvent(QMouseEvent* event) {
-    if (!anchorAt(event->position().toPoint()).isEmpty()) {
+    const QTextCursor hit = cursorForPosition(event->position().toPoint());
+    const QTextBlock block = hit.block();
+    const bool isConcealed = block.isValid() && !styler_->isRevealed(block.blockNumber());
+    const QString href = anchorAt(event->position().toPoint());
+    const bool canOpen = isBrowserUrl(href) && (isConcealed || (event->modifiers() & Qt::ControlModifier));
+    if (canOpen) {
         viewport()->setCursor(Qt::PointingHandCursor);
     } else {
         viewport()->setCursor(Qt::IBeamCursor);
@@ -305,8 +326,6 @@ bool EditorWidget::viewportEvent(QEvent* event) {
             return true;
         }
         QToolTip::hideText();
-        event->ignore();
-        return true;
     }
     return QTextEdit::viewportEvent(event);
 }

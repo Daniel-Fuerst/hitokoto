@@ -102,6 +102,7 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
     std::size_t runIndex = 0;
     std::size_t inlineIndex = 0;
     std::size_t hiddenIndex = 0;
+    std::size_t linkIndex = 0;
     for (std::size_t i = 1; i < boundaries.size(); ++i) {
         const auto start = boundaries[i - 1];
         const auto end = boundaries[i];
@@ -118,6 +119,9 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
         while (hiddenIndex < render.hidden.size() && render.hidden[hiddenIndex].span.end() <= start) {
             ++hiddenIndex;
         }
+        while (linkIndex < render.links.size() && render.links[linkIndex].span.end() <= start) {
+            ++linkIndex;
+        }
         const auto* baseRun = runIndex < render.runs.size() && render.runs[runIndex].span.start <= start &&
                                       render.runs[runIndex].span.end() >= end
                                   ? &render.runs[runIndex]
@@ -131,7 +135,11 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
                                      render.hidden[hiddenIndex].span.end() >= end
                                  ? &render.hidden[hiddenIndex]
                                  : nullptr;
-        if (baseRun == nullptr && inlineRun == nullptr && hidden == nullptr) {
+        const auto* link = linkIndex < render.links.size() && render.links[linkIndex].span.start <= start &&
+                                   render.links[linkIndex].span.end() >= end
+                               ? &render.links[linkIndex]
+                               : nullptr;
+        if (baseRun == nullptr && inlineRun == nullptr && hidden == nullptr && link == nullptr) {
             continue;
         }
 
@@ -161,14 +169,11 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
         } else if (is(core::Role::LinkMarker)) {
             format.setForeground(toQColor(link_.marker));
         }
-        for (const auto& link : render.links) {
-            if (link.span.start <= start && link.span.end() >= end) {
-                format.setAnchor(true);
-                format.setAnchorHref(QString::fromStdU16String(link.destination));
-                if (!link.title.empty()) {
-                    format.setToolTip(QString::fromStdU16String(link.title));
-                }
-                break;
+        if (link != nullptr) {
+            format.setAnchor(true);
+            format.setAnchorHref(QString::fromStdU16String(link->destination));
+            if (!link->title.empty()) {
+                format.setToolTip(QString::fromStdU16String(link->title));
             }
         }
         if (inlineRun != nullptr && !is(core::Role::InlineCode)) {

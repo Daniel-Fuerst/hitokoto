@@ -58,7 +58,7 @@ std::optional<std::string> colorValue(const Value& v, Color& out) {
     return std::nullopt;
 }
 
-template <Color Theme::* Member>
+template <Color Theme::*Member>
 std::optional<std::string> applyColor(Theme& t, const Value& v) {
     return colorValue(v, t.*Member);
 }
@@ -84,7 +84,7 @@ std::optional<std::string> applyOptString(Theme& t, const Value& v) {
     return std::nullopt;
 }
 
-template <std::string Theme::* Member>
+template <std::string Theme::*Member>
 std::optional<std::string> applyString(Theme& t, const Value& v) {
     const auto* s = std::get_if<std::string>(&v);
     if (!s) {
@@ -108,7 +108,7 @@ std::optional<std::string> numberIn(const Value& v, double lo, double hi, double
     return std::nullopt;
 }
 
-template <double Theme::* Member, int Lo, int Hi>
+template <double Theme::*Member, int Lo, int Hi>
 std::optional<std::string> applyNumber(Theme& t, const Value& v) {
     return numberIn(v, Lo, Hi, t.*Member);
 }

@@ -143,10 +143,18 @@ TEST(S022_InlineLinks, LinkWithBoldItalicsAndCodeInsideBrackets) {
     EXPECT_TRUE(hasInlineCode) << "inline code inside link brackets";
 
     // Delimiters (** around Bold, * around Italics, ` around Code, and [ ](url) of the link)
-    // are all in hidden ranges when concealed.
-    for (const auto& h : r.hidden) {
-        EXPECT_GT(h.span.length, 0u);
-    }
+    // are all in exact hidden ranges when concealed.
+    EXPECT_EQ(r.hidden, (std::vector<HiddenRange>{
+                            {{0, 1}, HideMode::KeepSpace},
+                            {{2, 1}, HideMode::Collapse},
+                            {{13, 2}, HideMode::Collapse},
+                            {{19, 2}, HideMode::Collapse},
+                            {{23, 1}, HideMode::Collapse},
+                            {{31, 1}, HideMode::Collapse},
+                            {{38, 1}, HideMode::Collapse},
+                            {{43, 1}, HideMode::Collapse},
+                            {{60, 22}, HideMode::Collapse},
+                        }));
 }
 
 TEST(S022_InlineLinks, TitleWithSingleQuotesAndParentheses) {
@@ -210,4 +218,93 @@ TEST(S022_InlineLinks, ThemeTokensAreParsedWithFallbacks) {
     const LinkStyle defStyle = linkStyle(defaultTheme.theme);
     EXPECT_EQ(defStyle.text, defaultTheme.theme.accent);
     EXPECT_EQ(defStyle.marker, defaultTheme.theme.marker);
+}
+
+TEST(S022_InlineLinks, UnclosedLinkWithOpeningParenRemainsLiteral) {
+    const auto r = show(u"[unclosed link(url)", false);
+    EXPECT_TRUE(r.links.empty());
+    EXPECT_TRUE(r.hidden.empty());
+    EXPECT_TRUE(r.runs.empty());
+}
+
+TEST(S022_InlineLinks, CommonMarkNegativesEmphasisAcrossLinkBoundary) {
+    // *[foo*](/uri): literal '*' and link 'foo*'
+    {
+        const auto r = show(u"*[foo*](/uri)", false);
+        ASSERT_EQ(r.links.size(), 1u);
+        EXPECT_EQ(r.links[0].destination, u"/uri");
+        EXPECT_EQ(r.links[0].span, (Span{2, 4}));
+        EXPECT_TRUE(r.inlineStyles.empty()) << "delimiters across link boundary must not pair";
+        // Hidden ranges cover only '[' and '](/uri)'; neither '*' is hidden
+        EXPECT_EQ(r.hidden, (std::vector<HiddenRange>{
+                                {{1, 1}, HideMode::Collapse},
+                                {{6, 7}, HideMode::Collapse},
+                            }));
+    }
+
+    // *foo [bar* baz](/uri): literal '*foo ' and link 'bar* baz'
+    {
+        const auto r = show(u"*foo [bar* baz](/uri)", false);
+        ASSERT_EQ(r.links.size(), 1u);
+        EXPECT_EQ(r.links[0].destination, u"/uri");
+        EXPECT_EQ(r.links[0].span, (Span{6, 8}));
+        EXPECT_TRUE(r.inlineStyles.empty());
+        EXPECT_EQ(r.hidden, (std::vector<HiddenRange>{
+                                {{5, 1}, HideMode::Collapse},
+                                {{14, 7}, HideMode::Collapse},
+                            }));
+    }
+
+    // _[a_](u): literal '_' and link 'a_'
+    {
+        const auto r = show(u"_[a_](u)", false);
+        ASSERT_EQ(r.links.size(), 1u);
+        EXPECT_EQ(r.links[0].destination, u"u");
+        EXPECT_EQ(r.links[0].span, (Span{2, 2}));
+        EXPECT_TRUE(r.inlineStyles.empty());
+        EXPECT_EQ(r.hidden, (std::vector<HiddenRange>{
+                                {{1, 1}, HideMode::Collapse},
+                                {{4, 4}, HideMode::Collapse},
+                            }));
+    }
+}
+
+TEST(S022_InlineLinks, CommonMarkNegativesLinksInsideLinksForbidden) {
+    // [foo [bar](/uri)](/uri) in CommonMark: literal '[foo ', link 'bar', literal '](/uri)'
+    const auto r = show(u"[foo [bar](/uri)](/uri)", false);
+    ASSERT_EQ(r.links.size(), 1u);
+    EXPECT_EQ(r.links[0].span, (Span{6, 3}));
+    EXPECT_EQ(r.links[0].destination, u"/uri");
+    // Outer '[' and outer '](/uri)' are not hidden
+    EXPECT_EQ(r.hidden, (std::vector<HiddenRange>{
+                            {{5, 1}, HideMode::Collapse},
+                            {{9, 7}, HideMode::Collapse},
+                        }));
+}
+
+TEST(S022_InlineLinks, CommonMarkNegativesImagesStayLiteral) {
+    const auto r = show(u"![alt](img.png)", false);
+    EXPECT_TRUE(r.links.empty());
+    EXPECT_TRUE(r.hidden.empty());
+    EXPECT_TRUE(r.runs.empty());
+}
+
+TEST(S022_InlineLinks, CodeSpanBeforeAndInsideLinkAvoidsUseAfterFree) {
+    // Reproducer from review O2: `x` [a `b`](u)
+    const auto r = show(u"`x` [a `b`](u)", false);
+    ASSERT_EQ(r.links.size(), 1u);
+    EXPECT_EQ(r.links[0].span, (Span{5, 5}));
+    EXPECT_EQ(r.links[0].destination, u"u");
+    // Visible runs: `x` inline code, "a " link text, `b` inline code
+    EXPECT_EQ(r.runs, (std::vector<StyleRun>{
+                          {{1, 1}, Role::InlineCode, 0},
+                          {{5, 2}, Role::LinkText, 0},
+                          {{8, 1}, Role::InlineCode, 0},
+                      }));
+}
+
+TEST(S022_InlineLinks, LinearBracketMatchingPerformance) {
+    std::u16string big(10000, u'[');
+    const auto r = show(big, false);
+    EXPECT_TRUE(r.links.empty());
 }

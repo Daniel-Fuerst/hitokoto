@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S009 (standing quality gate): the caret never stands in concealed text. Extended for code block
-// fences (S021): a caret anywhere in a block reveals both fences, and no line of it moves.
+// fences (S021) and inline links (S022).
 #include "ui_test_support.hpp"
 
 #include <QRandomGenerator>
@@ -28,7 +28,7 @@ constexpr auto kDocument =
     "```c\n"
     "int main() {}\n"
     "```\n"
-    "Last line with ~~strike~~.\n"
+    "Last line with ~~strike~~ and a [link](https://example.com).\n"
     "```\n"
     "unterminated block\n";
 

@@ -3,6 +3,7 @@
 #include "ui_test_support.hpp"
 
 #include <QDesktopServices>
+#include <QToolTip>
 #include <QUrl>
 
 using namespace hitokoto;
@@ -236,10 +237,13 @@ private slots:
 
     void hoverTooltipShowsTitle() {
         test::Fixture f;
-        QVERIFY(f.open(f.writeFile(QStringLiteral("tip.md"), "[Link](https://example.com \"My Title\")\nsecond\n")));
+        QVERIFY(f.open(f.writeFile(QStringLiteral("tip.md"),
+                                  "[Link](https://example.com \"My Title\")\n"
+                                  "[Untitled](https://example.com)\n")));
         f.placeCaret(1);
         f.settle();
 
+        // 1. Link with title has toolTip on format and shows QToolTip
         QTextCursor c(f.editor()->document());
         c.setPosition(2);
         const QPoint linkPt = f.editor()->cursorRect(c).center();
@@ -248,6 +252,89 @@ private slots:
 
         QHelpEvent help(QEvent::ToolTip, linkPt, f.editor()->viewport()->mapToGlobal(linkPt));
         QVERIFY(QCoreApplication::sendEvent(f.editor()->viewport(), &help));
+        QCOMPARE(QToolTip::text(), QStringLiteral("My Title"));
+
+        // 2. Link without title has empty tooltip
+        const auto block1 = f.editor()->document()->findBlockByNumber(1);
+        QTextCursor c1(f.editor()->document());
+        c1.setPosition(block1.position() + 2);
+        const QPoint noTipPt = f.editor()->cursorRect(c1).center();
+        QCOMPARE(f.editor()->formatAt(noTipPt).toolTip(), QString{});
+    }
+
+    void clickOnActiveLinePlacesCaretWhileCtrlClickOpensLink() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("active.md"), "plain before\n[Editable Link](https://example.com)\n")));
+        // Caret on line 1 so line 1 is revealed
+        f.placeCaret(1);
+        f.settle();
+
+        // Line 1 is revealed: '[' is not collapsed
+        const auto block1 = f.editor()->document()->findBlockByNumber(1);
+        QVERIFY(!test::isCollapsed(block1, 0));
+
+        UrlCollector collector;
+        QDesktopServices::setUrlHandler(QStringLiteral("https"), &collector, "handleUrl");
+
+        // Hover over link on active line shows I-Beam (plain click edits)
+        QTextCursor c(f.editor()->document());
+        c.setPosition(block1.position() + 5);  // inside "Editable Link"
+        const QPoint linkPt = f.editor()->cursorRect(c).center();
+
+        QMouseEvent moveLink(QEvent::MouseMove, linkPt, f.editor()->viewport()->mapToGlobal(linkPt), Qt::NoButton,
+                             Qt::NoButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(f.editor()->viewport(), &moveLink);
+        QCOMPARE(f.editor()->viewport()->cursor().shape(), Qt::IBeamCursor);
+
+        // Plain click on active line places caret (S010), does NOT open URL
+        QTest::mouseClick(f.editor()->viewport(), Qt::LeftButton, Qt::NoModifier, linkPt);
+        QVERIFY(collector.lastUrl.isEmpty());
+        QCOMPARE(f.editor()->textCursor().blockNumber(), 1);
+        QVERIFY(f.editor()->textCursor().positionInBlock() > 0);
+
+        // Ctrl+click on active line opens the link
+        QTest::mouseClick(f.editor()->viewport(), Qt::LeftButton, Qt::ControlModifier, linkPt);
+        QCOMPARE(collector.lastUrl, QUrl(QStringLiteral("https://example.com")));
+
+        QDesktopServices::unsetUrlHandler(QStringLiteral("https"));
+    }
+
+    void dangerousSchemesAndRelativeUrlsAreNotOpened() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("schemes.md"),
+                                  "first line\n"
+                                  "[File Link](file:///C:/Users/Public/x.bat)\n"
+                                  "[UNC Link](file://attacker/share/x.exe)\n"
+                                  "[Settings](ms-settings:privacy)\n"
+                                  "[Relative Link](000-repository-skeleton.md)\n"
+                                  "[Anchor](#intro)\n")));
+        // Place caret on line 0 so lines 1..5 are concealed
+        f.placeCaret(0);
+        f.settle();
+
+        UrlCollector collector;
+        QDesktopServices::setUrlHandler(QStringLiteral("file"), &collector, "handleUrl");
+        QDesktopServices::setUrlHandler(QStringLiteral("ms-settings"), &collector, "handleUrl");
+
+        for (int lineNum = 1; lineNum <= 5; ++lineNum) {
+            const auto block = f.editor()->document()->findBlockByNumber(lineNum);
+            QTextCursor c(f.editor()->document());
+            c.setPosition(block.position() + 3);
+            const QPoint pt = f.editor()->cursorRect(c).center();
+
+            // Hover cursor is I-beam (cannot open non-browser schemes)
+            QMouseEvent move(QEvent::MouseMove, pt, f.editor()->viewport()->mapToGlobal(pt), Qt::NoButton,
+                             Qt::NoButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(f.editor()->viewport(), &move);
+            QCOMPARE(f.editor()->viewport()->cursor().shape(), Qt::IBeamCursor);
+
+            // Plain click does NOT open URL
+            QTest::mouseClick(f.editor()->viewport(), Qt::LeftButton, Qt::NoModifier, pt);
+            QVERIFY(collector.lastUrl.isEmpty());
+        }
+
+        QDesktopServices::unsetUrlHandler(QStringLiteral("file"));
+        QDesktopServices::unsetUrlHandler(QStringLiteral("ms-settings"));
     }
 };
 

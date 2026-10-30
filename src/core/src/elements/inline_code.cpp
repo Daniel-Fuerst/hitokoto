@@ -42,6 +42,7 @@ public:
                 out.hidden.push_back({{static_cast<std::uint32_t>(opener), 1}, HideMode::Collapse});
                 out.hidden.push_back({{static_cast<std::uint32_t>(i), 1}, HideMode::Collapse});
             }
+            out.opaqueSpans.push_back({static_cast<std::uint32_t>(opener), static_cast<std::uint32_t>(i - opener + 1)});
             opener = std::u16string_view::npos;
         }
     }

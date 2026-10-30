@@ -135,10 +135,12 @@ struct LineRender {
     std::vector<HiddenRange> hidden;
     std::vector<Decoration> decorations;
     std::vector<LinkTarget> links;
-    std::u16string codeLanguage;  ///< opening fence: language of the info string (S021), else empty
+    std::vector<Span> opaqueSpans;     ///< spans that later inline elements must not parse (code spans, link markers)
+    std::vector<Span> inlineContexts;  ///< isolated inline contexts (e.g. link text: delimiters never pair outside)
+    std::u16string codeLanguage;       ///< opening fence: language of the info string (S021), else empty
     [[nodiscard]] bool empty() const noexcept {
         return headingLevel == 0 && !codeBlock && !fenceLine && !table && runs.empty() && inlineStyles.empty() &&
-               hidden.empty() && decorations.empty() && links.empty();
+               hidden.empty() && decorations.empty() && links.empty() && opaqueSpans.empty() && inlineContexts.empty();
     }
     friend bool operator==(const LineRender&, const LineRender&) = default;
 };

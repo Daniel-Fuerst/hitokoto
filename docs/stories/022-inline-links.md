@@ -1,6 +1,6 @@
 # S022 — Inline Markdown links and titles
 
-- **Status:** In review · **Order:** 23 · **Depends on:** S013, S015, S020
+- **Status:** Confirmed by Armin on 2026-10-30; In review · **Order:** 23 · **Depends on:** S013, S015, S020
 
 ## Story
 
@@ -60,5 +60,7 @@ As a writer, I want inline links (`[text](url)` and `[text](url "title")`, with 
 
 ## Tests
 
-- Core: `S022_InlineLinks` verifies delimiter matching, angle-bracket destinations, balanced parentheses, title parsing (double quotes, single quotes, parens), escaped characters, nested inline styling (bold, italic, code), suppression of emphasis in destinations, theme token parsing and fallbacks.
-- UI: `tst_s022_inline_links` verifies character formatting, tooltip, anchor href, concealment when inactive, reveal when active, pointing-hand cursor on hover over links, I-beam cursor over text, and clicking links to open them in the browser.
+- Core: `S022_InlineLinks` verifies delimiter matching, angle-bracket destinations, balanced parentheses, title parsing (double quotes, single quotes, parens), escaped characters, nested inline styling (bold, italic, code), suppression of emphasis in destinations, theme token parsing and fallbacks. Also covers CommonMark negatives (emphasis across link boundaries, links inside links, image syntax remaining literal), unclosed parenthesis links, avoidance of iterator invalidation, and linear bracket-matching performance.
+- UI: `tst_s022_inline_links` verifies character formatting, tooltip text, anchor href, concealment when inactive, reveal when active, pointing-hand cursor on hover over browser links, I-beam cursor over text, clicking links on concealed lines to open in the browser, clicking on active lines to place caret while Ctrl+clicking opens the link, and rejection of unsafe schemes or relative URLs.
+- Quality Gate: `tst_s009_concealment` extends the standing concealment quality gate with inline links.
+- Benchmarks: `S022_RenderLineWithLinks` and `S022_RenderLineWithUnclosedBrackets` in `bench/core_bench.cpp`.

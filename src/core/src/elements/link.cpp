@@ -4,6 +4,7 @@
 #include "hitokoto/core/markdown.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <vector>
 
 namespace hitokoto::core {
@@ -62,6 +63,119 @@ std::size_t parseTitle(std::u16string_view line, std::size_t& pos, std::u16strin
     return std::u16string_view::npos;
 }
 
+struct DestinationAndTitle {
+    std::u16string destination;
+    std::u16string title;
+    std::size_t endParen = std::u16string_view::npos;
+};
+
+DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size_t pos) {
+    while (pos < line.size() && (line[pos] == u' ' || line[pos] == u'\t')) {
+        ++pos;
+    }
+    if (pos >= line.size()) {
+        return {};
+    }
+
+    if (line[pos] == u')') {
+        return {u"", u"", pos};
+    }
+
+    DestinationAndTitle result;
+
+    if (line[pos] == u'<') {
+        ++pos;
+        const std::size_t destStart = pos;
+        bool validAngle = false;
+        while (pos < line.size()) {
+            if (line[pos] == u'\\' && pos + 1 < line.size()) {
+                pos += 2;
+            } else if (line[pos] == u'<' || line[pos] == u'\n' || line[pos] == u'\r') {
+                break;
+            } else if (line[pos] == u'>') {
+                result.destination = unescapePunctuation(line.substr(destStart, pos - destStart));
+                ++pos;
+                validAngle = true;
+                break;
+            } else {
+                ++pos;
+            }
+        }
+        if (!validAngle) {
+            return {};
+        }
+        bool hadSpace = false;
+        while (pos < line.size() && (line[pos] == u' ' || line[pos] == u'\t')) {
+            hadSpace = true;
+            ++pos;
+        }
+        if (pos < line.size() && line[pos] == u')') {
+            result.endParen = pos;
+            return result;
+        }
+        if (hadSpace && pos < line.size() && (line[pos] == u'"' || line[pos] == u'\'' || line[pos] == u'(')) {
+            result.endParen = parseTitle(line, pos, result.title);
+            if (result.endParen != std::u16string_view::npos) {
+                return result;
+            }
+        }
+        return {};
+    }
+
+    // Bare destination (or title if destination omitted)
+    if (line[pos] == u'"' || line[pos] == u'\'' || line[pos] == u'(') {
+        result.endParen = parseTitle(line, pos, result.title);
+        if (result.endParen != std::u16string_view::npos) {
+            return result;
+        }
+        return {};
+    }
+
+    const std::size_t destStart = pos;
+    int parenDepth = 0;
+    while (pos < line.size()) {
+        if (line[pos] == u' ' || line[pos] == u'\t') {
+            break;
+        }
+        if (line[pos] == u'\\' && pos + 1 < line.size()) {
+            pos += 2;
+        } else if (line[pos] == u'(') {
+            ++parenDepth;
+            ++pos;
+        } else if (line[pos] == u')') {
+            if (parenDepth > 0) {
+                --parenDepth;
+                ++pos;
+            } else {
+                break;
+            }
+        } else {
+            ++pos;
+        }
+    }
+    if (parenDepth != 0) {
+        return {};
+    }
+
+    result.destination = unescapePunctuation(line.substr(destStart, pos - destStart));
+    bool hadSpace = false;
+    while (pos < line.size() && (line[pos] == u' ' || line[pos] == u'\t')) {
+        hadSpace = true;
+        ++pos;
+    }
+    if (pos < line.size() && line[pos] == u')') {
+        result.endParen = pos;
+        return result;
+    }
+    if (hadSpace && pos < line.size() && (line[pos] == u'"' || line[pos] == u'\'' || line[pos] == u'(')) {
+        result.endParen = parseTitle(line, pos, result.title);
+        if (result.endParen != std::u16string_view::npos) {
+            return result;
+        }
+    }
+    return {};
+}
+
 class LinkElement final : public InlineElement {
 public:
     [[nodiscard]] std::string_view id() const noexcept override { return "link"; }
@@ -69,193 +183,116 @@ public:
 
     void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
         std::vector<bool> inCode(line.size(), false);
-        for (const auto& run : out.runs) {
-            if (run.role == Role::InlineCode || run.role == Role::InlineCodeMarker) {
-                std::fill(inCode.begin() + run.span.start, inCode.begin() + run.span.end(), true);
+        for (const auto& span : out.opaqueSpans) {
+            if (span.start < line.size()) {
+                const auto end = std::min<std::size_t>(span.end(), line.size());
+                std::fill(inCode.begin() + static_cast<std::ptrdiff_t>(span.start),
+                          inCode.begin() + static_cast<std::ptrdiff_t>(end), true);
             }
         }
 
+        struct ParsedLink {
+            std::size_t openBracket = 0;
+            std::size_t closeBracket = 0;
+            std::size_t endParen = 0;
+            std::u16string destination;
+            std::u16string title;
+        };
+        std::vector<ParsedLink> parsedLinks;
+        std::vector<std::size_t> openBrackets;
+
         for (std::size_t i = 0; i < line.size();) {
-            if (inCode[i] || line[i] != u'[' || escaped(line, i)) {
+            if (inCode[i]) {
                 ++i;
                 continue;
             }
-
-            const std::size_t openBracket = i;
-            std::size_t j = openBracket + 1;
-            int bracketDepth = 0;
-            std::size_t closeBracket = std::u16string_view::npos;
-
-            while (j < line.size()) {
-                if (inCode[j]) {
-                    ++j;
-                    continue;
-                }
-                if (line[j] == u'\\' && j + 1 < line.size()) {
-                    j += 2;
-                    continue;
-                }
-                if (line[j] == u'[') {
-                    ++bracketDepth;
-                    ++j;
-                } else if (line[j] == u']') {
-                    if (bracketDepth > 0) {
-                        --bracketDepth;
-                        ++j;
-                    } else {
-                        if (j + 1 < line.size() && line[j + 1] == u'(') {
-                            closeBracket = j;
-                        }
-                        break;
-                    }
-                } else {
-                    ++j;
-                }
-            }
-
-            if (closeBracket == std::u16string_view::npos) {
-                i = openBracket + 1;
+            if (line[i] == u'\\' && i + 1 < line.size()) {
+                i += 2;
                 continue;
             }
-
-            std::size_t pos = closeBracket + 2;  // right after '('
-            while (pos < line.size() && (line[pos] == u' ' || line[pos] == u'\t')) {
-                ++pos;
-            }
-
-            std::u16string destination;
-            std::u16string title;
-            std::size_t endParen = std::u16string_view::npos;
-
-            if (pos < line.size() && line[pos] == u')') {
-                endParen = pos;
-            } else if (pos < line.size() && line[pos] == u'<') {
-                ++pos;
-                const std::size_t destStart = pos;
-                bool validAngle = false;
-                while (pos < line.size()) {
-                    if (line[pos] == u'\\' && pos + 1 < line.size()) {
-                        pos += 2;
-                    } else if (line[pos] == u'<' || line[pos] == u'\n' || line[pos] == u'\r') {
-                        break;
-                    } else if (line[pos] == u'>') {
-                        destination = unescapePunctuation(line.substr(destStart, pos - destStart));
-                        ++pos;
-                        validAngle = true;
-                        break;
-                    } else {
-                        ++pos;
-                    }
-                }
-                if (!validAngle) {
-                    i = openBracket + 1;
+            if (line[i] == u'[') {
+                // O8: ![alt](src) is an image in CommonMark; keep literal.
+                if (i > 0 && line[i - 1] == u'!' && !escaped(line, i - 1)) {
+                    ++i;
                     continue;
                 }
-                bool hadSpace = false;
-                while (pos < line.size() && (line[pos] == u' ' || line[pos] == u'\t')) {
-                    hadSpace = true;
-                    ++pos;
-                }
-                if (pos < line.size() && line[pos] == u')') {
-                    endParen = pos;
-                } else if (hadSpace && pos < line.size() &&
-                           (line[pos] == u'"' || line[pos] == u'\'' || line[pos] == u'(')) {
-                    endParen = parseTitle(line, pos, title);
-                }
-            } else {
-                const std::size_t destStart = pos;
-                int parenDepth = 0;
-                bool validBare = true;
-                while (pos < line.size()) {
-                    if (line[pos] == u' ' || line[pos] == u'\t') {
-                        break;
-                    }
-                    if (line[pos] == u'\\' && pos + 1 < line.size()) {
-                        pos += 2;
-                    } else if (line[pos] == u'(') {
-                        ++parenDepth;
-                        ++pos;
-                    } else if (line[pos] == u')') {
-                        if (parenDepth > 0) {
-                            --parenDepth;
-                            ++pos;
-                        } else {
-                            break;
-                        }
-                    } else {
-                        ++pos;
-                    }
-                }
-                if (parenDepth != 0) {
-                    validBare = false;
-                }
-                if (!validBare) {
-                    i = openBracket + 1;
-                    continue;
-                }
-                destination = unescapePunctuation(line.substr(destStart, pos - destStart));
-                bool hadSpace = false;
-                while (pos < line.size() && (line[pos] == u' ' || line[pos] == u'\t')) {
-                    hadSpace = true;
-                    ++pos;
-                }
-                if (pos < line.size() && line[pos] == u')') {
-                    endParen = pos;
-                } else if (hadSpace && pos < line.size() &&
-                           (line[pos] == u'"' || line[pos] == u'\'' || line[pos] == u'(')) {
-                    endParen = parseTitle(line, pos, title);
-                }
-            }
-
-            if (endParen == std::u16string_view::npos) {
-                i = openBracket + 1;
+                openBrackets.push_back(i);
+                ++i;
                 continue;
             }
+            if (line[i] == u']') {
+                if (openBrackets.empty()) {
+                    ++i;
+                    continue;
+                }
+                if (i + 1 < line.size() && line[i + 1] == u'(') {
+                    auto parsed = parseDestinationAndTitle(line, i + 2);
+                    if (parsed.endParen != std::u16string_view::npos) {
+                        const std::size_t open = openBrackets.back();
+                        parsedLinks.push_back(
+                            {open, i, parsed.endParen, std::move(parsed.destination), std::move(parsed.title)});
+                        // O6: CommonMark forbids links inside links; outer brackets cannot form links.
+                        openBrackets.clear();
+                        i = parsed.endParen + 1;
+                        continue;
+                    }
+                }
+                openBrackets.pop_back();
+                ++i;
+                continue;
+            }
+            ++i;
+        }
 
+        std::vector<StyleRun> newRuns;
+        for (auto& pl : parsedLinks) {
             LinkTarget target;
-            target.span = {static_cast<std::uint32_t>(openBracket + 1),
-                           static_cast<std::uint32_t>(closeBracket - openBracket - 1)};
-            target.full = {static_cast<std::uint32_t>(openBracket),
-                           static_cast<std::uint32_t>(endParen - openBracket + 1)};
-            target.destination = std::move(destination);
-            target.title = std::move(title);
+            target.span = {static_cast<std::uint32_t>(pl.openBracket + 1),
+                           static_cast<std::uint32_t>(pl.closeBracket - pl.openBracket - 1)};
+            target.full = {static_cast<std::uint32_t>(pl.openBracket),
+                           static_cast<std::uint32_t>(pl.endParen - pl.openBracket + 1)};
+            target.destination = std::move(pl.destination);
+            target.title = std::move(pl.title);
+
+            out.inlineContexts.push_back(target.span);
             out.links.push_back(std::move(target));
 
-            const auto marker1 = Span{static_cast<std::uint32_t>(openBracket), 1};
-            const auto marker2 =
-                Span{static_cast<std::uint32_t>(closeBracket), static_cast<std::uint32_t>(endParen - closeBracket + 1)};
+            const auto marker1 = Span{static_cast<std::uint32_t>(pl.openBracket), 1};
+            const auto marker2 = Span{static_cast<std::uint32_t>(pl.closeBracket),
+                                      static_cast<std::uint32_t>(pl.endParen - pl.closeBracket + 1)};
+
+            out.opaqueSpans.push_back(marker1);
+            out.opaqueSpans.push_back(marker2);
 
             if (!context.revealed) {
                 out.hidden.push_back({marker1, HideMode::Collapse});
                 out.hidden.push_back({marker2, HideMode::Collapse});
             } else {
-                out.runs.push_back({marker1, Role::LinkMarker, 0});
-                out.runs.push_back({marker2, Role::LinkMarker, 0});
+                newRuns.push_back({marker1, Role::LinkMarker, 0});
+                newRuns.push_back({marker2, Role::LinkMarker, 0});
             }
 
-            const std::uint32_t textStart = static_cast<std::uint32_t>(openBracket + 1);
-            const std::uint32_t textEnd = static_cast<std::uint32_t>(closeBracket);
+            const std::uint32_t textStart = static_cast<std::uint32_t>(pl.openBracket + 1);
+            const std::uint32_t textEnd = static_cast<std::uint32_t>(pl.closeBracket);
             if (textStart < textEnd) {
                 std::uint32_t current = textStart;
-                for (const auto& run : out.runs) {
-                    if (run.role != Role::InlineCode && run.role != Role::InlineCodeMarker) {
-                        continue;
+                for (std::size_t k = textStart; k < textEnd; ++k) {
+                    if (inCode[k]) {
+                        if (k > current) {
+                            newRuns.push_back({{current, static_cast<std::uint32_t>(k - current)}, Role::LinkText, 0});
+                        }
+                        while (k < textEnd && inCode[k]) {
+                            ++k;
+                        }
+                        current = static_cast<std::uint32_t>(k);
                     }
-                    if (run.span.end() <= current || run.span.start >= textEnd) {
-                        continue;
-                    }
-                    if (run.span.start > current) {
-                        out.runs.push_back({{current, run.span.start - current}, Role::LinkText, 0});
-                    }
-                    current = std::max(current, run.span.end());
                 }
                 if (current < textEnd) {
-                    out.runs.push_back({{current, textEnd - current}, Role::LinkText, 0});
+                    newRuns.push_back({{current, textEnd - current}, Role::LinkText, 0});
                 }
             }
-
-            i = endParen + 1;
         }
+        out.runs.insert(out.runs.end(), newRuns.begin(), newRuns.end());
     }
 };
 
