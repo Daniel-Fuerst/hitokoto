@@ -42,6 +42,9 @@ constexpr int kLinkMask = 0x3 << kLinkShift;
 constexpr int kLinkContinues = 1;
 // The walk over a paragraph (S023) runs synchronously for this long, then in idle slices.
 constexpr qint64 kParagraphSearchNanoseconds = 2'000'000;
+// A changed setext level is passed up this many lines of a paragraph on a key; the lines above
+// forget their level and are restyled in idle slices (review O2).
+constexpr int kSynchronousLevelLines = 2048;
 // Ranges up to this size are styled synchronously; larger ones on screen + in idle slices.
 constexpr int kSynchronousLimit = 400;
 constexpr qint64 kSliceNanoseconds = 6'000'000;
@@ -737,26 +740,65 @@ bool BlockStyler::applyParagraphLevel(ParagraphSearch& search, const QElapsedTim
     return true;
 }
 
-void BlockStyler::propagateLevelUp(QTextBlock block, std::uint8_t level) {
-    int top = -1;
+void BlockStyler::propagateLevelUp(const QTextBlock& block, std::uint8_t level) {
+    int steps = 0;
     for (QTextBlock b = block; b.isValid(); b = b.previous()) {
         const auto state = cachedBlockState(b);
         if (!state || !state->underlinable() || (levelKnown(b) && levelOf(b) == level)) {
             break;
         }
         if (levelOf(b) != level) {
-            setStyled(b, kUnstyled);
-            top = b.blockNumber();
+            restyleLater(b);
         }
         setLevel(b, level, true);
         ++levelSteps_;
         if (storedLink(b) != kLinkContinues) {
             break;  // the first line of the paragraph
         }
+        if (++steps >= kSynchronousLevelLines && b.previous().isValid()) {
+            // A long paragraph: the lines above forget their level in idle slices and find it again
+            // from the lines below when they are restyled.
+            levelJobs_.push_back({b.previous().blockNumber(), -1});
+            paragraphSearch_.start();
+            break;
+        }
     }
-    if (top >= 0) {
-        scheduleFrom(top);
+}
+
+bool BlockStyler::continueLevelJob(LevelJob& job, qint64 nanoseconds) {
+    QElapsedTimer timer;
+    timer.start();
+    int steps = 0;
+    QTextBlock b = document_->findBlockByNumber(job.line);
+    if (job.end < 0) {
+        // Upwards through a paragraph: forget the level, restyle.
+        for (; b.isValid(); b = b.previous()) {
+            forgetLevel(b);
+            restyleLater(b);
+            ++levelSteps_;
+            if (storedLink(b) != kLinkContinues) {
+                return true;
+            }
+            if (++steps % 256 == 0 && timer.nsecsElapsed() > nanoseconds) {
+                job.line = b.previous().isValid() ? b.blockNumber() - 1 : 0;
+                return false;
+            }
+        }
+        return true;
     }
+    // A range of lines to restyle: what a dropped walk had answered.
+    for (int number = job.line; b.isValid() && number < job.end; b = b.next(), ++number) {
+        if ((stateBits(b) & kStyleMask) != kUnstyled) {
+            setStyled(b, kUnstyled);
+        }
+        if (++steps % 256 == 0 && timer.nsecsElapsed() > nanoseconds) {
+            scheduleFrom(job.line);
+            job.line = number + 1;
+            return false;
+        }
+    }
+    scheduleFrom(job.line);
+    return true;
 }
 
 void BlockStyler::updateParagraphAbove(const QTextBlock& block, const core::LineRender& render,
@@ -784,46 +826,52 @@ void BlockStyler::updateParagraphAbove(const QTextBlock& block, const core::Line
 void BlockStyler::paragraphSearchSlice() {
     QElapsedTimer timer;
     timer.start();
+    while (!levelJobs_.empty() && timer.nsecsElapsed() < kSliceNanoseconds) {
+        if (!continueLevelJob(levelJobs_.front(), kSliceNanoseconds - timer.nsecsElapsed())) {
+            return;
+        }
+        levelJobs_.erase(levelJobs_.begin());
+    }
     while (!paragraphSearches_.empty() && timer.nsecsElapsed() < kSliceNanoseconds) {
         if (!continueParagraphSearch(paragraphSearches_.front(), kSliceNanoseconds - timer.nsecsElapsed())) {
             return;
         }
         paragraphSearches_.erase(paragraphSearches_.begin());
     }
-    if (paragraphSearches_.empty()) {
+    if (paragraphSearches_.empty() && levelJobs_.empty()) {
         paragraphSearch_.stop();
         setRevealed(revealed_);  // an underline found now may need revealing
     }
 }
 
 void BlockStyler::restartParagraphSearchesAfterEdit(int firstEdited, int delta) {
-    // Lines a walk has passed may have changed: drop the walks and restyle the lines they covered,
-    // which start new ones. Only long paragraphs have walks in progress.
-    if (paragraphSearches_.empty()) {
-        return;
+    // Pending jobs below the edit move with the lines added or removed (they may touch a few lines
+    // too many; restyling a line again is harmless).
+    for (auto& job : levelJobs_) {
+        if (job.line >= firstEdited) {
+            job.line = std::max(firstEdited, job.line + delta);
+        }
+        if (job.end >= firstEdited) {
+            job.end = std::max(job.end, job.end + delta);
+        }
     }
-    int restyle = -1;
+    // Lines a walk has passed may have changed: drop the walks and restyle, in idle slices, the
+    // lines they covered, which start new ones. Only long paragraphs have walks in progress.
     for (const auto& search : paragraphSearches_) {
         if (firstEdited > std::max(search.next, search.lastAnswered)) {
             continue;  // below what the walk has seen and what waits for it
         }
         const int seen = std::max(search.next, search.lastAnswered + 1);
-        const int low = std::min(search.from, firstEdited);
-        const int high = std::min(std::max(seen, seen + delta), document_->blockCount());
-        for (QTextBlock b = document_->findBlockByNumber(low); b.isValid() && b.blockNumber() < high; b = b.next()) {
-            setStyled(b, kUnstyled);
-        }
-        restyle = restyle < 0 ? low : std::min(restyle, low);
+        levelJobs_.push_back({std::min(search.from, firstEdited), std::max(seen, seen + delta)});
     }
     paragraphSearches_.erase(
         std::remove_if(paragraphSearches_.begin(), paragraphSearches_.end(),
                        [&](const ParagraphSearch& s) { return firstEdited <= std::max(s.next, s.lastAnswered); }),
         paragraphSearches_.end());
-    if (paragraphSearches_.empty()) {
+    if (!levelJobs_.empty()) {
+        paragraphSearch_.start();
+    } else if (paragraphSearches_.empty()) {
         paragraphSearch_.stop();
-    }
-    if (restyle >= 0) {
-        scheduleFrom(restyle);
     }
 }
 
@@ -854,20 +902,26 @@ bool BlockStyler::continueUnderlineSearch(qint64 nanoseconds) {
     QElapsedTimer timer;
     timer.start();
     int steps = 0;
-    for (QTextBlock b = document_->findBlockByNumber(underlineSearch_.next); b.isValid(); b = b.next()) {
+    int number = underlineSearch_.next;
+    for (QTextBlock b = document_->findBlockByNumber(number); b.isValid(); b = b.next(), ++number) {
+        if (number == underline_.first && underline_.inside == underlineSearch_.inside) {
+            // The heading found last: a caret step up costs nothing (review O4).
+            underline_.first = underlineSearch_.from;
+            break;
+        }
         const QString text = b.text();
         const QString next = nextLineFor(b, underlineSearch_.inside, text);
         const core::ParagraphLink link =
             registry_.paragraphLink(view(text), underlineSearch_.inside, viewOrEmpty(next));
         if (link.underline != 0) {
-            underline_ = {underlineSearch_.inside, underlineSearch_.from, b.blockNumber()};
+            underline_ = {underlineSearch_.inside, underlineSearch_.from, number};
             break;
         }
         if (!link.continues) {
             break;
         }
         if (++steps % 64 == 0 && timer.nsecsElapsed() > nanoseconds) {
-            underlineSearch_.next = b.blockNumber() + 1;
+            underlineSearch_.next = number + 1;
             return false;
         }
     }

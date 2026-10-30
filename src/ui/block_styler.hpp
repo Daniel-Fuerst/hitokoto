@@ -146,7 +146,15 @@ private:
     /// that continue into them. True when done.
     bool applyParagraphLevel(ParagraphSearch& search, const QElapsedTimer& timer, qint64 nanoseconds);
     /// `block` and the lines above it that continue into it get `level`; changed lines are restyled.
-    void propagateLevelUp(QTextBlock block, std::uint8_t level);
+    void propagateLevelUp(const QTextBlock& block, std::uint8_t level);
+    /// Work left over from a key (review O2): forgetting the level of the lines further up a
+    /// paragraph (`end` < 0, from `line` upwards), or restyling the lines `line` to before `end`.
+    struct LevelJob {
+        int line = 0;
+        int end = -1;
+    };
+    /// Goes on with `job` for at most `nanoseconds`; true when done.
+    bool continueLevelJob(LevelJob& job, qint64 nanoseconds);
     /// After styling `block`: how it relates to the paragraph above, and the level that follows for
     /// the line above.
     void updateParagraphAbove(const QTextBlock& block, const core::LineRender& render, core::ParagraphLink link);
@@ -198,6 +206,7 @@ private:
     FenceSearch search_;
     QTimer fenceSearch_;
     std::vector<ParagraphSearch> paragraphSearches_;  ///< walks going on in idle slices, oldest first
+    std::vector<LevelJob> levelJobs_;                 ///< done before the walks, oldest first
     QTimer paragraphSearch_;
     /// The heading whose underline was found last (S023): a caret step inside it costs nothing.
     struct UnderlineCache {
