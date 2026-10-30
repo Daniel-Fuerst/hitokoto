@@ -76,14 +76,26 @@ and the walk over block states must stay cheap (S021).
   ordered list item or block quote (not rendered yet), which lines below continue lazily but never
   underline; `underlinable()` tells the two apart. The UI caches it in bits 4-19 of the block's user
   state.
-- The paragraph role is `LineElement::paragraphColumn()`; the shared rules (thematic breaks, setext
-  underlines, starts of unrendered blocks, content after a container marker) live in
-  `src/core/src/block_rules.hpp`, used by the registry, the bullet and the table element.
+- The paragraph role is `LineElement::paragraphRole()`: a matched line ends paragraph text (the
+  default), opens it at a content column, or has text that lines below continue lazily but never
+  underline. `LineElement::startsAfterParagraph(line, match, lazy)` says whether a matched line may
+  start the element directly after paragraph text (CommonMark 5.2: an empty list item may not; an
+  ordered item only if numbered 1), `lazy` meaning the line is outside the paragraph's container; if
+  not, the line continues the paragraph. With both, an element brings its paragraph rules by
+  registration alone (code review O1; test `ParagraphRulesOfAnElementComeByRegistrationOnly`). The
+  registry adds one rule of its own: nothing starts four or more columns past the paragraph's
+  content column (indented code cannot interrupt a paragraph). Blocks hitokoto does not render yet
+  (ordered items, block quotes, indented code, HTML, link reference definitions) follow the same
+  rules in `src/core/src/block_rules.hpp`, with the thematic-break and setext recognisers the
+  registry, the bullet and the table element share; an element for one of them moves its rules
+  into the element.
 - `ElementRegistry::paragraphLink()` tells the UI's walk whether a line continues the paragraph
   above or underlines it. The UI caches each line's link and the level of its paragraph in its user
   state; a level is reused from the line below, so typing in a paragraph walks nothing, and passed
-  up the paragraph when an underline appears or goes. The walk runs at most 2 ms on a key, then in
-  idle slices; only styling starts it (painting and tables use the level a line is shown with).
+  up the paragraph when an underline appears or goes, at most 2,048 lines on a key; further up the
+  lines forget their level in idle slices and find it again when restyled (code review O2). The walk
+  runs at most 2 ms on a key, then in idle slices; only styling starts it (painting and tables use
+  the level a line is shown with).
 - Front matter: `MultiLineElement::documentStartState()` and `ElementRegistry::documentStart()`; the
   caller confirms the closing line by walking `blockStateAfter()`, the UI within the synchronous
   budget and then in idle slices, again when an edit touches the first line, the lines up to the

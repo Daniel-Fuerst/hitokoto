@@ -463,6 +463,19 @@ TEST(S023_ThematicBreaks, FrontMatterOnlyAtTheStartAndClosed) {
     EXPECT_EQ(later[4].setextUnderline, 2);
 }
 
+// Review O5 (code), as in Obsidian: front matter reaches from the first line to the next `---` line,
+// whatever lies between; a document that starts with a break and later has a heading underlined
+// with `---` is text up to that underline (commonmark.js renders a break and the blocks).
+TEST(S023_ThematicBreaks, FrontMatterReachesTheNextDelimiter) {
+    const std::vector<std::u16string> lines = {u"---", u"Intro paragraph.", u"",    u"# Chapter", u"- item",
+                                               u"",    u"Section",          u"---", u"body"};
+    const auto r = showAll(lines);
+    for (std::size_t i = 0; i < 8; ++i) {
+        expectPlain(r[i], context(lines) + " line " + std::to_string(i));
+    }
+    expectPlain(r[8], context(lines) + " line 8");
+}
+
 // ---- Theming baseline (ADR 0004) ------------------------------------------------------------
 
 TEST(S023_ThematicBreaks, ThemeTokensAreParsed) {

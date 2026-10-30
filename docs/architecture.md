@@ -21,7 +21,7 @@ src/core   all logic: Markdown elements, reveal, codec, file I/O, theme (C++ sta
 
 | Interface | File | Purpose |
 |---|---|---|
-| `LineElement` | `markdown.hpp` | One Markdown element: `parse()` (parse rule), `render()` (render rule) and `paragraphColumn()` (paragraph role, ADR 0006) |
+| `LineElement` | `markdown.hpp` | One Markdown element: `parse()` (parse rule), `render()` (render rule), `paragraphRole()` and `startsAfterParagraph()` (its paragraph rules, ADR 0006) |
 | `MultiLineElement` | `markdown.hpp` | A block spanning lines (fenced code, tables, front matter): `parse(line, state)` / `parseWithNextLine()` and `render()`; owns every line while open; `documentStartState()` for a block that may only start the document |
 | `InlineElement` | `markdown.hpp` | Adds inline style ranges, inline-code runs and concealed delimiter ranges after block rendering |
 | `ElementRegistry` | `markdown.hpp` | Holds the elements; `render(line, {revealed, blockState, nextLine, setextLevel})` returns a `LineRender`; `blockStateAfter()` walks lines without rendering, `paragraphLink()` tells how a line relates to the paragraph above, `documentStart()` the state the first line may be entered with; `renderDocument()` renders a whole document and is the reference for the lazy rendering in the UI (ADR 0006) |
@@ -69,10 +69,12 @@ technique; since S019 it runs on `QTextEdit` with `BlockLayout` (ADR 0003).
    over other inline styles. A multi-line element keeps a non-zero number of its own as state;
    the registry wraps it in `BlockState`, which the UI caches per block without knowing the
    element. While a block is open it owns each line; line and inline elements do not run there.
-   A line element declares its paragraph role (`paragraphColumn()`, ADR 0006): by default a
-   matched line ends paragraph text, as a heading does; a bullet with text opens paragraph text at
-   its content column. Lines that start a block hitokoto does not render yet are decided in one
-   place (`block_rules.hpp`), not by each element.
+   A line element declares its paragraph rules (ADR 0006): `paragraphRole()` says whether a matched
+   line ends paragraph text (the default, as a heading does), opens it at a content column (a
+   bullet with text) or has text that continues lazily (an ordered item or block quote, once
+   rendered); `startsAfterParagraph()` whether it may start directly after paragraph text (not an
+   empty list item; otherwise the line continues the paragraph). Blocks hitokoto does not render
+   yet follow the same rules in `block_rules.hpp`.
 2. Register it in `ElementRegistry::withBuiltins()` (`add`, `addMultiLine`, `addInline`).
    Give it its own theme section with a token for every visible property and a fallback for
    each (ADR 0004, theming baseline); the UI reads resolved values (`codeBlockStyle()`, ...).

@@ -18,4 +18,6 @@ block of properties, so that it does not look like body text, while the YAML sta
 - Editing: in place as text when the caret enters, or through a table like S018.
 - Invalid YAML, empty front matter (`---` / `---`), `...` as the closing line, a byte order mark
   before the first `---`.
-- Recognition stays as in S023 (first line `---`, closed by the next `---`).
+- Recognition stays as in S023 (first line `---`, closed by the next `---`). It reaches that line
+  however far down it is, as in Obsidian (S023 code review O5); whether properties need a limit,
+  such as no blank line inside, is to be decided here.

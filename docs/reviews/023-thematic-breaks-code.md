@@ -4,6 +4,7 @@ mode: code
 spec: docs/stories/023-thematic-breaks.md
 branch: agents/s023-thematic-break
 commits_examined: "c6ae411.. the seven commits from \"S023: in progress\" to \"S021: a fence directly after a table opens the block\" (review copy in the cloud workspace: 6c121bb story update, b29db76 red tests, 7f02ddd core, 7f06928 UI, ba2b572 benchmark/fuzzer/docs, 1f97f00 S021 red tests, 022ddcc S021 fix; same trees as the commits in the repo)"
+dispositioned: 2026-10-30 (Armin decided O1, O5 and O8; the others as proposed by Claude)
 date: 2026-10-30
 reviewer: Advocatus Diaboli (independent agent)
 evidence_tools:
@@ -19,56 +20,56 @@ objections:
     category: design
     severity: major
     title: "Line elements cannot see the paragraph above, so ADR 0006's claim that brief section 5 holds is false for the next block elements"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "Armin, 2026-10-30: extend the interface. LineElement::paragraphRole() returns Ends, Opens (content column) or LazyText; LineElement::startsAfterParagraph(line, match, lazy) says whether a matched line may start the element directly after paragraph text, otherwise the line continues the paragraph. The bullet implements CommonMark 5.2 with them; the registry keeps one rule of its own (nothing starts four or more columns past the paragraph's content column). Unrendered blocks keep their rules in block_rules.hpp until they get elements. ADR 0006 (implementation notes) and architecture.md ('Adding a Markdown element') updated. Tests ParagraphRulesOfAnElementComeByRegistrationOnly (a test-only element with the rules of an ordered item, by registration alone) and LinesThatCannotInterruptAParagraphContinueIt, committed red with interface stubs."
   - id: O2
     category: failure
     severity: major
     title: "Typing or removing an underline under a long paragraph walks the whole paragraph synchronously on the key"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "A changed level is passed up at most 2,048 lines on a key; further up the lines forget their level in idle slices (LevelJob) and find it again from the lines below when restyled. Dropping walks after an edit queues the restyle of the lines they covered instead of doing it on the key. Test anUnderlineUnderALongParagraphCostsBoundedWorkOnTheKey (20,000 lines, counts the lines passed on the key; committed red: 20,000). Benchmark s023_underline_* (\"-\" below the 20,000-line paragraph and Backspace, hard budget 50 ms): keys 2.6-3.0 ms median, 4.2-4.4 ms max on the development VM."
   - id: O3
     category: failure
     severity: minor
     title: "Bullet lines that cannot interrupt a paragraph end it: an unlisted CommonMark deviation despite the story's differential claim"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "With O1: directly after paragraph text an empty bullet cannot start an item and nothing starts four or more columns past the content column; the five inputs of the objection are core tests (LinesThatCannotInterruptAParagraphContinueIt). S003 notes the change. A new differential run (24,000 documents, empty items and 4-column bullets included) found only listed deviations; one more was added to the story: a bullet indented four or more columns at the top level is indented code in CommonMark but a nested item in hitokoto (S003) and opens paragraph text."
   - id: O4
     category: failure
     severity: minor
     title: "Moving up inside a long setext heading conceals and re-reveals its underline on every step"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "The search for the underline stops at the first line of the heading found last, so a caret step up costs one line; the underline stays revealed at once. Test stepsUpInALongHeadingKeepItsUnderlineRevealed (60,000-line heading, three steps up; committed red)."
   - id: O5
     category: failure
     severity: minor
     title: "Front matter has no bound: a document that starts with a break loses all rendering down to the next `---` line"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "Armin, 2026-10-30: as in Obsidian. Front matter reaches the next `---` line however far down; recorded as a known consequence in the story and as a point to decide in S024. Test FrontMatterReachesTheNextDelimiter pins the behaviour."
   - id: O6
     category: operational
     severity: minor
     title: "The benchmark's 'typing on a break' types on a setext underline; its hard-wrapped paragraphs are all headings"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "The benchmark sections have a blank line before `---`, so it is a thematic break and the twelve lines above it a paragraph; s023_break_* types on that break. The underline case below the long paragraph is its own measurement (s023_underline_*, see O2)."
   - id: O7
     category: operational
     severity: minor
     title: "The sliced walks of the styler run under no correctness assertion; UI-equals-reference is checked on one 27-line document"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "Committed as UI tests: randomEditsEqualTheReference (seeded, 12 documents of 2-13 random lines with front matter, tables, fences, breaks, underlines and lists, 20 random edits each, caret or selection anywhere) and longParagraphsEqualTheReference (front matter, a 12,000-line lazily continued item and a 12,000-line setext heading; \"- \" typed and removed, the underline broken and restored, typing inside the heading, a line split and joined). After every settle both compare every line and its applied formats with renderDocument."
   - id: O8
     category: operational
     severity: minor
     title: "An S021 behaviour change rides on the S023 branch without its own branch, story note or recorded approval"
-    disposition: pending
-    disposition_rationale: null
+    disposition: resolved
+    disposition_rationale: "Armin, 2026-10-30: the two S021 commits stay on this branch. S021 records the fix and its tests under Implementation."
   - id: O9
     category: cost
     severity: minor
     title: "Styling a 10 MB file got about 20 % slower; not recorded, and the new s023_* values are not compared by CI"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "docs/performance.md, section 2026-10-30 S023: styling a 10 MB file takes about 10 % longer than main on the development VM after an optimisation in this review (3.68-3.78 s in three runs against 3.24-3.57 s in three main runs; the 4.3 s the objection quotes were before it), key-to-paint in the 10 MB file in the range of main, in a 10 KB file up to 1 ms (p95) higher, the cost per line and the bounds. The s023_* values go into bench/baselines/linux.json from the first CI run of the pull request, as for S021 (bench/baselines/README.md); until then their hard budgets apply. Whether the slowdown is acceptable is part of Armin's review of the pull request."
 ---
 
 # Objection record: S023 thematic breaks (code)

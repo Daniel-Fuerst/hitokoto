@@ -44,7 +44,10 @@ line or another block any of them; directly after paragraph text only a block qu
 list item numbered 1 and an HTML block that may interrupt a paragraph, so `Foo` / `2. x` / `---` and
 `Foo` / `    bar` / `---` are two-line setext headings.
 A bullet with text starts paragraph text at its content column (marker, then 1–4 spaces; 5 or more
-count as one, tabs to the next multiple of 4). A line indented less than that column directly after
+count as one, tabs to the next multiple of 4). Directly after paragraph text a bullet without text
+cannot start an item (CommonMark 5.2), and no block starts four or more columns past the
+paragraph's content column: such lines continue the paragraph as text, so `Foo` / `*` / `---` and
+`Foo` / `    - bar` / `---` are two-line setext headings (review O3, code). A line indented less than that column directly after
 paragraph text in the item continues it lazily; it cannot be underlined, so `- foo` / `bar` / `---`
 ends the list with a break, while `- foo` / `  ---` underlines `foo` inside the item. Such a lazy
 line is outside the item, so an ordered list item of any number starts there (`- foo` / `2. y` /
@@ -81,6 +84,8 @@ belong to has a story:
   line is the item's content;
 - an underline inside an ordered list item or a block quote (`1. foo` / `   ---`) shows a break or
   text, because those blocks are not rendered yet;
+- a bullet indented four or more columns at the top level (indented code in CommonMark, a nested
+  item in hitokoto since S003) opens paragraph text at its content column;
 - HTML blocks are not tracked beyond their first line: `<div>` / `---` shows a break, where
   CommonMark keeps `---` as raw HTML of the block;
 - link reference definitions: the reference parsers disagree for `[a]: /url` / `---` (commonmark.js
@@ -91,8 +96,9 @@ Expected results were checked with commonmark.js 0.31.2 and markdown-it-py 4.2.0
 and, for tables, cmark-gfm 0.29.0.gfm (Python `cmarkgfm` 2025.10.22). During the implementation a
 differential run compared `renderDocument` with commonmark.js over 24,000 random documents of the
 constructs above (breaks, underlines, ATX headings, bullets, ordered items, quotes, fences, lazy
-lines, inline HTML; without HTML blocks, indented code and link reference definitions, whose
-deviations are listed above); it found only the deviations listed here.
+lines, inline HTML, empty items; without HTML blocks, indented code and link reference definitions,
+whose deviations are listed above); after review O3 (code) it found only the deviations listed
+here.
 
 ## Acceptance scenarios
 
@@ -174,6 +180,10 @@ deviations are listed above); it found only the deviations listed here.
   keeps both conditions in `empty()` and both token blocks (review O12).
 - Known consequences: with `thematic-break.margin` > 0, typing on the blank line above a break turns
   it into an underline and removes the margin, so the text below moves up by twice the margin.
+  Front matter reaches from the first line to the next `---` line, however far down and whatever
+  lies between, as in Obsidian: a CommonMark document that starts with a break and later has a
+  heading underlined with `---` shows everything up to that underline as text (review O5, code;
+  test `FrontMatterReachesTheNextDelimiter`).
   ADR 0002 decision 6, if its toggle is switched on, adds a blank line between a table and a row
   without pipes; `foo` / `---` below it then becomes a setext heading.
 
@@ -184,11 +194,14 @@ deviations are listed above); it found only the deviations listed here.
   items), paragraph text after unrendered blocks, front matter, code blocks, tables, the render of
   concealed and revealed lines, theme tokens and fallbacks; added with the implementation:
   `LazyTextAfterUnrenderedBlocks` and `InlineHtmlIsParagraphTextAndATableRow` (rules above that the
-  first tests did not cover).
+  first tests did not cover); from the code review `LinesThatCannotInterruptAParagraphContinueIt`,
+  `ParagraphRulesOfAnElementComeByRegistrationOnly` and `FrontMatterReachesTheNextDelimiter`.
 - UI: `tst_s023_thematic_breaks` – the drawn line (pixels, both ends, crisp, wrapped), revealed
   characters, setext headings (formats, underline revealed from the heading's lines, geometry), the
   margin token, typing above a break, front matter, and the lazy rendering equal to the reference.
-  `tst_s023_thematic_breaks_scaled` runs the crispness check at `QT_SCALE_FACTOR=1.5`.
+  `tst_s023_thematic_breaks_scaled` runs the crispness check at `QT_SCALE_FACTOR=1.5`. From the code
+  review: bounded work on the key for an underline under a long paragraph, the underline revealed at
+  once in a long heading, and random edits and long paragraphs compared with the reference.
 - S009: `tst_s009_concealment::thematicBreaksAndSetextHeadingsWhileWalking`.
 - S003: `S003_Bullets.NonItemsArePlainText` no longer expects breaks to be plain text, only that they
   are no items.
