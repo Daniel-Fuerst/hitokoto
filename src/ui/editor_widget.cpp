@@ -242,7 +242,7 @@ void EditorWidget::paintEvent(QPaintEvent* event) {
 }
 
 void EditorWidget::mousePressEvent(QMouseEvent* event) {
-    if (event->button() == Qt::LeftButton && !(event->modifiers() & Qt::ShiftModifier)) {
+    if (event->button() == Qt::LeftButton && !(event->modifiers() & Qt::ControlModifier)) {
         const QString href = anchorAt(event->position().toPoint());
         if (!href.isEmpty()) {
             QDesktopServices::openUrl(QUrl(href));
