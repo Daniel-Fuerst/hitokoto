@@ -724,6 +724,10 @@ EscapeStyle escapeStyle(const Theme& t) {
     };
 }
 
+ThematicBreakStyle thematicBreakStyle(const Theme& /*t*/) {
+    return {};  // S023: stub so the red tests compile
+}
+
 std::string_view builtinThemeSource(ColorScheme scheme) {
     return scheme == ColorScheme::Dark ? kDark : kLight;
 }

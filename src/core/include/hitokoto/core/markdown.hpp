@@ -3,12 +3,14 @@
 // registry. The UI asks the registry how to show one line; it never knows the elements.
 #pragma once
 
+#include "hitokoto/core/reveal.hpp"
 #include "hitokoto/core/text_codec.hpp"
 
 #include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -111,22 +113,24 @@ struct BlockState {
 
 /// How one line is shown. All spans lie within the line.
 struct LineRender {
-    std::uint8_t headingLevel = 0;  ///< 1..6 if the whole line is a heading, else 0
-    bool codeBlock = false;         ///< line belongs to a code block (the UI paints a panel)
-    bool fenceLine = false;         ///< opening or closing line of a code block (inside the panel, S021)
-    bool table = false;             ///< line belongs to a Markdown table
-    bool tableHeader = false;       ///< header row of a table
-    bool tableDelimiter = false;    ///< delimiter row (| --- | --- |) of a table
-    BlockState blockState;          ///< state to pass when rendering the next line
-    std::vector<TableCell> cells;   ///< cells of a table header or body row
+    std::uint8_t headingLevel = 0;     ///< 1..6 if the whole line is a heading, else 0
+    bool codeBlock = false;            ///< line belongs to a code block (the UI paints a panel)
+    bool fenceLine = false;            ///< opening or closing line of a code block (inside the panel, S021)
+    bool table = false;                ///< line belongs to a Markdown table
+    bool tableHeader = false;          ///< header row of a table
+    bool tableDelimiter = false;       ///< delimiter row (| --- | --- |) of a table
+    bool thematicBreak = false;        ///< thematic break (S023); concealed, the UI draws a horizontal line
+    std::uint8_t setextUnderline = 0;  ///< 1 or 2: the line underlines a setext heading of that level (S023)
+    BlockState blockState;             ///< state to pass when rendering the next line
+    std::vector<TableCell> cells;      ///< cells of a table header or body row
     std::vector<StyleRun> runs;
     std::vector<InlineStyleRun> inlineStyles;
     std::vector<HiddenRange> hidden;
     std::vector<Decoration> decorations;
     std::u16string codeLanguage;  ///< opening fence: language of the info string (S021), else empty
     [[nodiscard]] bool empty() const noexcept {
-        return headingLevel == 0 && !codeBlock && !fenceLine && !table && runs.empty() && inlineStyles.empty() &&
-               hidden.empty() && decorations.empty();
+        return headingLevel == 0 && !codeBlock && !fenceLine && !table && !thematicBreak && setextUnderline == 0 &&
+               runs.empty() && inlineStyles.empty() && hidden.empty() && decorations.empty();
     }
     friend bool operator==(const LineRender&, const LineRender&) = default;
 };
@@ -235,6 +239,11 @@ public:
                                              std::u16string_view nextLine = {}) const noexcept;
 
     [[nodiscard]] std::size_t size() const noexcept { return elements_.size(); }
+    /// How every line of a whole document looks while the lines in `revealed` hold the caret or a
+    /// selection (S023, ADR 0006). The reference for the lazy rendering in the UI, which must give
+    /// the same `LineRender` for every line; only `LineRender::blockState` is internal.
+    [[nodiscard]] std::vector<LineRender> renderDocument(std::span<const std::u16string> lines,
+                                                         LineRange revealed = {}) const;
     /// `BlockState::element` of the multi-line element with this id, or 0 if none is registered.
     [[nodiscard]] std::uint8_t blockElement(std::string_view id) const noexcept;
 

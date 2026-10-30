@@ -235,6 +235,21 @@ LineRender ElementRegistry::render(std::u16string_view line, const LineContext& 
     return out;
 }
 
+std::vector<LineRender> ElementRegistry::renderDocument(std::span<const std::u16string> lines,
+                                                        LineRange revealed) const {
+    // S023: so far line by line with the state of the line above; ADR 0006 extends it.
+    std::vector<LineRender> out;
+    out.reserve(lines.size());
+    BlockState state;
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        const std::u16string_view next =
+            i + 1 < lines.size() ? std::u16string_view{lines[i + 1]} : std::u16string_view{};
+        out.push_back(render(lines[i], {revealed.contains(static_cast<std::int64_t>(i)), state, next}));
+        state = out.back().blockState;
+    }
+    return out;
+}
+
 ElementRegistry ElementRegistry::withBuiltins() {
     ElementRegistry registry;
     registry.addMultiLine(makeFencedCodeElement());
