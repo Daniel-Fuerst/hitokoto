@@ -122,15 +122,6 @@ DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size
         return {};
     }
 
-    // Bare destination (or title if destination omitted)
-    if (line[pos] == u'"' || line[pos] == u'\'' || line[pos] == u'(') {
-        result.endParen = parseTitle(line, pos, result.title);
-        if (result.endParen != std::u16string_view::npos) {
-            return result;
-        }
-        return {};
-    }
-
     const std::size_t destStart = pos;
     int parenDepth = 0;
     while (pos < line.size()) {
@@ -198,8 +189,12 @@ public:
             std::u16string destination;
             std::u16string title;
         };
+        struct OpenBracket {
+            std::size_t index = 0;
+            bool isImage = false;
+        };
         std::vector<ParsedLink> parsedLinks;
-        std::vector<std::size_t> openBrackets;
+        std::vector<OpenBracket> openBrackets;
 
         for (std::size_t i = 0; i < line.size();) {
             if (inCode[i]) {
@@ -211,12 +206,8 @@ public:
                 continue;
             }
             if (line[i] == u'[') {
-                // O8: ![alt](src) is an image in CommonMark; keep literal.
-                if (i > 0 && line[i - 1] == u'!' && !escaped(line, i - 1)) {
-                    ++i;
-                    continue;
-                }
-                openBrackets.push_back(i);
+                const bool isImage = (i > 0 && line[i - 1] == u'!' && !escaped(line, i - 1));
+                openBrackets.push_back({i, isImage});
                 ++i;
                 continue;
             }
@@ -228,9 +219,15 @@ public:
                 if (i + 1 < line.size() && line[i + 1] == u'(') {
                     auto parsed = parseDestinationAndTitle(line, i + 2);
                     if (parsed.endParen != std::u16string_view::npos) {
-                        const std::size_t open = openBrackets.back();
+                        const auto open = openBrackets.back();
+                        openBrackets.pop_back();
+                        if (open.isImage) {
+                            // O8/O13: Images stay literal; does not form a link and does not deactivate outer links.
+                            i = parsed.endParen + 1;
+                            continue;
+                        }
                         parsedLinks.push_back(
-                            {open, i, parsed.endParen, std::move(parsed.destination), std::move(parsed.title)});
+                            {open.index, i, parsed.endParen, std::move(parsed.destination), std::move(parsed.title)});
                         // O6: CommonMark forbids links inside links; outer brackets cannot form links.
                         openBrackets.clear();
                         i = parsed.endParen + 1;

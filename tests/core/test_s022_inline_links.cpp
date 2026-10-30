@@ -308,3 +308,50 @@ TEST(S022_InlineLinks, LinearBracketMatchingPerformance) {
     const auto r = show(big, false);
     EXPECT_TRUE(r.links.empty());
 }
+
+TEST(S022_InlineLinks, BadgeLinkContainingImageDestination) {
+    // [![CI](https://x/badge.svg)](https://github.com/x)
+    // CommonMark: outer link to https://github.com/x, containing image ![CI](https://x/badge.svg)
+    const auto r = show(u"[![CI](https://x/badge.svg)](https://github.com/x)", false);
+    ASSERT_EQ(r.links.size(), 1u);
+    EXPECT_EQ(r.links[0].destination, u"https://github.com/x");
+    EXPECT_EQ(r.links[0].span, (Span{1, 26}));
+    EXPECT_EQ(r.hidden, (std::vector<HiddenRange>{
+                            {{0, 1}, HideMode::Collapse},
+                            {{27, 23}, HideMode::Collapse},
+                        }));
+}
+
+TEST(S022_InlineLinks, TextWithInterleavedImageInsideLink) {
+    // [a ![b](c) d](e)
+    const auto r = show(u"[a ![b](c) d](e)", false);
+    ASSERT_EQ(r.links.size(), 1u);
+    EXPECT_EQ(r.links[0].destination, u"e");
+    EXPECT_EQ(r.links[0].span, (Span{1, 11}));
+}
+
+TEST(S022_InlineLinks, DestinationStartingWithQuotesOrParensParsedAsDestination) {
+    // [link]("title") has destination "\"title\"" and no title (CommonMark example 496)
+    {
+        const auto r = show(u"[link](\"title\")", false);
+        ASSERT_EQ(r.links.size(), 1u);
+        EXPECT_EQ(r.links[0].destination, u"\"title\"");
+        EXPECT_TRUE(r.links[0].title.empty());
+    }
+
+    // [](()) has destination "()" and no title
+    {
+        const auto r = show(u"[](())", false);
+        ASSERT_EQ(r.links.size(), 1u);
+        EXPECT_EQ(r.links[0].destination, u"()");
+        EXPECT_TRUE(r.links[0].title.empty());
+    }
+
+    // [!](()) has destination "()" and no title
+    {
+        const auto r = show(u"[!](())", false);
+        ASSERT_EQ(r.links.size(), 1u);
+        EXPECT_EQ(r.links[0].destination, u"()");
+        EXPECT_TRUE(r.links[0].title.empty());
+    }
+}

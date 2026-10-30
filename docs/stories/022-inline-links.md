@@ -1,6 +1,6 @@
 # S022 — Inline Markdown links and titles
 
-- **Status:** Confirmed by Armin on 2026-10-30; In review · **Order:** 23 · **Depends on:** S013, S015, S020
+- **Status:** In review · **Order:** 23 · **Depends on:** S013, S015, S020
 
 ## Story
 
@@ -52,6 +52,20 @@ As a writer, I want inline links (`[text](url)` and `[text](url "title")`, with 
 - When the line is rendered
 - Then it is not parsed as a link and remains regular text
 
+**Scenario: clicking links on concealed and active lines**
+- Given a line with a standard inline link `[Standard Link](https://example.com)`
+- When the caret is elsewhere (the line is concealed)
+- Then clicking on `Standard Link` opens `https://example.com` in the default browser (an exception to S010 for clickable link navigation)
+- When the caret is already on that line (the line is active and markers are revealed)
+- Then a plain click on `Standard Link` places the caret at the clicked position for editing (per S010) and does not open the link
+- And a Ctrl+click (or Cmd+click on macOS) on `Standard Link` on the active line opens `https://example.com` in the default browser
+
+**Scenario: relative destinations and anchor fragments stay non-clickable until document resolution is specified**
+- Given a line with `[Story](000-repository-skeleton.md)` or `[Anchor](#intro)`
+- When clicked on either active or concealed lines
+- Then the link is not dispatched to the system shell or browser (safe default avoiding process-relative path execution)
+- And the click places the caret for editing per S010 until document-relative link resolution is specified in a future story
+
 **Scenario: link is themeable (theming baseline, ADR 0004)**
 - Given a theme that sets `link.text` and `link.marker`
 - When a link is rendered
@@ -60,7 +74,7 @@ As a writer, I want inline links (`[text](url)` and `[text](url "title")`, with 
 
 ## Tests
 
-- Core: `S022_InlineLinks` verifies delimiter matching, angle-bracket destinations, balanced parentheses, title parsing (double quotes, single quotes, parens), escaped characters, nested inline styling (bold, italic, code), suppression of emphasis in destinations, theme token parsing and fallbacks. Also covers CommonMark negatives (emphasis across link boundaries, links inside links, image syntax remaining literal), unclosed parenthesis links, avoidance of iterator invalidation, and linear bracket-matching performance.
-- UI: `tst_s022_inline_links` verifies character formatting, tooltip text, anchor href, concealment when inactive, reveal when active, pointing-hand cursor on hover over browser links, I-beam cursor over text, clicking links on concealed lines to open in the browser, clicking on active lines to place caret while Ctrl+clicking opens the link, and rejection of unsafe schemes or relative URLs.
+- Core: `S022_InlineLinks` verifies delimiter matching, angle-bracket destinations, balanced parentheses, title parsing (double quotes, single quotes, parens), destinations starting with quotes/parens, escaped characters, nested inline styling (bold, italic, code), badge/interleaved images inside links, suppression of emphasis in destinations, theme token parsing and fallbacks. Also covers CommonMark negatives (emphasis across link boundaries, links inside links, image syntax remaining literal), unclosed parenthesis links, avoidance of iterator invalidation, and linear bracket-matching performance.
+- UI: `tst_s022_inline_links` verifies character formatting, tooltip text, anchor href, concealment when inactive, reveal when active, pointing-hand cursor on hover over browser links, I-beam cursor over text, clicking links on concealed lines to open in the browser, clicking on active lines to place caret while Ctrl+clicking opens the link, clicking badge links containing images to open the outer destination, and rejection of unsafe schemes or relative URLs.
 - Quality Gate: `tst_s009_concealment` extends the standing concealment quality gate with inline links.
 - Benchmarks: `S022_RenderLineWithLinks` and `S022_RenderLineWithUnclosedBrackets` in `bench/core_bench.cpp`.

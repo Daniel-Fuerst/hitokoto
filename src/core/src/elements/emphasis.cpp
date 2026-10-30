@@ -169,9 +169,15 @@ std::vector<Pair> matchDelimiters(const std::vector<Delimiter>& delimiters) {
 }
 
 std::uint32_t contextFor(Span span, const std::vector<Span>& contexts) noexcept {
-    for (std::size_t i = 0; i < contexts.size(); ++i) {
-        if (span.start >= contexts[i].start && span.end() <= contexts[i].end()) {
-            return static_cast<std::uint32_t>(i + 1);
+    if (contexts.empty()) {
+        return 0;
+    }
+    auto it = std::upper_bound(contexts.begin(), contexts.end(), span.start,
+                               [](std::uint32_t val, const Span& ctx) { return val < ctx.start; });
+    if (it != contexts.begin()) {
+        --it;
+        if (span.start >= it->start && span.end() <= it->end()) {
+            return static_cast<std::uint32_t>(std::distance(contexts.begin(), it) + 1);
         }
     }
     return 0;

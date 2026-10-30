@@ -238,8 +238,8 @@ private slots:
     void hoverTooltipShowsTitle() {
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("tip.md"),
-                                  "[Link](https://example.com \"My Title\")\n"
-                                  "[Untitled](https://example.com)\n")));
+                                   "[Link](https://example.com \"My Title\")\n"
+                                   "[Untitled](https://example.com)\n")));
         f.placeCaret(1);
         f.settle();
 
@@ -264,7 +264,8 @@ private slots:
 
     void clickOnActiveLinePlacesCaretWhileCtrlClickOpensLink() {
         test::Fixture f;
-        QVERIFY(f.open(f.writeFile(QStringLiteral("active.md"), "plain before\n[Editable Link](https://example.com)\n")));
+        QVERIFY(
+            f.open(f.writeFile(QStringLiteral("active.md"), "plain before\n[Editable Link](https://example.com)\n")));
         // Caret on line 1 so line 1 is revealed
         f.placeCaret(1);
         f.settle();
@@ -302,20 +303,25 @@ private slots:
     void dangerousSchemesAndRelativeUrlsAreNotOpened() {
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("schemes.md"),
-                                  "first line\n"
-                                  "[File Link](file:///C:/Users/Public/x.bat)\n"
-                                  "[UNC Link](file://attacker/share/x.exe)\n"
-                                  "[Settings](ms-settings:privacy)\n"
-                                  "[Relative Link](000-repository-skeleton.md)\n"
-                                  "[Anchor](#intro)\n")));
-        // Place caret on line 0 so lines 1..5 are concealed
+                                   "first line\n"
+                                   "[File Link](file:///C:/Users/Public/x.bat)\n"
+                                   "[UNC Link](file://attacker/share/x.exe)\n"
+                                   "[Settings](ms-settings:privacy)\n"
+                                   "[Mail](mailto:test@example.com)\n"
+                                   "[Script](javascript:alert(1))\n"
+                                   "[Relative Link](000-repository-skeleton.md)\n"
+                                   "[Anchor](#intro)\n")));
+        // Place caret on line 0 so lines 1..7 are concealed
         f.placeCaret(0);
         f.settle();
 
         UrlCollector collector;
         QDesktopServices::setUrlHandler(QStringLiteral("file"), &collector, "handleUrl");
         QDesktopServices::setUrlHandler(QStringLiteral("ms-settings"), &collector, "handleUrl");
+        QDesktopServices::setUrlHandler(QStringLiteral("mailto"), &collector, "handleUrl");
+        QDesktopServices::setUrlHandler(QStringLiteral("javascript"), &collector, "handleUrl");
 
+        // 1. Registered non-browser schemes: collector receives nothing
         for (int lineNum = 1; lineNum <= 5; ++lineNum) {
             const auto block = f.editor()->document()->findBlockByNumber(lineNum);
             QTextCursor c(f.editor()->document());
@@ -323,8 +329,8 @@ private slots:
             const QPoint pt = f.editor()->cursorRect(c).center();
 
             // Hover cursor is I-beam (cannot open non-browser schemes)
-            QMouseEvent move(QEvent::MouseMove, pt, f.editor()->viewport()->mapToGlobal(pt), Qt::NoButton,
-                             Qt::NoButton, Qt::NoModifier);
+            QMouseEvent move(QEvent::MouseMove, pt, f.editor()->viewport()->mapToGlobal(pt), Qt::NoButton, Qt::NoButton,
+                             Qt::NoModifier);
             QCoreApplication::sendEvent(f.editor()->viewport(), &move);
             QCOMPARE(f.editor()->viewport()->cursor().shape(), Qt::IBeamCursor);
 
@@ -333,8 +339,60 @@ private slots:
             QVERIFY(collector.lastUrl.isEmpty());
         }
 
+        // 2. Relative destinations and anchors: not opened by openUrl; click falls through to QTextEdit
+        for (int lineNum = 6; lineNum <= 7; ++lineNum) {
+            f.placeCaret(0);
+            f.settle();
+
+            const auto block = f.editor()->document()->findBlockByNumber(lineNum);
+            QTextCursor c(f.editor()->document());
+            c.setPosition(block.position() + 3);
+            const QPoint pt = f.editor()->cursorRect(c).center();
+
+            QMouseEvent move(QEvent::MouseMove, pt, f.editor()->viewport()->mapToGlobal(pt), Qt::NoButton, Qt::NoButton,
+                             Qt::NoModifier);
+            QCoreApplication::sendEvent(f.editor()->viewport(), &move);
+            QCOMPARE(f.editor()->viewport()->cursor().shape(), Qt::IBeamCursor);
+
+            QTest::mouseClick(f.editor()->viewport(), Qt::LeftButton, Qt::NoModifier, pt);
+            QVERIFY(collector.lastUrl.isEmpty());
+            // Fall-through places the caret on the clicked block
+            QCOMPARE(f.editor()->textCursor().blockNumber(), lineNum);
+        }
+
         QDesktopServices::unsetUrlHandler(QStringLiteral("file"));
         QDesktopServices::unsetUrlHandler(QStringLiteral("ms-settings"));
+        QDesktopServices::unsetUrlHandler(QStringLiteral("mailto"));
+        QDesktopServices::unsetUrlHandler(QStringLiteral("javascript"));
+    }
+
+    void clickBadgeLinkOpensOuterDestinationNotImage() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("badge.md"),
+                                   "first line\n"
+                                   "[![CI](https://x/badge.svg)](https://github.com/x)\n")));
+        f.placeCaret(0);
+        f.settle();
+
+        UrlCollector collector;
+        QDesktopServices::setUrlHandler(QStringLiteral("https"), &collector, "handleUrl");
+
+        const auto block1 = f.editor()->document()->findBlockByNumber(1);
+        QTextCursor c(f.editor()->document());
+        c.setPosition(block1.position() + 3);  // inside "CI"
+        const QPoint linkPt = f.editor()->cursorRect(c).center();
+
+        // Hover cursor is pointing hand
+        QMouseEvent move(QEvent::MouseMove, linkPt, f.editor()->viewport()->mapToGlobal(linkPt), Qt::NoButton,
+                         Qt::NoButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(f.editor()->viewport(), &move);
+        QCOMPARE(f.editor()->viewport()->cursor().shape(), Qt::PointingHandCursor);
+
+        // Click opens outer link https://github.com/x, NOT inner image https://x/badge.svg
+        QTest::mouseClick(f.editor()->viewport(), Qt::LeftButton, Qt::NoModifier, linkPt);
+        QCOMPARE(collector.lastUrl, QUrl(QStringLiteral("https://github.com/x")));
+
+        QDesktopServices::unsetUrlHandler(QStringLiteral("https"));
     }
 };
 

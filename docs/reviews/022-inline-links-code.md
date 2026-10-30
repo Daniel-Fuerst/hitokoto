@@ -47,8 +47,8 @@ objections:
     category: failure
     severity: minor
     title: Relative destinations and #fragments are opened relative to the process, not the document
-    disposition: fixed
-    disposition_rationale: "Non-http(s) destinations such as relative paths and anchor fragments are filtered out by isBrowserUrl, preventing erratic process-relative shell execution."
+    disposition: documented
+    disposition_rationale: "Non-http(s) destinations such as relative paths and anchor fragments are filtered out by isBrowserUrl, preventing erratic process-relative shell execution; documented in S022 that relative resolution is deferred to a future story."
   - id: O8
     category: failure
     severity: minor
@@ -71,14 +71,14 @@ objections:
     category: operational
     severity: minor
     title: Test gaps (vacuous tooltip check, story scenario untested, no Ctrl+click test, no benchmark with links), not test-first
-    disposition: fixed
-    disposition_rationale: "Expanded core and UI test suites covering unclosed parentheses, Ctrl+click vs click, dangerous schemes, tooltip text inspection, and added Google Benchmark cases."
+    disposition: documented
+    disposition_rationale: "Expanded core and UI test suites covering unclosed parentheses, Ctrl+click vs click, dangerous schemes, tooltip text inspection, and added Google Benchmark cases. Single-commit test additions documented."
   - id: O12
     category: operational
     severity: minor
     title: S009 not extended; story set to In review before the CI gate
     disposition: fixed
-    disposition_rationale: "Extended S009 standing concealment quality gate with inline links in tst_s009_concealment.cpp, and updated story status to record Armin's confirmation."
+    disposition_rationale: "Extended S009 standing concealment quality gate with inline links in tst_s009_concealment.cpp and updated docs/stories/009-concealment-quality-gate.md with inline links scenario."
 ---
 
 # Review S022, mode code: objections and dispositions
@@ -138,7 +138,7 @@ ee881cc makes Ctrl+click (Cmd on macOS) the way to edit; the story does not ment
 test covers it. The usual split is the reverse or depends on the state: on a revealed line the
 click edits, opening needs a modifier or happens only on a concealed line.
 
-**Disposition: fixed.** In `EditorWidget::mousePressEvent`, when the click occurs on the active line, the event is delegated to `QPlainTextEdit::mousePressEvent` without opening the link, placing the cursor at the clicked position and enabling text selection as required by S010; `Ctrl+click` (or `Cmd+click` on macOS) on the active line opens the link. On concealed lines, a plain click opens the browser link. `mouseMoveEvent` sets `Qt::PointingHandCursor` only when a browser link can be activated, and `Qt::IBeamCursor` otherwise. Tested in `tests/ui/tst_s022_inline_links.cpp` (`clickOnActiveLinePlacesCaretWhileCtrlClickOpensLink`).
+**Disposition: fixed.** In `EditorWidget::mousePressEvent`, when the click occurs on the active line, the event is delegated to `QTextEdit::mousePressEvent` without opening the link, placing the cursor at the clicked position and enabling text selection as required by S010; `Ctrl+click` (or `Cmd+click` on macOS) on the active line opens the link. On concealed lines, a plain click opens the browser link. `mouseMoveEvent` sets `Qt::PointingHandCursor` only when a browser link can be activated, and `Qt::IBeamCursor` otherwise. Tested in `tests/ui/tst_s022_inline_links.cpp` (`clickOnActiveLinePlacesCaretWhileCtrlClickOpensLink`).
 
 ## O4 - failure - major
 
@@ -192,7 +192,7 @@ links between Markdown files and in-document anchors are common; the backlog its
 (`docs/stories/README.md`) links its stories relatively. Clicking them does nothing useful or opens
 a different file.
 
-**Disposition: fixed.** `isBrowserUrl` rejects relative destinations and anchor fragments (`#fragment`), ignoring them until document-relative link resolution is specified and implemented in a future story. Tested in `tests/ui/tst_s022_inline_links.cpp` (`dangerousSchemesAndRelativeUrlsAreNotOpened`).
+**Disposition: documented.** `isBrowserUrl` rejects relative destinations and anchor fragments (`#fragment`), preventing process-relative execution. Documented in `docs/stories/022-inline-links.md` that relative link resolution is deferred to a future story. Tested in `tests/ui/tst_s022_inline_links.cpp` (`dangerousSchemesAndRelativeUrlsAreNotOpened`).
 
 ## O8 - failure - minor
 
@@ -239,12 +239,13 @@ from the review environment).
 - Tests and implementation are in one commit (bb344f0); the working agreement is test-first with
   red tests committed separately.
 
-**Disposition: fixed.**
+**Disposition: documented.**
 - `hoverTooltipShowsTitle` in `tests/ui/tst_s022_inline_links.cpp` now asserts `QToolTip::text()` directly and verifies that links without titles set no tooltip.
 - Added `UnclosedLinkWithOpeningParenRemainsLiteral` for `[unclosed link(url)`.
 - Added tests for `Ctrl+click` on active line vs plain click on concealed line, and for safe scheme filtering (`clickOnActiveLinePlacesCaretWhileCtrlClickOpensLink`, `dangerousSchemesAndRelativeUrlsAreNotOpened`).
 - Exact hidden ranges verified for nested formatting in `LinkWithBoldItalicsAndCodeInsideBrackets`.
 - Added Google Benchmark cases `S022_RenderLineWithLinks` and `S022_RenderLineWithUnclosedBrackets` to `bench/core_bench.cpp`.
+- Single-commit test structure from earlier implementation pass is documented.
 
 ## O12 - operational - minor
 
@@ -254,7 +255,7 @@ story is already "In review"; CLAUDE.md sets that status only once the scenarios
 all three platforms, and the Format job fails (O10). Whether Armin confirmed S022 before the
 implementation is not recorded in the story.
 
-**Disposition: fixed.** Extended `tests/ui/tst_s009_concealment.cpp` to include inline links in `kDocument` and verified random-walk caret positioning never places the caret inside hidden link markers. Updated `docs/stories/022-inline-links.md` to note confirmation by Armin on 2026-10-30.
+**Disposition: fixed.** Extended `tests/ui/tst_s009_concealment.cpp` to include inline links in `kDocument` and verified random-walk caret positioning never places the caret inside hidden link markers. Added inline links scenario to `docs/stories/009-concealment-quality-gate.md`.
 
 ## Capped concerns
 
