@@ -738,6 +738,11 @@ ThematicBreakStyle thematicBreakStyle(const Theme& t) {
     };
 }
 
+PropertiesStyle propertiesStyle(const Theme& t) {
+    (void)t;
+    return {};  // S024: stub until the tokens of [properties] are implemented
+}
+
 std::string_view builtinThemeSource(ColorScheme scheme) {
     return scheme == ColorScheme::Dark ? kDark : kLight;
 }

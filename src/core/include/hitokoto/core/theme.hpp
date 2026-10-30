@@ -68,6 +68,16 @@ struct ThematicBreakTokens {
     friend bool operator==(const ThematicBreakTokens&, const ThematicBreakTokens&) = default;
 };
 
+/// Tokens of `[properties]` (S024); resolved by propertiesStyle().
+struct PropertiesTokens {
+    std::optional<Color> background, text, keyText, titleText, icon, unsupportedText, badgeText, checkbox,
+        checkboxBackground, chipBackground, chipText, chipBorder, border;
+    std::optional<double> badgeFontScale, chipBorderWidth, chipRadius, chipPadding, borderWidth, radius, padding,
+        margin, rowSpacing, keyWidth, fontScale;
+    std::optional<std::string> badgeFontFamily, fontFamily;
+    friend bool operator==(const PropertiesTokens&, const PropertiesTokens&) = default;
+};
+
 /// Every value the UI uses for colours, fonts, radii and spacing. Hard-coded styling values
 /// in UI code are bugs; add a token instead.
 struct Theme {
@@ -104,6 +114,7 @@ struct Theme {
     TableTokens table;
     EscapeTokens escape;
     ThematicBreakTokens thematicBreak;
+    PropertiesTokens properties;
 
     friend bool operator==(const Theme&, const Theme&) = default;
 };
@@ -177,12 +188,33 @@ struct ThematicBreakStyle {
     friend bool operator==(const ThematicBreakStyle&, const ThematicBreakStyle&) = default;
 };
 
+/// Resolved look of the properties block of front matter (S024).
+struct PropertiesStyle {
+    Color background, text, keyText, titleText, icon, unsupportedText, badgeText, checkbox, checkboxBackground,
+        chipBackground, chipText, chipBorder, border;
+    double badgeFontScale = 1;    ///< relative to the editor font
+    std::string badgeFontFamily;  ///< empty = editor font
+    double chipBorderWidth = 0;
+    double chipRadius = 0;
+    double chipPadding = 0;  ///< horizontal space inside a list item or tag
+    double borderWidth = 0;
+    double radius = 0;
+    double padding = 0;      ///< space inside the block
+    double margin = 0;       ///< space above and below the block
+    double rowSpacing = 0;   ///< space between rows
+    double keyWidth = 0;     ///< width of the key column
+    double fontScale = 1;    ///< relative to the editor font
+    std::string fontFamily;  ///< empty = editor font
+    friend bool operator==(const PropertiesStyle&, const PropertiesStyle&) = default;
+};
+
 [[nodiscard]] CodeStyle codeBlockStyle(const Theme& theme);
 [[nodiscard]] CodeStyle inlineCodeStyle(const Theme& theme);
 [[nodiscard]] EmphasisStyle emphasisStyle(const Theme& theme);
 [[nodiscard]] TableStyle tableStyle(const Theme& theme);
 [[nodiscard]] EscapeStyle escapeStyle(const Theme& theme);
 [[nodiscard]] ThematicBreakStyle thematicBreakStyle(const Theme& theme);
+[[nodiscard]] PropertiesStyle propertiesStyle(const Theme& theme);
 
 /// All tokens of the theme format, in documentation order.
 std::span<const ThemeTokenInfo> themeTokens();

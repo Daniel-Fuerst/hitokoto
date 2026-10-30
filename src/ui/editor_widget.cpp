@@ -364,6 +364,14 @@ QString EditorWidget::codeBlockBadge(const QTextBlock& block) {
     return language;
 }
 
+QWidget* EditorWidget::propertiesView() const {
+    return nullptr;  // S024: stub until the properties block is implemented
+}
+
+QString EditorWidget::frontMatterBadge() const {
+    return {};  // S024: stub until the properties block is implemented
+}
+
 void EditorWidget::paintInlineCodeBoxes(QPainter& painter, const QTextBlock& block, const core::LineRender& render,
                                         QPointF origin, const core::CodeStyle& style) {
     const QTextLayout* layout = block.layout();

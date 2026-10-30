@@ -46,6 +46,12 @@ public:
     [[nodiscard]] std::pair<int, int> visibleBlockRange() const;
     /// The language badge painted on `block` (an opening fence while concealed), else empty (S021).
     [[nodiscard]] QString codeBlockBadge(const QTextBlock& block);
+    /// S024: the properties block shown in place of the front matter; null while there is none, the
+    /// YAML shows, or the toggle is off.
+    [[nodiscard]] QWidget* propertiesView() const;
+    /// S024: the badge after the first line of front matter that is not shown as properties
+    /// ("Invalid YAML (line n): reason"), else empty.
+    [[nodiscard]] QString frontMatterBadge() const;
 
 signals:
     void painted();

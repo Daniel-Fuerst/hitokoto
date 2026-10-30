@@ -35,7 +35,8 @@ foreach(t IN ITEMS
         tst_s019_editor_surface
         tst_s020_backslash_escapes
         tst_s021_code_block_fences
-        tst_s023_thematic_breaks)
+        tst_s023_thematic_breaks
+        tst_s024_front_matter)
     hitokoto_ui_test(${t})
 endforeach()
 
