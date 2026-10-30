@@ -87,4 +87,35 @@ std::unique_ptr<LineElement> makeBulletElement() {
     return std::make_unique<BulletElement>();
 }
 
+std::optional<BulletLineInfo> parseBulletLine(std::u16string_view line) {
+    BulletElement element;
+    const auto match = element.parse(line);
+    if (!match.has_value()) {
+        return std::nullopt;
+    }
+    const std::size_t contentStart = match->marker.end();
+    const std::u16string_view content = line.substr(contentStart);
+    const bool empty = std::all_of(content.begin(), content.end(), isBlank);
+    return BulletLineInfo{
+        .prefixLength = match->marker.end(),
+        .markerChar = match->markerChar,
+        .marker = line[match->markerChar],
+        .isEmpty = empty,
+    };
+}
+
+std::u16string indentBulletLine(std::u16string_view line) {
+    return std::u16string(u"  ") + std::u16string(line);
+}
+
+std::u16string outdentBulletLine(std::u16string_view line) {
+    if (line.size() >= 2 && line.substr(0, 2) == u"  ") {
+        return std::u16string(line.substr(2));
+    }
+    if (!line.empty() && (line.front() == u' ' || line.front() == u'\t')) {
+        return std::u16string(line.substr(1));
+    }
+    return std::u16string(line);
+}
+
 }  // namespace hitokoto::core

@@ -123,6 +123,76 @@ private slots:
         const qreal revealedLine1X = block.layout()->lineAt(1).x();
         QCOMPARE(concealedLine1X, revealedLine1X);
     }
+
+    void enterOnBulletItemContinuesListWithSameMarker() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("enter1.md"), "- milk\nother\n")));
+        f.placeCaret(0, 6);
+        test::keyClick(f.editor(), Qt::Key_Return);
+        f.settle();
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("- milk\n- \nother\n"));
+        const QTextCursor c = f.editor()->textCursor();
+        QCOMPARE(c.blockNumber(), 1);
+        QCOMPARE(c.positionInBlock(), 2);
+    }
+
+    void enterOnNestedAsteriskItemPreservesMarkerAndNesting() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("enter2.md"), "  * item\n")));
+        f.placeCaret(0, 8);
+        test::keyClick(f.editor(), Qt::Key_Return);
+        f.settle();
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("  * item\n  * \n"));
+        const QTextCursor c = f.editor()->textCursor();
+        QCOMPARE(c.blockNumber(), 1);
+        QCOMPARE(c.positionInBlock(), 4);
+    }
+
+    void enterOnEmptyBulletItemClearsMarkerAndExitsList() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("enter3.md"), "- milk\n- \n")));
+        f.placeCaret(1, 2);
+        test::keyClick(f.editor(), Qt::Key_Return);
+        f.settle();
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("- milk\n\n"));
+        const QTextCursor c = f.editor()->textCursor();
+        QCOMPARE(c.blockNumber(), 1);
+        QCOMPARE(c.positionInBlock(), 0);
+    }
+
+    void enterOnEmptyNestedBulletOutdentsOneLevel() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("enter4.md"), "  - \n")));
+        f.placeCaret(0, 4);
+        test::keyClick(f.editor(), Qt::Key_Return);
+        f.settle();
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("- \n"));
+        test::keyClick(f.editor(), Qt::Key_Return);
+        f.settle();
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("\n"));
+    }
+
+    void tabBesideBulletItemIndentsItFromAnywhereOnLine() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("tab1.md"), "- milk\n")));
+        f.placeCaret(0, 4);
+        test::keyClick(f.editor(), Qt::Key_Tab);
+        f.settle();
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("  - milk\n"));
+        const QTextCursor c = f.editor()->textCursor();
+        QCOMPARE(c.positionInBlock(), 6);
+    }
+
+    void shiftTabBesideBulletItemOutdentsItFromAnywhereOnLine() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("tab2.md"), "  - milk\n")));
+        f.placeCaret(0, 8);
+        test::keyClick(f.editor(), Qt::Key_Backtab);
+        f.settle();
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("- milk\n"));
+        const QTextCursor c = f.editor()->textCursor();
+        QCOMPARE(c.positionInBlock(), 6);
+    }
 };
 
 QTEST_MAIN(tst_s003_bullets)

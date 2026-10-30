@@ -84,6 +84,9 @@ private:
     void paintInlineCodeBoxes(QPainter& painter, const QTextBlock& block, const core::LineRender& render,
                               QPointF origin, const core::CodeStyle& style);
     void paintDecorations();
+    bool handleBulletKey(QKeyEvent* event);
+    bool handleBulletEnter(QTextCursor& cursor);
+    bool handleBulletTab(QTextCursor& cursor, bool outdent);
 
     BlockLayout* layout_ = nullptr;
     qreal pendingShift_ = 0;  ///< height change above the viewport not yet scrolled away

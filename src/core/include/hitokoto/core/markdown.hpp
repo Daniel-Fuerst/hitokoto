@@ -274,6 +274,24 @@ std::unique_ptr<InlineElement> makeEscapeElement();
 std::unique_ptr<MultiLineElement> makeFencedCodeElement();
 std::unique_ptr<MultiLineElement> makeTableElement();
 
+struct BulletLineInfo {
+    std::uint32_t prefixLength = 0;  ///< length of the full prefix up to content (e.g. 4 for "  - ")
+    std::uint32_t markerChar = 0;    ///< column of '-', '*', '+'
+    char16_t marker = 0;             ///< '-', '*', or '+'
+    bool isEmpty = false;            ///< true if content after prefix is empty or only whitespace
+    friend bool operator==(const BulletLineInfo&, const BulletLineInfo&) = default;
+};
+
+/// If `line` is a bullet item, returns its prefix information; else nullopt.
+[[nodiscard]] std::optional<BulletLineInfo> parseBulletLine(std::u16string_view line);
+
+/// Returns the new line with one level of indentation added (2 spaces before marker).
+[[nodiscard]] std::u16string indentBulletLine(std::u16string_view line);
+
+/// Returns the new line with one level of indentation removed (up to 2 spaces before marker),
+/// or the original line if it is already at the top level.
+[[nodiscard]] std::u16string outdentBulletLine(std::u16string_view line);
+
 /// ADR 0002, decision 6 (S018): adds a blank line before each line without `|` that directly
 /// follows a table's rows, which GFM would make a row and Obsidian ends the table with. Added
 /// breaks take the majority ending in `decoded.perBreak`. Returns how many lines were added.

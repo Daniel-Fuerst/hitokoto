@@ -68,6 +68,41 @@ TEST(S003_Bullets, WrapIndentPointsToContentStart) {
     EXPECT_EQ(show(u"# Heading").wrapIndent, 0u);
 }
 
+TEST(S003_Bullets, ParseBulletLineIdentifiesPrefixAndEmptyState) {
+    const auto item1 = parseBulletLine(u"- milk");
+    ASSERT_TRUE(item1.has_value());
+    EXPECT_EQ(*item1, (BulletLineInfo{2, 0, u'-', false}));
+
+    const auto item2 = parseBulletLine(u"  * foo bar");
+    ASSERT_TRUE(item2.has_value());
+    EXPECT_EQ(*item2, (BulletLineInfo{4, 2, u'*', false}));
+
+    const auto empty1 = parseBulletLine(u"- ");
+    ASSERT_TRUE(empty1.has_value());
+    EXPECT_EQ(*empty1, (BulletLineInfo{2, 0, u'-', true}));
+
+    const auto empty2 = parseBulletLine(u"    +   ");
+    ASSERT_TRUE(empty2.has_value());
+    EXPECT_EQ(empty2->markerChar, 4u);
+    EXPECT_EQ(empty2->marker, u'+');
+    EXPECT_TRUE(empty2->isEmpty);
+
+    EXPECT_FALSE(parseBulletLine(u"plain text").has_value());
+    EXPECT_FALSE(parseBulletLine(u"# Heading").has_value());
+    EXPECT_FALSE(parseBulletLine(u"---").has_value());
+}
+
+TEST(S003_Bullets, IndentAndOutdentBulletLine) {
+    EXPECT_EQ(indentBulletLine(u"- milk"), u"  - milk");
+    EXPECT_EQ(indentBulletLine(u"  * milk"), u"    * milk");
+
+    EXPECT_EQ(outdentBulletLine(u"    * milk"), u"  * milk");
+    EXPECT_EQ(outdentBulletLine(u"  - milk"), u"- milk");
+    EXPECT_EQ(outdentBulletLine(u"- milk"), u"- milk");
+    EXPECT_EQ(outdentBulletLine(u"\t+ milk"), u"+ milk");
+    EXPECT_EQ(outdentBulletLine(u" + milk"), u"+ milk");
+}
+
 TEST(S003_Bullets, NonItemsArePlainText) {
     for (std::u16string_view line : {u"-x", u"--", u"---", u"- - -", u"* * *", u"***", u"___", u"a - b", u"+1"}) {
         EXPECT_TRUE(show(line).empty()) << std::string(line.begin(), line.end());
