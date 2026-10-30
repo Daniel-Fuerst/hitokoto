@@ -94,7 +94,9 @@ public:
                 LineRender& out) const override {
         out.codeBlock = true;
         out.fenceLine = parsed.delimiter;
-        if (parsed.delimiter && !context.blockState.active()) {
+        // An opening fence leaves the block open; the line before may belong to another block
+        // (a fence directly after a table).
+        if (parsed.delimiter && parsed.stateAfter != 0) {
             out.codeLanguage = languageOf(line.substr(fenceAt(line).end));
         }
         const Span whole{0, static_cast<std::uint32_t>(line.size())};

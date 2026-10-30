@@ -284,9 +284,11 @@ void BlockStyler::applyBlockSpacing(const QTextBlock& block, const core::LineRen
         below = above;
     } else if (render.codeBlock) {
         const qreal margin = formats_.codeBlock().margin;
-        const bool inside = blockStateBefore(block).active();
-        above = render.fenceLine && !inside ? margin : 0;
-        below = (render.fenceLine && inside) || !block.next().isValid() ? margin : 0;
+        // An opening fence leaves the block open, a closing one closes it; the line before an
+        // opening fence may belong to another block (a table).
+        const bool opening = render.fenceLine && render.blockState.active();
+        above = opening ? margin : 0;
+        below = (render.fenceLine && !opening) || !block.next().isValid() ? margin : 0;
     }
     layout->setBlockSpacing(block, above, below);
 }
@@ -363,8 +365,8 @@ BlockStyler::CodeExtent BlockStyler::codeExtentOf(const QTextBlock& block) {
     // fence and the closing fence carry another one. The search reads cached states and renders
     // nothing; it runs once per block, not once per caret step (review O2).
     const core::BlockState before = blockStateBefore(block);
-    const bool opening = render.fenceLine && !before.active();
-    const bool closing = render.fenceLine && before.active();
+    const bool opening = render.fenceLine && render.blockState.active();
+    const bool closing = render.fenceLine && !render.blockState.active();
     fenceSearch_.stop();
     search_ = {.inside = opening ? render.blockState : before,
                .from = number,
