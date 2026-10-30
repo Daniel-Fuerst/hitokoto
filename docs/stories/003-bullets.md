@@ -38,3 +38,4 @@ naturally while the source stays plain Markdown.
 ## Notes
 
 - `---` (thematic break) and numbered lists are out of scope; they must simply stay plain text.
+  Changed by S023 (2026-10-30): thematic breaks render as a horizontal line; they are still no items.
