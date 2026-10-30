@@ -32,6 +32,10 @@ single re-runs of their jobs); Linux since 2026-10-28 from the run on `e5ae913` 
 `feature/tables`, the first with the opening medians timed in the signal, which also added the
 `s018_*` values; the `s021_codeblock_*` values (moving, entering and typing in a 10 MB code block)
 were added on their own from the CI run of pull request #19 (2026-10-28), the other values kept.
+The `s023_*` values (a 10 MB document of breaks, setext headings and long hard-wrapped
+paragraphs: opening, typing on a break, `- ` before and an underline below a 20,000-line
+paragraph) are to be added the same way from the first CI run of the S023 pull request; their
+maxima and the times until restyling are `info` only, the keys have a hard budget of 50 ms.
 Since 2026-10-28 the Windows and macOS benchmarks are off until further notice (user decision,
 `ci.yml`): their runners swing too much for a gate, and a comparison that only reports is read by
 nobody. `windows.json` and `macos.json` keep values of the earlier measurement and need new ones

@@ -38,6 +38,40 @@ Qt 6.12), release build, offscreen, 10 runs. These are the baselines in `bench/b
 | Key to paint, 10 MB file (median / p95) | 0.9 / 1.0 ms | 0.9 / 1.0 ms | 1.2 / 2.2 ms | ≤ 16 ms |
 | Save 10 MB: UI thread blocked (duration of the save() call; S017 measures the longest stall instead) | 6 ms | 36 ms | 24 ms | imperceptible |
 
+### 2026-10-30, development VM, S023 (release build, offscreen, Qt 6.12.0)
+
+`s023_*` (review O9 of the story, O2 and O6 of the code review): a 10 MB document of sections with
+a setext heading, twelve hard-wrapped lines, a thematic break, a list item continued lazily and two
+more breaks, with one paragraph of 20,000 lines without a blank line in the middle. Opening it
+(the cold walk, median of 5), 200 keys typed on a break (a character and Backspace in turn, so the
+line changes between a break and paragraph text), `- ` typed before the long paragraph and removed
+(10 rounds), and `-` typed on the blank line below it, which makes all 20,000 lines a setext
+heading, and removed (10 rounds). Three runs of the branch against three runs of main e1d011e on
+the same VM.
+
+| Measurement | main e1d011e | S023 | Budget |
+|---|---|---|---|
+| Open 10 MB (`largeDocument`), styled | 3.24–3.57 s | 3.68–3.78 s | |
+| Key to paint, 10 MB, median / p95 / p99 | 1.2–1.6 / 1.5–2.5 / 2.2–4.3 ms | 1.2–1.4 / 1.9–2.1 / 2.8–3.4 ms | ≤ 16 ms |
+| Key to paint, 10 KB, p95 / p99 | 1.3–1.6 / 1.5–2.1 ms | 1.9–2.5 / 2.5–4.9 ms | ≤ 16 ms |
+| Open the S023 document, first screen / styled | – | 58–61 ms / 3.1–3.3 s | < 2–3 s first screen |
+| Typing on a break, median / p95 / max | – | 1.7–2.0 / 2.1–4.2 / 5.4–29.7 ms | ≤ 16 ms p95, 50 ms max (hard) |
+| `- ` before the paragraph, keys median / max; restyled after | – | 4.0–4.4 / 4.9–14.6 ms; 47–51 ms | 50 ms max (hard) |
+| Underline below the paragraph, keys median / max; restyled after | – | 2.6–3.0 / 4.2–4.7 ms; 134–140 ms | 50 ms max (hard) |
+
+Styling all of a 10 MB file takes about 10 % longer than on main: every line is classified once
+more for its paragraph link, and each paragraph is walked to its end once to find its setext
+level. Key-to-paint in the 10 MB file stays in the range of main; in the 10 KB file p95 and p99 are
+up to 1 and 3 ms higher (the gate ignores differences under 2 ms). A first version drew the line of
+a break in a pass of its own that rendered every visible line once more; drawn in the decorations
+pass, typing in a separate probe of 1,000 keys per run was as fast as on main. A walk over a
+paragraph costs about 0.3 µs per line; it runs for at most 2 ms on a key and goes on in idle
+slices, and a changed level is passed up at most 2,048 lines on a key (the rest in idle slices).
+Before that bound (code review O2), typing `-` under a paragraph of 150,000 lines took 37–44 ms per
+key on this VM, and over 50 ms from about 230,000 lines. The `s023_*` values are not in
+`bench/baselines/linux.json` yet; like `s021_codeblock_*`, they are added from the first CI run of
+the pull request, and until then only their hard budgets apply.
+
 ### 2026-10-28, development VM, S021 (release build, offscreen, Qt 6.12.0)
 
 A 10 MB document that is one fenced code block (about 134,000 lines), `s021_codeblock_*`:
