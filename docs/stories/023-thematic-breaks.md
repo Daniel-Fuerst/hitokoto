@@ -1,7 +1,8 @@
 # S023 — Thematic breaks and setext headings
 
-- **Status:** Confirmed (Armin, 2026-10-30, after review `docs/reviews/023-thematic-breaks-spec.md`;
-  red tests on `agents/s023-thematic-break`) · **Order:** 24 · **Size:** L ·
+- **Status:** In progress (implementation on `agents/s023-thematic-break`, 2026-10-30; confirmed by
+  Armin on 2026-10-30 after review `docs/reviews/023-thematic-breaks-spec.md`) · **Order:** 24 ·
+  **Size:** L ·
   **Depends on:** S002, S003, S014, S018, S019, S021 · **Decision:** ADR 0006
 - **Basis:** Armin's feature request from everyday use on Windows (2026-10-28): `---` alone on a line
   shows as text. CommonMark 0.31.2, sections 4.1 (thematic breaks) and 4.3 (setext headings); GFM
@@ -45,11 +46,22 @@ list item numbered 1 and an HTML block that may interrupt a paragraph, so `Foo` 
 A bullet with text starts paragraph text at its content column (marker, then 1–4 spaces; 5 or more
 count as one, tabs to the next multiple of 4). A line indented less than that column directly after
 paragraph text in the item continues it lazily; it cannot be underlined, so `- foo` / `bar` / `---`
-ends the list with a break, while `- foo` / `  ---` underlines `foo` inside the item.
+ends the list with a break, while `- foo` / `  ---` underlines `foo` inside the item. Such a lazy
+line is outside the item, so an ordered list item of any number starts there (`- foo` / `2. y` /
+`  ---` is a break). A bullet whose text is a break, a heading or a fence, or that is indented code
+(`-      code`), opens no paragraph text.
+An ordered list item or a block quote with text is no paragraph text, but the lines directly after
+it continue that text lazily, as after a bullet, and can never underline it: `> quote` / `bar` /
+`---` and `1. foo` / `bar` / `---` end with a break. Without text, or with a break as its text
+(`>`, `1.`, `> ---`), it ends the paragraph: `>` / `bar` / `---` is a setext heading. An HTML block
+that may not interrupt a paragraph (a lone tag, CommonMark type 7) needs the whole line:
+`<span>x</span>` / `---` is a setext heading.
 
 **Tables (GFM, S018).** A break ends a table: `| a |` / `| - |` / `| 1 |` / `---` is a table and a
 break (cmark-gfm). In CommonMark without tables the text would be a setext heading; hitokoto follows
-GFM for tables. `| a |` / `---` without a delimiter row is a setext heading in both.
+GFM for tables. `| a |` / `---` without a delimiter row is a setext heading in both. The table
+element uses the shared rules for where another block starts; a lone HTML tag such as
+`<span>x</span>` therefore stays a table row, as in cmark-gfm (S018 ended the table there).
 
 **Front matter (Obsidian, not CommonMark).** `---` on the first line of the document, closed by the
 next line `---` (both optionally followed by blanks), is front matter. All its lines, both
@@ -61,9 +73,14 @@ belong to has a story:
 - a break inside a list item on the item's marker line (`- * * *`, example 61) stays a bullet with
   text;
 - breaks and underlines indented four or more spaces inside a list item (`- foo` / `    ***`): text;
-- list membership across blank lines is not tracked: after a blank line a paragraph counts as top
-  level, so `- foo`, a blank line, `  bar` / `---` shows a setext heading where CommonMark ends the
-  list with a break;
+- list membership is tracked only through paragraph text: after a blank line, or after a break,
+  heading or indented code inside an item, a paragraph counts as top level, so `- foo`, a blank
+  line, `  bar` / `---` and `* foo` / `  * * *` / `  bar` / `-` show a setext heading where
+  CommonMark ends the list with a break or starts a new item;
+- an empty list item followed by an indented line (`-` / `  bar`) ends the item; in CommonMark the
+  line is the item's content;
+- an underline inside an ordered list item or a block quote (`1. foo` / `   ---`) shows a break or
+  text, because those blocks are not rendered yet;
 - HTML blocks are not tracked beyond their first line: `<div>` / `---` shows a break, where
   CommonMark keeps `---` as raw HTML of the block;
 - link reference definitions: the reference parsers disagree for `[a]: /url` / `---` (commonmark.js
@@ -71,7 +88,11 @@ belong to has a story:
   `---` is a break.
 
 Expected results were checked with commonmark.js 0.31.2 and markdown-it-py 4.2.0 (mode `commonmark`)
-and, for tables, cmark-gfm 0.29.0.gfm (Python `cmarkgfm` 2025.10.22).
+and, for tables, cmark-gfm 0.29.0.gfm (Python `cmarkgfm` 2025.10.22). During the implementation a
+differential run compared `renderDocument` with commonmark.js over 24,000 random documents of the
+constructs above (breaks, underlines, ATX headings, bullets, ordered items, quotes, fences, lazy
+lines, inline HTML; without HTML blocks, indented code and link reference definitions, whose
+deviations are listed above); it found only the deviations listed here.
 
 ## Acceptance scenarios
 
@@ -141,7 +162,8 @@ and, for tables, cmark-gfm 0.29.0.gfm (Python `cmarkgfm` 2025.10.22).
 
 - How lines depend on the lines above and below follows ADR 0006 once accepted. The lazy rendering
   in the UI produces the same `LineRender` for every line as `ElementRegistry::renderDocument`, the
-  reference the core tests use.
+  reference the core tests use. The reference also reveals the fences of the code block the range is
+  in (S021), so it covers everything the caret changes.
 - One shared thematic-break recogniser in the core, used by the bullet and table elements and by
   S023 (review O10).
 - The benchmark gate gets a document with breaks, setext headings and long hard-wrapped and lazily
@@ -160,7 +182,9 @@ and, for tables, cmark-gfm 0.29.0.gfm (Python `cmarkgfm` 2025.10.22).
 - Core: `S023_ThematicBreaks` – rules above against `ElementRegistry::renderDocument`: recognition,
   setext headings (levels, multi-line paragraphs, list items, precedence over breaks and empty list
   items), paragraph text after unrendered blocks, front matter, code blocks, tables, the render of
-  concealed and revealed lines, theme tokens and fallbacks.
+  concealed and revealed lines, theme tokens and fallbacks; added with the implementation:
+  `LazyTextAfterUnrenderedBlocks` and `InlineHtmlIsParagraphTextAndATableRow` (rules above that the
+  first tests did not cover).
 - UI: `tst_s023_thematic_breaks` – the drawn line (pixels, both ends, crisp, wrapped), revealed
   characters, setext headings (formats, underline revealed from the heading's lines, geometry), the
   margin token, typing above a break, front matter, and the lazy rendering equal to the reference.
