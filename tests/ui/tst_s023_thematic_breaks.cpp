@@ -327,6 +327,26 @@ private slots:
                  expectedThickness(f.editor(), 1));
     }
 
+    // Found with S024: front matter whose closing line comes with a later slice of a long file, more
+    // lines than a key may look at, is confirmed as well; it was a thematic break and a setext
+    // heading.
+    void frontMatterClosedInALaterSliceOfALongFile() {
+        QByteArray document = "---\n";
+        for (int i = 0; i < 6000; ++i) {
+            document += "key" + QByteArray::number(i) + ": value\n";
+        }
+        document += "---\n# Heading\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), document)));
+        f.placeCaret(6002);
+        f.settle();
+        auto& styler = f.editor()->styler();
+        const auto* doc = f.editor()->document();
+        QVERIFY(!styler.renderFor(doc->findBlockByNumber(0)).thematicBreak);
+        QCOMPARE(styler.renderFor(doc->findBlockByNumber(6001)).setextUnderline, std::uint8_t{0});
+        QCOMPARE(styler.renderFor(doc->findBlockByNumber(6002)).headingLevel, std::uint8_t{1});
+    }
+
     // ADR 0006: the lazy rendering gives every line the LineRender of the whole-document reference,
     // with the caret anywhere and after edits above and below.
     void lazyRenderingEqualsTheReference() {
