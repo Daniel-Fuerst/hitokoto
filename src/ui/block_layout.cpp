@@ -317,7 +317,9 @@ QRectF BlockLayout::blockBoundingRect(const QTextBlock& block) const {
     if (!block.isValid()) {
         return {};
     }
-    ensureBlockLayout(block);
+    if (block.isVisible()) {
+        ensureBlockLayout(block);  // a hidden block has height 0; its text is laid out when it shows
+    }
     const qreal top = margin() + heights_.sumBefore(static_cast<std::size_t>(block.blockNumber()));
     const qreal width = document()->textWidth() > 0 ? document()->textWidth() : availableWidth() + 2 * margin();
     const auto number = static_cast<std::size_t>(block.blockNumber());
