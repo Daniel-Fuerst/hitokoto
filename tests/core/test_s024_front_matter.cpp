@@ -631,12 +631,17 @@ TEST(S024_FrontMatter, ReadingIsLinear) {
         }
         return std::vector<std::u16string>{line + u"x]"};
     };
+    // Ten times the input: a quadratic parser takes about a hundred times as long. The work per line
+    // is constant (callgrind: 5,000 and 50,000 keys take 29 and 275 million instructions), but the
+    // time per line grows with the memory the larger input touches: 18 times on the development VM,
+    // 33 times on the macOS runner (2026-10-31). The bound lies between the two.
+    constexpr double kBound = 60;
     const double keysSmall = seconds(keysDocument(5'000));
     const double keysLarge = seconds(keysDocument(50'000));
-    EXPECT_LT(keysLarge, 30 * std::max(keysSmall, 1e-4)) << keysSmall << " s, " << keysLarge << " s";
+    EXPECT_LT(keysLarge, kBound * std::max(keysSmall, 1e-4)) << keysSmall << " s, " << keysLarge << " s";
     const double flowSmall = seconds(flowDocument(20'000));
     const double flowLarge = seconds(flowDocument(200'000));
-    EXPECT_LT(flowLarge, 30 * std::max(flowSmall, 1e-4)) << flowSmall << " s, " << flowLarge << " s";
+    EXPECT_LT(flowLarge, kBound * std::max(flowSmall, 1e-4)) << flowSmall << " s, " << flowLarge << " s";
     EXPECT_FALSE(keysDocument(1).empty());
     EXPECT_EQ(parseProperties(keysDocument(3)).rows.size(), 3U);
 }
