@@ -475,6 +475,39 @@ private slots:
         }
     }
 
+    // Review O1 (code): typing on the line directly below the closing line, where opening puts the
+    // caret, changes no YAML: the block stays shown and the body does not move on any key, even when
+    // the block could not be built again within the 4 ms of a key.
+    void typingDirectlyBelowTheBlockKeepsIt() {
+        QByteArray document = "---\n";
+        for (int i = 0; i < 5000; ++i) {
+            document += "key" + QByteArray::number(i) + ": value " + QByteArray::number(i) + "\n";
+        }
+        document += "---\nThe first line\nbody\n";  // a paragraph: typing keeps its height
+        constexpr int close = 5001;
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), document)));
+        f.placeCaret(close + 1);
+        f.settle();
+        auto* editor = f.editor();
+        expectConcealed(editor, close, "opened");
+        if (QTest::currentTestFailed()) {
+            return;
+        }
+        const qreal body = topOf(editor, close + 2);
+        for (int i = 0; i < 10; ++i) {
+            test::keyClick(editor, 'x');
+            QVERIFY2(editor->propertiesView() != nullptr, qPrintable(QStringLiteral("after x %1").arg(i)));
+            QCOMPARE(topOf(editor, close + 2), body);
+            test::keyClick(editor, Qt::Key_Backspace);
+            QVERIFY2(editor->propertiesView() != nullptr, qPrintable(QStringLiteral("after Backspace %1").arg(i)));
+            QCOMPARE(topOf(editor, close + 2), body);
+        }
+        f.settle();
+        expectConcealed(editor, close, "settled");
+        QCOMPARE(editor->document()->findBlockByNumber(close + 1).text(), QStringLiteral("The first line"));
+    }
+
     // Armin, 2026-10-31: after opening, the caret stands on the first line below closed front
     // matter, so the first screen shows the properties block; Ctrl+Home still shows the YAML.
     void openingPutsTheCaretBelowTheFrontMatter() {
