@@ -137,5 +137,14 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   budgets of the keys kept; (4) the first sample of an opening measurement dropped as warm-up
   (`s024_open_10mb_properties_ms`: 49 ms, then 31 ms); (5) the runner's core decoding time,
   already in the artefact, printed beside the comparison, so that a red run on a fast or slow
-  runner is recognised at once.
-- **Open:** which of these to adopt. Armin's goal: the job is red only for a real regression.
+  runner is recognised at once; (6) **preferred for now (Armin, 2026-10-31):** a baseline per class
+  of runner. The job records the runner's CPU (model name from `/proc/cpuinfo`, clock; the core
+  decoding time as a cross-check) and compares against the baseline of that class, for example
+  `bench/baselines/linux-<cpu>.json`; no factor converts between classes. A runner of a class
+  without a baseline fails the job with the message that a new class has to be recorded, and
+  leaves its values as an artefact to start that baseline. Within a class the spread is small (a
+  few per cent in the three runs above), so the tolerance could be tighter than 25 %. First step:
+  record the CPU in the artefact and collect a few runs to learn the classes (so far two clocks,
+  3.7 and 3.25 GHz, and once core decoding of 24 ms on 7e9e7d4).
+- **Open:** which of these to adopt, (6) preferred. Armin's goal: the job is red only for a real
+  regression, and a new kind of runner is never overlooked.
