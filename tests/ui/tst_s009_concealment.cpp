@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S009 (standing quality gate): the caret never stands in concealed text. Extended for code block
-// fences (S021) and inline links (S022).
+// fences (S021): a caret anywhere in a block reveals both fences, and no line of it moves.
+// Extended for inline links (S022).
+// Extended for thematic breaks and setext headings (S023): breaks revealed under the caret, underlines
+// while the caret is on their heading, front matter never concealed; no line moves.
 #include "ui_test_support.hpp"
 
+#include <QMap>
 #include <QRandomGenerator>
 
 #include <array>
@@ -114,6 +118,75 @@ private slots:
                     QCOMPARE(editor->blockLayout()->blockBoundingRect(doc->findBlockByNumber(n)),
                              concealedGeometry.at(static_cast<std::size_t>(n)));
                 }
+            }
+        }
+    }
+
+    // S023: the break under the caret is revealed, every other break concealed; an underline is
+    // revealed exactly while the caret is on a line of its heading; front matter conceals nothing;
+    // no line moves.
+    void thematicBreaksAndSetextHeadingsWhileWalking() {
+        constexpr auto document =
+            "---\n"                 // 0 front matter
+            "title: x\n"            // 1
+            "---\n"                 // 2
+            "# Heading\n"           // 3
+            "---\n"                 // 4 break
+            "Text above a break\n"  // 5
+            "***\n"                 // 6 break
+            "- item\n"              // 7
+            "---\n"                 // 8 break
+            "Setext line one\n"     // 9 heading 9-10
+            "line two\n"            // 10
+            "---\n"                 // 11 underline
+            "\n"                    // 12
+            "   _ _ _   \n"         // 13 break
+            "* * *\n"               // 14 break
+            "Title\n"               // 15 heading
+            "===\n"                 // 16 underline
+            "last line\n";          // 17
+        const QList<int> breaks = {4, 6, 8, 13, 14};
+        const QMap<int, std::pair<int, int>> underlines = {{11, {9, 10}}, {16, {15, 15}}};
+        const QList<int> frontMatter = {0, 1, 2};
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("breaks.md"), document)));
+        f.placeCaret(12);
+        f.settle();
+        auto* editor = f.editor();
+        auto& styler = editor->styler();
+        const auto* doc = editor->document();
+        std::vector<QRectF> concealedGeometry;
+        for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+            concealedGeometry.push_back(editor->blockLayout()->blockBoundingRect(b));
+        }
+
+        constexpr std::array kKeys = {Qt::Key_Up,   Qt::Key_Down, Qt::Key_Left,   Qt::Key_Right,
+                                      Qt::Key_Home, Qt::Key_End,  Qt::Key_PageUp, Qt::Key_PageDown};
+        QRandomGenerator rng(20261030);
+        for (int step = 0; step < 300; ++step) {
+            test::keyClick(editor, kKeys.at(rng.bounded(static_cast<quint32>(kKeys.size()))));
+            f.settle();
+            const int caretLine = editor->textCursor().blockNumber();
+            for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+                const int n = b.blockNumber();
+                const auto render = styler.renderFor(b);
+                const QString where = QStringLiteral("step %1, caret on %2, line %3").arg(step).arg(caretLine).arg(n);
+                QVERIFY2(render.thematicBreak == breaks.contains(n), qPrintable(where));
+                QVERIFY2((render.setextUnderline != 0) == underlines.contains(n), qPrintable(where));
+                if (render.thematicBreak) {
+                    QVERIFY2(render.hidden.empty() == (n == caretLine), qPrintable(where));
+                }
+                if (underlines.contains(n)) {
+                    const auto [first, last] = underlines.value(n);
+                    const bool onHeading = caretLine >= first && caretLine <= n;
+                    QVERIFY2(render.hidden.empty() == onHeading, qPrintable(where + QStringLiteral(": underline")));
+                }
+                if (frontMatter.contains(n)) {
+                    QVERIFY2(render.empty(), qPrintable(where + QStringLiteral(": front matter")));
+                }
+                QVERIFY2(
+                    editor->blockLayout()->blockBoundingRect(b) == concealedGeometry.at(static_cast<std::size_t>(n)),
+                    qPrintable(where + QStringLiteral(": moved")));
             }
         }
     }

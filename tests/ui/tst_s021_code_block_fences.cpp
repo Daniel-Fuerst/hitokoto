@@ -209,6 +209,34 @@ private slots:
         QCOMPARE(height(0), line(0).height());
     }
 
+    // A fence directly after a table opens the block: the caret inside reveals that fence and the
+    // closing one, the margin goes above the opening fence and below the closing one, and the badge
+    // shows the language (found with the whole-document reference of S023).
+    void aFenceDirectlyAfterATableOpensTheBlock() {
+        test::Fixture f;
+        auto theme = core::builtinTheme(core::ColorScheme::Light);
+        theme.codeBlock.margin = 6;
+        f.window->applyTheme(theme);
+        QVERIFY(f.open(f.writeFile(QStringLiteral("code.md"), "| a |\n| - |\n| 1 |\n```python\ncode\n```\nafter\n")));
+        f.placeCaret(4);
+        f.settle();
+        auto& styler = f.editor()->styler();
+        QVERIFY(styler.isRevealed(3));
+        QVERIFY(styler.isRevealed(5));
+        QVERIFY(!styler.isRevealed(1));
+        const auto* layout = f.editor()->blockLayout();
+        const auto* doc = f.editor()->document();
+        QCOMPARE(layout->spaceAbove(doc->findBlockByNumber(3)), 6.0);
+        QCOMPARE(layout->spaceBelow(doc->findBlockByNumber(3)), 0.0);
+        QCOMPARE(layout->spaceBelow(doc->findBlockByNumber(5)), 6.0);
+        QCOMPARE(styler.renderFor(doc->findBlockByNumber(3)).codeLanguage, std::u16string(u"python"));
+        f.placeCaret(3);  // on the opening fence
+        f.settle();
+        QVERIFY(styler.isRevealed(5));
+        QVERIFY(!styler.isRevealed(1));
+        f.window->applyTheme(core::builtinTheme(core::ColorScheme::Light));
+    }
+
     // Review O3: painting changes no line position.
     void paintingMovesNoLine() {
         test::Fixture f;

@@ -487,6 +487,27 @@ void EditorWidget::paintInlineCodeBoxes(QPainter& painter, const QTextBlock& blo
     }
 }
 
+void EditorWidget::paintThematicBreak(QPainter& painter, const QTextBlock& block, const QRectF& rect) {
+    // S023: a concealed break is a line across the text column, centred vertically in its block
+    // (margins included), max(1, round(border-width x device pixel ratio)) device pixels thick and
+    // on whole device pixel rows, so it stays crisp at fractional scaling.
+    const core::ThematicBreakStyle& style = styler_->formats().thematicBreak();
+    const QTextLayout* layout = block.layout();
+    if (style.borderWidth <= 0 || style.border.a == 0 || layout == nullptr || layout->lineCount() == 0) {
+        return;
+    }
+    const qreal dpr = viewport()->devicePixelRatioF();
+    const int thickness = std::max(1, static_cast<int>(std::lround(style.borderWidth * dpr)));
+    const QTextLine line = layout->lineAt(0);
+    const qreal left = rect.left() + layout->position().x() + line.x();
+    const qreal right = std::min(left + line.width(), static_cast<qreal>(viewport()->width()));
+    const int top = static_cast<int>(std::lround(rect.center().y() * dpr - thickness / 2.0));
+    const bool antialiased = painter.testRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::Antialiasing, false);
+    painter.fillRect(QRectF(left, top / dpr, right - left, thickness / dpr), toQColor(style.border));
+    painter.setRenderHint(QPainter::Antialiasing, antialiased);
+}
+
 void EditorWidget::paintDecorations() {
     QPainter painter(viewport());
     painter.setRenderHint(QPainter::Antialiasing);
@@ -502,7 +523,13 @@ void EditorWidget::paintDecorations() {
             break;
         }
         const auto render = styler_->renderFor(block);
-        if (styler_->isRevealed(block.blockNumber()) || render.decorations.empty()) {
+        if (styler_->isRevealed(block.blockNumber())) {
+            continue;
+        }
+        if (render.thematicBreak) {
+            paintThematicBreak(painter, block, rect);
+        }
+        if (render.decorations.empty()) {
             continue;
         }
         const QTextLayout* layout = block.layout();

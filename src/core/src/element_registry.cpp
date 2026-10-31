@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "hitokoto/core/markdown.hpp"
 
+#include "block_rules.hpp"
+
 #include <algorithm>
 #include <cstddef>
 #include <stdexcept>
@@ -156,7 +158,127 @@ void carveInlineStylesAroundHidden(LineRender& out) {
     out.inlineStyles = std::move(visibleStyles);
 }
 
+/// Columns of indentation past a paragraph's content column from which a line is indented code,
+/// which cannot interrupt a paragraph (CommonMark 4.4).
+constexpr std::uint32_t kIndentedCode = 4;
+
+/// The paragraph value of `BlockState` for text at content column `column`.
+std::uint16_t paragraphAt(std::uint32_t column) noexcept {
+    constexpr std::uint32_t kMaxColumn = BlockState::kLazyParagraph - 2U;
+    return static_cast<std::uint16_t>(std::min(column, kMaxColumn) + 1U);
+}
+
+/// A thematic break or setext underline: concealed, the line keeps its space and the UI draws
+/// (or, for an underline, leaves) the space; revealed, the line as written in the marker colour.
+void renderMarkerLine(std::u16string_view line, bool revealed, LineRender& out) {
+    const Span whole{0, static_cast<std::uint32_t>(line.size())};
+    if (revealed) {
+        out.runs.push_back({whole, Role::Marker, 0});
+    } else {
+        out.hidden.push_back({whole, HideMode::KeepSpace});
+    }
+}
+
 }  // namespace
+
+/// What a line is, decided from the line, the state entering it and the next line (ADR 0006).
+struct ElementRegistry::Classified {
+    enum class Kind : std::uint8_t {
+        Block,      ///< owned by a multi-line element
+        Underline,  ///< setext underline of the paragraph above
+        Break,      ///< thematic break
+        Element,    ///< matched by a line element
+        Other,      ///< blank, or a block hitokoto does not render yet
+        Text,       ///< paragraph text no element claims
+    };
+    Kind kind = Kind::Other;
+    std::optional<BlockMatch> block;
+    std::uint8_t underline = 0;
+    const LineElement* element = nullptr;
+    LineMatch match;
+    bool continues = false;            ///< paragraph text continuing the paragraph above
+    std::uint32_t textStart = 0;       ///< where the line's paragraph text starts
+    std::uint16_t paragraphAfter = 0;  ///< `BlockState::paragraph` after the line
+
+    [[nodiscard]] BlockState stateAfter() const noexcept {
+        if (block) {
+            return block->stateAfter();
+        }
+        return BlockState{0, 0, paragraphAfter};
+    }
+};
+
+ElementRegistry::Classified ElementRegistry::classify(std::u16string_view line, BlockState state,
+                                                      std::u16string_view nextLine) const noexcept {
+    using Kind = Classified::Kind;
+    Classified c;
+    if (auto block = matchBlock(line, state, nextLine)) {
+        c.kind = Kind::Block;
+        c.block = block;
+        return c;
+    }
+    // The paragraph above, if the line follows paragraph text (a block that was open ended above).
+    const std::uint16_t above = state.active() ? 0 : state.paragraph;
+    if (state.underlinable() && !state.active()) {
+        if (const std::uint8_t level = blocks::setextUnderline(line, state.paragraph - 1U); level != 0) {
+            c.kind = Kind::Underline;  // takes precedence over a break and an empty list item (4.3)
+            c.underline = level;
+            return c;
+        }
+    }
+    const std::uint32_t indent = blocks::indentWidth(line);
+    const auto continueParagraph = [&] {
+        c.kind = Kind::Text;
+        c.continues = true;
+        c.paragraphAfter = above;
+        return c;
+    };
+    const bool blank = blocks::firstNonBlank(line) == line.size();
+    if (!blank && state.underlinable() && indent >= state.paragraph - 1U + kIndentedCode) {
+        return continueParagraph();  // nothing starts this far past the content (CommonMark 4.4)
+    }
+    // A line less indented than the paragraph's content column can only continue it lazily.
+    const bool lazy = above == BlockState::kLazyParagraph || (above != 0 && indent + 1U < above);
+    if (blocks::isThematicBreak(line)) {
+        c.kind = Kind::Break;  // takes precedence over a list item (4.1, example 60)
+        return c;
+    }
+    for (const auto& element : elements_) {
+        if (auto match = element->parse(line)) {
+            if (above != 0 && !element->startsAfterParagraph(line, *match, lazy)) {
+                return continueParagraph();  // e.g. an empty list item (5.2)
+            }
+            c.kind = Kind::Element;
+            c.element = element.get();
+            c.match = *match;
+            const ParagraphRole role = element->paragraphRole(line, *match);
+            c.paragraphAfter = role.kind == ParagraphRole::Kind::Opens      ? paragraphAt(role.column)
+                               : role.kind == ParagraphRole::Kind::LazyText ? BlockState::kLazyParagraph
+                                                                            : std::uint16_t{0};
+            c.textStart = match->marker.end();
+            return c;
+        }
+    }
+    if (blank) {
+        return c;
+    }
+    const blocks::After after = above == 0 ? blocks::After::Block
+                                : lazy     ? blocks::After::Lazy
+                                           : blocks::After::Paragraph;
+    switch (blocks::otherBlockStart(line, after)) {
+        case blocks::OtherBlock::Opaque:
+            return c;
+        case blocks::OtherBlock::LazyText:
+            c.paragraphAfter = BlockState::kLazyParagraph;
+            return c;
+        case blocks::OtherBlock::None:
+            break;
+    }
+    c.kind = Kind::Text;
+    c.continues = above != 0;
+    c.paragraphAfter = above != 0 ? above : paragraphAt(0);
+    return c;
+}
 
 void ElementRegistry::add(std::unique_ptr<LineElement> element) {
     if (element) {
@@ -226,8 +348,22 @@ BlockState ElementRegistry::BlockMatch::stateAfter() const noexcept {
 
 BlockState ElementRegistry::blockStateAfter(std::u16string_view line, BlockState state,
                                             std::u16string_view nextLine) const noexcept {
-    const auto block = matchBlock(line, state, nextLine);
-    return block ? block->stateAfter() : BlockState{};
+    return classify(line, state, nextLine).stateAfter();
+}
+
+ParagraphLink ElementRegistry::paragraphLink(std::u16string_view line, BlockState state,
+                                             std::u16string_view nextLine) const noexcept {
+    const Classified c = classify(line, state, nextLine);
+    return {c.kind == Classified::Kind::Text && c.continues, c.underline};
+}
+
+BlockState ElementRegistry::documentStart() const noexcept {
+    for (std::size_t i = 0; i < multiLineElements_.size(); ++i) {
+        if (const std::uint32_t start = multiLineElements_[i]->documentStartState(); start != 0) {
+            return {static_cast<std::uint8_t>(i + 1U), start};
+        }
+    }
+    return {};
 }
 
 void ElementRegistry::runInlineElements(std::u16string_view line, const LineContext& context, LineRender& out) const {
@@ -254,25 +390,146 @@ void ElementRegistry::runInlineElements(std::u16string_view line, const LineCont
 }
 
 LineRender ElementRegistry::render(std::u16string_view line, const LineContext& context) const {
+    ParagraphLink link;
+    return render(line, context, link);
+}
+
+LineRender ElementRegistry::render(std::u16string_view line, const LineContext& context, ParagraphLink& link) const {
+    using Kind = Classified::Kind;
     LineRender out;
-    if (const auto block = matchBlock(line, context.blockState, context.nextLine)) {
-        const auto& multi = multiLineElements_[block->element - 1U];
-        multi->render(line, block->parsed, context, out);
-        out.blockState = block->stateAfter();
-    } else {
-        for (const auto& element : elements_) {
-            if (auto match = element->parse(line)) {
-                element->render(line, *match, context, out);
-                break;
+    const Classified c = classify(line, context.blockState, context.nextLine);
+    link = {c.kind == Kind::Text && c.continues, c.underline};
+    out.blockState = c.stateAfter();
+    switch (c.kind) {
+        case Kind::Block:
+            if (c.block) {
+                multiLineElements_[c.block->element - 1U]->render(line, c.block->parsed, context, out);
             }
+            break;
+        case Kind::Underline:
+            out.setextUnderline = c.underline;
+            renderMarkerLine(line, context.revealed, out);
+            break;
+        case Kind::Break:
+            out.thematicBreak = true;
+            renderMarkerLine(line, context.revealed, out);
+            break;
+        case Kind::Element:
+        case Kind::Other:
+        case Kind::Text: {
+            if (c.element != nullptr) {
+                c.element->render(line, c.match, context, out);
+            }
+            // Paragraph text of a setext heading (4.3): every line of the paragraph, from where its
+            // text starts (after a list item's marker).
+            const auto length = static_cast<std::uint32_t>(line.size());
+            if (context.setextLevel != 0 && out.blockState.underlinable() && c.kind != Kind::Other) {
+                out.headingLevel = context.setextLevel;
+                if (length > c.textStart) {
+                    out.runs.push_back({{c.textStart, length - c.textStart}, Role::HeadingText, context.setextLevel});
+                }
+            }
+            const std::size_t firstInlineRun = out.runs.size();
+            runInlineElements(line, context, out);
+            splitAroundInlineRuns(out, firstInlineRun);
+            carveLinkTextAroundOtherRuns(out);
+            break;
         }
-        const std::size_t firstInlineRun = out.runs.size();
-        runInlineElements(line, context, out);
-        splitAroundInlineRuns(out, firstInlineRun);
-        carveLinkTextAroundOtherRuns(out);
     }
     carveRunsAroundHidden(out);
     carveInlineStylesAroundHidden(out);
+    return out;
+}
+
+std::vector<LineRender> ElementRegistry::renderDocument(std::span<const std::u16string> lines,
+                                                        LineRange revealed) const {
+    // ADR 0006: the reference for the lazy rendering in the UI. States from above, front matter
+    // only if closed, setext levels from below, an underline revealed from any line of its heading.
+    const std::size_t count = lines.size();
+    const auto nextOf = [&](std::size_t i) {
+        return i + 1 < count ? std::u16string_view{lines[i + 1]} : std::u16string_view{};
+    };
+    BlockState start = documentStart();
+    if (start.active()) {
+        BlockState state = start;
+        bool closed = false;
+        for (std::size_t i = 0; i < count && state.element == start.element; ++i) {
+            state = blockStateAfter(lines[i], state, nextOf(i));
+            closed = i > 0 && state.element != start.element;
+            if (i == 0 && state.element != start.element) {
+                break;  // the first line opens no block
+            }
+        }
+        start = closed ? start : BlockState{};
+    }
+    std::vector<BlockState> before(count);
+    std::vector<ParagraphLink> links(count);
+    BlockState state = start;
+    for (std::size_t i = 0; i < count; ++i) {
+        before[i] = state;
+        links[i] = paragraphLink(lines[i], state, nextOf(i));
+        state = blockStateAfter(lines[i], state, nextOf(i));
+    }
+    std::vector<std::uint8_t> levels(count, 0);
+    for (std::size_t i = count; i-- > 0;) {
+        const bool paragraph = i + 1 < count && before[i + 1].underlinable();
+        if (paragraph) {
+            levels[i] = links[i + 1].underline != 0 ? links[i + 1].underline
+                        : links[i + 1].continues    ? levels[i + 1]
+                                                    : 0;
+        }
+    }
+    std::vector<bool> shown(count, false);
+    std::size_t paragraphStart = 0;
+    for (std::size_t i = 0; i < count; ++i) {
+        if (!links[i].continues && links[i].underline == 0) {
+            paragraphStart = i;
+        }
+        shown[i] = revealed.contains(static_cast<std::int64_t>(i));
+        if (links[i].underline != 0) {
+            // The underline is revealed while the caret is on any line of its heading.
+            for (std::size_t k = paragraphStart; k < i && !shown[i]; ++k) {
+                shown[i] = revealed.contains(static_cast<std::int64_t>(k));
+            }
+        }
+    }
+    std::vector<LineRender> out;
+    out.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        out.push_back(render(lines[i], {shown[i], before[i], nextOf(i), levels[i]}));
+    }
+    // S021: a range in a code block reveals the opening fence of the block that holds its first
+    // line and the closing fence of the block that holds its last line. Every line of a block
+    // leaves the same state; an opening fence leaves the block open, a closing one closes it.
+    const auto revealFence = [&](std::int64_t line, bool opening) {
+        if (line < 0 || static_cast<std::size_t>(line) >= count || !out[static_cast<std::size_t>(line)].codeBlock) {
+            return;
+        }
+        const auto at = static_cast<std::size_t>(line);
+        const bool opens = out[at].fenceLine && out[at].blockState.active();
+        const bool closes = out[at].fenceLine && !out[at].blockState.active();
+        const BlockState inside = opens ? out[at].blockState : before[at];
+        std::size_t fence = at;
+        if (opening && !opens) {
+            while (fence > 0 && out[fence - 1].blockState == inside) {
+                --fence;
+            }
+        } else if (!opening && !closes) {
+            while (fence < count && out[fence].blockState == inside) {
+                ++fence;
+            }
+            if (fence >= count) {
+                return;  // the block runs to the end of the document
+            }
+        }
+        if (!shown[fence]) {
+            out[fence] = render(lines[fence], {true, before[fence], nextOf(fence), levels[fence]});
+        }
+    };
+    if (!revealed.empty()) {
+        revealFence(revealed.first, true);
+        revealFence(revealed.last, false);
+    }
     return out;
 }
 
@@ -280,6 +537,7 @@ ElementRegistry ElementRegistry::withBuiltins() {
     ElementRegistry registry;
     registry.addMultiLine(makeFencedCodeElement());
     registry.addMultiLine(makeTableElement());
+    registry.addMultiLine(makeFrontMatterElement());
     registry.add(makeHeadingElement());
     registry.add(makeBulletElement());
     registry.addInline(makeLinkElement());

@@ -270,6 +270,10 @@ const Token kTokens[] = {
     {{"escape", "marker", "color", "Backslash when revealed", "colors.marker"}, &applyOptColor<&Theme::escape, &EscapeTokens::marker>},
     {{"link", "text", "color", "Colour of link text", "colors.accent"}, &applyOptColor<&Theme::link, &LinkTokens::text>},
     {{"link", "marker", "color", "Delimiters and destination when revealed", "colors.marker"}, &applyOptColor<&Theme::link, &LinkTokens::marker>},
+    {{"thematic-break", "border", "color", "Colour of the horizontal line", "colors.border"}, &applyOptColor<&Theme::thematicBreak, &ThematicBreakTokens::border>},
+    {{"thematic-break", "border-width", "number (px)", "Thickness of the line, 0 to 8; drawn as max(1, round(width x device pixel ratio)) device pixels", "1"}, &applyOptNumber<&Theme::thematicBreak, &ThematicBreakTokens::borderWidth, 0, 80>},
+    {{"thematic-break", "margin", "number (px)", "Space above and below the line, 0 to 64; part of the line's geometry, the same when revealed", "0"}, &applyOptNumber<&Theme::thematicBreak, &ThematicBreakTokens::margin, 0, 640>},
+    {{"thematic-break", "marker", "color", "Characters of the break when revealed", "colors.marker"}, &applyOptColor<&Theme::thematicBreak, &ThematicBreakTokens::marker>},
 };
 // clang-format on
 
@@ -730,6 +734,16 @@ LinkStyle linkStyle(const Theme& t) {
     return {
         .text = t.link.text.value_or(t.accent),
         .marker = t.link.marker.value_or(t.marker),
+    };
+}
+
+ThematicBreakStyle thematicBreakStyle(const Theme& t) {
+    const ThematicBreakTokens& b = t.thematicBreak;
+    return {
+        .border = b.border.value_or(t.border),
+        .borderWidth = b.borderWidth.value_or(1),
+        .margin = b.margin.value_or(0),
+        .marker = b.marker.value_or(t.marker),
     };
 }
 

@@ -34,6 +34,8 @@ story ID (see "Conventions").
 | 21 | [S020](020-backslash-escapes.md) | Backslash escapes for ASCII punctuation | S013, S015 | S | In review |
 | 22 | [S021](021-code-block-fences-in-panel.md) | Code block fences inside the panel, revealed from anywhere in the block | S014, S019 | M | Confirmed |
 | 23 | [S022](022-inline-links.md) | Inline Markdown links and titles | S013, S015, S020 | M | In review |
+| 24 | [S023](023-thematic-breaks.md) | Thematic breaks and setext headings | S002, S003, S014, S018, S019, S021 | L | In review |
+| 25 | [S024](024-front-matter.md) | Front matter shown as properties | S023 | M | Open |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 
@@ -59,6 +61,8 @@ sets it).
   user. The confirmation may happen in conversation; it need not show in the commits.
 - Review records (Advocatus Diaboli): `docs/reviews/NNN-title-<mode>.md`, the objections as
   delivered plus the disposition of each; the story links nothing, the file name carries the ID.
+- Points that are not specified yet go to [`unrefined.md`](unrefined.md), on whatever branch they
+  are noticed; a refined entry becomes a story and leaves that file.
 - Scope changes: `docs/brief.md` stays the user's brief. Extensions become new stories here, with
   their reason. (The additions made to the brief together with S013–S015 stay for now.)
 - S009 is a standing quality gate, not a one-off story: its scenarios are extended whenever an

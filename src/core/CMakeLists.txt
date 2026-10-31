@@ -6,6 +6,7 @@ add_library(hitokoto_core STATIC
     src/file_io.cpp
     src/platform.cpp
     src/element_registry.cpp
+    src/block_rules.cpp
     src/height_index.cpp
     src/elements/heading.cpp
     src/elements/bullet.cpp
@@ -15,6 +16,7 @@ add_library(hitokoto_core STATIC
     src/elements/escape.cpp
     src/elements/fenced_code.cpp
     src/elements/table.cpp
+    src/elements/front_matter.cpp
     src/reveal.cpp
     src/theme.cpp
 )
