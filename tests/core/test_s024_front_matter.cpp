@@ -439,6 +439,40 @@ TEST(S024_FrontMatter, PrettyJsonForTheTooltip) {
 
 // ---- Invalid and unsupported YAML (S024, "Invalid") ----------------------------------------
 
+// Code review O6, Armin: the badge names the mistakes writers make most often; "bad indentation"
+// is only indentation.
+TEST(S024_FrontMatter, InvalidYamlNamesTheMistake) {
+    using R = PropertiesErrorReason;
+    expectError(u"title: Note: draft\n", R::ColonInPlainValue, 0);
+    expectError(u"a: b:\n", R::ColonInPlainValue, 0);
+    expectError(u"a:\n  - x: y: z\n", R::ColonInPlainValue, 1);
+    expectError(u"a: : x\n", R::ColonInPlainValue, 0);
+    expectError(u"a: \"C:\\path\"\n", R::UnknownEscape, 0);
+    expectError(u"a: [\"\\q\"]\n", R::UnknownEscape, 0);
+    expectError(u"a: \"x\" y\n", R::TextAfterValue, 0);
+    expectError(u"a: 'x' y\n", R::TextAfterValue, 0);
+    expectError(u"a: [x] y\n", R::TextAfterValue, 0);
+    expectError(u"a: [\"x\" y]\n", R::TextAfterValue, 0);
+    expectError(u"a: | text\n  b\n", R::TextAfterValue, 0);
+    expectError(u"{a: 1}\nb: 2\n", R::TextAfterValue, 1);
+    expectError(u"author: @armin\n", R::ReservedCharacter, 0);
+    expectError(u"a: `x`\n", R::ReservedCharacter, 0);
+    expectError(u"a: %x\n", R::ReservedCharacter, 0);
+    expectError(u"a: ]\n", R::ReservedCharacter, 0);
+    expectError(u"a: [@x]\n", R::ReservedCharacter, 0);
+    // Indentation stays "bad indentation", also a block collection on its key's line.
+    expectError(u"a: - x\n", R::BadIndentation, 0);
+    expectError(u"a:\n  b: 1\n   c: 2\n", R::BadIndentation, 2);
+    expectError(u"a: 1\n- x\n", R::BadIndentation, 1);
+    for (const R reason : {R::ColonInPlainValue, R::UnknownEscape, R::TextAfterValue, R::ReservedCharacter}) {
+        EXPECT_FALSE(isUnsupported(reason));
+    }
+    EXPECT_EQ(reasonText(R::ColonInPlainValue), "colon in a plain value (quote it)");
+    EXPECT_EQ(reasonText(R::UnknownEscape), "unknown escape");
+    EXPECT_EQ(reasonText(R::TextAfterValue), "text after a value");
+    EXPECT_EQ(reasonText(R::ReservedCharacter), "reserved character (quote it)");
+}
+
 TEST(S024_FrontMatter, InvalidYamlNamesLineAndReason) {
     using R = PropertiesErrorReason;
     expectError(u"a: 1\na: 2\n", R::DuplicateKey, 1);
@@ -521,13 +555,12 @@ TEST(S024_FrontMatter, CasesFromTheDifferentialRun) {
     if (const Property* r = row(hash, u"b")) {
         EXPECT_EQ(r->items, std::vector<std::u16string>{u"1"});
     }
-    // An unknown escape is invalid (js-yaml: "unknown escape sequence"). Like other unexpected text
-    // the badge calls it "bad indentation", as js-yaml calls most of it.
-    expectError(u"a: \"\\q\"\n", R::BadIndentation, 0);
+    // An unknown escape is invalid (js-yaml: "unknown escape sequence"); code review O6 names it.
+    expectError(u"a: \"\\q\"\n", R::UnknownEscape, 0);
     // A tab before a compact mapping in a sequence entry is indentation (both reject it).
     expectError(u"a:\n-\tk: v\n", R::TabInIndentation, 1);
     // An implicit key in a flow mapping and its `:` stay on one line (both reject it).
-    expectError(u"a: {k\n  : 1}\n", R::BadIndentation, 1);
+    expectError(u"a: {k\n  : 1}\n", R::TextAfterValue, 1);
     // Keys keep their order in JSON, as in ruamel.yaml; JavaScript puts integer-like keys first.
     const Properties order = parse(u"m: {2: a, 1: b, x: c}\n");
     ASSERT_EQ(order.rows.size(), 1U);

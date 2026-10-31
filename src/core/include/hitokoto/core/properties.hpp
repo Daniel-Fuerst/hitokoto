@@ -63,6 +63,10 @@ enum class PropertiesErrorReason : std::uint8_t {
     NotAMapping,
     DocumentEnd,
     TooDeep,
+    ColonInPlainValue,  ///< code review O6: `title: Note: draft`
+    UnknownEscape,      ///< `"C:\path"`
+    TextAfterValue,     ///< `a: "x" y`, `a: [x] y`, `a: | text`
+    ReservedCharacter,  ///< a value that starts with `@`, `` ` ``, `%`, `,`, `]` or `}`
     // Valid YAML outside the subset of ADR 0007:
     AnchorOrAlias,
     Tag,

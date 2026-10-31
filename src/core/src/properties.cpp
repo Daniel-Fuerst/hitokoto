@@ -1569,6 +1569,11 @@ std::string_view reasonText(PropertiesErrorReason reason) noexcept {
             return "directive";
         case Reason::IndentationIndicator:
             return "indentation indicator";
+        case Reason::ColonInPlainValue:
+        case Reason::UnknownEscape:
+        case Reason::TextAfterValue:
+        case Reason::ReservedCharacter:
+            return "bad indentation";  // red: code review O6 names them
     }
     return {};
 }
