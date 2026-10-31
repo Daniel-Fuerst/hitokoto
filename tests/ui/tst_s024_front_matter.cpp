@@ -12,6 +12,8 @@
 #include <QTableView>
 #include <QTime>
 
+#include <cmath>
+
 using namespace hitokoto;
 
 namespace {
@@ -167,11 +169,12 @@ private slots:
         QCOMPARE(types(view), (QStringList{QStringLiteral("text"), QStringLiteral("text"), QStringLiteral("text"),
                                            QStringLiteral("text"), QStringLiteral("date"), QStringLiteral("text"),
                                            QStringLiteral("unsupported")}));
-        // The JSON shows at most three lines: the block is far shorter than its 1,000 characters.
-        const auto style = core::propertiesStyle(core::builtinTheme(core::ColorScheme::Light));
+        // The JSON of its 1,000 characters shows at most three lines. Measured on its own row: how
+        // often the text values above wrap depends on the fonts of the platform (Windows offscreen
+        // without fonts wraps the environment line many times).
         const qreal line = QFontMetricsF(view->font()).lineSpacing();
-        QVERIFY2(view->height() <= 16 * line + 2 * style.padding + 8 * style.rowSpacing,
-                 qPrintable(QStringLiteral("%1 px").arg(view->height())));
+        QVERIFY2(rowRect(view, 6).height() <= std::ceil(3 * line),
+                 qPrintable(QStringLiteral("%1 px, line %2 px").arg(rowRect(view, 6).height()).arg(line)));
         QCOMPARE(editor->styler().renderFor(editor->document()->findBlockByNumber(28)).headingLevel, std::uint8_t{1});
         QCOMPARE(editor->frontMatterBadge(), QString());
         // Code review O5: the tooltip shows the JSON pretty-printed, 20 lines, then "…".
