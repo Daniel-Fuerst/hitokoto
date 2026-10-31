@@ -410,14 +410,16 @@ TEST(S024_FrontMatter, JsonAsJsonStringifyWritesIt) {
     EXPECT_EQ(p.rows[0].type, PropertyType::Unsupported);
     // Node 22: JSON.stringify of js-yaml 4.3.2's value, except "d": js-yaml makes a Date of it
     // ("2026-10-30T00:00:00.000Z"); the story keeps dates inside JSON as written.
-    EXPECT_EQ(
-        p.rows[0].text,
+    // Raw strings stay out of the macro arguments: MSVC's preprocessor misreads `\"` in them.
+    const std::u16string expected =
         uR"({"s":"quote \" and \\ and )"
         u"\u00e4"
-        uR"( and tab\t","n":7,"e":1000,"h":26,"big":100000000000000000000,"huge":1e+21,"small":0.000001,"tiny":1e-7,"inf":null,"nan":null,"t":true,"z":null,"d":"2026-10-30","l":["a",{"b":1}]})");
+        uR"( and tab\t","n":7,"e":1000,"h":26,"big":100000000000000000000,"huge":1e+21,"small":0.000001,"tiny":1e-7,"inf":null,"nan":null,"t":true,"z":null,"d":"2026-10-30","l":["a",{"b":1}]})";
+    EXPECT_EQ(p.rows[0].text, expected);
     const Properties control = parse(u"m: {c: \"\\x01\\b\\n\"}\n");
     ASSERT_EQ(control.rows.size(), 1U);
-    EXPECT_EQ(control.rows[0].text, uR"({"c":"\u0001\b\n"})");
+    const std::u16string controlExpected = uR"({"c":"\u0001\b\n"})";
+    EXPECT_EQ(control.rows[0].text, controlExpected);
 }
 
 // Code review O5: the tooltip of an unsupported value, as JSON.stringify(value, null, 2) writes it
@@ -436,12 +438,13 @@ TEST(S024_FrontMatter, PrettyJsonForTheTooltip) {
         u"\n  }\n}";
     EXPECT_EQ(prettyJson(json, 12), pretty);
     EXPECT_EQ(prettyJson(json, 100), pretty);
-    EXPECT_EQ(prettyJson(json, 5),
-              u"{\n"
-              uR"(  "s": "a,b:{\"[",)"
-              u"\n"
-              uR"(  "l": [)"
-              u"\n    1,\n    [],\n…");
+    const std::u16string cut =
+        u"{\n"
+        uR"(  "s": "a,b:{\"[",)"
+        u"\n"
+        uR"(  "l": [)"
+        u"\n    1,\n    [],\n…";
+    EXPECT_EQ(prettyJson(json, 5), cut);
     EXPECT_EQ(prettyJson(u"[]", 20), u"[]");
     EXPECT_EQ(prettyJson(u"\"x\"", 20), u"\"x\"");
     // A long value: only the prefix of 20 lines is read and written.
