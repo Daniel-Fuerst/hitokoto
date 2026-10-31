@@ -294,6 +294,22 @@ private slots:
         QCOMPARE(editor->textCursor().positionInBlock(), 0);
     }
 
+    // Code review O7: a block scalar's first content line, at the content's indentation.
+    void aClickOnABlockScalarPutsTheCaretAtItsContent() {
+        test::Fixture f;
+        QVERIFY(
+            f.open(f.writeFile(QStringLiteral("scalar.md"), "---\ntitle: x\nabstract: |\n  First line\n---\nbody\n")));
+        f.placeCaret(5);
+        f.settle();
+        auto* editor = f.editor();
+        QWidget* view = editor->propertiesView();
+        QVERIFY(view != nullptr);
+        clickBlock(view, onValue(view, 1));
+        f.settle();
+        QCOMPARE(editor->textCursor().blockNumber(), 3);
+        QCOMPARE(editor->textCursor().positionInBlock(), 2);
+    }
+
     // Review O6: a selection with one end outside the block leaves the properties block; a mouse
     // button held keeps the form; the YAML shows when caret and anchor are both inside.
     void aSelectionAcrossTheBlockKeepsTheProperties() {

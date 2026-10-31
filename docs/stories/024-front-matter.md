@@ -154,7 +154,9 @@ covers, as with tables (ADR 0005). While a mouse button is held, the block keeps
 when the button went down; it switches when the button is released.
 
 A click on a row puts the caret at the first character of that row's value in the YAML (for a value
-on the lines below the key, on the first of them; for a null, at the end of the key line); a click
+on the lines below the key, on the first of them; for a block scalar, on its first content line at
+the content's indentation, or after its header if it has no content; for a null, directly after
+the colon, before a comment if there is one; code review O7); a click
 on the title or elsewhere in the block at the start of line 1, the first YAML line. Up from
 the first line below the block puts the caret on the closing line; Ctrl+Home, PageUp and the like
 reach the YAML lines as any text, so jumping to the top of a note shows its YAML.

@@ -355,6 +355,24 @@ TEST(S024_FrontMatter, QuotedFoldedAndBlockScalars) {
     EXPECT_NE(row(p, u"k2"), nullptr);
 }
 
+// Code review O7: a click on a block scalar puts the caret at its first content line, at the
+// content's indentation; on a null directly after the colon, also before a comment.
+TEST(S024_FrontMatter, ClickPositionsOfBlockScalarsAndNulls) {
+    const Properties p = parse(u"lit: |\n\n    first\n    second\nfold: >-\n  x\nempty: |\nnote:   # a note\nlast:\n");
+    ASSERT_FALSE(p.error.has_value());
+    const auto expectAt = [&](std::u16string_view key, std::size_t line, std::size_t column) {
+        if (const Property* r = row(p, key)) {
+            EXPECT_EQ(r->valueLine, line) << narrow(key);
+            EXPECT_EQ(r->valueColumn, column) << narrow(key);
+        }
+    };
+    expectAt(u"lit", 2, 4);
+    expectAt(u"fold", 5, 2);
+    expectAt(u"empty", 6, 7);  // no content: after the header
+    expectAt(u"note", 7, 5);
+    expectAt(u"last", 8, 5);
+}
+
 TEST(S024_FrontMatter, CommentsAndBlankLinesShowNothing) {
     for (const std::u16string_view yaml : {u"", u"\n\n", u"# only a comment\n\n  # indented\n"}) {
         const Properties p = parse(yaml);
