@@ -42,7 +42,8 @@ Qt 6.12), release build, offscreen, 10 runs. These are the baselines in `bench/b
 
 `s024_*` (story S024, review O7 and O8): the 10 MB document (`largeDocument`) with 200 properties
 of every type in front of it; opening it until the properties block shows (median of 5), 200 keys
-typed on the heading below the block (a character and Backspace in turn), Up into the block and
+typed on the line directly below the closing line, where opening puts the caret (a character and
+Backspace in turn; code review O1), Up into the block and
 Down out of it (10 rounds); then two documents whose front matter has 5,000 top-level keys or one
 nested value of 5,000 lines: Up into the block, a character typed and removed on its closing line,
 Down out of it (5 rounds), so that the block is read and built again. Three runs of the branch

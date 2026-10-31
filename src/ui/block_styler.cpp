@@ -1026,12 +1026,12 @@ void BlockStyler::frontMatterSlice() {
 void BlockStyler::frontMatterAfterEdit(int first, int last) {
     // Front matter depends on its first line and its closing line: an edit of the first line, at
     // or above the closing line, or of a line that could close it while it is not closed, confirms
-    // it again.
+    // it again. An edit on the line below the closing line cannot change it (S024 review O1).
     const core::BlockState candidate = registry_.documentStart();
     if (!candidate.active()) {
         return;
     }
-    if (first == 0 || frontMatter_.next >= 0 || (frontMatterClose_ >= 0 && first <= frontMatterClose_ + 1)) {
+    if (first == 0 || frontMatter_.next >= 0 || (frontMatterClose_ >= 0 && first <= frontMatterClose_)) {
         checkFrontMatter();
         return;
     }

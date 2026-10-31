@@ -351,9 +351,10 @@ void PropertiesEmbedder::documentChanged(int position, int charsRemoved, int cha
     if (close_ < 0) {
         return;  // new front matter comes through the styler's confirmation
     }
-    // An edit at or above the line after the closing line can change the YAML.
+    // Only an edit at or above the closing line can change the YAML (review O1): joining the line
+    // below to the closing line reports a position on the closing line.
     const QTextBlock block = editor_->document()->findBlock(position);
-    if (!block.isValid() || block.blockNumber() <= close_ + 1) {
+    if (!block.isValid() || block.blockNumber() <= close_) {
         dirty_ = true;
         schedule();
     }

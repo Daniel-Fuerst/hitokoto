@@ -542,7 +542,7 @@ double measurePropertiesOpen(ui::MainWindow& w, const QString& path, bool& first
     return ms;
 }
 
-/// S024: key-to-paint of typing on the first line below the front matter (the heading of the body).
+/// S024: key-to-paint of typing at the end of `line` (the first line below the front matter).
 std::vector<double> measureTypingBelowProperties(ui::MainWindow& w, int line, int keys) {
     ui::EditorWidget* e = w.editor();
     QTextCursor c(e->document()->findBlockByNumber(line));
@@ -875,7 +875,8 @@ int main(int argc, char* argv[]) {
     printSamples("s024_open_10mb_properties_ms", propertiesOpen);
     std::printf("s024: the first screen %s the properties block\n", firstScreen ? "shows" : "does not show");
     r["s024_open_10mb_properties_ms"] = stats(propertiesOpen).median;
-    const int below = w.editor()->styler().frontMatterClose() + 2;  // the heading after the blank line
+    // Review O1 (code): the line directly below the closing line, where opening puts the caret.
+    const int below = w.editor()->styler().frontMatterClose() + 1;
     const auto typingProperties = stats(measureTypingBelowProperties(w, below, 200));
     r["s024_typing_median_ms"] = typingProperties.median;
     r["s024_typing_p95_ms"] = typingProperties.p95;
