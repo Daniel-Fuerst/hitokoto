@@ -564,6 +564,18 @@ TEST(S024_FrontMatter, CasesFromTheDifferentialRun) {
     const Properties signedJson = parse(u"m: [[-0x1A, +0o17]]\n");
     ASSERT_EQ(signedJson.rows.size(), 1U);
     EXPECT_EQ(signedJson.rows[0].text, u"[[-26,15]]");
+    // Code review O11: `-.5` and `+.5` are numbers and `1e400` is a number whose JSON is null, as
+    // in the core schema and ruamel.yaml; js-yaml reads all three as text.
+    const Properties fractions = parse(u"a: -.5\nb: +.5\nc: 1e400\nm: [[-.5, +.5, 1e400]]\n");
+    ASSERT_FALSE(fractions.error.has_value());
+    for (const std::u16string_view key : {u"a", u"b", u"c"}) {
+        if (const Property* r = row(fractions, key)) {
+            EXPECT_EQ(r->type, PropertyType::Number) << narrow(key);
+        }
+    }
+    if (const Property* r = row(fractions, u"m")) {
+        EXPECT_EQ(r->text, u"[[-0.5,0.5,null]]");
+    }
     // A `#` right after a closing quote or bracket starts a comment (both references).
     const Properties hash = parse(u"a: \"x\"#c\nb: [1]#c\n");
     ASSERT_FALSE(hash.error.has_value());

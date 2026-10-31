@@ -356,7 +356,8 @@ text, no properties block, no badge.
   indicators, `...`, invalid calendar dates, `0b` and `_` in numbers, a top-level mapping that is
   indented): keys keep their order in JSON, as in ruamel.yaml, where JavaScript puts integer-like
   keys first; a line with only a tab inside a block scalar is an empty line (both references reject
-  it). In sequences nested deeper than their parent's next item, js-yaml attaches the later items
+  it); `-.5` and `+.5` are numbers and `1e400` a number whose JSON is `null`, as in ruamel.yaml
+  (js-yaml: text; code review O11). In sequences nested deeper than their parent's next item, js-yaml attaches the later items
   to the inner sequence; ruamel.yaml and hitokoto do not. Test `CasesFromTheDifferentialRun`.
 - Differences from Obsidian, recorded here and in the tests: types come from values, not from a
   vault-wide list; a quoted date is text; a scalar `tags: a, b` is one chip (Obsidian may split
