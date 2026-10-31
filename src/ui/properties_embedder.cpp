@@ -23,6 +23,9 @@ namespace {
 
 constexpr qint64 kKeyNanoseconds = 4'000'000;    ///< reading and building on a key (S024)
 constexpr qint64 kSliceNanoseconds = 6'000'000;  ///< an idle slice, as the styler's
+/// Reading and building when a file is opened: one frame, so that the first screen of a note
+/// with ordinary front matter shows the properties block.
+constexpr qint64 kOpeningNanoseconds = 16'000'000;
 
 /// The badge after the first line of invalid front matter: its text is its accessible name.
 class Badge final : public QWidget {
@@ -133,6 +136,48 @@ bool PropertiesEmbedder::caretInside() const {
     return c.blockNumber() <= close_ && anchor <= close_;
 }
 
+int PropertiesEmbedder::confirmedClose() const {
+    return enabled_ && hasLook_ && !styler_->frontMatterPending() ? styler_->frontMatterClose() : -1;
+}
+
+void PropertiesEmbedder::placeCaretAfterOpening(bool loaded) {
+    afterOpening_ = false;
+    if (confirmedClose() >= 0 && placeCaretBelow()) {
+        return;
+    }
+    editor_->setTextCursor(QTextCursor(editor_->document()));
+    afterOpening_ = loaded && enabled_ && styler_->frontMatterPending();  // work() places it once confirmed
+}
+
+bool PropertiesEmbedder::placeCaretBelow() {
+    const int close = confirmedClose();
+    if (close < 0) {
+        return false;
+    }
+    if (close != close_ || dirty_ || forgotten_) {
+        if (shown_ && !forgotten_) {
+            reveal();
+        }
+        forgotten_ = false;
+        shown_ = false;
+        hiddenTo_ = -1;
+        if (view_ != nullptr) {
+            view_->hide();
+        }
+        close_ = close;
+        read();
+    }
+    const QTextBlock below = editor_->document()->findBlockByNumber(close_ + 1);
+    if (!error_ && below.isValid()) {
+        editor_->setTextCursor(QTextCursor(below));  // reads and builds for at most 4 ms (caretMoved)
+        if (busy() && !caretInside() && work(kOpeningNanoseconds)) {
+            work_.stop();  // built within the frame of opening
+        }
+        return true;
+    }
+    return false;
+}
+
 void PropertiesEmbedder::schedule() {
     if (!work_.isActive()) {
         work_.start();
@@ -159,7 +204,15 @@ bool PropertiesEmbedder::work(qint64 nanoseconds) {
             view_->hide();
         }
     }
-    const int close = enabled_ && hasLook_ && !styler_->frontMatterPending() ? styler_->frontMatterClose() : -1;
+    const int close = confirmedClose();
+    if (afterOpening_ && !styler_->frontMatterPending()) {
+        afterOpening_ = false;
+        const QTextCursor cursor = editor_->textCursor();
+        if (cursor.position() == 0 && !cursor.hasSelection()) {
+            (void)placeCaretBelow();  // the caret has not moved since opening
+            return work(nanoseconds);
+        }
+    }
     if (close != close_) {
         if (shown_) {
             reveal();
@@ -220,9 +273,7 @@ void PropertiesEmbedder::caretMoved() {
         schedule();
         return;
     }
-    const bool stale =
-        dirty_ || (view_ != nullptr && !error_ && !view_->built()) ||
-        close_ != (enabled_ && hasLook_ && !styler_->frontMatterPending() ? styler_->frontMatterClose() : -1);
+    const bool stale = dirty_ || (view_ != nullptr && !error_ && !view_->built()) || close_ != confirmedClose();
     if (stale) {
         // Leaving the block after an edit: read and build at most 4 ms now, the rest in idle slices.
         if (!caretInside() && !held_ && !work(kKeyNanoseconds)) {

@@ -55,6 +55,9 @@ public:
     [[nodiscard]] QString frontMatterBadge() const;
     /// S024 review O2: front matter as a properties block (on) or as plain text, as in S023 (off).
     void setFrontMatterAsProperties(bool on);
+    /// After opening a file (`loaded`: all of it is in): the caret below closed front matter, else at
+    /// the start of the document (S024).
+    void placeCaretAfterOpening(bool loaded);
 
 signals:
     void painted();

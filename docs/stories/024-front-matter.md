@@ -156,8 +156,9 @@ reach the YAML lines as any text, so jumping to the top of a note shows its YAML
 **After opening** (Armin, 2026-10-31). Opening puts the caret at the start of the document (S001).
 If the document starts with closed front matter whose YAML is valid, the caret stands at the start
 of the first line below the closing line instead, so the first screen shows the properties block.
-Front matter confirmed only in idle slices moves the caret there when it is confirmed, unless the
-caret has moved since. Without a line below the closing line, with invalid YAML or with the toggle
+Reading and building take at most one frame (16 ms) then, instead of 4 ms. Front matter
+confirmed only in idle slices moves the caret there when it is confirmed, unless the caret has
+moved since. Without a line below the closing line, with invalid YAML or with the toggle
 off, the caret stays at the start.
 
 **Invalid YAML.** The lines stay plain text as in S023, revealed or not. While the caret is

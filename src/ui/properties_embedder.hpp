@@ -64,8 +64,16 @@ public:
     void reposition();
     /// Up from the first line below the block goes to the closing line. True if handled.
     bool handleEditorKey(QKeyEvent* event);
+    /// After opening (Armin, 2026-10-31): the caret at the start of the first line below closed
+    /// front matter with valid YAML, else at the start of the document. `loaded`: the whole file is
+    /// in; front matter still being confirmed then places the caret when it is, unless it moved.
+    void placeCaretAfterOpening(bool loaded);
 
 private:
+    /// The closing line the styler confirmed, or -1 (none, still confirming, toggle off).
+    [[nodiscard]] int confirmedClose() const;
+    /// The caret below the front matter if its YAML is valid and a line follows it; false if not.
+    bool placeCaretBelow();
     /// Reads the YAML and builds the block for at most `nanoseconds`, then shows what the caret
     /// asks for; true when nothing is left to do.
     bool work(qint64 nanoseconds);
@@ -91,12 +99,13 @@ private:
     bool hasLook_ = false;
     int width_ = 400;
     bool enabled_ = true;
-    int close_ = -1;          ///< closing line of the front matter read last, -1 = none
-    bool dirty_ = true;       ///< the lines changed since they were read
-    bool shown_ = false;      ///< the block stands for the lines (they are hidden)
-    int hiddenTo_ = -1;       ///< last line hidden by conceal()
-    bool held_ = false;       ///< a mouse button is held
-    bool forgotten_ = false;  ///< blocks gone: touch nothing until the next slice
+    int close_ = -1;             ///< closing line of the front matter read last, -1 = none
+    bool dirty_ = true;          ///< the lines changed since they were read
+    bool shown_ = false;         ///< the block stands for the lines (they are hidden)
+    int hiddenTo_ = -1;          ///< last line hidden by conceal()
+    bool held_ = false;          ///< a mouse button is held
+    bool forgotten_ = false;     ///< blocks gone: touch nothing until the next slice
+    bool afterOpening_ = false;  ///< opened while the front matter was being confirmed
     std::optional<core::PropertiesError> error_;
     QTimer work_;
 };

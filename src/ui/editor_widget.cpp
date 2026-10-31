@@ -405,6 +405,10 @@ void EditorWidget::setFrontMatterAsProperties(bool on) {
     properties_->setEnabled(on);
 }
 
+void EditorWidget::placeCaretAfterOpening(bool loaded) {
+    properties_->placeCaretAfterOpening(loaded);
+}
+
 void EditorWidget::paintInlineCodeBoxes(QPainter& painter, const QTextBlock& block, const core::LineRender& render,
                                         QPointF origin, const core::CodeStyle& style) {
     const QTextLayout* layout = block.layout();
