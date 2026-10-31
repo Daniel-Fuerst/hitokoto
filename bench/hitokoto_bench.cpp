@@ -37,7 +37,9 @@
 #include <cstdio>
 #include <iterator>
 #include <map>
+#include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 using namespace hitokoto;
@@ -127,6 +129,44 @@ QByteArray s023Document(qsizetype target, int longLines) {
     while (out.size() < target) {
         section(++i);
     }
+    return out;
+}
+
+/// S024: front matter of `keys` top-level properties of every type, or (`nested`) one key whose
+/// value is a list of `keys` single-key mappings, followed by `body`.
+QByteArray s024Document(int keys, bool nested, const QByteArray& body) {
+    QByteArray out = "---\n";
+    if (nested) {
+        out += "deep:\n";
+        for (int i = 0; i < keys; ++i) {
+            out += "  - k" + QByteArray::number(i) + ": " + QByteArray::number(i) + "\n";
+        }
+    } else {
+        for (int i = 0; i < keys; ++i) {
+            const QByteArray key = "key" + QByteArray::number(i) + ": ";
+            switch (i % 6) {
+                case 0:
+                    out += key + "text value " + QByteArray::number(i) + " with some words\n";
+                    break;
+                case 1:
+                    out += key + QByteArray::number(i * 3) + "\n";
+                    break;
+                case 2:
+                    out += key + (i % 4 == 0 ? "true" : "false") + "\n";
+                    break;
+                case 3:
+                    out += key + "2026-10-30\n";
+                    break;
+                case 4:
+                    out += key + "[alpha, beta, gamma]\n";
+                    break;
+                default:
+                    out += key + "\n  - one\n  - two\n";
+                    break;
+            }
+        }
+    }
+    out += "---\n\n" + body;
     return out;
 }
 
@@ -480,6 +520,80 @@ BulletTiming measureUnderlineBelowParagraph(ui::MainWindow& w, int rounds) {
     return r;
 }
 
+/// S024: until the properties block shows after opening `path` (or 120 s).
+double measurePropertiesOpen(ui::MainWindow& w, const QString& path, bool& firstScreen) {
+    QSignalSpy done(w.session(), &ui::DocumentSession::loadFinished);
+    QElapsedTimer t;
+    firstScreen = false;
+    bool shown = false;
+    const QMetaObject::Connection first = QObject::connect(w.session(), &ui::DocumentSession::firstChunkShown, &w, [&] {
+        w.editor()->viewport()->repaint();
+        firstScreen = w.editor()->propertiesView() != nullptr;
+        shown = true;
+    });
+    t.start();
+    w.openFile(path);
+    (void)QTest::qWaitFor([&] { return w.editor()->propertiesView() != nullptr; }, 120000);
+    const double ms = static_cast<double>(t.nsecsElapsed()) / 1e6;
+    (void)QTest::qWaitFor([&] { return shown; }, 120000);
+    QObject::disconnect(first);
+    (void)QTest::qWaitFor([&] { return !done.isEmpty(); }, 120000);
+    (void)waitUntilStyled(w.editor());
+    return ms;
+}
+
+/// S024: key-to-paint of typing on the first line below the front matter (the heading of the body).
+std::vector<double> measureTypingBelowProperties(ui::MainWindow& w, int line, int keys) {
+    ui::EditorWidget* e = w.editor();
+    QTextCursor c(e->document()->findBlockByNumber(line));
+    c.movePosition(QTextCursor::EndOfBlock);
+    e->setTextCursor(c);
+    QCoreApplication::processEvents();
+    std::vector<double> samples;
+    for (int i = 0; i < keys; ++i) {
+        QElapsedTimer t;
+        t.start();
+        if (i % 2 == 0) {
+            test::keyClick(e, 'x');
+        } else {
+            test::keyClick(e, Qt::Key_Backspace);
+        }
+        e->viewport()->repaint();
+        samples.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
+    }
+    return samples;
+}
+
+/// S024: Up from the first line below the block into its YAML and Down out again, `rounds` times;
+/// `edit`: a character typed and removed on the closing line before leaving, so that the block is
+/// read and built again. Key-to-paint of the keys, and the time until the block shows again.
+BulletTiming measurePropertiesEnterLeave(ui::MainWindow& w, int line, int rounds, bool edit) {
+    ui::EditorWidget* e = w.editor();
+    BulletTiming r;
+    const auto press = [&](auto key) {
+        QElapsedTimer t;
+        t.start();
+        test::keyClick(e, key);
+        e->viewport()->repaint();
+        r.keys.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
+    };
+    for (int i = 0; i < rounds; ++i) {
+        e->setTextCursor(QTextCursor(e->document()->findBlockByNumber(line)));
+        (void)waitUntilStyled(e);
+        press(Qt::Key_Up);
+        if (edit) {
+            test::keyClick(e, 'x');
+            test::keyClick(e, Qt::Key_Backspace);
+        }
+        QElapsedTimer settled;
+        settled.start();
+        press(Qt::Key_Down);
+        (void)QTest::qWaitFor([&] { return e->propertiesView() != nullptr; }, 120000);
+        r.settled.push_back(static_cast<double>(settled.nsecsElapsed()) / 1e6);
+    }
+    return r;
+}
+
 struct SaveTiming {
     double uiBlockedMs = 0;  ///< longest stall of the UI thread while saving
     double totalMs = 0;      ///< until the file is on disk (saveFinished)
@@ -563,6 +677,11 @@ constexpr std::string_view kReportOnly[] = {"save_10mb_total_ms",
                                             "s023_bullet_settled_ms",
                                             "s023_underline_typing_max_ms",
                                             "s023_underline_settled_ms",
+                                            "s024_typing_max_ms",
+                                            "s024_typing_over_16ms",
+                                            "s024_enter_leave_max_ms",
+                                            "s024_leave_5000_keys_max_ms",
+                                            "s024_leave_5000_nested_max_ms",
                                             "startup_p95_ms"};
 
 // Brief, section 4. Most budgets are meaningful on reference hardware only (S011) and fail the run
@@ -592,6 +711,12 @@ const Budget kBudgets[] = {
     {"s023_break_typing_max_ms", 50, "no key event above 50 ms, break (hard)", true},
     {"s023_bullet_typing_max_ms", 50, "no key event above 50 ms, \"- \" before a paragraph (hard)", true},
     {"s023_underline_typing_max_ms", 50, "no key event above 50 ms, underline below a paragraph (hard)", true},
+    {"s024_open_10mb_properties_ms", 3000, "10 MB with front matter: properties shown < 3 s"},
+    {"s024_typing_p95_ms", 16, "key to screen <= 16 ms (below front matter)"},
+    {"s024_typing_max_ms", 50, "no key event above 50 ms, below front matter (hard)", true},
+    {"s024_enter_leave_max_ms", 50, "entering and leaving front matter <= 50 ms (hard)", true},
+    {"s024_leave_5000_keys_max_ms", 50, "leaving 5,000 edited properties <= 50 ms (hard)", true},
+    {"s024_leave_5000_nested_max_ms", 50, "leaving a nested value of 5,000 lines <= 50 ms (hard)", true},
     {"save_10mb_ui_blocked_ms", 16, "saving never stalls the UI (hard)", true},
     {"save_10mb_total_ms", 1000, "10 MB on disk within 1 s (hard)", true},
 };
@@ -627,6 +752,10 @@ int main(int argc, char* argv[]) {
         writeFile(dir, QStringLiteral("codeblock10mb.md"), codeBlockDocument(qsizetype{10} * 1024 * 1024));
     const QString breaks10 =
         writeFile(dir, QStringLiteral("s023-10mb.md"), s023Document(qsizetype{10} * 1024 * 1024, 20000));
+    const QString properties10 = writeFile(dir, QStringLiteral("s024-10mb.md"),
+                                           s024Document(200, false, largeDocument(qsizetype{10} * 1024 * 1024)));
+    const QString keys5000 = writeFile(dir, QStringLiteral("s024-keys.md"), s024Document(5000, false, "# Body\n"));
+    const QString nested5000 = writeFile(dir, QStringLiteral("s024-nested.md"), s024Document(5000, true, "# Body\n"));
 
     std::map<std::string, double> r;
     const auto startup = stats(measureStartup(parser.value(appOpt), small, parser.value(runsOpt).toInt()));
@@ -730,6 +859,46 @@ int main(int argc, char* argv[]) {
     r["s023_underline_typing_max_ms"] = underlineKeys.max;
     r["s023_underline_settled_ms"] = stats(underline.settled).median;
     w.editor()->document()->setModified(false);
+    w.session()->newDocument();
+
+    // S024: 10 MB with 200 properties in front: opening until the block shows, typing in the body
+    // below it, entering and leaving it; then leaving an edited block of 5,000 keys and of a nested
+    // value of 5,000 lines (review O7, O8).
+    std::vector<double> propertiesOpen;
+    bool firstScreen = true;
+    for (int i = 0; i < kOpenRuns; ++i) {
+        w.session()->newDocument();
+        bool shown = false;
+        propertiesOpen.push_back(measurePropertiesOpen(w, properties10, shown));
+        firstScreen = firstScreen && shown;
+    }
+    printSamples("s024_open_10mb_properties_ms", propertiesOpen);
+    std::printf("s024: the first screen %s the properties block\n", firstScreen ? "shows" : "does not show");
+    r["s024_open_10mb_properties_ms"] = stats(propertiesOpen).median;
+    const int below = w.editor()->styler().frontMatterClose() + 2;  // the heading after the blank line
+    const auto typingProperties = stats(measureTypingBelowProperties(w, below, 200));
+    r["s024_typing_median_ms"] = typingProperties.median;
+    r["s024_typing_p95_ms"] = typingProperties.p95;
+    r["s024_typing_p99_ms"] = typingProperties.p99;
+    r["s024_typing_max_ms"] = typingProperties.max;
+    r["s024_typing_over_16ms"] = typingProperties.over16;
+    const auto enterLeave = measurePropertiesEnterLeave(w, w.editor()->styler().frontMatterClose() + 1, 10, false);
+    printSamples("s024_enter_leave_ms", enterLeave.keys);
+    r["s024_enter_leave_median_ms"] = stats(enterLeave.keys).median;
+    r["s024_enter_leave_max_ms"] = stats(enterLeave.keys).max;
+    w.editor()->document()->setModified(false);
+    for (const auto& [path, name] : {std::pair{keys5000, std::string("s024_leave_5000_keys")},
+                                     std::pair{nested5000, std::string("s024_leave_5000_nested")}}) {
+        w.session()->newDocument();
+        bool shown = false;
+        (void)measurePropertiesOpen(w, path, shown);
+        const auto leave = measurePropertiesEnterLeave(w, w.editor()->styler().frontMatterClose() + 1, 5, true);
+        printSamples((name + "_keys_ms").c_str(), leave.keys);
+        printSamples((name + "_built_ms").c_str(), leave.settled);
+        r[name + "_max_ms"] = stats(leave.keys).max;
+        r[name + "_built_ms"] = stats(leave.settled).median;
+        w.editor()->document()->setModified(false);
+    }
 
     QJsonObject json;
     for (const auto& [k, v] : r) {

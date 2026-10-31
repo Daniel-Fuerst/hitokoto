@@ -38,6 +38,37 @@ Qt 6.12), release build, offscreen, 10 runs. These are the baselines in `bench/b
 | Key to paint, 10 MB file (median / p95) | 0.9 / 1.0 ms | 0.9 / 1.0 ms | 1.2 / 2.2 ms | ≤ 16 ms |
 | Save 10 MB: UI thread blocked (duration of the save() call; S017 measures the longest stall instead) | 6 ms | 36 ms | 24 ms | imperceptible |
 
+### 2026-10-31, development VM, S024 (release build, offscreen, Qt 6.12.0)
+
+`s024_*` (story S024, review O7 and O8): the 10 MB document (`largeDocument`) with 200 properties
+of every type in front of it; opening it until the properties block shows (median of 5), 200 keys
+typed on the heading below the block (a character and Backspace in turn), Up into the block and
+Down out of it (10 rounds); then two documents whose front matter has 5,000 top-level keys or one
+nested value of 5,000 lines: Up into the block, a character typed and removed on its closing line,
+Down out of it (5 rounds), so that the block is read and built again. Three runs of the branch
+against three runs of main 3a17d89 on the same VM, `--runs 10`.
+
+| Measurement | main 3a17d89 | S024 | Budget |
+|---|---|---|---|
+| Open 10 MB, first screen / styled | 56–75 ms / 3.89–3.97 s | 56–72 ms / 3.78–3.89 s | < 2–3 s first screen |
+| Key to paint, 10 MB, median / p95 / p99 | 1.1–1.2 / 1.3–2.8 / 1.7–4.5 ms | 1.1–1.2 / 1.4–1.7 / 1.6–4.7 ms | ≤ 16 ms |
+| Open 10 MB with 200 properties, until the block shows | – | 44–56 ms; the first screen shows it | < 2–3 s |
+| Typing below the block, median / p95 / max | – | 2.3–2.4 / 2.5–5.7 / 3.0–10.3 ms | ≤ 16 ms p95, 50 ms max (hard) |
+| Entering and leaving the block, median / max | – | 1.5–1.6 / 2.9–5.8 ms | 50 ms max (hard) |
+| Leaving 5,000 edited keys, key max; until built | – | 10–14 ms; 121–178 ms | 50 ms max (hard) |
+| Leaving a nested value of 5,000 lines, key max; until built | – | 19–24 ms; 18–24 ms | 50 ms max (hard) |
+
+Every other value stays within the spread of main. The first version left 5,000 edited keys in
+about 110 ms: deleting 5,000 row widgets, laying out the old rows again before they were replaced,
+showing a widget with 5,000 children, and two passes over the hidden lines (laid out by
+`blockBoundingRect` when the view scrolled past them, rendered by the panels and decorations on
+every repaint, about 60 and 35 ms; both fixed for all hidden lines, tests in S019). The rows are now
+painted by one widget and are accessible through interfaces of their own. Reading 5,000 keys takes
+about 4 ms (`parseProperties`), copying their lines out of the document about 2 ms; laying out the
+rows about 30 µs each, in idle slices. A new width or theme lays out all rows at once: about 40 ms
+for 5,000 keys, on a resize, not on a key. The `s024_*` values in `bench/baselines/linux.json` will
+come from the CI run of the pull request.
+
 ### 2026-10-30, development VM, S023 (release build, offscreen, Qt 6.12.0)
 
 `s023_*` (review O9 of the story, O2 and O6 of the code review): a 10 MB document of sections with
