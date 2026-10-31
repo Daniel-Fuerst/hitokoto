@@ -164,7 +164,7 @@ reach the YAML lines as any text, so jumping to the top of a note shows its YAML
 **After opening** (Armin, 2026-10-31). Opening puts the caret at the start of the document (S001).
 If the document starts with closed front matter whose YAML is valid, the caret stands at the start
 of the first line below the closing line instead, so the first screen shows the properties block.
-Reading and building take at most one frame (16 ms) then, instead of 4 ms. Front matter
+Building takes at most one frame (16 ms) then, instead of 4 ms. Front matter
 confirmed only in idle slices moves the caret there when it is confirmed, unless the caret has
 moved since. Without a line below the closing line, with a table on that line (its first cell
 would take the keyboard focus; code review O4, Armin's decision), with invalid YAML or with the
@@ -181,10 +181,14 @@ reserves the height of the properties block, the other lines take none. Switchin
 lines below; the caret stays in view.
 
 **Long front matter.** Until the closing line is confirmed (S023, idle slices after 4 ms) and the
-YAML is read and the block laid out, the lines show as they did in S023. Reading and building take
-at most 4 ms on a key and continue in idle slices; when they finish, the block switches once to
+YAML is read and the block laid out, the lines show as they did in S023. Building takes at most
+4 ms on a key and continues in idle slices; when it finishes, the block switches once to
 properties without the caret moving (an exception to decision 8, review O7). Front matter that
 fits in that budget, as every ordinary note does, switches before the first screen is painted.
+Reading the YAML is not sliced (code review O3): the key that leaves the block, or one idle slice
+while the closing line is still being confirmed, copies and parses all of it, about 4 ms for
+5,000 keys. From about 25,000 keys (some 500 KB of front matter) one such pass takes more than
+50 ms; `docs/performance.md` has the numbers.
 
 **Toggle.** With `ui::Options::frontMatterAsProperties` off, front matter shows as in S023: plain
 text, no properties block, no badge.

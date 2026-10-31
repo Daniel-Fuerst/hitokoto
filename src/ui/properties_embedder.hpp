@@ -2,8 +2,9 @@
 // S024: shows a note's front matter as a properties block (PropertiesView) while the caret is
 // elsewhere, and as its YAML while the caret and the anchor of the selection are both in it. The
 // first line reserves the block's height in BlockLayout (ADR 0003), the other lines are hidden,
-// as a table's are (S018); nothing is ever written from the block (ADR 0002). Reading the YAML and
-// building the block take at most 4 ms on a key and go on in idle slices (review O7, O8).
+// as a table's are (S018); nothing is ever written from the block (ADR 0002). Building the block
+// takes at most 4 ms on a key and goes on in idle slices (review O7, O8); reading the YAML is done
+// at once (code review O3).
 #pragma once
 
 #include "block_layout.hpp"
