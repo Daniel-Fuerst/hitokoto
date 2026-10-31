@@ -82,7 +82,7 @@ of ADR 0007:
 | Reason | Kind | Examples |
 |---|---|---|
 | duplicate key | invalid | `a: 1` / `a: 2`, `a: 1` / `"a": 2` |
-| bad indentation | invalid | a sequence item less indented than its siblings, a key indented in the top mapping |
+| bad indentation | invalid | a sequence item less indented than its siblings, a key indented in the top mapping; also any other text the subset does not expect where it stands, such as `a: b: c`, text after a closing quote or an unknown escape (`"\q"`), as js-yaml names most of it |
 | tab in indentation | invalid | a tab before `- x` |
 | unclosed quote | invalid | `a: "abc` |
 | unclosed flow collection | invalid | `a: [1, 2` |
@@ -105,7 +105,7 @@ always text):
 | plain or quoted scalar not matched below, block scalar | text | the scalar's text, wrapped; line breaks of block scalars kept | three lines |
 | null (`null`, `Null`, `NULL`, `~`, nothing) | text | empty | three lines |
 | plain `true`, `True`, `TRUE`, `false`, `False`, `FALSE` | checkbox | a ticked or empty box (read only) | box with a tick |
-| plain integer or float of the core schema: `[-+]?[0-9]+`, `0o[0-7]+`, `0x[0-9a-fA-F]+`, decimal with fraction or exponent, `.inf`, `-.inf`, `.nan` (and their `Inf`, `INF`, `NaN`, `NAN` spellings) | number | as written | `#` |
+| plain integer or float of the core schema: `[-+]?[0-9]+`, `[-+]?0o[0-7]+`, `[-+]?0x[0-9a-fA-F]+` (the sign as in js-yaml and ruamel.yaml), decimal with fraction or exponent, `.inf`, `-.inf`, `.nan` (and their `Inf`, `INF`, `NaN`, `NAN` spellings) | number | as written | `#` |
 | plain `YYYY-MM-DD`, a valid calendar date | date | the system's short date format (`QLocale`) | calendar |
 | plain `YYYY-MM-DDTHH:MM` or `YYYY-MM-DDTHH:MM:SS`, valid | date and time | short date and short time of the system | clock |
 | sequence whose items are all scalars, also empty (`[]`) | list | one chip per item, the item's text | bulleted list |
@@ -324,6 +324,14 @@ text, no properties block, no badge.
   `theme.hpp`, `theme.cpp` and `docs/theming.md` after the escape and thematic-break tokens, and
   touches `LineRender::empty()` in `markdown.hpp`. Whichever merges second keeps both: the
   condition `frontMatter` and S022's in `empty()`, both token blocks.
+- Differences from the reference parsers, found in a differential run of 20,000 random front
+  matters per seed against js-yaml 4.3.2 (2026-10-31; ruamel.yaml 0.19.1 to decide where they
+  disagree), besides those of the subset (anchors, tags, complex keys, directives, indentation
+  indicators, `...`, invalid calendar dates, `0b` and `_` in numbers, a top-level mapping that is
+  indented): keys keep their order in JSON, as in ruamel.yaml, where JavaScript puts integer-like
+  keys first; a line with only a tab inside a block scalar is an empty line (both references reject
+  it). In sequences nested deeper than their parent's next item, js-yaml attaches the later items
+  to the inner sequence; ruamel.yaml and hitokoto do not. Test `CasesFromTheDifferentialRun`.
 - Differences from Obsidian, recorded here and in the tests: types come from values, not from a
   vault-wide list; a quoted date is text; a scalar `tags: a, b` is one chip (Obsidian may split
   it; not verified); dates are not linked to daily notes; text values that are URLs or `[[links]]`
