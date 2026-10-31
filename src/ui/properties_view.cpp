@@ -707,24 +707,25 @@ QAccessibleInterface* PropertiesView::accessibleElement(int element) {
         return nullptr;
     }
     const auto index = static_cast<std::size_t>(element);
-    if (accessibleIds_.size() <= index) {
-        accessibleIds_.resize(index + 1, 0);
+    if (accessibleElements_.size() <= index) {
+        accessibleElements_.resize(index + 1, nullptr);
     }
-    if (accessibleIds_[index] == 0) {
-        auto created = std::make_unique<ElementAccessible>(this, element);
-        // Qt owns the interface from here on; forgetAccessibleElements() deletes it.
-        accessibleIds_[index] = QAccessible::registerAccessibleInterface(created.release());
+    QAccessibleInterface*& slot = accessibleElements_[index];
+    if (slot == nullptr) {
+        // Registered, Qt's cache owns it; forgetAccessibleElements() deletes it.
+        slot = new ElementAccessible(this, element);
+        QAccessible::registerAccessibleInterface(slot);
     }
-    return QAccessible::accessibleInterface(accessibleIds_[index]);
+    return slot;
 }
 
 void PropertiesView::forgetAccessibleElements() {
-    for (const QAccessible::Id id : accessibleIds_) {
-        if (id != 0) {
-            QAccessible::deleteAccessibleInterface(id);
+    for (QAccessibleInterface* element : accessibleElements_) {
+        if (element != nullptr) {
+            QAccessible::deleteAccessibleInterface(QAccessible::uniqueId(element));
         }
     }
-    accessibleIds_.clear();
+    accessibleElements_.clear();
 }
 
 }  // namespace hitokoto::ui

@@ -143,7 +143,7 @@ private:
     bool laidOut_ = false;
     bool pressed_ = false;
     int paintedTextLines_ = 0;
-    std::vector<QAccessible::Id> accessibleIds_;  ///< registered on demand, 0 = none yet
+    std::vector<QAccessibleInterface*> accessibleElements_;  ///< registered on demand, null = none yet
 };
 
 }  // namespace hitokoto::ui
