@@ -475,6 +475,49 @@ private slots:
         }
     }
 
+    // Armin, 2026-10-31: after opening, the caret stands on the first line below closed front
+    // matter, so the first screen shows the properties block; Ctrl+Home still shows the YAML.
+    void openingPutsTheCaretBelowTheFrontMatter() {
+        {
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("note.md"), "---\ntitle: x\n---\n# Heading\nbody\n")));
+            f.settle();
+            QCOMPARE(f.editor()->textCursor().position(), f.editor()->document()->findBlockByNumber(3).position());
+            expectConcealed(f.editor(), 2, "opened");
+            test::keyClick(f.editor(), Qt::Key_Home, Qt::ControlModifier);
+            f.settle();
+            expectRevealed(f.editor(), 2, "Ctrl+Home");
+        }
+        {
+            QByteArray document = "---\n";  // closed in a later slice of the file, confirmed in idle slices
+            for (int i = 0; i < 5000; ++i) {
+                document += "key" + QByteArray::number(i) + ": value " + QByteArray::number(i) + "\n";
+            }
+            document += "---\nbody\n";
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), document)));
+            f.settle();
+            QCOMPARE(f.editor()->textCursor().blockNumber(), 5002);
+            expectConcealed(f.editor(), 5001, "long, opened");
+        }
+        for (const QByteArray& start : {QByteArray("# No front matter\n---\ntext\n"), QByteArray("---\ntitle: x\n---"),
+                                        QByteArray("---\ntitle: x\ntitle: y\n---\nbody\n")}) {
+            test::Fixture f;  // no front matter, nothing below it, or invalid YAML: the caret at the start
+            QVERIFY(f.open(f.writeFile(QStringLiteral("start.md"), start)));
+            f.settle();
+            QVERIFY2(f.editor()->textCursor().position() == 0, start.constData());
+        }
+        {
+            test::Fixture f;  // the toggle off: as in S023
+            ui::Options options = f.window->options();
+            options.frontMatterAsProperties = false;
+            f.window->setOptions(options);
+            QVERIFY(f.open(f.writeFile(QStringLiteral("off.md"), "---\ntitle: x\n---\nbody\n")));
+            f.settle();
+            QCOMPARE(f.editor()->textCursor().position(), 0);
+        }
+    }
+
     void theToggleGivesTheS023Behaviour() {
         test::Fixture f;
         ui::Options options = f.window->options();

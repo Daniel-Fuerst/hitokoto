@@ -153,6 +153,13 @@ on the title or elsewhere in the block at the start of line 1, the first YAML li
 the first line below the block puts the caret on the closing line; Ctrl+Home, PageUp and the like
 reach the YAML lines as any text, so jumping to the top of a note shows its YAML.
 
+**After opening** (Armin, 2026-10-31). Opening puts the caret at the start of the document (S001).
+If the document starts with closed front matter whose YAML is valid, the caret stands at the start
+of the first line below the closing line instead, so the first screen shows the properties block.
+Front matter confirmed only in idle slices moves the caret there when it is confirmed, unless the
+caret has moved since. Without a line below the closing line, with invalid YAML or with the toggle
+off, the caret stays at the start.
+
 **Invalid YAML.** The lines stay plain text as in S023, revealed or not. While the caret is
 outside, the first line `---` shows a badge after it: `Invalid YAML (line n): <reason>` or
 `Unsupported YAML (line n): <reason>`, with n the line in the document counted from 1 and the
@@ -190,6 +197,12 @@ text, no properties block, no badge.
 - Given front matter with a text, a number, `true`, `false`, a date, a date with time, a list in
   block and in flow style, `tags: one`, `tags` as a list, a null and a mapping
 - Then each row has the type, icon and display text of the table above
+
+**Scenario: opening shows the properties**
+- Given a file that starts with front matter and has a heading below it
+- When I open it
+- Then the caret stands at the start of the heading and the properties block shows
+- And Ctrl+Home shows the YAML
 
 **Scenario: the caret in the block shows the YAML**
 - Given the properties block
@@ -346,9 +359,9 @@ text, no properties block, no badge.
   against js-yaml 4.3.2 and ruamel.yaml 0.19.1 (YAML 1.2) and, for JSON numbers, Node 22; where
   the story decides otherwise (dates, anchors, tags, `0b`, `_`) the test says so.
 - UI: `tst_s024_front_matter` – the block for a review record, types and icons, reveal and conceal
-  by caret, selections and mouse drags, click to value, invalid YAML with the badge, special cases,
-  front matter above a table, height in the layout, the toggle, byte-exact save, tokens,
-  accessibility.
+  by caret, the caret after opening, selections and mouse drags, click to value, invalid YAML with
+  the badge, special cases, front matter above a table, height in the layout, the toggle,
+  byte-exact save, tokens, accessibility.
 - S009: `tst_s009_concealment::frontMatterWhileWalking`. The S023 walk
   `thematicBreaksAndSetextHeadingsWhileWalking` starts with plain lines instead of front matter,
   because the front matter now changes height when the caret enters it.
