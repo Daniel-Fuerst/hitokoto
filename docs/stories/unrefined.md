@@ -110,3 +110,32 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
 - **Open:** find the IntelliSense setting (CMake presets, `CMakeSettings`, `intelliSenseMode`) that
   makes the entries go away, or a Qt or Visual Studio bug report; until then the Error List filter
   "Build Only" hides them. Armin's goal: no entries in the Error List.
+
+## Benchmark job on Linux red without a code change
+
+- **Seen:** repeatedly since S017, most recently on pull request #24 (2026-10-31): the Linux job
+  fails the 25 % comparison and a restart is green. The first run of #24 had a fast runner (the
+  older keys 10–45 % below their baseline); the `s024_*` values taken from it failed on the next,
+  ordinary runner (`s024_leave_5000_keys_built_ms` 63 → 84 ms, `s024_leave_long_text_built_ms`
+  37 → 55 ms), while the older keys lay about on their baseline again. Armin restarted the job
+  three times; the artefacts show the same runner type each time (core decoding 20 ms at
+  3.25 GHz, against 12 ms at 3.7 GHz in the first run), and the three runs agree within a few per
+  cent, except `s024_open_10mb_properties_ms` (31, 55, 61 ms) and single maxima
+  (`typing_small_max_ms` 6.8 ms once). `open_10mb_styled_ms` lies 19–20 % above its baseline in
+  all three (3.08–3.12 s against 2.60 s) but only 2 % above it on the fast runner, so it depends
+  on more than CPU speed (idle slices, timers); it is 5 % from failing.
+- **How the gate works:** `bench/baselines/linux.json` holds the values of one CI run per key; new
+  keys come from the first run of the pull request that adds them. A key fails when it is 25 %
+  and 2 ms above its baseline; medians and p95/p99 are compared, maxima and counts only reported.
+  Runner speed varies from run to run, and not by one factor for all kinds of work (2026-10-28:
+  decoding ×2.0, rendering ×1.04, typing ×1.8), so Armin declined normalising by runner speed.
+- **Options (open):** (1) a baseline per key from several runs (the slowest, or a high
+  percentile), and new keys only reported until they have it; (2) main and the branch measured
+  in turn in the same job on the same runner, the branch compared with main (as done locally;
+  about twice the job time and a change to `ci.yml`); (3) completion times in idle slices only
+  reported, as `s023_bullet_settled_ms` and `s023_underline_settled_ms`, with the hard 50 ms
+  budgets of the keys kept; (4) the first sample of an opening measurement dropped as warm-up
+  (`s024_open_10mb_properties_ms`: 49 ms, then 31 ms); (5) the runner's core decoding time,
+  already in the artefact, printed beside the comparison, so that a red run on a fast or slow
+  runner is recognised at once.
+- **Open:** which of these to adopt. Armin's goal: the job is red only for a real regression.
