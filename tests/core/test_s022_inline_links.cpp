@@ -356,28 +356,142 @@ TEST(S022_InlineLinks, DestinationStartingWithQuotesOrParensParsedAsDestination)
     }
 }
 
-TEST(S022_InlineLinks, DestinationOrTitleIntersectingCodeSpanDoesNotFormLink) {
-    // Code spans take precedence over links (CommonMark 6.1, 6.3).
-    // An inline code span inside destination or title invalidates link delimiters and prevents span overlaps.
+TEST(S022_InlineLinks, BackticksInDestinationOrTitleAreConsumedByLink) {
+    // In CommonMark (6.1, 6.3), backticks inside link destinations or titles are consumed
+    // by the link syntax and do not form inline code spans.
     {
         const auto r = show(u"[link](http://foo`bar`baz)", false);
-        EXPECT_TRUE(r.links.empty());
+        ASSERT_EQ(r.links.size(), 1u);
+        EXPECT_EQ(r.links[0].destination, u"http://foo`bar`baz");
+        EXPECT_TRUE(r.links[0].title.empty());
+        EXPECT_EQ(r.runs, (std::vector<StyleRun>{{{1, 4}, Role::LinkText, 0}}));
+        for (const auto& run : r.runs) {
+            EXPECT_NE(run.role, Role::InlineCode);
+        }
+    }
+    {
+        const auto r = show(u"[link](http://foo \"my `code` title\")", false);
+        ASSERT_EQ(r.links.size(), 1u);
+        EXPECT_EQ(r.links[0].destination, u"http://foo");
+        EXPECT_EQ(r.links[0].title, u"my `code` title");
+        EXPECT_EQ(r.runs, (std::vector<StyleRun>{{{1, 4}, Role::LinkText, 0}}));
+        for (const auto& run : r.runs) {
+            EXPECT_NE(run.role, Role::InlineCode);
+        }
+    }
+    {
+        // Destination consumes the backtick in URL; subsequent backticks outside the link form code spans
+        const auto r = show(u"See [docs](https://x.org/a`b) and `code`.", false);
+        ASSERT_EQ(r.links.size(), 1u);
+        EXPECT_EQ(r.links[0].destination, u"https://x.org/a`b");
+        EXPECT_EQ(r.links[0].span, (Span{5, 4}));
+
         bool hasCode = false;
         for (const auto& run : r.runs) {
             if (run.role == Role::InlineCode) {
                 hasCode = true;
+                EXPECT_EQ(run.span, (Span{35, 4}));  // "code"
             }
         }
         EXPECT_TRUE(hasCode);
-    }
-    {
-        const auto r = show(u"[link](http://foo \"my `code` title\")", false);
-        EXPECT_TRUE(r.links.empty());
     }
     {
         // Unclosed backtick in URL is not a code span, so it remains a valid link
         const auto r = show(u"[link](http://foo`bar)", false);
         ASSERT_EQ(r.links.size(), 1u);
         EXPECT_EQ(r.links[0].destination, u"http://foo`bar");
+    }
+}
+
+TEST(S022_InlineLinks, CodeSpanIntersectingLinkDelimitersDoesNotFormLink) {
+    // Code spans take precedence over link delimiters (CommonMark 6.1, 6.3).
+    // An inline code span crossing '[' or ']' prevents link formation.
+    {
+        const auto r = show(u"`[link` ](url)", false);
+        EXPECT_TRUE(r.links.empty());
+        bool hasCode = false;
+        for (const auto& run : r.runs) {
+            if (run.role == Role::InlineCode) {
+                hasCode = true;
+                EXPECT_EQ(run.span, (Span{1, 5}));  // "[link"
+            }
+        }
+        EXPECT_TRUE(hasCode);
+    }
+    {
+        const auto r = show(u"[foo `bar](url)`", false);
+        EXPECT_TRUE(r.links.empty());
+        bool hasCode = false;
+        for (const auto& run : r.runs) {
+            if (run.role == Role::InlineCode) {
+                hasCode = true;
+                EXPECT_EQ(run.span, (Span{6, 9}));  // "bar](url)"
+            }
+        }
+        EXPECT_TRUE(hasCode);
+    }
+    {
+        const auto r = show(u"`[foo](url)`", false);
+        EXPECT_TRUE(r.links.empty());
+        bool hasCode = false;
+        for (const auto& run : r.runs) {
+            if (run.role == Role::InlineCode) {
+                hasCode = true;
+                EXPECT_EQ(run.span, (Span{1, 10}));  // "[foo](url)"
+            }
+        }
+        EXPECT_TRUE(hasCode);
+    }
+    {
+        const auto r = show(u"` [link](http://foo` )", false);
+        EXPECT_TRUE(r.links.empty());
+        bool hasCode = false;
+        for (const auto& run : r.runs) {
+            if (run.role == Role::InlineCode) {
+                hasCode = true;
+                EXPECT_EQ(run.span, (Span{1, 18}));  // " [link](http://foo"
+            }
+        }
+        EXPECT_TRUE(hasCode);
+    }
+}
+
+TEST(S022_InlineLinks, RevealedLinkDoesNotOverlapEmphasisOrEscapeMarkers) {
+    // Review objection O19: on revealed lines, LinkText must not overlap EmphasisMarker or EscapeMarker.
+    // Fuzz invariant: no two runs or hidden ranges cover the same character.
+    {
+        const auto r = show(u"[**b**](u)", true);
+        EXPECT_TRUE(r.hidden.empty());
+        EXPECT_EQ(r.runs, (std::vector<StyleRun>{
+                              {{0, 1}, Role::LinkMarker, 0},
+                              {{1, 2}, Role::EmphasisMarker, 0},
+                              {{3, 1}, Role::LinkText, 0},
+                              {{4, 2}, Role::EmphasisMarker, 0},
+                              {{6, 4}, Role::LinkMarker, 0},
+                          }));
+    }
+    {
+        const auto r = show(u"[a \\* b](u)", true);
+        EXPECT_TRUE(r.hidden.empty());
+        EXPECT_EQ(r.runs, (std::vector<StyleRun>{
+                              {{0, 1}, Role::LinkMarker, 0},
+                              {{1, 2}, Role::LinkText, 0},
+                              {{3, 1}, Role::EscapeMarker, 0},
+                              {{4, 3}, Role::LinkText, 0},
+                              {{7, 4}, Role::LinkMarker, 0},
+                          }));
+    }
+    {
+        const auto r = show(u"[a `b` c](u)", true);
+        EXPECT_TRUE(r.hidden.empty());
+        EXPECT_EQ(r.runs, (std::vector<StyleRun>{
+                              {{0, 1}, Role::LinkMarker, 0},
+                              {{1, 2}, Role::LinkText, 0},
+                              {{3, 1}, Role::InlineCodeMarker, 0},
+                              {{4, 1}, Role::InlineCode, 0},
+                              {{5, 1}, Role::InlineCodeMarker, 0},
+                              {{6, 2}, Role::LinkText, 0},
+                              {{8, 4}, Role::LinkMarker, 0},
+                          }));
     }
 }
