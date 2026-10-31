@@ -111,8 +111,24 @@ void BlockLayout::setWrapIndent(const QTextBlock& block, int columns) {
         return;
     }
     const int state = block.userState() < 0 ? 0 : block.userState();
-    const int updated = (state & ~kWrapIndentMask) | ((columns & 0xFFF) << kWrapIndentShift);
+    const int stateIndent = std::min(columns, 31);
+    const int updated = (state & ~kWrapIndentMask) | ((stateIndent & 0x1F) << kWrapIndentShift);
     const_cast<QTextBlock&>(block).setUserState(updated);
+
+    auto* data = dynamic_cast<BlockData*>(block.userData());
+    if (columns > 31) {
+        if (data == nullptr) {
+            data = new BlockData;
+            const_cast<QTextBlock&>(block).setUserData(data);
+        }
+        data->wrapIndent = columns;
+    } else if (data != nullptr && data->wrapIndent > 0) {
+        data->wrapIndent = 0;
+        if (data->empty()) {
+            const_cast<QTextBlock&>(block).setUserData(nullptr);
+        }
+    }
+
     if (block.layout()->lineCount() > 0 && reservedHeight(block) <= 0) {
         layoutBlock(block);
     }
@@ -131,6 +147,10 @@ void BlockLayout::setWrapIndent(const QTextBlock& block, int columns) {
 int BlockLayout::wrapIndent(const QTextBlock& block) const {
     if (!block.isValid()) {
         return 0;
+    }
+    const BlockData* data = dataOf(block);
+    if (data != nullptr && data->wrapIndent > 0) {
+        return data->wrapIndent;
     }
     const int state = block.userState();
     return state < 0 ? 0 : (state & kWrapIndentMask) >> kWrapIndentShift;

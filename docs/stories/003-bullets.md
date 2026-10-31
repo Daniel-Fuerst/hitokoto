@@ -70,3 +70,7 @@ naturally while the source stays plain Markdown.
 ## Notes
 
 - `---` (thematic break) and numbered lists are out of scope; they must simply stay plain text.
+  Changed by S023 (2026-10-30): thematic breaks render as a horizontal line; they are still no items.
+  Directly after a line of text, a bullet without text and a bullet indented four or more columns
+  past the text's content column are text that continues the paragraph (CommonMark 5.2, S023 review
+  O3, code).

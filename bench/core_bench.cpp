@@ -101,4 +101,25 @@ void S005_ParseBuiltinTheme(benchmark::State& state) {
 }
 BENCHMARK(S005_ParseBuiltinTheme)->Unit(benchmark::kMicrosecond);
 
+void S022_RenderLineWithLinks(benchmark::State& state) {
+    const auto registry = ElementRegistry::withBuiltins();
+    constexpr auto line =
+        u"* [Standard Link](https://example.com) and [Link with Title](https://example.com \"Title\")";
+    for ([[maybe_unused]] auto _ : state) {
+        auto r = registry.render(line, {state.range(0) != 0});
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(S022_RenderLineWithLinks)->Arg(0)->Arg(1);
+
+void S022_RenderLineWithUnclosedBrackets(benchmark::State& state) {
+    const auto registry = ElementRegistry::withBuiltins();
+    const std::u16string line(2000, u'[');
+    for ([[maybe_unused]] auto _ : state) {
+        auto r = registry.render(line, {state.range(0) != 0});
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(S022_RenderLineWithUnclosedBrackets)->Arg(0)->Arg(1);
+
 }  // namespace

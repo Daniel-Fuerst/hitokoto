@@ -46,14 +46,21 @@ public:
     [[nodiscard]] std::pair<int, int> visibleBlockRange() const;
     /// The language badge painted on `block` (an opening fence while concealed), else empty (S021).
     [[nodiscard]] QString codeBlockBadge(const QTextBlock& block);
+    /// The anchor URL at viewport point `pos`, or empty (S022).
+    [[nodiscard]] QString anchorAt(const QPoint& pos) const;
+    /// Merged character format at viewport point `pos` (S022).
+    [[nodiscard]] QTextCharFormat formatAt(const QPoint& pos) const;
 
 signals:
     void painted();
 
 protected:
+    bool viewportEvent(QEvent* event) override;
+    void leaveEvent(QEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void inputMethodEvent(QInputMethodEvent* event) override;
     void insertFromMimeData(const QMimeData* source) override;
@@ -84,6 +91,8 @@ private:
     void paintInlineCodeBoxes(QPainter& painter, const QTextBlock& block, const core::LineRender& render,
                               QPointF origin, const core::CodeStyle& style);
     void paintDecorations();
+    /// S023: the line of a concealed thematic break (`rect`: the block in viewport coordinates).
+    void paintThematicBreak(QPainter& painter, const QTextBlock& block, const QRectF& rect);
     bool handleBulletKey(QKeyEvent* event);
     bool handleBulletEnter(QTextCursor& cursor);
     bool handleBulletTab(QTextCursor& cursor, bool outdent);

@@ -104,8 +104,13 @@ TEST(S003_Bullets, IndentAndOutdentBulletLine) {
 }
 
 TEST(S003_Bullets, NonItemsArePlainText) {
-    for (std::u16string_view line : {u"-x", u"--", u"---", u"- - -", u"* * *", u"***", u"___", u"a - b", u"+1"}) {
+    for (std::u16string_view line : {u"-x", u"--", u"a - b", u"+1"}) {
         EXPECT_TRUE(show(line).empty()) << std::string(line.begin(), line.end());
+    }
+    // Thematic breaks are no items; since S023 they render as a horizontal line.
+    for (std::u16string_view line : {u"---", u"- - -", u"* * *", u"***", u"___"}) {
+        EXPECT_TRUE(show(line).decorations.empty()) << std::string(line.begin(), line.end());
+        EXPECT_EQ(show(line).headingLevel, 0) << std::string(line.begin(), line.end());
     }
 }
 

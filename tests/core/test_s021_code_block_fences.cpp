@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <vector>
 
 using namespace hitokoto::core;
 
@@ -86,4 +87,19 @@ TEST(S021_CodeBlockFences, ThemeTokensFallBack) {
     EXPECT_EQ(codeBlockStyle(marker.theme).badgeText, (Color{0x11, 0x22, 0x33, 255}));
     const auto general = loadTheme("[colors]\nmarker = \"#445566\"\n", ColorScheme::Light);
     EXPECT_EQ(codeBlockStyle(general.theme).badgeText, (Color{0x44, 0x55, 0x66, 255}));
+}
+
+// A fence directly after a table (GFM: the fence ends the table) opens a block, although the line is
+// entered with the table's state; the closing fence closes it. Found with the whole-document
+// reference of S023.
+TEST(S021_CodeBlockFences, AFenceDirectlyAfterATableOpensABlock) {
+    const std::vector<std::u16string> lines = {u"| a |", u"| - |", u"```python", u"code", u"```", u"after"};
+    const auto r = registry().renderDocument(lines, LineRange{3, 3});
+    EXPECT_TRUE(r[1].table);
+    EXPECT_TRUE(r[2].fenceLine);
+    EXPECT_EQ(r[2].codeLanguage, u"python") << "an opening fence reports its language";
+    EXPECT_TRUE(r[4].fenceLine);
+    EXPECT_TRUE(r[4].codeLanguage.empty());
+    EXPECT_TRUE(r[2].hidden.empty()) << "the caret in the block reveals the opening fence";
+    EXPECT_TRUE(r[4].hidden.empty()) << "and the closing fence";
 }

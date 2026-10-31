@@ -4,6 +4,8 @@
 // no formats of their own.
 #include "hitokoto/core/markdown.hpp"
 
+#include "../block_rules.hpp"
+
 #include <algorithm>
 #include <array>
 
@@ -17,21 +19,12 @@ constexpr std::uint32_t kDelimiterNext = 1U << 31U;
 constexpr std::uint32_t kColumnMask = 0xFFU;
 constexpr std::size_t kMaxColumns = 255;
 
-bool isBlank(char16_t c) noexcept {
-    return c == u' ' || c == u'\t';
-}
+using blocks::firstNonBlank;
+using blocks::isBlank;
 
 /// cmark-gfm: a pipe right after a backslash does not separate cells.
 bool escapedPipe(std::u16string_view line, std::size_t pos) noexcept {
     return pos > 0 && line[pos - 1] == u'\\';
-}
-
-std::size_t firstNonBlank(std::u16string_view line) noexcept {
-    std::size_t i = 0;
-    while (i < line.size() && isBlank(line[i])) {
-        ++i;
-    }
-    return i;
 }
 
 /// Index after the last non-blank character.
@@ -43,98 +36,26 @@ std::size_t trimmedEnd(std::u16string_view line) noexcept {
     return end;
 }
 
-std::size_t leadingSpaces(std::u16string_view line) noexcept {
-    std::size_t width = 0;
-    for (const char16_t c : line) {
-        if (c == u' ') {
-            ++width;
-        } else if (c == u'\t') {
-            width += 4 - (width % 4);
-        } else {
-            break;
-        }
-    }
-    return width;
-}
-
-bool isThematicBreak(std::u16string_view line, std::size_t start) noexcept {
-    const char16_t c = line[start];
-    if (c != u'-' && c != u'*' && c != u'_') {
-        return false;
-    }
-    std::size_t count = 0;
-    for (std::size_t i = start; i < line.size(); ++i) {
-        if (line[i] == c) {
-            ++count;
-        } else if (!isBlank(line[i])) {
-            return false;
-        }
-    }
-    return count >= 3;
-}
-
-bool isOrderedListMarker(std::u16string_view line, std::size_t start) noexcept {
-    std::size_t i = start;
-    while (i < line.size() && i - start < 9 && line[i] >= u'0' && line[i] <= u'9') {
-        ++i;
-    }
-    if (i == start || i >= line.size() || (line[i] != u'.' && line[i] != u')')) {
-        return false;
-    }
-    return i + 1 == line.size() || isBlank(line[i + 1]);
-}
-
 /// True if `line` starts a block that ends a table (or is blank): indented code, fence, ATX
-/// heading, thematic break, list item, block quote or HTML block.
+/// heading, thematic break, list item, block quote or an HTML block that may interrupt a paragraph
+/// (cmark-gfm).
 bool startsOtherBlock(std::u16string_view line) noexcept {
     const std::size_t start = firstNonBlank(line);
-    if (start >= line.size()) {
-        return true;  // blank
-    }
-    if (leadingSpaces(line) >= 4) {
-        return true;
+    if (start >= line.size() || blocks::indentWidth(line) >= 4) {
+        return true;  // blank, or indented code
     }
     const char16_t c = line[start];
     if (c == u'|') {
         return false;
     }
-    if (c == u'`' || c == u'~') {
-        std::size_t run = 0;
-        while (start + run < line.size() && line[start + run] == c) {
-            ++run;
-        }
-        if (run >= 3) {
-            return true;
-        }
-    }
-    if (c == u'#') {
-        std::size_t hashes = 0;
-        while (start + hashes < line.size() && hashes < 7 && line[start + hashes] == u'#') {
-            ++hashes;
-        }
-        if (hashes <= 6 && (start + hashes == line.size() || isBlank(line[start + hashes]))) {
-            return true;
-        }
-    }
-    if (isThematicBreak(line, start)) {
+    if (blocks::isFenceFrom(line, start) || blocks::isAtxHeadingFrom(line, start) ||
+        blocks::isThematicBreakFrom(line, start)) {
         return true;
     }
     if ((c == u'-' || c == u'*' || c == u'+') && (start + 1 == line.size() || isBlank(line[start + 1]))) {
         return true;
     }
-    if (isOrderedListMarker(line, start)) {
-        return true;
-    }
-    if (c == u'>') {
-        return true;
-    }
-    if (c == u'<' && start + 1 < line.size()) {
-        const char16_t n = line[start + 1];
-        if ((n >= u'a' && n <= u'z') || (n >= u'A' && n <= u'Z') || n == u'/' || n == u'!' || n == u'?') {
-            return true;
-        }
-    }
-    return false;
+    return blocks::otherBlockStart(line, blocks::After::TableRow) != blocks::OtherBlock::None;
 }
 
 /// The cell-separating pipes of a row, without allocating.

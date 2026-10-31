@@ -168,6 +168,21 @@ std::vector<Pair> matchDelimiters(const std::vector<Delimiter>& delimiters) {
     return pairs;
 }
 
+std::uint32_t contextFor(Span span, const std::vector<Span>& contexts) noexcept {
+    if (contexts.empty()) {
+        return 0;
+    }
+    auto it = std::upper_bound(contexts.begin(), contexts.end(), span.start,
+                               [](std::uint32_t val, const Span& ctx) { return val < ctx.start; });
+    if (it != contexts.begin()) {
+        --it;
+        if (span.start >= it->start && span.end() <= it->end()) {
+            return static_cast<std::uint32_t>(std::distance(contexts.begin(), it) + 1);
+        }
+    }
+    return 0;
+}
+
 class EmphasisElement final : public InlineElement {
 public:
     [[nodiscard]] std::string_view id() const noexcept override { return "emphasis"; }
@@ -175,13 +190,38 @@ public:
 
     void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
         std::vector<bool> codeCharacters(line.size(), false);
-        for (const auto& run : out.runs) {
-            if (run.role == Role::InlineCode || run.role == Role::InlineCodeMarker) {
-                std::fill(codeCharacters.begin() + run.span.start, codeCharacters.begin() + run.span.end(), true);
+        for (const auto& span : out.opaqueSpans) {
+            if (span.start < line.size()) {
+                const auto end = std::min<std::size_t>(span.end(), line.size());
+                std::fill(codeCharacters.begin() + static_cast<std::ptrdiff_t>(span.start),
+                          codeCharacters.begin() + static_cast<std::ptrdiff_t>(end), true);
+            }
+        }
+        for (const auto& h : out.hidden) {
+            if (h.span.start < line.size()) {
+                const auto end = std::min<std::size_t>(h.span.end(), line.size());
+                std::fill(codeCharacters.begin() + static_cast<std::ptrdiff_t>(h.span.start),
+                          codeCharacters.begin() + static_cast<std::ptrdiff_t>(end), true);
             }
         }
         const auto delimiters = findDelimiters(line, codeCharacters);
-        const auto pairs = matchDelimiters(delimiters);
+        if (delimiters.empty()) {
+            return;
+        }
+
+        std::vector<std::vector<Delimiter>> byContext(out.inlineContexts.size() + 1);
+        for (const auto& d : delimiters) {
+            byContext[contextFor(d.span, out.inlineContexts)].push_back(d);
+        }
+
+        std::vector<Pair> pairs;
+        for (const auto& group : byContext) {
+            if (group.empty()) {
+                continue;
+            }
+            const auto groupPairs = matchDelimiters(group);
+            pairs.insert(pairs.end(), groupPairs.begin(), groupPairs.end());
+        }
         if (pairs.empty()) {
             return;
         }

@@ -29,6 +29,8 @@ public:
     [[nodiscard]] const core::CodeStyle& inlineCode() const noexcept { return inlineCode_; }
     /// Resolved table tokens (ADR 0005) and the font of table cells (S018).
     [[nodiscard]] const core::TableStyle& table() const noexcept { return table_; }
+    /// Resolved thematic-break tokens (S023): the line the editor draws and its margin.
+    [[nodiscard]] const core::ThematicBreakStyle& thematicBreak() const noexcept { return thematicBreak_; }
     [[nodiscard]] QFont tableFont(bool header) const;
     /// Font of the language badge on an opening fence (S021).
     [[nodiscard]] QFont badgeFont() const;
@@ -52,6 +54,8 @@ private:
     core::EmphasisStyle emphasis_;
     core::TableStyle table_;
     core::EscapeStyle escape_;
+    core::LinkStyle link_;
+    core::ThematicBreakStyle thematicBreak_;
     QStringList codeBlockFamilies_;
     QStringList inlineCodeFamilies_;
 };

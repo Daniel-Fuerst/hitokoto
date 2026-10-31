@@ -152,6 +152,17 @@ follows the general tokens above.
 | `table.font-family` | string | Font family of table cells; "" = editor font | "" |
 | `table.font-scale` | number | Font size of table cells relative to the editor font, 0.5 to 2 | 1 |
 | `escape.marker` | color | Backslash when revealed | `colors.marker` |
+| `escape.marker` | color | Backslash when revealed | `colors.marker` |
+| `link.text` | color | Colour of link text | `colors.accent` |
+| `link.marker` | color | Delimiters and destination when revealed | `colors.marker` |
+| `thematic-break.border` | color | Colour of the horizontal line | `colors.border` |
+| `thematic-break.border-width` | number (px) | Thickness of the line, 0 to 8; drawn as max(1, round(width x device pixel ratio)) device pixels | 1 |
+| `thematic-break.margin` | number (px) | Space above and below the line, 0 to 64; part of the line's geometry, the same when revealed | 0 |
+| `thematic-break.marker` | color | Characters of the break when revealed | `colors.marker` |
+
+A thematic break (`---`, `***`, `___`) is a line across the text column, centred vertically in its block.
+Setext headings (text underlined with `===` or `---`) add no tokens: their lines use the heading
+tokens (`headings.*`) like ATX headings, and a revealed underline uses `colors.marker` at body size.
 
 Bold text is never lighter than the text around it: inside a heading the weight is the larger of
 `headings.weight` and `emphasis.bold-weight`. The built-in themes set both to 700, so bold inside a

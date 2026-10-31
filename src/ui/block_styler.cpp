@@ -11,21 +11,40 @@
 #include <QTextLayout>
 
 #include <algorithm>
+#include <limits>
 #include <optional>
 #include <vector>
 
 namespace hitokoto::ui {
 namespace {
-// QTextBlock::userState() carries two things per block; Qt gives new blocks -1 (nothing known).
+// QTextBlock::userState() carries what is known about a block; Qt gives new blocks -1 (nothing).
 // Bits 0-1: what the block was styled for (0 = not styled, 1 = concealed, 2 = revealed).
 // Bit 2: the block state after the line is known. Bit 3: that state is active; only then does
 // the block carry a BlockData holding it, so plain lines need no allocation.
+// Bits 4-19: the paragraph of that state (BlockState::paragraph, S023, ADR 0006).
+// Bit 20: the setext level of the line's paragraph is known; bits 21-22: that level, or the one
+// the line was last shown with. Bit 23: the line's link to the paragraph above is known; bits
+// 24-25: that link (none, continues, underline of level 1 or 2).
 constexpr int kStyleMask = 0x3;
 constexpr int kUnstyled = 0;
 constexpr int kStyledConcealed = 1;
 constexpr int kStyledRevealed = 2;
 constexpr int kStateKnown = 0x4;
 constexpr int kStateActive = 0x8;
+constexpr int kParagraphShift = 4;
+constexpr int kParagraphMask = 0xFFFF << kParagraphShift;
+constexpr int kLevelKnown = 1 << 20;
+constexpr int kLevelShift = 21;
+constexpr int kLevelMask = 0x3 << kLevelShift;
+constexpr int kLinkKnown = 1 << 23;
+constexpr int kLinkShift = 24;
+constexpr int kLinkMask = 0x3 << kLinkShift;
+constexpr int kLinkContinues = 1;
+// The walk over a paragraph (S023) runs synchronously for this long, then in idle slices.
+constexpr qint64 kParagraphSearchNanoseconds = 2'000'000;
+// A changed setext level is passed up this many lines of a paragraph on a key; the lines above
+// forget their level and are restyled in idle slices (review O2).
+constexpr int kSynchronousLevelLines = 2048;
 // Ranges up to this size are styled synchronously; larger ones on screen + in idle slices.
 constexpr int kSynchronousLimit = 400;
 constexpr qint64 kSliceNanoseconds = 6'000'000;
@@ -49,7 +68,7 @@ std::optional<core::BlockState> cachedBlockState(const QTextBlock& block) {
         return std::nullopt;
     }
     if ((bits & kStateActive) == 0) {
-        return core::BlockState{};
+        return core::BlockState{0, 0, static_cast<std::uint16_t>((bits & kParagraphMask) >> kParagraphShift)};
     }
     const auto* data = dynamic_cast<const BlockData*>(block.userData());
     if (data != nullptr && data->blockState.active()) {
@@ -58,17 +77,21 @@ std::optional<core::BlockState> cachedBlockState(const QTextBlock& block) {
     return std::nullopt;
 }
 
+/// Caches the state after `block`. A changed state makes the line's setext level unknown.
 void cacheBlockState(QTextBlock& block, core::BlockState state) {
     auto* data = dynamic_cast<BlockData*>(block.userData());
-    const int style = stateBits(block) & kStyleMask;
-    const int preserved = stateBits(block) & ~(kStyleMask | kStateKnown | kStateActive);
+    const auto previous = cachedBlockState(block);
+    int keep = stateBits(block) & (kStyleMask | kLevelKnown | kLevelMask | kLinkKnown | kLinkMask | kWrapIndentMask);
+    if (previous && *previous != state) {
+        keep &= ~kLevelKnown;  // found for another state
+    }
     if (state.active()) {
         if (data == nullptr) {
             data = new BlockData;
             block.setUserData(data);
         }
         data->blockState = state;
-        block.setUserState(preserved | style | kStateKnown | kStateActive);
+        block.setUserState(keep | kStateKnown | kStateActive);
         return;
     }
     if (data != nullptr) {
@@ -77,7 +100,47 @@ void cacheBlockState(QTextBlock& block, core::BlockState state) {
             block.setUserData(nullptr);  // deletes it
         }
     }
-    block.setUserState(preserved | style | kStateKnown);
+    block.setUserState(keep | kStateKnown | (static_cast<int>(state.paragraph) << kParagraphShift));
+}
+
+bool levelKnown(const QTextBlock& block) {
+    return (stateBits(block) & kLevelKnown) != 0;
+}
+
+/// The setext level the line was last computed or shown with.
+std::uint8_t levelOf(const QTextBlock& block) {
+    return static_cast<std::uint8_t>((stateBits(block) & kLevelMask) >> kLevelShift);
+}
+
+void setLevel(QTextBlock& block, std::uint8_t level, bool known) {
+    const int bits = stateBits(block) & ~(kLevelKnown | kLevelMask);
+    block.setUserState(bits | (known ? kLevelKnown : 0) | (static_cast<int>(level) << kLevelShift));
+}
+
+void forgetLevel(QTextBlock& block) {
+    block.setUserState(stateBits(block) & ~kLevelKnown);
+}
+
+int linkCode(core::ParagraphLink link) {
+    return link.underline != 0 ? 1 + link.underline : link.continues ? kLinkContinues : 0;
+}
+
+void storeLink(QTextBlock& block, core::ParagraphLink link) {
+    const int bits = stateBits(block) & ~kLinkMask;
+    block.setUserState(bits | kLinkKnown | (linkCode(link) << kLinkShift));
+}
+
+/// The stored link of `block` to the paragraph above, if known.
+std::optional<int> storedLink(const QTextBlock& block) {
+    const int bits = stateBits(block);
+    if ((bits & kLinkKnown) == 0) {
+        return std::nullopt;
+    }
+    return (bits & kLinkMask) >> kLinkShift;
+}
+
+std::u16string_view viewOrEmpty(const QString& text) {
+    return text.isEmpty() ? std::u16string_view{} : view(text);
 }
 }  // namespace
 
@@ -88,6 +151,12 @@ BlockStyler::BlockStyler(QTextDocument* document, const core::ElementRegistry& r
     connect(&idle_, &QTimer::timeout, this, &BlockStyler::idleSlice);
     fenceSearch_.setInterval(0);
     connect(&fenceSearch_, &QTimer::timeout, this, &BlockStyler::fenceSearchSlice);
+    paragraphSearch_.setInterval(0);
+    connect(&paragraphSearch_, &QTimer::timeout, this, &BlockStyler::paragraphSearchSlice);
+    underlineSearchTimer_.setInterval(0);
+    connect(&underlineSearchTimer_, &QTimer::timeout, this, &BlockStyler::underlineSearchSlice);
+    frontMatterSearch_.setInterval(0);
+    connect(&frontMatterSearch_, &QTimer::timeout, this, &BlockStyler::frontMatterSlice);
     connect(document_, &QTextDocument::contentsChange, this, &BlockStyler::onContentsChange);
 }
 
@@ -106,7 +175,7 @@ void BlockStyler::invalidateAll() {
 
 core::BlockState BlockStyler::blockStateBefore(const QTextBlock& block) {
     std::vector<QTextBlock> uncached;
-    core::BlockState state;
+    core::BlockState state = startState_;
     for (QTextBlock previous = block.previous(); previous.isValid(); previous = previous.previous()) {
         if (const auto cached = cachedBlockState(previous)) {
             state = *cached;
@@ -134,12 +203,26 @@ QString BlockStyler::nextLineFor(const QTextBlock& block, core::BlockState state
 }
 
 core::LineRender BlockStyler::renderFor(const QTextBlock& block) {
+    return renderLine(block, nullptr, false);
+}
+
+core::LineRender BlockStyler::renderLine(const QTextBlock& block, core::ParagraphLink* link, bool walk) {
     ++renderCount_;
     const QString text = block.text();
     const core::BlockState state = blockStateBefore(block);
     const QString next = nextLineFor(block, state, text);
-    return registry_.render(
-        view(text), {isRevealed(block.blockNumber()), state, next.isEmpty() ? std::u16string_view{} : view(next)});
+    core::LineContext context{isRevealed(block.blockNumber()), state, viewOrEmpty(next)};
+    core::ParagraphLink ignored;
+    auto render = registry_.render(view(text), context, link != nullptr ? *link : ignored);
+    if (render.blockState.underlinable()) {
+        // S023: a line of paragraph text is a setext heading line if its paragraph ends in an
+        // underline below (ADR 0006); most paragraphs do not, and the level is cached.
+        context.setextLevel = setextLevel(block, render.blockState, walk).level;
+        if (context.setextLevel != 0) {
+            render = registry_.render(view(text), context);
+        }
+    }
+    return render;
 }
 
 bool BlockStyler::isStyled(const QTextBlock& block) const {
@@ -152,12 +235,19 @@ void BlockStyler::styleBlock(const QTextBlock& block) {
     if (!layout) {
         return;
     }
-    const auto render = renderFor(block);
+    core::ParagraphLink link;
+    const auto render = renderLine(block, &link, true);
     QTextBlock mutableBlock = block;
     const auto previousState = cachedBlockState(block);
     const bool blockStateChanged = previousState && *previousState != render.blockState;
+    const bool levelWasKnown = levelKnown(block);
     cacheBlockState(mutableBlock, render.blockState);
-    applyCodeBlockMargin(block, render);
+    if (levelWasKnown && render.blockState.underlinable()) {
+        // The level was found for this very state while rendering.
+        setLevel(mutableBlock, levelOf(block), true);
+    }
+    updateParagraphAbove(block, render, link);
+    applyBlockSpacing(block, render);
     applyWrapIndent(block, render);
     const auto ranges = formats_.ranges(render);
     // Skip the relayout if nothing was and nothing is formatted (most body lines).
@@ -184,20 +274,25 @@ void BlockStyler::styleBlock(const QTextBlock& block) {
     busy_ = false;
 }
 
-void BlockStyler::applyCodeBlockMargin(const QTextBlock& block, const core::LineRender& render) {
+void BlockStyler::applyBlockSpacing(const QTextBlock& block, const core::LineRender& render) {
     // S021: the panel's margin is part of the geometry of its first and last line (ADR 0003),
-    // never applied while painting (review O3).
+    // never applied while painting (review O3). S023: a thematic break's margin likewise.
     auto* layout = qobject_cast<BlockLayout*>(document_->documentLayout());
     if (layout == nullptr) {
         return;
     }
     qreal above = 0;
     qreal below = 0;
-    if (render.codeBlock) {
+    if (render.thematicBreak) {
+        above = formats_.thematicBreak().margin;
+        below = above;
+    } else if (render.codeBlock) {
         const qreal margin = formats_.codeBlock().margin;
-        const bool inside = blockStateBefore(block).active();
-        above = render.fenceLine && !inside ? margin : 0;
-        below = (render.fenceLine && inside) || !block.next().isValid() ? margin : 0;
+        // An opening fence leaves the block open, a closing one closes it; the line before an
+        // opening fence may belong to another block (a table).
+        const bool opening = render.fenceLine && render.blockState.active();
+        above = opening ? margin : 0;
+        below = (render.fenceLine && !opening) || !block.next().isValid() ? margin : 0;
     }
     layout->setBlockSpacing(block, above, below);
 }
@@ -282,8 +377,8 @@ BlockStyler::CodeExtent BlockStyler::codeExtentOf(const QTextBlock& block) {
     // fence and the closing fence carry another one. The search reads cached states and renders
     // nothing; it runs once per block, not once per caret step (review O2).
     const core::BlockState before = blockStateBefore(block);
-    const bool opening = render.fenceLine && !before.active();
-    const bool closing = render.fenceLine && before.active();
+    const bool opening = render.fenceLine && render.blockState.active();
+    const bool closing = render.fenceLine && !render.blockState.active();
     fenceSearch_.stop();
     search_ = {.inside = opening ? render.blockState : before,
                .from = number,
@@ -399,6 +494,7 @@ void BlockStyler::updateExtentAfterEdit(int position, int charsAdded) {
 void BlockStyler::setRevealed(core::LineRange range) {
     int open = -1;
     int close = -1;
+    int underline = -1;
     if (!range.empty()) {
         const QTextBlock first = document_->findBlockByNumber(static_cast<int>(range.first));
         const QTextBlock last = document_->findBlockByNumber(static_cast<int>(range.last));
@@ -407,16 +503,18 @@ void BlockStyler::setRevealed(core::LineRange range) {
         }
         if (last.isValid()) {
             close = codeExtentOf(last).close;
+            underline = underlineOf(last);
         }
     }
-    if (range == revealed_ && open == revealedOpen_ && close == revealedClose_) {
+    if (range == revealed_ && open == revealedOpen_ && close == revealedClose_ && underline == revealedUnderline_) {
         return;
     }
     const auto changes = core::revealChanges(revealed_, range);
-    const int fences[] = {revealedOpen_, revealedClose_, open, close};
+    const int fences[] = {revealedOpen_, revealedClose_, revealedUnderline_, open, close, underline};
     revealed_ = range;
     revealedOpen_ = open;
     revealedClose_ = close;
+    revealedUnderline_ = underline;
     for (const auto& c : changes) {
         styleRange(static_cast<int>(c.first), static_cast<int>(c.last));
     }
@@ -431,6 +529,7 @@ void BlockStyler::onContentsChange(int position, int charsRemoved, int charsAdde
     if (busy_) {
         return;
     }
+    const int countBefore = blockCount_;
     updateExtentAfterEdit(position, charsAdded);
     QTextBlock first = document_->findBlock(position);
     // A table header depends on the line below it (S018): restyle the line above the change too.
@@ -443,11 +542,16 @@ void BlockStyler::onContentsChange(int position, int charsRemoved, int charsAdde
     }
     const int firstNumber = first.isValid() ? first.blockNumber() : 0;
     const int lastNumber = last.blockNumber();
-    // Edited blocks keep their user state but their formats are stale: force a restyle.
+    // Edited blocks keep their user state but their formats are stale: force a restyle. Their
+    // setext level is computed again from the line below (S023).
     for (QTextBlock b = first; b.isValid() && b.blockNumber() <= std::min(lastNumber, firstNumber + kSynchronousLimit);
          b = b.next()) {
         setStyled(b, kUnstyled);
+        forgetLevel(b);
     }
+    restartParagraphSearchesAfterEdit(firstNumber, document_->blockCount() - countBefore);
+    updateUnderlineAfterEdit(firstNumber, lastNumber, document_->blockCount() - countBefore);
+    frontMatterAfterEdit(firstNumber, lastNumber);
     styleRange(firstNumber, std::min(lastNumber + 1, document_->blockCount() - 1));
     if (charsRemoved != charsAdded || lastNumber - firstNumber > kSynchronousLimit) {
         // Line numbers below may have shifted relative to the revealed range: re-check lazily.
@@ -467,6 +571,9 @@ void BlockStyler::idleSlice() {
     QElapsedTimer timer;
     timer.start();
     QTextBlock b = document_->findBlockByNumber(idleNext_);
+    // Styling a line can schedule lines above it (a setext level passed up a paragraph, S023):
+    // scheduleFrom() lowers this while the slice runs.
+    idleNext_ = std::numeric_limits<int>::max();
     int checked = 0;
     while (b.isValid()) {
         if (!isStyled(b)) {
@@ -477,12 +584,480 @@ void BlockStyler::idleSlice() {
             break;
         }
     }
-    if (b.isValid()) {
-        idleNext_ = b.blockNumber();
+    idleNext_ = std::min(idleNext_, b.isValid() ? b.blockNumber() : document_->blockCount());
+    if (idleNext_ < document_->blockCount()) {
         return;
     }
     idle_.stop();
-    emit completed();
+    // Block states below an edit settle lazily; the fences and the underline to reveal for the
+    // caret may have changed with them (S021, S023).
+    setRevealed(revealed_);
+    if (!idle_.isActive()) {
+        emit completed();
+    }
+}
+
+// ---- S023 (ADR 0006): setext headings from below ---------------------------------------------
+
+BlockStyler::Level BlockStyler::setextLevel(const QTextBlock& block, core::BlockState after, bool walk) {
+    if (!after.underlinable()) {
+        return {0, true};
+    }
+    if (levelKnown(block)) {
+        return {levelOf(block), true};
+    }
+    if (!paragraphSearches_.empty()) {
+        const int number = block.blockNumber();
+        for (auto& search : paragraphSearches_) {
+            if (search.covers(number, after)) {
+                // A walk over this paragraph goes on in idle slices: show the level the line had.
+                search.lastAnswered = std::max(search.lastAnswered, number);
+                return {levelOf(block), false};
+            }
+        }
+    }
+    if (!walk) {
+        return {levelOf(block), false};  // painting or tables: the level the line is shown with
+    }
+    // Most paragraphs are short: walk down from the line without numbering lines.
+    ParagraphSearch search{.inside = after};
+    QElapsedTimer timer;
+    timer.start();
+    int steps = 0;
+    QTextBlock b = block.next();
+    for (; b.isValid(); b = b.next()) {
+        if (const auto level = paragraphStep(b, search)) {
+            giveLevel(block, b, *level);
+            return {*level, true};
+        }
+        if (++steps % 64 == 0 && timer.nsecsElapsed() > kParagraphSearchNanoseconds) {
+            // A long paragraph (a cold walk takes about 0.3 us per line): walk on in idle slices
+            // and show the level the line had until then.
+            search.from = block.blockNumber();
+            search.next = b.next().isValid() ? b.next().blockNumber() : document_->blockCount();
+            search.lastAnswered = search.from;
+            paragraphSearches_.push_back(search);
+            paragraphSearch_.start();
+            return {levelOf(block), false};
+        }
+    }
+    giveLevel(block, b, 0);  // the paragraph ends the document
+    return {0, true};
+}
+
+std::optional<std::uint8_t> BlockStyler::paragraphStep(QTextBlock& block, ParagraphSearch& search) {
+    const QString text = block.text();
+    const QString next = nextLineFor(block, search.inside, text);
+    const core::ParagraphLink link = registry_.paragraphLink(view(text), search.inside, viewOrEmpty(next));
+    storeLink(block, link);
+    if (!link.continues) {
+        if (search.previousChanged) {
+            restyleLater(block);  // entered with a new state
+        }
+        return link.underline;
+    }
+    // The line continues the paragraph, so the state after it is the paragraph's. A line whose
+    // cached state differs (typing "- " before a long paragraph changes its content column) is
+    // cached anew and restyled lazily; the next one is entered with a new state and restyled too.
+    const auto cached = cachedBlockState(block);
+    const bool changed = !cached || *cached != search.inside;
+    if (changed) {
+        cacheBlockState(block, search.inside);
+    }
+    if (changed || search.previousChanged) {
+        restyleLater(block);
+    } else if (levelKnown(block)) {
+        return levelOf(block);  // the rest of the paragraph is known
+    }
+    search.previousChanged = changed;
+    return std::nullopt;
+}
+
+void BlockStyler::restyleLater(QTextBlock& block) {
+    if ((stateBits(block) & kStyleMask) != kUnstyled) {
+        setStyled(block, kUnstyled);
+        scheduleFrom(block.blockNumber());
+    }
+}
+
+void BlockStyler::giveLevel(const QTextBlock& first, const QTextBlock& end, std::uint8_t level) {
+    for (QTextBlock b = first; b.isValid() && b != end; b = b.next()) {
+        if (levelOf(b) != level) {
+            restyleLater(b);  // shown with another level
+        }
+        setLevel(b, level, true);
+    }
+    // The lines above that continue into the paragraph's first walked line share its level.
+    if (storedLink(first) == kLinkContinues && first.previous().isValid()) {
+        propagateLevelUp(first.previous(), level);
+    }
+}
+
+bool BlockStyler::continueParagraphSearch(ParagraphSearch& search, qint64 nanoseconds) {
+    QElapsedTimer timer;
+    timer.start();
+    if (search.end >= 0) {
+        return applyParagraphLevel(search, timer, nanoseconds);
+    }
+    int steps = 0;
+    const auto found = [&](int end, std::uint8_t level) {
+        search.end = end;
+        search.level = level;
+        search.applyNext = search.from;
+        return applyParagraphLevel(search, timer, nanoseconds);
+    };
+    for (QTextBlock b = document_->findBlockByNumber(search.next); b.isValid(); b = b.next()) {
+        if (const auto level = paragraphStep(b, search)) {
+            return found(b.blockNumber(), *level);
+        }
+        if (++steps % 64 == 0 && timer.nsecsElapsed() > nanoseconds) {
+            search.next = b.next().isValid() ? b.next().blockNumber() : document_->blockCount();
+            return false;
+        }
+    }
+    return found(document_->blockCount(), 0);  // the paragraph ends the document
+}
+
+bool BlockStyler::applyParagraphLevel(ParagraphSearch& search, const QElapsedTimer& timer, qint64 nanoseconds) {
+    int steps = 0;
+    const int last = std::max(search.end - 1, search.lastAnswered);
+    QTextBlock b = document_->findBlockByNumber(search.applyNext);
+    for (int number = search.applyNext; b.isValid() && number <= last; b = b.next(), ++number) {
+        // Past the paragraph, a line that waited for the walk starts a walk of its own; inside it,
+        // a line shown with another level is restyled.
+        const bool past = number >= search.end;
+        if (past || levelOf(b) != search.level) {
+            setStyled(b, kUnstyled);
+            search.restyle = search.restyle < 0 ? number : search.restyle;
+        }
+        if (!past) {
+            setLevel(b, search.level, true);
+        }
+        if (++steps % 256 == 0 && timer.nsecsElapsed() > nanoseconds) {
+            search.applyNext = number + 1;
+            return false;
+        }
+    }
+    if (search.restyle >= 0) {
+        scheduleFrom(search.restyle);
+    }
+    // The lines above that continue into the paragraph's first walked line share its level.
+    const QTextBlock from = document_->findBlockByNumber(search.from);
+    if (from.isValid() && storedLink(from) == kLinkContinues && from.previous().isValid()) {
+        propagateLevelUp(from.previous(), search.level);
+    }
+    return true;
+}
+
+void BlockStyler::propagateLevelUp(const QTextBlock& block, std::uint8_t level) {
+    int steps = 0;
+    for (QTextBlock b = block; b.isValid(); b = b.previous()) {
+        const auto state = cachedBlockState(b);
+        if (!state || !state->underlinable() || (levelKnown(b) && levelOf(b) == level)) {
+            break;
+        }
+        if (levelOf(b) != level) {
+            restyleLater(b);
+        }
+        setLevel(b, level, true);
+        ++levelSteps_;
+        if (storedLink(b) != kLinkContinues) {
+            break;  // the first line of the paragraph
+        }
+        if (++steps >= kSynchronousLevelLines && b.previous().isValid()) {
+            // A long paragraph: the lines above forget their level in idle slices and find it again
+            // from the lines below when they are restyled.
+            levelJobs_.push_back({b.previous().blockNumber(), -1});
+            paragraphSearch_.start();
+            break;
+        }
+    }
+}
+
+bool BlockStyler::continueLevelJob(LevelJob& job, qint64 nanoseconds) {
+    QElapsedTimer timer;
+    timer.start();
+    int steps = 0;
+    QTextBlock b = document_->findBlockByNumber(job.line);
+    if (job.end < 0) {
+        // Upwards through a paragraph: forget the level, restyle.
+        for (; b.isValid(); b = b.previous()) {
+            forgetLevel(b);
+            restyleLater(b);
+            ++levelSteps_;
+            if (storedLink(b) != kLinkContinues) {
+                return true;
+            }
+            if (++steps % 256 == 0 && timer.nsecsElapsed() > nanoseconds) {
+                job.line = b.previous().isValid() ? b.blockNumber() - 1 : 0;
+                return false;
+            }
+        }
+        return true;
+    }
+    // A range of lines to restyle: what a dropped walk had answered.
+    for (int number = job.line; b.isValid() && number < job.end; b = b.next(), ++number) {
+        if ((stateBits(b) & kStyleMask) != kUnstyled) {
+            setStyled(b, kUnstyled);
+        }
+        if (++steps % 256 == 0 && timer.nsecsElapsed() > nanoseconds) {
+            scheduleFrom(job.line);
+            job.line = number + 1;
+            return false;
+        }
+    }
+    scheduleFrom(job.line);
+    return true;
+}
+
+void BlockStyler::updateParagraphAbove(const QTextBlock& block, const core::LineRender& render,
+                                       core::ParagraphLink link) {
+    // An underline typed or removed below a paragraph, or a line that joins or leaves it, changes
+    // the level of the lines above; they are restyled (ADR 0006).
+    QTextBlock mutableBlock = block;
+    storeLink(mutableBlock, link);
+    const QTextBlock above = block.previous();
+    const auto aboveState = above.isValid() ? cachedBlockState(above) : std::nullopt;
+    if (!aboveState || !aboveState->underlinable()) {
+        return;  // the line above is no paragraph text that could be underlined
+    }
+    std::uint8_t level = link.underline;
+    if (link.continues) {
+        const Level own = setextLevel(block, render.blockState);
+        if (!own.resolved) {
+            return;  // the walk passes the level up when it ends
+        }
+        level = own.level;
+    }
+    propagateLevelUp(above, level);
+}
+
+void BlockStyler::paragraphSearchSlice() {
+    QElapsedTimer timer;
+    timer.start();
+    while (!levelJobs_.empty() && timer.nsecsElapsed() < kSliceNanoseconds) {
+        if (!continueLevelJob(levelJobs_.front(), kSliceNanoseconds - timer.nsecsElapsed())) {
+            return;
+        }
+        levelJobs_.erase(levelJobs_.begin());
+    }
+    while (!paragraphSearches_.empty() && timer.nsecsElapsed() < kSliceNanoseconds) {
+        if (!continueParagraphSearch(paragraphSearches_.front(), kSliceNanoseconds - timer.nsecsElapsed())) {
+            return;
+        }
+        paragraphSearches_.erase(paragraphSearches_.begin());
+    }
+    if (paragraphSearches_.empty() && levelJobs_.empty()) {
+        paragraphSearch_.stop();
+        setRevealed(revealed_);  // an underline found now may need revealing
+    }
+}
+
+void BlockStyler::restartParagraphSearchesAfterEdit(int firstEdited, int delta) {
+    // Pending jobs below the edit move with the lines added or removed (they may touch a few lines
+    // too many; restyling a line again is harmless).
+    for (auto& job : levelJobs_) {
+        if (job.line >= firstEdited) {
+            job.line = std::max(firstEdited, job.line + delta);
+        }
+        if (job.end >= firstEdited) {
+            job.end = std::max(job.end, job.end + delta);
+        }
+    }
+    // Lines a walk has passed may have changed: drop the walks and restyle, in idle slices, the
+    // lines they covered, which start new ones. Only long paragraphs have walks in progress.
+    for (const auto& search : paragraphSearches_) {
+        if (firstEdited > std::max(search.next, search.lastAnswered)) {
+            continue;  // below what the walk has seen and what waits for it
+        }
+        const int seen = std::max(search.next, search.lastAnswered + 1);
+        levelJobs_.push_back({std::min(search.from, firstEdited), std::max(seen, seen + delta)});
+    }
+    paragraphSearches_.erase(
+        std::remove_if(paragraphSearches_.begin(), paragraphSearches_.end(),
+                       [&](const ParagraphSearch& s) { return firstEdited <= std::max(s.next, s.lastAnswered); }),
+        paragraphSearches_.end());
+    if (!levelJobs_.empty()) {
+        paragraphSearch_.start();
+    } else if (paragraphSearches_.empty()) {
+        paragraphSearch_.stop();
+    }
+}
+
+int BlockStyler::underlineOf(const QTextBlock& block) {
+    const int number = block.blockNumber();
+    if (underline_.underline >= 0 && number >= underline_.first && number < underline_.underline) {
+        return underline_.underline;  // a caret step inside the heading found last
+    }
+    const core::BlockState after = blockStateAfter(block);
+    const Level level = setextLevel(block, after);
+    if (!level.resolved || level.level == 0) {
+        return -1;
+    }
+    if (underlineSearch_.from == number && underlineSearch_.inside == after) {
+        return -1;  // searched for in idle slices
+    }
+    underlineSearchTimer_.stop();
+    underlineSearch_ = {after, number, number + 1};
+    if (continueUnderlineSearch(kParagraphSearchNanoseconds)) {
+        return underline_.first == number ? underline_.underline : -1;
+    }
+    underlineSearchTimer_.start();  // a long heading
+    return -1;
+}
+
+bool BlockStyler::continueUnderlineSearch(qint64 nanoseconds) {
+    // The lines below continue the paragraph down to its underline (its level says it is there).
+    QElapsedTimer timer;
+    timer.start();
+    int steps = 0;
+    int number = underlineSearch_.next;
+    for (QTextBlock b = document_->findBlockByNumber(number); b.isValid(); b = b.next(), ++number) {
+        if (number == underline_.first && underline_.inside == underlineSearch_.inside) {
+            // The heading found last: a caret step up costs nothing (review O4).
+            underline_.first = underlineSearch_.from;
+            break;
+        }
+        const QString text = b.text();
+        const QString next = nextLineFor(b, underlineSearch_.inside, text);
+        const core::ParagraphLink link =
+            registry_.paragraphLink(view(text), underlineSearch_.inside, viewOrEmpty(next));
+        if (link.underline != 0) {
+            underline_ = {underlineSearch_.inside, underlineSearch_.from, number};
+            break;
+        }
+        if (!link.continues) {
+            break;
+        }
+        if (++steps % 64 == 0 && timer.nsecsElapsed() > nanoseconds) {
+            underlineSearch_.next = number + 1;
+            return false;
+        }
+    }
+    underlineSearch_ = {};
+    return true;
+}
+
+void BlockStyler::underlineSearchSlice() {
+    if (continueUnderlineSearch(kSliceNanoseconds)) {
+        underlineSearchTimer_.stop();
+        setRevealed(revealed_);  // reveals the underline just found
+    }
+}
+
+void BlockStyler::updateUnderlineAfterEdit(int first, int last, int delta) {
+    underlineSearchTimer_.stop();
+    underlineSearch_ = {};  // setRevealed() searches again if the caret still needs it
+    if (underline_.underline < 0 || first > underline_.underline) {
+        return;  // nothing found, or edited below the underline
+    }
+    // An edit between the first known line and the underline that leaves every edited line
+    // continuing the paragraph keeps the underline; it moves by the lines added or removed.
+    bool keep = first > underline_.first && last - first <= kSynchronousLimit && last < underline_.underline + delta;
+    for (QTextBlock b = document_->findBlockByNumber(first); keep && b.isValid() && b.blockNumber() <= last;
+         b = b.next()) {
+        const QString text = b.text();
+        const QString next = nextLineFor(b, underline_.inside, text);
+        keep = registry_.paragraphLink(view(text), underline_.inside, viewOrEmpty(next)).continues;
+    }
+    if (keep) {
+        const QTextBlock underline = document_->findBlockByNumber(underline_.underline + delta);
+        const QString text = underline.text();
+        keep =
+            underline.isValid() && registry_
+                                           .paragraphLink(view(text), underline_.inside,
+                                                          viewOrEmpty(nextLineFor(underline, underline_.inside, text)))
+                                           .underline != 0;
+    }
+    if (keep) {
+        underline_.underline += delta;
+    } else {
+        underline_ = {};
+    }
+}
+
+// ---- S023: front matter at the start of the document -----------------------------------------
+
+void BlockStyler::checkFrontMatter() {
+    frontMatterSearch_.stop();
+    const core::BlockState candidate = registry_.documentStart();
+    if (!candidate.active()) {
+        frontMatter_ = {};
+        return;
+    }
+    frontMatter_ = {candidate, 0};
+    if (!continueFrontMatterSearch(kFenceSearchNanoseconds)) {
+        frontMatterSearch_.start();  // a long or unclosed front matter: confirm in idle slices
+    }
+}
+
+bool BlockStyler::continueFrontMatterSearch(qint64 nanoseconds) {
+    const core::BlockState candidate = registry_.documentStart();
+    QElapsedTimer timer;
+    timer.start();
+    int steps = 0;
+    int close = -1;
+    QTextBlock b = document_->findBlockByNumber(frontMatter_.next);
+    for (; b.isValid(); b = b.next()) {
+        const QString text = b.text();
+        frontMatter_.state = registry_.blockStateAfter(view(text), frontMatter_.state);
+        if (frontMatter_.state.element != candidate.element) {
+            close = b.blockNumber() > 0 ? b.blockNumber() : -1;  // closed, or no front matter at all
+            break;
+        }
+        if (++steps % 256 == 0 && timer.nsecsElapsed() > nanoseconds) {
+            frontMatter_.next = b.blockNumber() + 1;
+            return false;
+        }
+    }
+    frontMatter_ = {};
+    const core::BlockState start = close >= 0 ? candidate : core::BlockState{};
+    frontMatterClose_ = close;
+    if (start != startState_) {
+        // The first line is entered with another state: restyle it; the chain of changed block
+        // states restyles the lines below as far as they change.
+        startState_ = start;
+        QTextBlock first = document_->firstBlock();
+        setStyled(first, kUnstyled);
+        styleRange(0, 0);
+    }
+    return true;
+}
+
+void BlockStyler::frontMatterSlice() {
+    if (continueFrontMatterSearch(kSliceNanoseconds)) {
+        frontMatterSearch_.stop();
+    }
+}
+
+void BlockStyler::frontMatterAfterEdit(int first, int last) {
+    // Front matter depends on its first line and its closing line: an edit of the first line, at
+    // or above the closing line, or of a line that could close it while it is not closed, confirms
+    // it again.
+    const core::BlockState candidate = registry_.documentStart();
+    if (!candidate.active()) {
+        return;
+    }
+    if (first == 0 || frontMatter_.next >= 0 || (frontMatterClose_ >= 0 && first <= frontMatterClose_ + 1)) {
+        checkFrontMatter();
+        return;
+    }
+    if (frontMatterClose_ >= 0) {
+        return;  // edited below the front matter
+    }
+    const QString firstLine = document_->firstBlock().text();
+    const core::BlockState inside = registry_.blockStateAfter(view(firstLine), candidate);
+    if (inside.element != candidate.element) {
+        return;  // the first line opens no front matter
+    }
+    for (QTextBlock b = document_->findBlockByNumber(first);
+         b.isValid() && b.blockNumber() <= std::min(last, first + kSynchronousLimit); b = b.next()) {
+        const QString text = b.text();
+        if (registry_.blockStateAfter(view(text), inside).element != candidate.element) {
+            checkFrontMatter();  // this line could close it
+            return;
+        }
+    }
 }
 
 }  // namespace hitokoto::ui

@@ -15,8 +15,8 @@ depend on it.
 ## Acceptance scenarios
 
 **Scenario: no visible residue**
-- Given headings of levels 1–6, bullets, emphasis delimiters (S013), code-span backticks (S015)
-  and code fences (S014), with the caret elsewhere
+- Given headings of levels 1–6, bullets, emphasis delimiters (S013), code-span backticks (S015),
+  inline link syntax markers (S022) and code fences (S014), with the caret elsewhere
 - Then the visible text starts at the same x position as an unmarked line (tolerance 0.5 px)
 
 **Scenario: caret never inside hidden text**
@@ -41,6 +41,14 @@ depend on it.
   caret never stands in concealed text
 - And no line of the block moves or changes height compared with the concealed state
 
+**Scenario: thematic breaks and setext headings (S023)**
+- Given front matter, thematic breaks after a heading, after text (`***`), after a list item, after
+  a blank line and after another break, and setext headings of one and two lines
+- When the caret walks with arbitrary sequences of Up/Down/Left/Right/Home/End/PageUp/PageDown
+- Then the break the caret is on is revealed and every other break is concealed (a line); an
+  underline is revealed exactly while the caret is on a line of its heading or on the underline;
+  nothing in the front matter is concealed; no line moves or changes height
+
 **Scenario: table cells (S018)**
 - Given a table shown as a table view, with the caret moving into it from the line above and below
 - When I move between cells, compose text with an input method in a cell and read the table with
@@ -48,6 +56,12 @@ depend on it.
 - Then the caret is only ever in a cell or on a visible line, the pre-edit appears in the cell and
   the committed text lands there, and the screen reader reads the cells (Qt's table view) instead
   of pipes
+
+**Scenario: inline link syntax markers (S022)**
+- Given lines with standard, titled, or badge/nested inline links with the caret elsewhere
+- When the caret walks with arbitrary sequences of Up/Down/Left/Right/Home/End/PageUp/PageDown
+- Then the caret is never placed inside concealed link markers (`[` and `](...)`)
+- And revealing the markers on the active line positions the caret on the character clicked or navigated to without visual clipping
 
 ## Outcome
 
@@ -59,6 +73,7 @@ concealment stays; this gate keeps checking it on the new surface.
 ## Tests
 
 - UI: `tst_s009_concealment` – randomised caret walks (since 2026-10-28, with S021: headings,
-  bullets, emphasis, inline code and code blocks; the caret never in concealed text, code block
+  bullets, emphasis, inline code and code blocks; with S022 inline links; with S023 a walk over
+  thematic breaks, setext headings and front matter; the caret never in concealed text, code block
   fences revealed and the block still). Residue measurement via `cursorRect` is still to come.
 - IME and screen-reader checks are manual, documented with platform and version in the ADR.

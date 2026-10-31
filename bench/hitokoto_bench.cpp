@@ -6,8 +6,9 @@
 //
 // Measures cold start (separate processes), opening 1 MB and 10 MB files, key-to-paint
 // latency (typing, Enter, moving across headings), opening and typing in large tables (S018) and
-// saving (longest UI stall and total, median of --runs saves) and moving, entering and typing in a
-// 10 MB code block (S021). Compares against a baseline (regression gate for CI) and
+// saving (longest UI stall and total, median of --runs saves), moving, entering and typing in a
+// 10 MB code block (S021), and opening and typing in a document of thematic breaks, setext
+// headings and long hard-wrapped paragraphs (S023). Compares against a baseline (regression gate for CI) and
 // reports the brief's budgets (section 4); hard budgets fail the run on any machine.
 #include "document_session.hpp"
 #include "editor_widget.hpp"
@@ -96,6 +97,36 @@ QByteArray codeBlockDocument(qsizetype target) {
                "); // # not a heading, *not* emphasis\n";
     }
     out += "```\n\nText after the block.\n";
+    return out;
+}
+
+/// S023 (review O9): about `target` bytes of sections with setext headings, hard-wrapped paragraphs,
+/// thematic breaks and list items continued lazily, with one paragraph of `longLines` lines without
+/// a blank line in the middle (its first line starts with "Long paragraph"; a blank line follows).
+QByteArray s023Document(qsizetype target, int longLines) {
+    QByteArray out = "A setext title\nover two lines\n===\n\n";
+    out.reserve(target + 512);
+    const auto section = [&](int i) {
+        out += "Section " + QByteArray::number(i) + "\n-------\n\n";
+        for (int line = 0; line < 12; ++line) {
+            out += "hard-wrapped text of section " + QByteArray::number(i) + ", line " + QByteArray::number(line) +
+                   ", with *emphasis* and words\n";
+        }
+        out += "\n---\n- an item with text\nlazily continued line of the item\n  continued in the item\n***\n\n";
+        out += "Text directly above a break\n___\n\n";
+    };
+    int i = 0;
+    while (out.size() < target / 2) {
+        section(++i);
+    }
+    for (int line = 0; line < longLines; ++line) {
+        out += (line == 0 ? "Long paragraph" : "long paragraph") + QByteArray(" line ") + QByteArray::number(line) +
+               " of hard-wrapped text without a blank line\n";
+    }
+    out += "\n";
+    while (out.size() < target) {
+        section(++i);
+    }
     return out;
 }
 
@@ -332,6 +363,123 @@ std::vector<double> measureCodeBlockEnter(ui::MainWindow& w, int rounds) {
     return samples;
 }
 
+/// Runs the event loop without sleeping until the styler has nothing left to do (S023). Returns the
+/// time it took.
+double waitUntilStyled(ui::EditorWidget* e) {
+    QElapsedTimer t;
+    t.start();
+    QEventLoop loop;
+    QTimer poll;
+    poll.setInterval(1);
+    QObject::connect(&poll, &QTimer::timeout, &loop, [&] {
+        if (e->styler().isComplete() || t.elapsed() > 120000) {
+            loop.quit();
+        }
+    });
+    poll.start();
+    loop.exec();
+    return static_cast<double>(t.nsecsElapsed()) / 1e6;
+}
+
+/// The first block at or after the middle of the document whose text is `text`, or the first one.
+QTextBlock blockWithText(QTextDocument* doc, const QString& text, bool startsWith = false) {
+    for (QTextBlock b = doc->findBlockByNumber(doc->blockCount() / 2); b.isValid(); b = b.next()) {
+        if (startsWith ? b.text().startsWith(text) : b.text() == text) {
+            return b;
+        }
+    }
+    for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+        if (startsWith ? b.text().startsWith(text) : b.text() == text) {
+            return b;
+        }
+    }
+    return doc->begin();
+}
+
+/// S023: key-to-paint of typing on a thematic break in the middle of the document: a character at
+/// its end and Backspace in turn, so the line changes between a break and paragraph text on every
+/// key.
+std::vector<double> measureBreakTyping(ui::MainWindow& w, int keys) {
+    ui::EditorWidget* e = w.editor();
+    QTextCursor c(blockWithText(e->document(), QStringLiteral("---")));
+    c.movePosition(QTextCursor::EndOfBlock);
+    e->setTextCursor(c);
+    QCoreApplication::processEvents();
+    std::vector<double> samples;
+    for (int i = 0; i < keys; ++i) {
+        QElapsedTimer t;
+        t.start();
+        if (i % 2 == 0) {
+            test::keyClick(e, 'x');
+        } else {
+            test::keyClick(e, Qt::Key_Backspace);
+        }
+        e->viewport()->repaint();
+        samples.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
+    }
+    return samples;
+}
+
+struct BulletTiming {
+    std::vector<double> keys;     ///< key-to-paint of every key
+    std::vector<double> settled;  ///< after "- " and after removing it: until everything is restyled
+};
+
+/// S023 (review O9): typing "- " before the first line of a long hard-wrapped paragraph changes
+/// the content column of every line of it; the rest is restyled in idle slices. Then Backspace
+/// twice. Key-to-paint of each key, and the time until the styler is done.
+BulletTiming measureBulletBeforeParagraph(ui::MainWindow& w, int rounds) {
+    ui::EditorWidget* e = w.editor();
+    const QTextBlock first = blockWithText(e->document(), QStringLiteral("Long paragraph"), true);
+    BulletTiming r;
+    const auto press = [&](auto key) {
+        QElapsedTimer t;
+        t.start();
+        test::keyClick(e, key);
+        e->viewport()->repaint();
+        r.keys.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
+    };
+    for (int i = 0; i < rounds; ++i) {
+        e->setTextCursor(QTextCursor(first));
+        QCoreApplication::processEvents();
+        press('-');
+        press(' ');
+        r.settled.push_back(waitUntilStyled(e));
+        press(Qt::Key_Backspace);
+        press(Qt::Key_Backspace);
+        r.settled.push_back(waitUntilStyled(e));
+    }
+    return r;
+}
+
+/// S023 (review O2): typing "-" on the blank line below the long paragraph makes all of it a setext
+/// heading; Backspace makes it a paragraph again. Key-to-paint of each key, and the time until the
+/// styler is done after each.
+BulletTiming measureUnderlineBelowParagraph(ui::MainWindow& w, int rounds) {
+    ui::EditorWidget* e = w.editor();
+    QTextBlock below = blockWithText(e->document(), QStringLiteral("Long paragraph"), true);
+    while (below.isValid() && !below.text().isEmpty()) {
+        below = below.next();
+    }
+    BulletTiming r;
+    const auto press = [&](auto key) {
+        QElapsedTimer t;
+        t.start();
+        test::keyClick(e, key);
+        e->viewport()->repaint();
+        r.keys.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
+    };
+    for (int i = 0; i < rounds; ++i) {
+        e->setTextCursor(QTextCursor(below));
+        QCoreApplication::processEvents();
+        press('-');
+        r.settled.push_back(waitUntilStyled(e));
+        press(Qt::Key_Backspace);
+        r.settled.push_back(waitUntilStyled(e));
+    }
+    return r;
+}
+
 struct SaveTiming {
     double uiBlockedMs = 0;  ///< longest stall of the UI thread while saving
     double totalMs = 0;      ///< until the file is on disk (saveFinished)
@@ -409,6 +557,12 @@ constexpr std::string_view kReportOnly[] = {"save_10mb_total_ms",
                                             "s018_table_typing_over_16ms",
                                             "s021_codeblock_caret_over_16ms",
                                             "s021_codeblock_typing_over_16ms",
+                                            "s023_break_typing_max_ms",
+                                            "s023_break_typing_over_16ms",
+                                            "s023_bullet_typing_max_ms",
+                                            "s023_bullet_settled_ms",
+                                            "s023_underline_typing_max_ms",
+                                            "s023_underline_settled_ms",
                                             "startup_p95_ms"};
 
 // Brief, section 4. Most budgets are meaningful on reference hardware only (S011) and fail the run
@@ -434,6 +588,10 @@ const Budget kBudgets[] = {
     {"s021_codeblock_enter_max_ms", 50, "entering a 10 MB code block <= 50 ms (hard)", true},
     {"s021_codeblock_typing_p95_ms", 16, "key to screen <= 16 ms (10 MB code block)"},
     {"s021_codeblock_typing_max_ms", 50, "no key event above 50 ms, code block (hard)", true},
+    {"s023_break_typing_p95_ms", 16, "key to screen <= 16 ms (on a thematic break)"},
+    {"s023_break_typing_max_ms", 50, "no key event above 50 ms, break (hard)", true},
+    {"s023_bullet_typing_max_ms", 50, "no key event above 50 ms, \"- \" before a paragraph (hard)", true},
+    {"s023_underline_typing_max_ms", 50, "no key event above 50 ms, underline below a paragraph (hard)", true},
     {"save_10mb_ui_blocked_ms", 16, "saving never stalls the UI (hard)", true},
     {"save_10mb_total_ms", 1000, "10 MB on disk within 1 s (hard)", true},
 };
@@ -467,6 +625,8 @@ int main(int argc, char* argv[]) {
     const QString table1000 = writeFile(dir, QStringLiteral("table1000.md"), tableDocument(1000));
     const QString codeBlock10 =
         writeFile(dir, QStringLiteral("codeblock10mb.md"), codeBlockDocument(qsizetype{10} * 1024 * 1024));
+    const QString breaks10 =
+        writeFile(dir, QStringLiteral("s023-10mb.md"), s023Document(qsizetype{10} * 1024 * 1024, 20000));
 
     std::map<std::string, double> r;
     const auto startup = stats(measureStartup(parser.value(appOpt), small, parser.value(runsOpt).toInt()));
@@ -541,6 +701,34 @@ int main(int argc, char* argv[]) {
     r["s021_codeblock_typing_p99_ms"] = typingCode.p99;
     r["s021_codeblock_typing_max_ms"] = typingCode.max;
     r["s021_codeblock_typing_over_16ms"] = typingCode.over16;
+    w.editor()->document()->setModified(false);
+    w.session()->newDocument();
+
+    // S023 (review O9): 10 MB of setext headings, breaks, lazily continued items and hard-wrapped
+    // paragraphs. Opening and styling all of it (the cold walk), typing on a break, and "- "
+    // before a paragraph of 20,000 lines.
+    const auto openBreaks = medianOpen(w, breaks10, "s023_open_10mb");
+    r["s023_open_10mb_first_chunk_ms"] = openBreaks.firstChunkMs;
+    r["s023_open_10mb_styled_ms"] = openBreaks.styledMs;
+    const auto typingBreak = stats(measureBreakTyping(w, 200));
+    r["s023_break_typing_median_ms"] = typingBreak.median;
+    r["s023_break_typing_p95_ms"] = typingBreak.p95;
+    r["s023_break_typing_p99_ms"] = typingBreak.p99;
+    r["s023_break_typing_max_ms"] = typingBreak.max;
+    r["s023_break_typing_over_16ms"] = typingBreak.over16;
+    (void)waitUntilStyled(w.editor());
+    const auto bullet = measureBulletBeforeParagraph(w, 10);
+    printSamples("s023_bullet_settled_ms", bullet.settled);
+    const auto bulletKeys = stats(bullet.keys);
+    r["s023_bullet_typing_median_ms"] = bulletKeys.median;
+    r["s023_bullet_typing_max_ms"] = bulletKeys.max;
+    r["s023_bullet_settled_ms"] = stats(bullet.settled).median;
+    const auto underline = measureUnderlineBelowParagraph(w, 10);
+    printSamples("s023_underline_settled_ms", underline.settled);
+    const auto underlineKeys = stats(underline.keys);
+    r["s023_underline_typing_median_ms"] = underlineKeys.median;
+    r["s023_underline_typing_max_ms"] = underlineKeys.max;
+    r["s023_underline_settled_ms"] = stats(underline.settled).median;
     w.editor()->document()->setModified(false);
 
     QJsonObject json;
