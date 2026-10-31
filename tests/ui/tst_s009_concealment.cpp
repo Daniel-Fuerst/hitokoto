@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S009 (standing quality gate): the caret never stands in concealed text. Extended for code block
 // fences (S021): a caret anywhere in a block reveals both fences, and no line of it moves.
+// Extended for inline links (S022).
 // Extended for thematic breaks and setext headings (S023): breaks revealed under the caret, underlines
 // while the caret is on their heading, front matter never concealed; no line moves.
 #include "ui_test_support.hpp"
@@ -31,7 +32,8 @@ constexpr auto kDocument =
     "```c\n"
     "int main() {}\n"
     "```\n"
-    "Last line with ~~strike~~.\n"
+    "Lines with links: a standard [link](https://example.com) and a [titled link](https://example.com \"Title\").\n"
+    "Badge link: [![CI](https://x/badge.svg)](https://github.com/x) and [nested **bold** link](https://nested.org).\n"
     "```\n"
     "unterminated block\n";
 

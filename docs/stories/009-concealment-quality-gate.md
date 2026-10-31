@@ -15,8 +15,8 @@ depend on it.
 ## Acceptance scenarios
 
 **Scenario: no visible residue**
-- Given headings of levels 1–6, bullets, emphasis delimiters (S013), code-span backticks (S015)
-  and code fences (S014), with the caret elsewhere
+- Given headings of levels 1–6, bullets, emphasis delimiters (S013), code-span backticks (S015),
+  inline link syntax markers (S022) and code fences (S014), with the caret elsewhere
 - Then the visible text starts at the same x position as an unmarked line (tolerance 0.5 px)
 
 **Scenario: caret never inside hidden text**
@@ -57,6 +57,12 @@ depend on it.
   the committed text lands there, and the screen reader reads the cells (Qt's table view) instead
   of pipes
 
+**Scenario: inline link syntax markers (S022)**
+- Given lines with standard, titled, or badge/nested inline links with the caret elsewhere
+- When the caret walks with arbitrary sequences of Up/Down/Left/Right/Home/End/PageUp/PageDown
+- Then the caret is never placed inside concealed link markers (`[` and `](...)`)
+- And revealing the markers on the active line positions the caret on the character clicked or navigated to without visual clipping
+
 ## Outcome
 
 **ADR 0003 – concealment technique**: keep the `QPlainTextEdit` adapter, or switch to the
@@ -67,8 +73,7 @@ concealment stays; this gate keeps checking it on the new surface.
 ## Tests
 
 - UI: `tst_s009_concealment` – randomised caret walks (since 2026-10-28, with S021: headings,
-  bullets, emphasis, inline code and code blocks; the caret never in concealed text, code block
-  fences revealed and the block still; with S023 a walk over thematic breaks, setext
-  headings and front matter). Residue measurement
-  via `cursorRect` is still to come.
+  bullets, emphasis, inline code and code blocks; with S022 inline links; with S023 a walk over
+  thematic breaks, setext headings and front matter; the caret never in concealed text, code block
+  fences revealed and the block still). Residue measurement via `cursorRect` is still to come.
 - IME and screen-reader checks are manual, documented with platform and version in the ADR.

@@ -152,6 +152,9 @@ follows the general tokens above.
 | `table.font-family` | string | Font family of table cells; "" = editor font | "" |
 | `table.font-scale` | number | Font size of table cells relative to the editor font, 0.5 to 2 | 1 |
 | `escape.marker` | color | Backslash when revealed | `colors.marker` |
+| `escape.marker` | color | Backslash when revealed | `colors.marker` |
+| `link.text` | color | Colour of link text | `colors.accent` |
+| `link.marker` | color | Delimiters and destination when revealed | `colors.marker` |
 | `thematic-break.border` | color | Colour of the horizontal line | `colors.border` |
 | `thematic-break.border-width` | number (px) | Thickness of the line, 0 to 8; drawn as max(1, round(width x device pixel ratio)) device pixels | 1 |
 | `thematic-break.margin` | number (px) | Space above and below the line, 0 to 64; part of the line's geometry, the same when revealed | 0 |

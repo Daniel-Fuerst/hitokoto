@@ -43,6 +43,46 @@ void splitAroundInlineRuns(LineRender& out, std::size_t firstInlineRun) {
     out.runs = std::move(splitRuns);
 }
 
+/// Runs of markers and inline code inside link text take precedence over LinkText runs.
+void carveLinkTextAroundOtherRuns(LineRender& out) {
+    const bool hasLinkText =
+        std::any_of(out.runs.begin(), out.runs.end(), [](const StyleRun& run) { return run.role == Role::LinkText; });
+    if (!hasLinkText) {
+        return;
+    }
+    std::vector<StyleRun> otherRuns;
+    std::vector<StyleRun> linkTextRuns;
+    for (const auto& run : out.runs) {
+        if (run.role == Role::LinkText) {
+            linkTextRuns.push_back(run);
+        } else {
+            otherRuns.push_back(run);
+        }
+    }
+    std::sort(otherRuns.begin(), otherRuns.end(),
+              [](const StyleRun& left, const StyleRun& right) { return left.span.start < right.span.start; });
+    std::vector<StyleRun> splitRuns;
+    for (const auto& run : linkTextRuns) {
+        std::uint32_t start = run.span.start;
+        for (const auto& other : otherRuns) {
+            if (other.span.end() <= start || other.span.start >= run.span.end()) {
+                continue;
+            }
+            if (other.span.start > start) {
+                splitRuns.push_back({{start, other.span.start - start}, run.role, run.level});
+            }
+            start = std::max(start, other.span.end());
+        }
+        if (start < run.span.end()) {
+            splitRuns.push_back({{start, run.span.end() - start}, run.role, run.level});
+        }
+    }
+    splitRuns.insert(splitRuns.end(), otherRuns.begin(), otherRuns.end());
+    std::sort(splitRuns.begin(), splitRuns.end(),
+              [](const StyleRun& left, const StyleRun& right) { return left.span.start < right.span.start; });
+    out.runs = std::move(splitRuns);
+}
+
 /// LineRender contract: styled runs and hidden ranges never overlap; hidden ranges win.
 void carveRunsAroundHidden(LineRender& out) {
     if (out.hidden.empty()) {
@@ -392,6 +432,7 @@ LineRender ElementRegistry::render(std::u16string_view line, const LineContext& 
             const std::size_t firstInlineRun = out.runs.size();
             runInlineElements(line, context, out);
             splitAroundInlineRuns(out, firstInlineRun);
+            carveLinkTextAroundOtherRuns(out);
             break;
         }
     }
@@ -499,6 +540,7 @@ ElementRegistry ElementRegistry::withBuiltins() {
     registry.addMultiLine(makeFrontMatterElement());
     registry.add(makeHeadingElement());
     registry.add(makeBulletElement());
+    registry.addInline(makeLinkElement());
     registry.addInline(makeInlineCodeElement());
     registry.addInline(makeEmphasisElement());
     registry.addInline(makeEscapeElement());
