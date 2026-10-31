@@ -40,35 +40,53 @@ Qt 6.12), release build, offscreen, 10 runs. These are the baselines in `bench/b
 
 ### 2026-10-31, development VM, S024 (release build, offscreen, Qt 6.12.0)
 
-`s024_*` (story S024, review O7 and O8): the 10 MB document (`largeDocument`) with 200 properties
-of every type in front of it; opening it until the properties block shows (median of 5), 200 keys
-typed on the line directly below the closing line, where opening puts the caret (a character and
-Backspace in turn; code review O1), Up into the block and
-Down out of it (10 rounds); then two documents whose front matter has 5,000 top-level keys or one
-nested value of 5,000 lines: Up into the block, a character typed and removed on its closing line,
-Down out of it (5 rounds), so that the block is read and built again. Three runs of the branch
-against three runs of main 3a17d89 on the same VM, `--runs 10`.
+`s024_*` (story S024, review O7 and O8, code review O1 to O3): the 10 MB document
+(`largeDocument`) with 200 properties of every type in front of it; opening it until the
+properties block shows (median of 5), 200 keys typed on the line directly below the closing line,
+where opening puts the caret (a character and Backspace in turn; code review O1), Up into the
+block and Down out of it (10 rounds); then two documents whose front matter has 5,000 top-level
+keys or one nested value of 5,000 lines, and one with a block scalar of 2,000 lines of about 70
+characters in front of 1 MB of text (code review O2): Up into the block, a character typed and
+removed on its closing line, Down out of it (5 rounds), so that the block is read and built
+again; in the last one also 200 keys typed below the block while the end of its value is on
+screen. Five runs of the branch against five runs of main 3a17d89, and three runs of the state
+before the code review (4aecf63) against three of the branch, on the same VM, `--runs 10`.
 
 | Measurement | main 3a17d89 | S024 | Budget |
 |---|---|---|---|
-| Open 10 MB, first screen / styled | 56–75 ms / 3.89–3.97 s | 56–72 ms / 3.78–3.89 s | < 2–3 s first screen |
-| Key to paint, 10 MB, median / p95 / p99 | 1.1–1.2 / 1.3–2.8 / 1.7–4.5 ms | 1.1–1.2 / 1.4–1.7 / 1.6–4.7 ms | ≤ 16 ms |
-| Open 10 MB with 200 properties, until the block shows | – | 44–56 ms; the first screen shows it | < 2–3 s |
-| Typing below the block, median / p95 / max | – | 2.3–2.4 / 2.5–5.7 / 3.0–10.3 ms | ≤ 16 ms p95, 50 ms max (hard) |
-| Entering and leaving the block, median / max | – | 1.5–1.6 / 2.9–5.8 ms | 50 ms max (hard) |
-| Leaving 5,000 edited keys, key max; until built | – | 10–14 ms; 121–178 ms | 50 ms max (hard) |
-| Leaving a nested value of 5,000 lines, key max; until built | – | 19–24 ms; 18–24 ms | 50 ms max (hard) |
+| Open 10 MB, first screen / styled | 67–73 ms / 3.76–4.13 s | 61–76 ms / 3.79–4.09 s | < 2–3 s first screen |
+| Key to paint, 10 MB, median / p95 / p99 | 1.1–1.2 / 1.3–1.8 / 2.2–4.3 ms | 1.1–1.3 / 1.6–4.6 / 2.8–6.1 ms | ≤ 16 ms |
+| Open 10 MB with 200 properties, until the block shows | – | 45–54 ms; the first screen shows it | < 2–3 s |
+| Typing below the block, median / p95 / max | – | 2.3–2.5 / 2.6–4.6 / 2.8–8.5 ms | ≤ 16 ms p95, 50 ms max (hard) |
+| Entering and leaving the block, median / max | – | 1.4–1.6 / 2.7–4.2 ms | 50 ms max (hard) |
+| Leaving 5,000 edited keys, key max; until built | – | 9–18 ms; 105–126 ms | 50 ms max (hard) |
+| Leaving a nested value of 5,000 lines, key max; until built | – | 20–34 ms; 19–21 ms | 50 ms max (hard) |
+| Typing below a text value of 2,000 lines, p95 / max | – | 2.6–4.4 / 4.6–23.5 ms | ≤ 16 ms p95, 50 ms max (hard) |
+| Leaving that value edited, key max; until built | – | 8–18 ms; 61–84 ms | 50 ms max (hard) |
 
-Every other value stays within the spread of main. The first version left 5,000 edited keys in
+Every other value stays within the spread of main. Key to paint in the 10 MB document without
+front matter has the same median as main, but a higher p95 in some runs (up to 4.6 against 1.8
+ms); the state before the code review shows the same spread (1.6–3.4 ms), and the difference stays
+below the 2 ms from which the gate compares. The first version left 5,000 edited keys in
 about 110 ms: deleting 5,000 row widgets, laying out the old rows again before they were replaced,
 showing a widget with 5,000 children, and two passes over the hidden lines (laid out by
 `blockBoundingRect` when the view scrolled past them, rendered by the panels and decorations on
 every repaint, about 60 and 35 ms; both fixed for all hidden lines, tests in S019). The rows are now
 painted by one widget and are accessible through interfaces of their own. Reading 5,000 keys takes
 about 4 ms (`parseProperties`), copying their lines out of the document about 2 ms; laying out the
-rows about 30 µs each, in idle slices. A new width or theme lays out all rows at once: about 40 ms
-for 5,000 keys, on a resize, not on a key. The `s024_*` values in `bench/baselines/linux.json` will
-come from the CI run of the pull request.
+rows about 30 µs each, in idle slices. A key or value that fits on one line is drawn as it is; a
+longer one is laid out once per width (code review O2). Before that, a block scalar of 2,000
+lines cost about 45 ms on every repaint near the block and 147 ms on leaving it (code review,
+indicative). A new width or theme lays out all rows at once: about 40 ms for 5,000 keys, on a
+resize, not on a key.
+
+Reading the YAML is not sliced (code review O3): the key that leaves the block, or one idle slice
+while the closing line is still being confirmed, copies and parses all of it. After editing a key
+and leaving (separate probe, 3 rounds each): 5,000 keys 10 ms on the key and 8 ms in the longest
+idle pass; 10,000 keys 14 and 13 ms; 20,000 keys 9 and 30 ms; 30,000 keys 20 and 64 ms; 50,000
+keys 37 and 132 ms. From about 25,000 keys (some 500 KB of front matter) one pass takes more than
+50 ms. The `s024_*` values in `bench/baselines/linux.json` will come from the CI run of the pull
+request.
 
 ### 2026-10-30, development VM, S023 (release build, offscreen, Qt 6.12.0)
 

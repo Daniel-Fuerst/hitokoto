@@ -361,8 +361,9 @@ text, no properties block, no badge.
   indented): keys keep their order in JSON, as in ruamel.yaml, where JavaScript puts integer-like
   keys first; a line with only a tab inside a block scalar is an empty line (both references reject
   it); `-.5` and `+.5` are numbers and `1e400` a number whose JSON is `null`, as in ruamel.yaml
-  (js-yaml: text; code review O11). In sequences nested deeper than their parent's next item, js-yaml attaches the later items
-  to the inner sequence; ruamel.yaml and hitokoto do not. Test `CasesFromTheDifferentialRun`.
+  (js-yaml: text; code review O11). In sequences nested deeper than their parent's next item,
+  js-yaml attaches the later items to the inner sequence; ruamel.yaml and hitokoto do not. Test
+  `CasesFromTheDifferentialRun`.
 - Differences from Obsidian, recorded here and in the tests: types come from values, not from a
   vault-wide list; a quoted date is text; a scalar `tags: a, b` is one chip (Obsidian may split
   it; not verified); dates are not linked to daily notes; text values that are URLs or `[[links]]`
@@ -377,9 +378,11 @@ text, no properties block, no badge.
   against js-yaml 4.3.2 and ruamel.yaml 0.19.1 (YAML 1.2) and, for JSON numbers, Node 22; where
   the story decides otherwise (dates, anchors, tags, `0b`, `_`) the test says so.
 - UI: `tst_s024_front_matter` – the block for a review record, types and icons, reveal and conceal
-  by caret, the caret after opening, selections and mouse drags, click to value, invalid YAML with
-  the badge, special cases, front matter above a table, height in the layout, the toggle,
-  byte-exact save, tokens, accessibility.
+  by caret, the caret after opening (also with a table below), typing directly below the block,
+  selections and mouse drags, click to value (also a block scalar), invalid YAML with the badge,
+  special cases, front matter above a table, a long text value laid out in slices and painted on
+  screen only, the tooltip, height in the layout, the toggle, byte-exact save, tokens,
+  accessibility.
 - S009: `tst_s009_concealment::frontMatterWhileWalking`. The S023 walk
   `thematicBreaksAndSetextHeadingsWhileWalking` starts with plain lines instead of front matter,
   because the front matter now changes height when the caret enters it.
@@ -387,3 +390,21 @@ text, no properties block, no badge.
   `tst_s023_thematic_breaks::frontMatterStaysText` keep what S024 leaves of S023 (no break, no
   heading, no inline element in front matter; the YAML as text with the caret in it) and no longer
   require an empty render.
+
+## Implementation
+
+On `agents/s024-front-matter`, 2026-10-31, following ADR 0007:
+
+- Core: `parseProperties` (`src/core/src/properties.cpp`), a parser of the YAML subset with types,
+  display text, JSON for unsupported values, the lines of keys and values, and the first error
+  with line and reason; `prettyJson` for the tooltip. Checked in a differential run against
+  js-yaml 4.3.2 and ruamel.yaml 0.19.1. Tokens `[properties]` in `docs/theming.md`.
+- Editor: `PropertiesEmbedder` and `PropertiesView`; `BlockLayout::Claimant`, shared with
+  `TableEmbedder`; the styler reports the confirmed closing line and waits for the embedder's idle
+  work. Fixes to S019 and S023 found on the way stay on this branch (recorded in those stories).
+- Fuzzing: `fuzz_render` feeds the parser. Benchmark keys `s024_*`; measurements in
+  `docs/performance.md`, Linux baselines from the CI run of the pull request.
+- Code review `docs/reviews/024-front-matter-code.md`: every objection dispositioned (O3 and O8
+  documented, the others fixed; Armin decided O2, O4, O6 and O9).
+
+Next: CI on Linux, Windows and macOS through the pull request, then "In review".

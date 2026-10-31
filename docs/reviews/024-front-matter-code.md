@@ -4,6 +4,7 @@ mode: code
 spec: docs/stories/024-front-matter.md
 branch: agents/s024-front-matter
 commits_examined: "f71cd38..235eb3e (18 commits: 1d599d0 in progress, 2ba10fb/afc7ea2 review O4, d5b7712/03d669e and 897478d/d24c0a8 S019, 74e656b/60bddd8 S023, d895455/8ef87d7 parser, 98b7350 tokens, c781444 editor, 7f0ec8f fuzzer, 362fae3/00995fc caret after opening, 235eb3e benchmark and docs); context 2eb4ec1 (story, ADR 0007), 06852d0 (spec review), f71cd38 (red tests)"
+dispositioned: 2026-10-31 (Armin decided O2, O4, O6 and keeping the S019 and S023 fixes on this branch (O9); the others as proposed by Claude). Commit hashes in this record are those of the review copy in the cloud workspace; in the repository the commits carry the same titles.
 date: 2026-10-31
 reviewer: Advocatus Diaboli (independent agent)
 evidence_tools:
@@ -18,68 +19,68 @@ objections:
     category: failure
     severity: major
     title: "Typing on the line directly below the closing line re-reads and rebuilds the block on every key; from about 1,000 keys every key shows the YAML and moves the body"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "The embedder marks the YAML as changed, and the styler confirms the front matter again, only for an edit at or above the closing line; joining the line below to the closing line reports a position on the closing line. Test tst_s024_front_matter::typingDirectlyBelowTheBlockKeepsIt (x and Backspace on the line below 5,000 keys: the block stays shown and the body does not move after any key). s024_typing_* types on that line now. Commits \"S024 review O1 (code): ...\"."
   - id: O2
     category: failure
     severity: major
     title: "A long text value is laid out and painted whole: a block scalar of 2,000 lines costs about 45 ms on every repaint and key near the block, 147 ms on leaving it"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "Armin, 2026-10-31: show text values in full, cache their layout. A key or text value that fits on one line is drawn as it is; a longer one is laid out once per width into a QTextLayout whose lines are created across slices (at least 32 per slice), and a paint draws only the lines and chips in its area. Test tst_s024_front_matter::aLongTextValueIsLaidOutInSlicesAndPaintedOnScreenOnly (2,000 lines; PropertiesView::paintedTextLines()). New benchmark keys s024_long_text_typing_* and s024_leave_long_text_* with hard budgets of 50 ms; performance.md has the numbers. A new width or theme still lays out all rows at once (on a resize, not on a key)."
   - id: O3
     category: failure
     severity: minor
     title: "Reading the YAML is not sliced: the key that leaves the block, and a single idle slice, copy and parse the whole front matter"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "The story's rule \"Long front matter\" now says that building takes at most 4 ms on a key and continues in idle slices, and that reading the YAML is done at once, on the key that leaves the block or in one idle slice. Measured on the development VM after editing a key: the leaving key stays under 50 ms up to 50,000 keys; the longest idle pass passes 50 ms from about 25,000 keys (about 500 KB of front matter). performance.md records the numbers, architecture.md and PropertiesEmbedder's header follow."
   - id: O4
     category: failure
     severity: minor
     title: "After opening a note whose front matter is directly followed by a table, the keyboard focus is in the table's first cell"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "Armin, 2026-10-31: when the line below the closing line belongs to a table, opening leaves the caret at the start of the document. PropertiesEmbedder::placeCaretBelow() asks the styler for that line. The case is in tst_s024_front_matter::openingPutsTheCaretBelowTheFrontMatter (caret at 0, no focus in the table); the story's rule \"After opening\" and its scenario say so."
   - id: O5
     category: failure
     severity: minor
     title: "The tooltip with the full JSON is taller than the screen for the project's own review records"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "The tooltip shows the JSON as JSON.stringify(value, null, 2) writes it, at most 20 lines, then a line \"…\" (core::prettyJson reads only that prefix); a click shows the YAML for the rest, the accessible name keeps the full JSON. Tests S024_FrontMatter.PrettyJsonForTheTooltip (against Node 22, and a value of 100,000 objects) and aReviewRecordShowsAsProperties (PropertiesView::toolTipText()); fuzz_render checks the cut. Story updated."
   - id: O6
     category: failure
     severity: minor
     title: "\"bad indentation\" is the badge for the most common mistakes, such as `title: Note: draft` or `\"C:\\path\"`; the story table was widened in the implementation commit"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "Armin, 2026-10-31: three new reasons, then a fourth for what remained: \"colon in a plain value (quote it)\", \"unknown escape\", \"text after a value\" and \"reserved character (quote it)\", all invalid. \"Bad indentation\" is left for indentation, including `: ` on a later line of a plain scalar (a key indented too far) and a block collection on its key's line (`a: - x`). Test S024_FrontMatter.InvalidYamlNamesTheMistake (each case with its line; js-yaml 4.3.2 and ruamel.yaml 0.19.1 reject all of them); two expectations of CasesFromTheDifferentialRun follow. The story's table lists the reasons."
   - id: O7
     category: failure
     severity: minor
     title: "A click on a block scalar or on a null with a comment does not put the caret where the story says"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "A top-level block scalar reports its first content line at the content's indentation, its header only when it has no content. For a null the code keeps the position directly after the colon; the story now says so (before a comment). Tests S024_FrontMatter.ClickPositionsOfBlockScalarsAndNulls and tst_s024_front_matter::aClickOnABlockScalarPutsTheCaretAtItsContent."
   - id: O8
     category: design
     severity: minor
     title: "The second embedded element is wired into EditorWidget and DocumentSession at about twenty places; the Claimant interface solves only hidden and reserved lines"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "architecture.md, \"Adding a Markdown element\", step 4: an embedded element has an embedder class registered as BlockLayout::Claimant and is wired into EditorWidget, BlockStyler and (for properties) DocumentSession at the places listed there. The third embedded element (an image, a math block) introduces an embedder interface that EditorWidget iterates and moves tables and properties to it."
   - id: O9
     category: operational
     severity: minor
     title: "Fixes to S019 and S023 ride on the S024 branch without a note in their stories"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "Armin approved keeping the fixes on agents/s024-front-matter. S019 has a section \"Fixes found later\" and S023 a line under Implementation, each with its tests. The full suite ran on the branch's head (Qt 6.12 and 6.8.3)."
   - id: O10
     category: operational
     severity: minor
     title: "docs/architecture.md says each row of the block is a child widget; it is an accessible interface without a widget"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "architecture.md describes PropertiesView as one painting widget with text laid out once per width, and the rows as accessible interfaces registered on demand and deleted on reset and in the destructor. Since the clang-tidy run the view keeps the registered interfaces, not their ids, and the interfaces hold the view as a raw pointer (the view deletes them first); the styler removes the embedder's pending work in the embedder's destructor instead of guarding it with a QPointer."
   - id: O11
     category: operational
     severity: minor
     title: "The story's list of differences from js-yaml is incomplete: `-.5` and `+.5` are numbers, `1e400` is null"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "`-.5`, `+.5` and `1e400` are in the story's list of differences from js-yaml and in CasesFromTheDifferentialRun (numbers; JSON -0.5, 0.5 and null). The parser already followed the core schema and ruamel.yaml."
 ---
 
 # Objection record: S024 front matter shown as properties (code)
