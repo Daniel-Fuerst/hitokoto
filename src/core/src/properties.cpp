@@ -14,6 +14,18 @@
 #include <cstdint>
 #include <limits>
 #include <unordered_set>
+#include <version>
+
+// Apple's libc++ (Xcode 16) has no floating-point std::from_chars; there a number is read with
+// strtod_l in the C locale, which ignores the locale Qt sets (QCoreApplication calls setlocale).
+#if !defined(__cpp_lib_to_chars)
+#define HITOKOTO_PARSE_WITH_STRTOD_L 1
+#include <clocale>
+#include <cstdlib>
+#if defined(__APPLE__)
+#include <xlocale.h>
+#endif
+#endif
 
 namespace hitokoto::core {
 namespace {
@@ -195,6 +207,15 @@ std::optional<double> number(std::u16string_view s) {
         return std::nullopt;
     }
     double value = 0;
+#if defined(HITOKOTO_PARSE_WITH_STRTOD_L)
+    // strtod_l gives infinity on overflow and zero or a subnormal on underflow, as Number() does.
+    static const locale_t cLocale = newlocale(LC_ALL_MASK, "C", locale_t{});
+    char* end = nullptr;
+    value = strtod_l(ascii.c_str(), &end, cLocale);
+    if (end != ascii.c_str() + ascii.size()) {
+        return std::nullopt;
+    }
+#else
     const auto result = std::from_chars(ascii.data(), ascii.data() + ascii.size(), value);
     if (result.ec == std::errc::result_out_of_range) {
         // Overflow or underflow: as JavaScript's Number() gives it.
@@ -204,6 +225,7 @@ std::optional<double> number(std::u16string_view s) {
     } else if (result.ec != std::errc{}) {
         return std::nullopt;
     }
+#endif
     return negative ? -value : value;
 }
 
