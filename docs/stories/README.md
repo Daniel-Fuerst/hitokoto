@@ -34,7 +34,7 @@ story ID (see "Conventions").
 | 21 | [S020](020-backslash-escapes.md) | Backslash escapes for ASCII punctuation | S013, S015 | S | In review |
 | 22 | [S021](021-code-block-fences-in-panel.md) | Code block fences inside the panel, revealed from anywhere in the block | S014, S019 | M | Confirmed |
 | 24 | [S023](023-thematic-breaks.md) | Thematic breaks and setext headings | S002, S003, S014, S018, S019, S021 | L | In review |
-| 25 | [S024](024-front-matter.md) | Front matter shown as properties | S023 | L | Confirmed |
+| 25 | [S024](024-front-matter.md) | Front matter shown as properties | S023 | L | In progress |
 | 26 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | Open |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).

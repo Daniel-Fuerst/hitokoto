@@ -1,7 +1,8 @@
 # S024 — Front matter shown as properties
 
-- **Status:** Confirmed (by Armin on 2026-10-31, refined 2026-10-30 with his decisions and revised
-  after review `docs/reviews/024-front-matter-spec.md`) · **Order:** 25 · **Size:** L ·
+- **Status:** In progress (since 2026-10-31; confirmed by Armin on 2026-10-31, refined 2026-10-30
+  with his decisions and revised after review `docs/reviews/024-front-matter-spec.md`) ·
+  **Order:** 25 · **Size:** L ·
   **Depends on:** S023 · **Decision:** ADR 0007
 - **Basis:** Obsidian stores note properties as YAML between a `---` on the first line and the next
   `---`, and shows them as a block "Properties" (Obsidian help, "Properties", read 2026-10-30).
