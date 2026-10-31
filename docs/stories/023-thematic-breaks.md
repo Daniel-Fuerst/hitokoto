@@ -1,8 +1,8 @@
 # S023 — Thematic breaks and setext headings
 
-- **Status:** In review (CI green on Linux, Windows and macOS, PR #22, 2026-10-30; confirmed by
-  Armin on 2026-10-30 after review `docs/reviews/023-thematic-breaks-spec.md`) · **Order:** 24 ·
-  **Size:** L ·
+- **Status:** Done (accepted by the user on 2026-10-31; merged through pull request #22;
+  confirmed by Armin on 2026-10-30 after review `docs/reviews/023-thematic-breaks-spec.md`) ·
+  **Order:** 24 · **Size:** L ·
   **Depends on:** S002, S003, S014, S018, S019, S021 · **Decision:** ADR 0006
 - **Basis:** Armin's feature request from everyday use on Windows (2026-10-28): `---` alone on a line
   shows as text. CommonMark 0.31.2, sections 4.1 (thematic breaks) and 4.3 (setext headings); GFM

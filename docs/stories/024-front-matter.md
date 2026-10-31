@@ -1,6 +1,7 @@
 # S024 — Front matter shown as properties
 
-- **Status:** In review (since 2026-10-31, pull request #24; confirmed by Armin on 2026-10-31,
+- **Status:** Done (accepted by the user on 2026-10-31; merged through pull request #24; confirmed
+  by Armin on 2026-10-31,
   refined 2026-10-30 with his decisions and revised after review
   `docs/reviews/024-front-matter-spec.md`) ·
   **Order:** 25 · **Size:** L ·
