@@ -317,6 +317,9 @@ void EditorWidget::paintCodeBlockPanels() {
     // The panel spans its lines from the opening to the closing fence; the margin above and below
     // is part of the first and last line's geometry (BlockLayout, S021), so it stays outside.
     for (QTextBlock b = document()->findBlockByNumber(first); b.isValid() && b.blockNumber() <= last; b = b.next()) {
+        if (!b.isVisible()) {
+            continue;  // takes no space (an embedded element's line): nothing to paint, nothing to render
+        }
         const auto render = styler_->renderFor(b);
         const QRectF rect = blockBoundingGeometry(b).translated(offset);
         if (render.codeBlock) {
@@ -431,6 +434,9 @@ void EditorWidget::paintDecorations() {
         const QRectF rect = blockBoundingGeometry(block).translated(offset);
         if (rect.top() > bottom) {
             break;
+        }
+        if (!block.isVisible()) {
+            continue;
         }
         const auto render = styler_->renderFor(block);
         if (styler_->isRevealed(block.blockNumber())) {
