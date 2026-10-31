@@ -98,6 +98,9 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   `QtCore/qrunnable.h` line 26, and E0028 "expression must have a constant value" in
   `QtCore/qobjectdefs.h` line 604. The compiler (`cl`) builds the same code without error or
   warning; the test target reaches `qrunnable.h` through `document_session.hpp` (since S017).
+- **Gone again:** after Armin deleted the CMake cache and built again the same day, the entries
+  did not come back; probably IntelliSense worked on a state from before the merge. Open whether
+  they return.
 - **Not a fix:** editing the Qt headers (Copilot proposed removing `constexpr` from `QRunnable()`
   and `QAtomicInt(int)`). The headers are correct for `cl`, a changed installation is not
   reproducible on other machines or in CI, and it would change what the real compiler sees.

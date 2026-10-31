@@ -1,7 +1,8 @@
 # S024 — Front matter shown as properties
 
-- **Status:** In progress (since 2026-10-31; confirmed by Armin on 2026-10-31, refined 2026-10-30
-  with his decisions and revised after review `docs/reviews/024-front-matter-spec.md`) ·
+- **Status:** In review (since 2026-10-31, pull request #24; confirmed by Armin on 2026-10-31,
+  refined 2026-10-30 with his decisions and revised after review
+  `docs/reviews/024-front-matter-spec.md`) ·
   **Order:** 25 · **Size:** L ·
   **Depends on:** S023 · **Decision:** ADR 0007
 - **Basis:** Obsidian stores note properties as YAML between a `---` on the first line and the next
@@ -407,4 +408,9 @@ On `agents/s024-front-matter`, 2026-10-31, following ADR 0007:
 - Code review `docs/reviews/024-front-matter-code.md`: every objection dispositioned (O3 and O8
   documented, the others fixed; Armin decided O2, O4, O6 and O9).
 
-Next: CI on Linux, Windows and macOS through the pull request, then "In review".
+CI of pull request #24 green on Linux, Windows and macOS (2026-10-31), after two fixes found on
+the way: raw strings out of gtest macros and C4244 in older tests (MSVC), and reading numbers
+without floating-point `from_chars` on Apple's libc++. The `s024_*` Linux baselines come from that
+run.
+
+Next: Armin's test of the functionality and acceptance (Done); S025 (editing properties).

@@ -35,7 +35,7 @@ story ID (see "Conventions").
 | 22 | [S021](021-code-block-fences-in-panel.md) | Code block fences inside the panel, revealed from anywhere in the block | S014, S019 | M | Confirmed |
 | 23 | [S022](022-inline-links.md) | Inline Markdown links and titles | S013, S015, S020 | M | In review |
 | 24 | [S023](023-thematic-breaks.md) | Thematic breaks and setext headings | S002, S003, S014, S018, S019, S021 | L | In review |
-| 25 | [S024](024-front-matter.md) | Front matter shown as properties | S023 | L | In progress |
+| 25 | [S024](024-front-matter.md) | Front matter shown as properties | S023 | L | In review |
 | 26 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | Open |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
