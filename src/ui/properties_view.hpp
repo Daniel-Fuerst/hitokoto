@@ -61,6 +61,9 @@ public:
     [[nodiscard]] QRect accessibleRect(int element) const;
     [[nodiscard]] QAccessibleInterface* accessibleElement(int element);
 
+    /// Lines of keys and values painted by the last paint event (review O2: only those on screen).
+    [[nodiscard]] int paintedTextLines() const noexcept { return paintedTextLines_; }
+
 signals:
     /// A click released on row `row` (-1: the title or elsewhere in the block); `extend`: with
     /// Shift, the selection is extended to it.
@@ -109,6 +112,7 @@ private:
     qreal icon_ = 0;  ///< size of a type icon
     bool laidOut_ = false;
     bool pressed_ = false;
+    int paintedTextLines_ = 0;
     std::vector<QAccessible::Id> accessibleIds_;  ///< registered on demand, 0 = none yet
 };
 

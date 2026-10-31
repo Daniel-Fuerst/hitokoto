@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S024: front matter shown as properties while the caret is elsewhere, as YAML text while the caret
 // and the anchor of the selection are in it; invalid YAML stays text with a badge.
+#include "properties_view.hpp"
 #include "ui_test_support.hpp"
 
 #include <QAccessible>
@@ -506,6 +507,45 @@ private slots:
         f.settle();
         expectConcealed(editor, close, "settled");
         QCOMPARE(editor->document()->findBlockByNumber(close + 1).text(), QStringLiteral("The first line"));
+    }
+
+    // Review O2 (code), Armin: a long text value shows in full; it is laid out once, across slices,
+    // and only its lines on screen are painted.
+    void aLongTextValueIsLaidOutInSlicesAndPaintedOnScreenOnly() {
+        std::u16string description;
+        for (int i = 0; i < 2000; ++i) {
+            description += u"Line " + QString::number(i).toStdU16String() + u" of a long description.\n";
+        }
+        std::vector<core::Property> properties(3);
+        const std::u16string keys[] = {u"title", u"description", u"after"};
+        const std::u16string texts[] = {u"x", description, u"1"};
+        for (std::size_t i = 0; i < properties.size(); ++i) {
+            properties[i].key = keys[i];
+            properties[i].type = i == 2 ? core::PropertyType::Number : core::PropertyType::Text;
+            properties[i].text = texts[i];
+        }
+        ui::PropertiesView view;
+        const auto style = core::propertiesStyle(core::builtinTheme(core::ColorScheme::Light));
+        view.setLook({style, QFont(), 600});
+        view.reset(properties);
+        int slices = 0;
+        for (bool built = false; !built && slices < 10000; ++slices) {
+            QElapsedTimer timer;
+            timer.start();
+            built = view.build(timer, 0);  // no time left: each slice lays out a part of the value
+        }
+        QVERIFY2(slices > 2, qPrintable(QStringLiteral("built in %1 slices").arg(slices)));
+        QVERIFY(view.built());
+        const qreal line = QFontMetricsF(QFont()).lineSpacing();
+        QVERIFY(view.height() > 2000 * line);
+        QCOMPARE(view.accessibleName(2), QStringLiteral("description: ") + QString::fromStdU16String(description));
+        QImage image(view.size(), QImage::Format_ARGB32_Premultiplied);
+        for (const int top : {0, view.height() / 2, view.height() - 200}) {
+            view.render(&image, QPoint(0, top), QRegion(0, top, view.width(), 200));
+            QVERIFY2(view.paintedTextLines() > 0, qPrintable(QStringLiteral("at %1").arg(top)));
+            QVERIFY2(view.paintedTextLines() < 40,
+                     qPrintable(QStringLiteral("at %1: %2 lines").arg(top).arg(view.paintedTextLines())));
+        }
     }
 
     // Armin, 2026-10-31: after opening, the caret stands on the first line below closed front

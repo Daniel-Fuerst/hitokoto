@@ -370,8 +370,10 @@ void PropertiesView::paintEvent(QPaintEvent* event) {
     if (it != rows_.begin()) {
         --it;
     }
+    paintedTextLines_ = 0;
     for (; it != rows_.end() && it->rect.top() <= area.bottom(); ++it) {
         paintRow(painter, *it, properties_[static_cast<std::size_t>(std::distance(rows_.begin(), it))]);
+        paintedTextLines_ += 1 + (it->text.isEmpty() ? 0 : 1 + static_cast<int>(it->text.count(QLatin1Char('\n'))));
     }
 }
 
