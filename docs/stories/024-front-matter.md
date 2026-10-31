@@ -410,7 +410,7 @@ On `agents/s024-front-matter`, 2026-10-31, following ADR 0007:
 
 CI of pull request #24 green on Linux, Windows and macOS (2026-10-31), after two fixes found on
 the way: raw strings out of gtest macros and C4244 in older tests (MSVC), and reading numbers
-without floating-point `from_chars` on Apple's libc++. The `s024_*` Linux baselines come from that
-run.
+without floating-point `from_chars` on Apple's libc++. The `s024_*` Linux baselines come from the
+four CI runs of the pull request, the slowest value of each key (the first runner was fast).
 
 Next: Armin's test of the functionality and acceptance (Done); S025 (editing properties).

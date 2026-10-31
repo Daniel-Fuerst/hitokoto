@@ -88,9 +88,13 @@ while the closing line is still being confirmed, copies and parses all of it. Af
 and leaving (separate probe, 3 rounds each): 5,000 keys 10 ms on the key and 8 ms in the longest
 idle pass; 10,000 keys 14 and 13 ms; 20,000 keys 9 and 30 ms; 30,000 keys 20 and 64 ms; 50,000
 keys 37 and 132 ms. From about 25,000 keys (some 500 KB of front matter) one pass takes more than
-50 ms. The `s024_*` values in `bench/baselines/linux.json` come from the CI run of pull request #24
-(2026-10-31), added like `s023_*`; every other value of that run lay within the 25 % tolerance of
-the baseline or below it.
+50 ms. The `s024_*` values in `bench/baselines/linux.json` come from the four CI runs of pull
+request #24 (2026-10-31), the slowest value of each key, added like `s023_*`. The first run alone
+was on a fast runner (core decoding 12 ms at 3.7 GHz against 20 ms at 3.25 GHz in the other three;
+the older keys 10–45 % below their baseline), and the three runs after it failed
+`s024_leave_5000_keys_built_ms` (63 → 83–84 ms) and `s024_leave_long_text_built_ms` (37 → 55 ms).
+The three ordinary runs agree within a few per cent, except `s024_open_10mb_properties_ms`
+(31, 55 and 61 ms; 49 ms in the first run).
 
 ### 2026-10-30, development VM, S023 (release build, offscreen, Qt 6.12.0)
 
