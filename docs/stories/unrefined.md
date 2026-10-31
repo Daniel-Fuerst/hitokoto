@@ -78,5 +78,13 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   folder (outside the excluded `C:\Dev`), freeing large strings on the UI thread, Qt 6.12 instead of
   6.8.3. The 1 ms ticker is no artefact: Qt uses multimedia timers for coarse timers up to 20 ms on
   Windows (`qeventdispatcher_win.cpp`).
+- **2026-10-31** (Armin, `win-dev`, Qt 6.12.0 MSVC debug build, on `agents/s024-front-matter`
+  after the merge of main with S022): `savingTenMegabytesDoesNotStallTheEventLoop` reports a one-shot
+  copy of 34 ms and a longest stall of 35 ms against the bound 17 ms. The cases up to
+  `pendingSaveIsWrittenWhenAnotherFileIsOpened` pass; `quitSavesSynchronouslyWhileACopyRuns` prints
+  no result before the ctest timeout of 300 s, so the timeout comes from that case (or from the
+  time all cases take together in the debug build), not from the stall measurement. Whether it
+  hangs or only runs slowly is open: a run of that case alone
+  (`tst_s017_save_without_stall.exe quitSavesSynchronouslyWhileACopyRuns`) would tell.
 - **Open:** find the cause on Windows; Armin's goal is a green `win-dev`, for example by skipping
   timing assertions in unoptimised builds (`QSKIP`), without weakening the gate in CI.
