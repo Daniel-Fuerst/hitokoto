@@ -31,6 +31,21 @@ BlockLayout::BlockLayout(QTextDocument* document) : QAbstractTextDocumentLayout(
 
 // --- block attributes -------------------------------------------------------------------------
 
+void BlockLayout::addClaimant(const Claimant* claimant) {
+    if (std::find(claimants_.begin(), claimants_.end(), claimant) == claimants_.end()) {
+        claimants_.push_back(claimant);
+    }
+}
+
+void BlockLayout::removeClaimant(const Claimant* claimant) {
+    std::erase(claimants_, claimant);
+}
+
+bool BlockLayout::claimedByOther(const QTextBlock& block, const Claimant* asker) const {
+    return std::any_of(claimants_.begin(), claimants_.end(),
+                       [&](const Claimant* c) { return c != asker && c->claims(block); });
+}
+
 void BlockLayout::setReservedHeight(const QTextBlock& block, qreal height) {
     if (!block.isValid()) {
         return;
