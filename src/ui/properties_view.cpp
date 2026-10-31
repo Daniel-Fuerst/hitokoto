@@ -27,7 +27,6 @@ namespace hitokoto::ui {
 namespace {
 
 constexpr int kJsonLines = 3;  ///< S024 review O1: an unsupported value shows at most three lines
-constexpr int kTextFlags = Qt::TextWordWrap | Qt::TextWrapAnywhere;
 const QString kEllipsis = QStringLiteral("…");
 
 /// The first `maxLines` lines of `text` wrapped at `width`; the last one ends in an ellipsis if
@@ -245,7 +244,8 @@ void PropertiesView::setLook(const Look& look) {
     rows_.clear();
     int top = title_.bottom() + 1 + static_cast<int>(std::round(look_.style.rowSpacing));
     for (std::size_t i = 0; i < count; ++i) {
-        rows_.push_back(layoutRow(properties_[i], top, innerWidth()));
+        rows_.push_back(beginRow(properties_[i], top, innerWidth()));
+        (void)continueRow(rows_.back(), nullptr, 0);
         top = rows_.back().rect.bottom() + 1 + static_cast<int>(std::round(look_.style.rowSpacing));
     }
     if (laidOut_) {
@@ -264,11 +264,16 @@ void PropertiesView::reset(std::vector<core::Property> properties) {
 
 bool PropertiesView::build(const QElapsedTimer& timer, qint64 nanoseconds) {
     // In document order: the first rows are on screen when the block is at the top.
+    // A long value is laid out across slices (code review O2): the last row may be unfinished.
     const int spacing = static_cast<int>(std::round(look_.style.rowSpacing));
+    if (!rows_.empty() && !rows_.back().done && !continueRow(rows_.back(), &timer, nanoseconds)) {
+        return false;
+    }
     while (rows_.size() < properties_.size()) {
         const int top = rows_.empty() ? title_.bottom() + 1 + spacing : rows_.back().rect.bottom() + 1 + spacing;
-        rows_.push_back(layoutRow(properties_[rows_.size()], top, innerWidth()));
-        if (rows_.size() % 16 == 0 && timer.nsecsElapsed() > nanoseconds) {
+        rows_.push_back(beginRow(properties_[rows_.size()], top, innerWidth()));
+        if (!continueRow(rows_.back(), &timer, nanoseconds) ||
+            (rows_.size() % 16 == 0 && timer.nsecsElapsed() > nanoseconds)) {
             return false;
         }
     }
@@ -286,7 +291,7 @@ void PropertiesView::finishLayout() {
     laidOut_ = true;
 }
 
-PropertiesView::Row PropertiesView::layoutRow(const core::Property& p, int top, int width) const {
+PropertiesView::Row PropertiesView::beginRow(const core::Property& p, int top, int width) const {
     const QFontMetricsF metrics(look_.font);
     Row row;
     row.key = toQString(p.key);
@@ -296,9 +301,8 @@ PropertiesView::Row PropertiesView::layoutRow(const core::Property& p, int top, 
     row.keyWidth = std::max<qreal>(1, keyColumn - icon_ - 2 * gap_);
     row.valueX = keyColumn;
     row.valueWidth = std::max<qreal>(1, width - keyColumn);
-    const qreal keyHeight =
-        std::max(line_, metrics.boundingRect(QRectF(0, 0, row.keyWidth, 1e9), kTextFlags, row.key).height());
-    qreal valueHeight = line_;
+    startText(row.keyText, row.key, row.keyWidth);
+    row.valueHeight = line_;
     switch (p.type) {
         case core::PropertyType::Checkbox:
             break;
@@ -317,22 +321,91 @@ PropertiesView::Row PropertiesView::layoutRow(const core::Property& p, int top, 
                 row.chips.push_back({QRectF(x, y, w, line_), text});
                 x += w + gap_;
             }
-            valueHeight = y + line_;
+            row.valueHeight = y + line_;
             break;
         }
         case core::PropertyType::Unsupported:
             row.lines = wrappedLines(value, look_.font, row.valueWidth, kJsonLines);
-            valueHeight = std::max<qreal>(1, static_cast<qreal>(row.lines.size())) * line_;
+            row.valueHeight = std::max<qreal>(1, static_cast<qreal>(row.lines.size())) * line_;
             break;
-        default:
-            row.text = value;
-            valueHeight =
-                std::max(line_, metrics.boundingRect(QRectF(0, 0, row.valueWidth, 1e9), kTextFlags, value).height());
+        default: {
+            // A block scalar's final line break shows no empty line.
+            QString shown = value;
+            while (shown.endsWith(QLatin1Char('\n'))) {
+                shown.chop(1);
+            }
+            startText(row.valueText, shown, row.valueWidth);
             break;
+        }
     }
     const int left = static_cast<int>(std::round(look_.style.padding));
-    row.rect = QRect(left, top, width, static_cast<int>(std::ceil(std::max(keyHeight, valueHeight))));
+    row.rect = QRect(left, top, width, 0);
     return row;
+}
+
+bool PropertiesView::continueRow(Row& row, const QElapsedTimer* timer, qint64 nanoseconds) const {
+    if (!continueText(row.keyText, timer, nanoseconds)) {
+        return false;
+    }
+    if (row.valueText.layout != nullptr || !row.valueText.line.isEmpty()) {
+        if (!continueText(row.valueText, timer, nanoseconds)) {
+            return false;
+        }
+        row.valueHeight = row.valueText.height;
+    }
+    row.rect.setHeight(static_cast<int>(std::ceil(std::max(row.keyText.height, row.valueHeight))));
+    row.done = true;
+    return true;
+}
+
+void PropertiesView::startText(Text& text, const QString& string, qreal width) const {
+    text.width = width;
+    text.layout.reset();
+    text.line.clear();
+    // Most keys and values fit on one line: they need no layout of their own, which keeps building
+    // and replacing 5,000 rows as cheap as measuring them.
+    constexpr qsizetype kShort = 256;
+    if (string.size() <= kShort && !string.contains(QLatin1Char('\n')) &&
+        QFontMetricsF(look_.font).horizontalAdvance(string) <= width) {
+        text.line = string;
+        text.height = line_;
+        text.done = true;
+        return;
+    }
+    QString shown = string;
+    shown.replace(QLatin1Char('\n'), QChar::LineSeparator);  // QTextLayout breaks lines only there
+    text.layout = std::make_unique<QTextLayout>(shown, look_.font);
+    QTextOption option;
+    option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+    text.layout->setTextOption(option);
+    text.layout->setCacheEnabled(true);
+    text.height = 0;
+    text.done = false;
+    text.layout->beginLayout();
+}
+
+bool PropertiesView::continueText(Text& text, const QElapsedTimer* timer, qint64 nanoseconds) const {
+    if (text.done) {
+        return true;
+    }
+    for (int lines = 1;; ++lines) {
+        QTextLine line = text.layout->createLine();
+        if (!line.isValid()) {
+            break;
+        }
+        line.setLeadingIncluded(true);
+        line.setLineWidth(text.width);
+        line.setPosition(QPointF(0, text.height));
+        text.height += line.height();
+        // At least 32 lines per call, so that every slice gets on.
+        if (timer != nullptr && lines % 32 == 0 && timer->nsecsElapsed() > nanoseconds) {
+            return false;
+        }
+    }
+    text.layout->endLayout();
+    text.height = std::max(text.height, line_);
+    text.done = true;
+    return true;
 }
 
 int PropertiesView::rowAt(QPoint position) const {
@@ -372,18 +445,54 @@ void PropertiesView::paintEvent(QPaintEvent* event) {
     }
     paintedTextLines_ = 0;
     for (; it != rows_.end() && it->rect.top() <= area.bottom(); ++it) {
-        paintRow(painter, *it, properties_[static_cast<std::size_t>(std::distance(rows_.begin(), it))]);
-        paintedTextLines_ += 1 + (it->text.isEmpty() ? 0 : 1 + static_cast<int>(it->text.count(QLatin1Char('\n'))));
+        paintedTextLines_ +=
+            paintRow(painter, *it, properties_[static_cast<std::size_t>(std::distance(rows_.begin(), it))], area);
     }
 }
 
-void PropertiesView::paintRow(QPainter& painter, const Row& row, const core::Property& p) const {
+int PropertiesView::paintText(QPainter& painter, const Text& text, QPointF origin, const QRect& area) {
+    if (!text.done) {
+        return 0;
+    }
+    if (text.layout == nullptr) {
+        if (text.line.isEmpty() || origin.y() + text.height < area.top() || origin.y() > area.bottom()) {
+            return 0;
+        }
+        painter.drawText(QRectF(origin.x(), origin.y(), text.width, text.height), Qt::AlignLeft | Qt::AlignTop,
+                         text.line);
+        return 1;
+    }
+    // The lines are in order of y: the first one that reaches into the area, then on to its end.
+    const QTextLayout& layout = *text.layout;
+    int first = 0;
+    for (int count = layout.lineCount(); count > 0;) {
+        const int half = count / 2;
+        const QTextLine line = layout.lineAt(first + half);
+        if (origin.y() + line.y() + line.height() < area.top()) {
+            first += half + 1;
+            count -= half + 1;
+        } else {
+            count = half;
+        }
+    }
+    int painted = 0;
+    for (int i = first; i < layout.lineCount(); ++i) {
+        const QTextLine line = layout.lineAt(i);
+        if (origin.y() + line.y() > area.bottom()) {
+            break;
+        }
+        line.draw(&painter, origin);
+        ++painted;
+    }
+    return painted;
+}
+
+int PropertiesView::paintRow(QPainter& painter, const Row& row, const core::Property& p, const QRect& area) const {
     const core::PropertiesStyle& s = look_.style;
     const QPointF origin = row.rect.topLeft();
     paintIcon(painter, QRectF(origin.x(), origin.y() + (line_ - icon_) / 2, icon_, icon_), p.type);
     painter.setPen(toQColor(s.keyText));
-    painter.drawText(QRectF(origin.x() + icon_ + gap_, origin.y(), row.keyWidth, row.rect.height()), kTextFlags,
-                     row.key);
+    int painted = paintText(painter, row.keyText, QPointF(origin.x() + icon_ + gap_, origin.y()), area);
     const QRectF value(origin.x() + row.valueX, origin.y(), row.valueWidth, row.rect.height());
     switch (p.type) {
         case core::PropertyType::Checkbox: {
@@ -408,6 +517,12 @@ void PropertiesView::paintRow(QPainter& painter, const Row& row, const core::Pro
         case core::PropertyType::Tags:
             for (const Chip& chip : row.chips) {
                 const QRectF r = chip.rect.translated(value.topLeft());
+                if (r.bottom() < area.top()) {
+                    continue;  // only the chips in the area
+                }
+                if (r.top() > area.bottom()) {
+                    break;
+                }
                 const qreal border = s.chipBorderWidth;
                 painter.setPen(border > 0 ? QPen(toQColor(s.chipBorder), border) : QPen(Qt::NoPen));
                 painter.setBrush(toQColor(s.chipBackground));
@@ -429,9 +544,10 @@ void PropertiesView::paintRow(QPainter& painter, const Row& row, const core::Pro
         }
         default:
             painter.setPen(toQColor(s.text));
-            painter.drawText(value, kTextFlags, row.text);
+            painted += paintText(painter, row.valueText, value.topLeft(), area);
             break;
     }
+    return painted;
 }
 
 void PropertiesView::paintIcon(QPainter& painter, const QRectF& r, core::PropertyType type) const {

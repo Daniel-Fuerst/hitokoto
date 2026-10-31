@@ -170,6 +170,16 @@ QByteArray s024Document(int keys, bool nested, const QByteArray& body) {
     return out;
 }
 
+/// S024 (code review O2): front matter with a title and a block scalar of `lines` lines of about
+/// 70 characters, followed by `body`.
+QByteArray s024LongTextDocument(int lines, const QByteArray& body) {
+    QByteArray out = "---\ntitle: A long description\ndescription: |\n";
+    for (int i = 0; i < lines; ++i) {
+        out += "  Line " + QByteArray::number(i) + " of a long description that a script wrote for this note.\n";
+    }
+    return out + "---\n" + body;
+}
+
 QString writeFile(const QTemporaryDir& dir, const QString& name, const QByteArray& bytes) {
     const QString path = dir.filePath(name);
     QFile f(path);
@@ -682,6 +692,9 @@ constexpr std::string_view kReportOnly[] = {"save_10mb_total_ms",
                                             "s024_enter_leave_max_ms",
                                             "s024_leave_5000_keys_max_ms",
                                             "s024_leave_5000_nested_max_ms",
+                                            "s024_long_text_typing_max_ms",
+                                            "s024_long_text_typing_over_16ms",
+                                            "s024_leave_long_text_max_ms",
                                             "startup_p95_ms"};
 
 // Brief, section 4. Most budgets are meaningful on reference hardware only (S011) and fail the run
@@ -717,6 +730,9 @@ const Budget kBudgets[] = {
     {"s024_enter_leave_max_ms", 50, "entering and leaving front matter <= 50 ms (hard)", true},
     {"s024_leave_5000_keys_max_ms", 50, "leaving 5,000 edited properties <= 50 ms (hard)", true},
     {"s024_leave_5000_nested_max_ms", 50, "leaving a nested value of 5,000 lines <= 50 ms (hard)", true},
+    {"s024_long_text_typing_p95_ms", 16, "key to screen <= 16 ms (below a long value)"},
+    {"s024_long_text_typing_max_ms", 50, "no key event above 50 ms, below a long value (hard)", true},
+    {"s024_leave_long_text_max_ms", 50, "leaving a text value of 2,000 lines <= 50 ms (hard)", true},
     {"save_10mb_ui_blocked_ms", 16, "saving never stalls the UI (hard)", true},
     {"save_10mb_total_ms", 1000, "10 MB on disk within 1 s (hard)", true},
 };
@@ -756,6 +772,8 @@ int main(int argc, char* argv[]) {
                                            s024Document(200, false, largeDocument(qsizetype{10} * 1024 * 1024)));
     const QString keys5000 = writeFile(dir, QStringLiteral("s024-keys.md"), s024Document(5000, false, "# Body\n"));
     const QString nested5000 = writeFile(dir, QStringLiteral("s024-nested.md"), s024Document(5000, true, "# Body\n"));
+    const QString longText = writeFile(dir, QStringLiteral("s024-long-text.md"),
+                                       s024LongTextDocument(2000, largeDocument(qsizetype{1024} * 1024)));
 
     std::map<std::string, double> r;
     const auto startup = stats(measureStartup(parser.value(appOpt), small, parser.value(runsOpt).toInt()));
@@ -889,7 +907,8 @@ int main(int argc, char* argv[]) {
     r["s024_enter_leave_max_ms"] = stats(enterLeave.keys).max;
     w.editor()->document()->setModified(false);
     for (const auto& [path, name] : {std::pair{keys5000, std::string("s024_leave_5000_keys")},
-                                     std::pair{nested5000, std::string("s024_leave_5000_nested")}}) {
+                                     std::pair{nested5000, std::string("s024_leave_5000_nested")},
+                                     std::pair{longText, std::string("s024_leave_long_text")}}) {
         w.session()->newDocument();
         bool shown = false;
         (void)measurePropertiesOpen(w, path, shown);
@@ -898,6 +917,14 @@ int main(int argc, char* argv[]) {
         printSamples((name + "_built_ms").c_str(), leave.settled);
         r[name + "_max_ms"] = stats(leave.keys).max;
         r[name + "_built_ms"] = stats(leave.settled).median;
+        if (path == longText) {
+            // Code review O2: typing below the value while the end of its block is on screen.
+            const auto typing =
+                stats(measureTypingBelowProperties(w, w.editor()->styler().frontMatterClose() + 1, 200));
+            r["s024_long_text_typing_p95_ms"] = typing.p95;
+            r["s024_long_text_typing_max_ms"] = typing.max;
+            r["s024_long_text_typing_over_16ms"] = typing.over16;
+        }
         w.editor()->document()->setModified(false);
     }
 

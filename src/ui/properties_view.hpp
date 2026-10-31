@@ -3,7 +3,9 @@
 // property with a type icon, the key and the value (Obsidian). It writes nothing: a click asks the
 // editor to put the caret at the value in the YAML (PropertiesEmbedder). One widget paints the rows
 // on screen; each row is an accessible element of its own (an accessible interface per row, not a
-// widget, so that 5,000 properties cost no 5,000 widgets). Rows are laid out in slices (review O8).
+// widget, so that 5,000 properties cost no 5,000 widgets). Rows are laid out in slices (review O8);
+// keys and text values are laid out once into a QTextLayout, a long one across slices, and only
+// their lines on screen are painted (code review O2).
 #pragma once
 
 #include "hitokoto/core/properties.hpp"
@@ -13,8 +15,10 @@
 #include <QElapsedTimer>
 #include <QFont>
 #include <QStringList>
+#include <QTextLayout>
 #include <QWidget>
 
+#include <memory>
 #include <vector>
 
 namespace hitokoto::ui {
@@ -61,7 +65,8 @@ public:
     [[nodiscard]] QRect accessibleRect(int element) const;
     [[nodiscard]] QAccessibleInterface* accessibleElement(int element);
 
-    /// Lines of keys and values painted by the last paint event (review O2: only those on screen).
+    /// Lines of keys and text values painted by the last paint event (code review O2: only those on
+    /// screen).
     [[nodiscard]] int paintedTextLines() const noexcept { return paintedTextLines_; }
 
 signals:
@@ -78,6 +83,16 @@ protected:
     bool event(QEvent* event) override;
 
 private:
+    /// A key or a text value laid out for a width: a short one that fits on one line as it is, a
+    /// longer one line by line in a QTextLayout that stays open until the last line is laid out (a
+    /// long value across slices).
+    struct Text {
+        QString line;  ///< the text when it fits on one line, else empty
+        std::unique_ptr<QTextLayout> layout;
+        qreal width = 1;
+        qreal height = 0;
+        bool done = false;
+    };
     struct Chip {
         QRectF rect;  ///< relative to the value's top left
         QString text;
@@ -86,16 +101,28 @@ private:
     struct Row {
         QRect rect;  ///< in the view's coordinates
         QString key;
-        QString name;       ///< accessible name, "key: value"
-        QString text;       ///< text, number, date: the value shown
+        QString name;  ///< accessible name, "key: value"
+        Text keyText;
+        Text valueText;     ///< text, number, date: the value shown
         QStringList lines;  ///< unsupported: at most three lines of JSON
         std::vector<Chip> chips;
         qreal keyWidth = 0;  ///< of the key's text
         qreal valueX = 0;    ///< where the value starts in the row
         qreal valueWidth = 0;
+        qreal valueHeight = 0;  ///< of chips, a checkbox or JSON
+        bool done = false;      ///< `rect` has its height
     };
-    [[nodiscard]] Row layoutRow(const core::Property& property, int top, int width) const;
-    void paintRow(QPainter& painter, const Row& row, const core::Property& property) const;
+    /// Starts laying out a row at `top`; continueRow() lays out its texts.
+    [[nodiscard]] Row beginRow(const core::Property& property, int top, int width) const;
+    /// Lays out the row's texts until `nanoseconds` have passed since `timer` started (null: no
+    /// limit); true when the row has its height.
+    bool continueRow(Row& row, const QElapsedTimer* timer, qint64 nanoseconds) const;
+    void startText(Text& text, const QString& string, qreal width) const;
+    bool continueText(Text& text, const QElapsedTimer* timer, qint64 nanoseconds) const;
+    /// Paints the lines of `text` that lie in `area`, at `origin`; returns how many.
+    static int paintText(QPainter& painter, const Text& text, QPointF origin, const QRect& area);
+    /// Returns the lines of keys and text values painted.
+    int paintRow(QPainter& painter, const Row& row, const core::Property& property, const QRect& area) const;
     void paintIcon(QPainter& painter, const QRectF& rect, core::PropertyType type) const;
     void finishLayout();
     void forgetAccessibleElements();

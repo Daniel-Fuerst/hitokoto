@@ -326,7 +326,9 @@ text, no properties block, no badge.
   rebuilt only when the caret leaves the block or the lines change. `EditorWidget::propertiesView()`
   returns it (null while there is none or the YAML shows), `EditorWidget::frontMatterBadge()` the
   badge text. Rows on screen are laid out first; building and laying out follow the budget under
-  "Long front matter" (review O8).
+  "Long front matter" (review O8). A text value shows in full however long it is: keys and text
+  values are laid out once per width into a `QTextLayout`, a long one across idle slices, and only
+  their lines on screen are painted (code review O2, Armin's decision).
 - The fuzz target `fuzz_render` also feeds the YAML of each closed front matter, and the whole
   decoded input split into lines, to the parser, so the existing CI job covers it without a change
   to `ci.yml` (review O12).
