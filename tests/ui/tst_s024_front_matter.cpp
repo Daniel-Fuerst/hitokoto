@@ -581,6 +581,17 @@ private slots:
             QVERIFY2(f.editor()->textCursor().position() == 0, start.constData());
         }
         {
+            // Code review O4, Armin: a table directly below the front matter would take the caret
+            // and the keyboard focus into its first cell; the caret stays at the start.
+            test::Fixture f;
+            QVERIFY(
+                f.open(f.writeFile(QStringLiteral("table.md"), "---\na: 1\n---\n| x | y |\n| - | - |\n| 1 | 2 |\n")));
+            f.settle();
+            QCOMPARE(f.editor()->textCursor().position(), 0);
+            QTableView* table = f.editor()->tableViewAt(3);
+            QVERIFY(table == nullptr || !table->isAncestorOf(QApplication::focusWidget()));
+        }
+        {
             test::Fixture f;  // the toggle off: as in S023
             ui::Options options = f.window->options();
             options.frontMatterAsProperties = false;

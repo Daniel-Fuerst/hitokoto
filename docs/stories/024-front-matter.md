@@ -158,8 +158,9 @@ If the document starts with closed front matter whose YAML is valid, the caret s
 of the first line below the closing line instead, so the first screen shows the properties block.
 Reading and building take at most one frame (16 ms) then, instead of 4 ms. Front matter
 confirmed only in idle slices moves the caret there when it is confirmed, unless the caret has
-moved since. Without a line below the closing line, with invalid YAML or with the toggle
-off, the caret stays at the start.
+moved since. Without a line below the closing line, with a table on that line (its first cell
+would take the keyboard focus; code review O4, Armin's decision), with invalid YAML or with the
+toggle off, the caret stays at the start.
 
 **Invalid YAML.** The lines stay plain text as in S023, revealed or not. While the caret is
 outside, the first line `---` shows a badge after it: `Invalid YAML (line n): <reason>` or
@@ -204,6 +205,7 @@ text, no properties block, no badge.
 - When I open it
 - Then the caret stands at the start of the heading and the properties block shows
 - And Ctrl+Home shows the YAML
+- And if a table follows the front matter directly, the caret stays at the start of the document
 
 **Scenario: the caret in the block shows the YAML**
 - Given the properties block
