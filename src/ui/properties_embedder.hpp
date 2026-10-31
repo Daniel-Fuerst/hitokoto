@@ -12,7 +12,6 @@
 
 #include <QFont>
 #include <QObject>
-#include <QPointer>
 #include <QTimer>
 
 #include <optional>

@@ -13,7 +13,6 @@
 #include <QPaintEvent>
 #include <QPainter>
 #include <QPainterPath>
-#include <QPointer>
 #include <QTextLayout>
 #include <QTime>
 #include <QToolTip>
@@ -21,6 +20,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 
 namespace hitokoto::ui {
 
@@ -77,20 +77,17 @@ QString shortDate(const core::PropertyDate& d) {
 
 // ---- accessibility --------------------------------------------------------------------------
 
-/// The title or one row of the block: an accessible element without a widget of its own.
+/// The title or one row of the block: an accessible element without a widget of its own. The view
+/// deletes its elements before it goes (forgetAccessibleElements), so `view_` is never dangling.
 class ElementAccessible final : public QAccessibleInterface {
 public:
     ElementAccessible(PropertiesView* view, int element) : view_(view), element_(element) {}
 
-    [[nodiscard]] bool isValid() const override { return view_ != nullptr && element_ < view_->accessibleCount(); }
+    [[nodiscard]] bool isValid() const override { return element_ < view_->accessibleCount(); }
     [[nodiscard]] QObject* object() const override { return nullptr; }
-    [[nodiscard]] QWindow* window() const override {
-        return view_ != nullptr ? view_->window()->windowHandle() : nullptr;
-    }
+    [[nodiscard]] QWindow* window() const override { return view_->window()->windowHandle(); }
     [[nodiscard]] QAccessibleInterface* childAt(int /*x*/, int /*y*/) const override { return nullptr; }
-    [[nodiscard]] QAccessibleInterface* parent() const override {
-        return view_ != nullptr ? QAccessible::queryAccessibleInterface(view_.data()) : nullptr;
-    }
+    [[nodiscard]] QAccessibleInterface* parent() const override { return QAccessible::queryAccessibleInterface(view_); }
     [[nodiscard]] QAccessibleInterface* child(int /*index*/) const override { return nullptr; }
     [[nodiscard]] int childCount() const override { return 0; }
     [[nodiscard]] int indexOfChild(const QAccessibleInterface* /*child*/) const override { return -1; }
@@ -120,13 +117,13 @@ public:
     [[nodiscard]] QAccessible::State state() const override {
         QAccessible::State s;
         s.readOnly = true;
-        s.invisible = view_ == nullptr || !view_->isVisible();
+        s.invisible = !view_->isVisible();
         return s;
     }
     [[nodiscard]] int element() const noexcept { return element_; }
 
 private:
-    QPointer<PropertiesView> view_;
+    PropertiesView* view_;
     int element_;
 };
 
@@ -588,7 +585,9 @@ QAccessibleInterface* PropertiesView::accessibleElement(int element) {
         accessibleIds_.resize(index + 1, 0);
     }
     if (accessibleIds_[index] == 0) {
-        accessibleIds_[index] = QAccessible::registerAccessibleInterface(new ElementAccessible(this, element));
+        auto created = std::make_unique<ElementAccessible>(this, element);
+        // Qt owns the interface from here on; forgetAccessibleElements() deletes it.
+        accessibleIds_[index] = QAccessible::registerAccessibleInterface(created.release());
     }
     return QAccessible::accessibleInterface(accessibleIds_[index]);
 }

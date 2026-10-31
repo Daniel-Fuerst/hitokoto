@@ -554,7 +554,7 @@ private:
                 return lines_.size();
             }
             if (documentMarker(i)) {
-                fail(t[0] == u'.' ? Reason::DocumentEnd : Reason::DocumentEnd, i);
+                fail(Reason::DocumentEnd, i);  // `...`, or `---` that starts a second document
                 return lines_.size();
             }
             return i;
@@ -965,16 +965,15 @@ private:
             const bool more = !content.empty() && isWhite(content[0]);
             if (!any) {
                 out.append(empties, u'\n');
-            } else if (literal) {
-                out.append(1 + empties, u'\n');
-            } else if (!more && !previousMore) {
+            } else if (!literal && !more && !previousMore) {
+                // Folded: a line break between two lines of text becomes a space, empty lines stay.
                 if (empties == 0) {
                     out += u' ';
                 } else {
                     out.append(empties, u'\n');
                 }
             } else {
-                out.append(1 + empties, u'\n');
+                out.append(1 + empties, u'\n');  // literal, or next to a more indented line
             }
             out += content;
             any = true;
@@ -1068,12 +1067,10 @@ private:
                 return addNull();
             }
             p.col = firstNonWhite(p.line);
-            if (escapedBreak) {
-                out.append(empties, u'\n');
-            } else if (empties == 0) {
-                out += u' ';
+            if (!escapedBreak && empties == 0) {
+                out += u' ';  // a line break between two lines of text
             } else {
-                out.append(empties, u'\n');
+                out.append(empties, u'\n');  // empty lines stay; an escaped break adds nothing
             }
         }
     }

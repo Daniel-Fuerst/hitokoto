@@ -64,11 +64,11 @@ PropertiesEmbedder::PropertiesEmbedder(EditorWidget* editor, BlockStyler* styler
     layout_->addClaimant(this);
     work_.setInterval(0);
     connect(&work_, &QTimer::timeout, this, &PropertiesEmbedder::slice);
-    QPointer<PropertiesEmbedder> self(this);
-    styler_->addPendingWork([self] { return self && self->busy(); });
+    styler_->addPendingWork(this, [this] { return busy(); });
 }
 
 PropertiesEmbedder::~PropertiesEmbedder() {
+    styler_->removePendingWork(this);
     layout_->removeClaimant(this);
 }
 
@@ -276,9 +276,7 @@ void PropertiesEmbedder::caretMoved() {
     const bool stale = dirty_ || (view_ != nullptr && !error_ && !view_->built()) || close_ != confirmedClose();
     if (stale) {
         // Leaving the block after an edit: read and build at most 4 ms now, the rest in idle slices.
-        if (!caretInside() && !held_ && !work(kKeyNanoseconds)) {
-            schedule();
-        } else if (caretInside() || held_) {
+        if (caretInside() || held_ || !work(kKeyNanoseconds)) {
             schedule();
         }
         updateBadge();
