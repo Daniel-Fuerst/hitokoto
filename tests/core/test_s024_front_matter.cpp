@@ -459,6 +459,46 @@ TEST(S024_FrontMatter, YamlOutsideTheSubsetIsUnsupported) {
     EXPECT_EQ(quoted.rows[0].text, u"&x *y !!z");
 }
 
+// Cases from the differential run against js-yaml 4.3.2 (2026-10-31, ADR 0007), checked with
+// ruamel.yaml 0.19.1 too.
+TEST(S024_FrontMatter, CasesFromTheDifferentialRun) {
+    using R = PropertiesErrorReason;
+    // Both references give 0o and 0x numbers a sign, although the core schema has none.
+    const Properties signs = parse(u"a: -0x1A\nb: +0o17\nm: [-0x1A, +0o17]\n");
+    ASSERT_FALSE(signs.error.has_value());
+    for (const std::u16string_view key : {u"a", u"b"}) {
+        if (const Property* r = row(signs, key)) {
+            EXPECT_EQ(r->type, PropertyType::Number) << narrow(key);
+        }
+    }
+    if (const Property* r = row(signs, u"m")) {
+        EXPECT_EQ(r->type, PropertyType::List);
+    }
+    const Properties signedJson = parse(u"m: [[-0x1A, +0o17]]\n");
+    ASSERT_EQ(signedJson.rows.size(), 1U);
+    EXPECT_EQ(signedJson.rows[0].text, u"[[-26,15]]");
+    // A `#` right after a closing quote or bracket starts a comment (both references).
+    const Properties hash = parse(u"a: \"x\"#c\nb: [1]#c\n");
+    ASSERT_FALSE(hash.error.has_value());
+    if (const Property* r = row(hash, u"a")) {
+        EXPECT_EQ(r->text, u"x");
+    }
+    if (const Property* r = row(hash, u"b")) {
+        EXPECT_EQ(r->items, std::vector<std::u16string>{u"1"});
+    }
+    // An unknown escape is invalid (js-yaml: "unknown escape sequence"). Like other unexpected text
+    // the badge calls it "bad indentation", as js-yaml calls most of it.
+    expectError(u"a: \"\\q\"\n", R::BadIndentation, 0);
+    // A tab before a compact mapping in a sequence entry is indentation (both reject it).
+    expectError(u"a:\n-\tk: v\n", R::TabInIndentation, 1);
+    // An implicit key in a flow mapping and its `:` stay on one line (both reject it).
+    expectError(u"a: {k\n  : 1}\n", R::BadIndentation, 1);
+    // Keys keep their order in JSON, as in ruamel.yaml; JavaScript puts integer-like keys first.
+    const Properties order = parse(u"m: {2: a, 1: b, x: c}\n");
+    ASSERT_EQ(order.rows.size(), 1U);
+    EXPECT_EQ(order.rows[0].text, uR"({"2":"a","1":"b","x":"c"})");
+}
+
 // ADR 0007: linear in the length of the YAML (best of three, ten times the input).
 TEST(S024_FrontMatter, ReadingIsLinear) {
     const auto seconds = [](const std::vector<std::u16string>& lines) {
