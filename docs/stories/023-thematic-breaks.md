@@ -226,6 +226,10 @@ On `agents/s023-thematic-break`, 2026-10-30, following ADR 0006 (section "Implem
   of PR #22.
 - Code review `docs/reviews/023-thematic-breaks-code.md`: every objection dispositioned. A fix to
   S021 (a fence directly after a table) stays on this branch (O8).
+- Fix on `agents/s024-front-matter` (2026-10-31, found with S024, kept on that branch with Armin's
+  approval; S024 code review O9): front matter whose closing line arrives in a slice of a loading
+  file with more than 400 lines was never confirmed; such a slice now confirms it in idle slices.
+  Test `tst_s023_thematic_breaks::frontMatterClosedInALaterSliceOfALongFile`.
 
 Next: Armin's test of the functionality and acceptance (Done); S024 (front matter shown as
 properties).
