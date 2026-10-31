@@ -272,6 +272,32 @@ const Token kTokens[] = {
     {{"thematic-break", "border-width", "number (px)", "Thickness of the line, 0 to 8; drawn as max(1, round(width x device pixel ratio)) device pixels", "1"}, &applyOptNumber<&Theme::thematicBreak, &ThematicBreakTokens::borderWidth, 0, 80>},
     {{"thematic-break", "margin", "number (px)", "Space above and below the line, 0 to 64; part of the line's geometry, the same when revealed", "0"}, &applyOptNumber<&Theme::thematicBreak, &ThematicBreakTokens::margin, 0, 640>},
     {{"thematic-break", "marker", "color", "Characters of the break when revealed", "colors.marker"}, &applyOptColor<&Theme::thematicBreak, &ThematicBreakTokens::marker>},
+    {{"properties", "background", "color", "Background of the block", "colors.background"}, &applyOptColor<&Theme::properties, &PropertiesTokens::background>},
+    {{"properties", "text", "color", "Values", "colors.text"}, &applyOptColor<&Theme::properties, &PropertiesTokens::text>},
+    {{"properties", "key-text", "color", "Keys", "colors.text-muted"}, &applyOptColor<&Theme::properties, &PropertiesTokens::keyText>},
+    {{"properties", "title-text", "color", "The title \"Properties\"", "colors.text-muted"}, &applyOptColor<&Theme::properties, &PropertiesTokens::titleText>},
+    {{"properties", "icon", "color", "Type icons", "colors.text-muted"}, &applyOptColor<&Theme::properties, &PropertiesTokens::icon>},
+    {{"properties", "unsupported-text", "color", "JSON of unsupported values", "colors.accent"}, &applyOptColor<&Theme::properties, &PropertiesTokens::unsupportedText>},
+    {{"properties", "badge-text", "color", "Badge of invalid or unsupported YAML on the first line", "properties.unsupported-text"}, &applyOptColor<&Theme::properties, &PropertiesTokens::badgeText>},
+    {{"properties", "badge-font-family", "string", "Font family of the badge; \"\" = editor font", "\"\""}, &applyOptString<&Theme::properties, &PropertiesTokens::badgeFontFamily>},
+    {{"properties", "badge-font-scale", "number", "Size of the badge relative to the editor font, 0.5 to 2", "1"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::badgeFontScale, 5, 20>},
+    {{"properties", "checkbox", "color", "Tick and border of a checkbox", "colors.accent"}, &applyOptColor<&Theme::properties, &PropertiesTokens::checkbox>},
+    {{"properties", "checkbox-background", "color", "Fill of a checkbox", "properties.background"}, &applyOptColor<&Theme::properties, &PropertiesTokens::checkboxBackground>},
+    {{"properties", "chip-background", "color", "Background of a list item or tag", "colors.surface"}, &applyOptColor<&Theme::properties, &PropertiesTokens::chipBackground>},
+    {{"properties", "chip-text", "color", "Text of a list item or tag", "properties.text"}, &applyOptColor<&Theme::properties, &PropertiesTokens::chipText>},
+    {{"properties", "chip-border", "color", "Border of a list item or tag", "colors.border"}, &applyOptColor<&Theme::properties, &PropertiesTokens::chipBorder>},
+    {{"properties", "chip-border-width", "number (px)", "Border width of a list item or tag, 0 to 8", "0"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::chipBorderWidth, 0, 80>},
+    {{"properties", "chip-radius", "number (px)", "Corner radius of a list item or tag, 0 to 32", "layout.radius"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::chipRadius, 0, 320>},
+    {{"properties", "chip-padding", "number (px)", "Horizontal space inside a list item or tag, 0 to 32", "4"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::chipPadding, 0, 320>},
+    {{"properties", "border", "color", "Border of the block", "colors.border"}, &applyOptColor<&Theme::properties, &PropertiesTokens::border>},
+    {{"properties", "border-width", "number (px)", "Border width, 0 to 8", "0"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::borderWidth, 0, 80>},
+    {{"properties", "radius", "number (px)", "Corner radius of the block, 0 to 32", "layout.radius"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::radius, 0, 320>},
+    {{"properties", "padding", "number (px)", "Space inside the block, 0 to 64", "layout.spacing"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::padding, 0, 640>},
+    {{"properties", "margin", "number (px)", "Space above and below the block, 0 to 64", "3"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::margin, 0, 640>},
+    {{"properties", "row-spacing", "number (px)", "Space between rows, 0 to 32", "2"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::rowSpacing, 0, 320>},
+    {{"properties", "key-width", "number (px)", "Width of the key column, 40 to 1000", "160"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::keyWidth, 400, 10000>},
+    {{"properties", "font-family", "string", "Font family of the block; \"\" = editor font", "\"\""}, &applyOptString<&Theme::properties, &PropertiesTokens::fontFamily>},
+    {{"properties", "font-scale", "number", "Font size relative to the editor font, 0.5 to 2", "1"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::fontScale, 5, 20>},
 };
 // clang-format on
 
@@ -739,8 +765,38 @@ ThematicBreakStyle thematicBreakStyle(const Theme& t) {
 }
 
 PropertiesStyle propertiesStyle(const Theme& t) {
-    (void)t;
-    return {};  // S024: stub until the tokens of [properties] are implemented
+    const PropertiesTokens& p = t.properties;
+    const Color background = p.background.value_or(t.background);
+    const Color text = p.text.value_or(t.text);
+    const Color unsupported = p.unsupportedText.value_or(t.accent);
+    return {
+        .background = background,
+        .text = text,
+        .keyText = p.keyText.value_or(t.textMuted),
+        .titleText = p.titleText.value_or(t.textMuted),
+        .icon = p.icon.value_or(t.textMuted),
+        .unsupportedText = unsupported,
+        .badgeText = p.badgeText.value_or(unsupported),
+        .checkbox = p.checkbox.value_or(t.accent),
+        .checkboxBackground = p.checkboxBackground.value_or(background),
+        .chipBackground = p.chipBackground.value_or(t.surface),
+        .chipText = p.chipText.value_or(text),
+        .chipBorder = p.chipBorder.value_or(t.border),
+        .border = p.border.value_or(t.border),
+        .badgeFontScale = p.badgeFontScale.value_or(1),
+        .badgeFontFamily = p.badgeFontFamily.value_or(""),
+        .chipBorderWidth = p.chipBorderWidth.value_or(0),
+        .chipRadius = p.chipRadius.value_or(t.radius),
+        .chipPadding = p.chipPadding.value_or(4),
+        .borderWidth = p.borderWidth.value_or(0),
+        .radius = p.radius.value_or(t.radius),
+        .padding = p.padding.value_or(t.spacing),
+        .margin = p.margin.value_or(3),
+        .rowSpacing = p.rowSpacing.value_or(2),
+        .keyWidth = p.keyWidth.value_or(160),
+        .fontScale = p.fontScale.value_or(1),
+        .fontFamily = p.fontFamily.value_or(""),
+    };
 }
 
 std::string_view builtinThemeSource(ColorScheme scheme) {

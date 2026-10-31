@@ -156,10 +156,43 @@ follows the general tokens above.
 | `thematic-break.border-width` | number (px) | Thickness of the line, 0 to 8; drawn as max(1, round(width x device pixel ratio)) device pixels | 1 |
 | `thematic-break.margin` | number (px) | Space above and below the line, 0 to 64; part of the line's geometry, the same when revealed | 0 |
 | `thematic-break.marker` | color | Characters of the break when revealed | `colors.marker` |
+| `properties.background` | color | Background of the block | `colors.background` |
+| `properties.text` | color | Values | `colors.text` |
+| `properties.key-text` | color | Keys | `colors.text-muted` |
+| `properties.title-text` | color | The title "Properties" | `colors.text-muted` |
+| `properties.icon` | color | Type icons | `colors.text-muted` |
+| `properties.unsupported-text` | color | JSON of unsupported values | `colors.accent` |
+| `properties.badge-text` | color | Badge of invalid or unsupported YAML on the first line | `properties.unsupported-text` |
+| `properties.badge-font-family` | string | Font family of the badge; "" = editor font | "" |
+| `properties.badge-font-scale` | number | Size of the badge relative to the editor font, 0.5 to 2 | 1 |
+| `properties.checkbox` | color | Tick and border of a checkbox | `colors.accent` |
+| `properties.checkbox-background` | color | Fill of a checkbox | `properties.background` |
+| `properties.chip-background` | color | Background of a list item or tag | `colors.surface` |
+| `properties.chip-text` | color | Text of a list item or tag | `properties.text` |
+| `properties.chip-border` | color | Border of a list item or tag | `colors.border` |
+| `properties.chip-border-width` | number (px) | Border width of a list item or tag, 0 to 8 | 0 |
+| `properties.chip-radius` | number (px) | Corner radius of a list item or tag, 0 to 32 | `layout.radius` |
+| `properties.chip-padding` | number (px) | Horizontal space inside a list item or tag, 0 to 32 | 4 |
+| `properties.border` | color | Border of the block | `colors.border` |
+| `properties.border-width` | number (px) | Border width, 0 to 8 | 0 |
+| `properties.radius` | number (px) | Corner radius of the block, 0 to 32 | `layout.radius` |
+| `properties.padding` | number (px) | Space inside the block, 0 to 64 | `layout.spacing` |
+| `properties.margin` | number (px) | Space above and below the block, 0 to 64 | 3 |
+| `properties.row-spacing` | number (px) | Space between rows, 0 to 32 | 2 |
+| `properties.key-width` | number (px) | Width of the key column, 40 to 1000 | 160 |
+| `properties.font-family` | string | Font family of the block; "" = editor font | "" |
+| `properties.font-scale` | number | Font size relative to the editor font, 0.5 to 2 | 1 |
 
 A thematic break (`---`, `***`, `___`) is a line across the text column, centred vertically in its block.
 Setext headings (text underlined with `===` or `---`) add no tokens: their lines use the heading
 tokens (`headings.*`) like ATX headings, and a revealed underline uses `colors.marker` at body size.
+
+Front matter shown as properties (S024) is a block of its own, embedded in place of the YAML lines:
+a title, then one row per property with a type icon, the key and the value. Lists and tags are
+chips; the key column takes `properties.key-width`, at most half the block; a checkbox is drawn read
+only; a nested value shows its JSON in `properties.unsupported-text`, at most three lines. Margin
+and padding are part of the block's geometry, as for a code block. Invalid YAML stays text and shows
+a badge after its first line (`properties.badge-*`).
 
 Bold text is never lighter than the text around it: inside a heading the weight is the larger of
 `headings.weight` and `emphasis.bold-weight`. The built-in themes set both to 700, so bold inside a
