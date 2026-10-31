@@ -749,7 +749,11 @@ private:
                 }
             } else {
                 valuePos = {i, v};
+                blockContent_.reset();
                 value = blockNode(i, v, static_cast<int>(col), depth, true);
+                if ((t[v] == u'|' || t[v] == u'>') && blockContent_) {
+                    valuePos = *blockContent_;  // code review O7: its first content line
+                }
             }
             if (error_) {
                 return addNull();
@@ -938,6 +942,7 @@ private:
                 fail(Reason::BadIndentation, first);
                 return addNull();
             }
+            blockContent_ = Pos{first, contentIndent};
         }
         // Collect the content lines (kNone = an empty line) up to the first less indented line.
         Node node;
@@ -1454,7 +1459,8 @@ private:
     std::vector<Node> nodes_;
     std::vector<TopEntry> top_;
     std::optional<PropertiesError> error_;
-    std::size_t next_ = 0;  ///< the line after the block node parsed last
+    std::size_t next_ = 0;             ///< the line after the block node parsed last
+    std::optional<Pos> blockContent_;  ///< first content of the block scalar parsed last
 };
 
 }  // namespace
