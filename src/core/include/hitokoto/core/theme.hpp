@@ -61,6 +61,12 @@ struct EscapeTokens {
     friend bool operator==(const EscapeTokens&, const EscapeTokens&) = default;
 };
 
+/// Tokens of `[link]`; resolved by linkStyle().
+struct LinkTokens {
+    std::optional<Color> text, marker;
+    friend bool operator==(const LinkTokens&, const LinkTokens&) = default;
+};
+
 /// Tokens of `[thematic-break]` (S023); resolved by thematicBreakStyle().
 struct ThematicBreakTokens {
     std::optional<Color> border, marker;
@@ -113,6 +119,7 @@ struct Theme {
     EmphasisTokens emphasis;
     TableTokens table;
     EscapeTokens escape;
+    LinkTokens link;
     ThematicBreakTokens thematicBreak;
     PropertiesTokens properties;
 
@@ -179,6 +186,11 @@ struct EscapeStyle {
     friend bool operator==(const EscapeStyle&, const EscapeStyle&) = default;
 };
 
+struct LinkStyle {
+    Color text, marker;
+    friend bool operator==(const LinkStyle&, const LinkStyle&) = default;
+};
+
 /// Resolved look of a thematic break (S023).
 struct ThematicBreakStyle {
     Color border;            ///< colour of the line
@@ -213,6 +225,7 @@ struct PropertiesStyle {
 [[nodiscard]] EmphasisStyle emphasisStyle(const Theme& theme);
 [[nodiscard]] TableStyle tableStyle(const Theme& theme);
 [[nodiscard]] EscapeStyle escapeStyle(const Theme& theme);
+[[nodiscard]] LinkStyle linkStyle(const Theme& theme);
 [[nodiscard]] ThematicBreakStyle thematicBreakStyle(const Theme& theme);
 [[nodiscard]] PropertiesStyle propertiesStyle(const Theme& theme);
 

@@ -29,3 +29,6 @@ clicked, even though revealing the markers shifts the text, so that mouse editin
 - Obsidian keeps the clicked character under the caret and accepts the visual shift; the same is
   proposed here. Whether the line should also be scrolled to keep the pointer over the clicked
   character is a UX question for this story.
+- **Exception for inline links (S022):** when a line is concealed, clicking directly on link text
+  opens the link in the browser rather than placing the caret. On the active (revealed) line, a plain
+  click places the caret per S010.

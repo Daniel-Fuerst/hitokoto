@@ -58,15 +58,22 @@ public:
     /// After opening a file (`loaded`: all of it is in): the caret below closed front matter, else at
     /// the start of the document (S024).
     void placeCaretAfterOpening(bool loaded);
+    /// The anchor URL at viewport point `pos`, or empty (S022).
+    [[nodiscard]] QString anchorAt(const QPoint& pos) const;
+    /// Merged character format at viewport point `pos` (S022).
+    [[nodiscard]] QTextCharFormat formatAt(const QPoint& pos) const;
 
 signals:
     void painted();
 
 protected:
+    bool viewportEvent(QEvent* event) override;
+    void leaveEvent(QEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void inputMethodEvent(QInputMethodEvent* event) override;
     void insertFromMimeData(const QMimeData* source) override;

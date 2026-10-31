@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "hitokoto/core/markdown.hpp"
 
+#include <algorithm>
+#include <vector>
+
 namespace hitokoto::core {
 namespace {
 
@@ -18,8 +21,20 @@ public:
     [[nodiscard]] std::u16string_view triggerCharacters() const noexcept override { return u"`"; }
 
     void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
+        std::vector<bool> opaque(line.size(), false);
+        for (const auto& span : out.opaqueSpans) {
+            if (span.start < line.size()) {
+                const auto end = std::min<std::size_t>(span.end(), line.size());
+                std::fill(opaque.begin() + static_cast<std::ptrdiff_t>(span.start),
+                          opaque.begin() + static_cast<std::ptrdiff_t>(end), true);
+            }
+        }
         std::size_t opener = std::u16string_view::npos;
         for (std::size_t i = 0; i < line.size(); ++i) {
+            if (opaque[i]) {
+                opener = std::u16string_view::npos;
+                continue;
+            }
             if (line[i] != u'`' || (i > 0 && line[i - 1] == u'`') || (i + 1 < line.size() && line[i + 1] == u'`')) {
                 continue;
             }
@@ -42,6 +57,7 @@ public:
                 out.hidden.push_back({{static_cast<std::uint32_t>(opener), 1}, HideMode::Collapse});
                 out.hidden.push_back({{static_cast<std::uint32_t>(i), 1}, HideMode::Collapse});
             }
+            out.opaqueSpans.push_back({static_cast<std::uint32_t>(opener), static_cast<std::uint32_t>(i - opener + 1)});
             opener = std::u16string_view::npos;
         }
     }
