@@ -144,7 +144,50 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   without a baseline fails the job with the message that a new class has to be recorded, and
   leaves its values as an artefact to start that baseline. Within a class the spread is small (a
   few per cent in the three runs above), so the tolerance could be tighter than 25 %. First step:
-  record the CPU in the artefact and collect a few runs to learn the classes (so far two clocks,
-  3.7 and 3.25 GHz, and once core decoding of 24 ms on 7e9e7d4).
+  record the CPU in the artefact and collect a few runs to learn the classes (so far four, see
+  below, and once core decoding of 24 ms on 7e9e7d4).
+- **Classes of runner seen on pull request #24 (2026-10-31):** seven runs, all `ubuntu-24.04` with
+  4 vCPU and the host name `runnervm48cm3` (the host name does not tell the classes apart). Classes
+  by `context.mhz_per_cpu` in `core-bench.json`; core decoding and rendering are
+  `S007_Decode10MB` and `S007_RenderAllLines10MB`, the other columns are keys of
+  `e2e-bench.json`:
+
+  | Class | Clock | Runs | Decoding | Rendering | `open_10mb_styled` | `s023_open_10mb_styled` | `typing_10mb_median` |
+  |---|---|---|---|---|---|---|---|
+  | A | 3694 MHz | 1st, 7th | 12.2–12.4 ms | 44.6–44.7 ms | 2.63–2.64 s | 2.26 s | 0.71 ms |
+  | B | 3244–3265 MHz | 2nd–4th | 19.7–20.4 ms | 60.5–60.7 ms | 3.08–3.12 s | 2.72–2.76 s | 0.91–0.94 ms |
+  | C | 2800 MHz | 5th | 23.1 ms | 49.3 ms | 3.34 s | 2.90 s | 1.29 ms |
+  | D | 4540 MHz | 6th | 7.7 ms | 30.7 ms | 1.89 s | 1.60 s | 0.53 ms |
+
+  Within a class the runs agree within a few per cent; between classes there is no common factor
+  (C against B: decoding ×1.17, rendering ×0.81, typing ×1.4). The baseline in use
+  (`open_10mb_styled_ms` 2.60 s, `typing_10mb_median_ms` 0.90 ms) matches no class completely.
+  Class C failed `open_10mb_styled_ms` (+28 %), while the same commit lay within the noise of main
+  locally (+2 %). Class D passed every comparison but failed the hard budget: one of 200 keys in
+  `typing_small` took 54.2 ms (`typing_small_max_ms`; p99 0.63 ms). `typing_small` is the first
+  typing measurement after the window opens; pull request #20 showed the same once (222 ms, a
+  restart was green), so it is taken as a hiccup of the runner, not a property of the class. The
+  artefact does not yet name the CPU model, and it shows a maximum without the key that caused it;
+  with (6), print samples above 50 ms with their position. Armin keeps the artefacts
+  (`bench-linux-PR24.zip` and `-1` to `-6`) outside the repository.
 - **Open:** which of these to adopt, (6) preferred. Armin's goal: the job is red only for a real
   regression, and a new kind of runner is never overlooked.
+
+## Versioning, and packages and installers for every version
+
+- **Seen:** 2026-10-31 (Armin, after building main for daily use): every update means building
+  locally, copying the exe and running `windeployqt` by hand.
+- **Now:** the version is `0.1.0` in `project()` in `CMakeLists.txt`, set by hand and unchanged
+  since S000; the app reports it through `QApplication::applicationVersion`. The repository has
+  no tags. `CMakeLists.txt` configures CPack for DEB and TGZ (pull request #15), but no CI job runs
+  it. S012 (distributable builds; Open in the backlog, Proposed in its file) asks for one artefact
+  per platform from a release workflow for a tagged release: a Windows installer or zip, a macOS
+  `.dmg` and a Linux AppImage, with the licences.
+- **Wanted (Armin):** a version, set automatically if possible, and for every new version packages
+  and installers built automatically.
+- **Open:** where the version comes from (a git tag read by CMake, a file, or derived from the
+  commit messages); what makes a new version (a tag on main, a GitHub release, every merge); the
+  formats per platform and whether this refines S012 or becomes a story of its own; signing
+  (Windows certificate, macOS notarisation); where the artefacts go (GitHub releases, now that the
+  repository is public). A release job changes `ci.yml` or adds a workflow, so it needs Armin's
+  approval.
