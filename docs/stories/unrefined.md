@@ -88,3 +88,22 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   (`tst_s017_save_without_stall.exe quitSavesSynchronouslyWhileACopyRuns`) would tell.
 - **Open:** find the cause on Windows; Armin's goal is a green `win-dev`, for example by skipping
   timing assertions in unoptimised builds (`QSKIP`), without weakening the gate in CI.
+
+## IntelliSense errors in Qt headers in Visual Studio
+
+- **Seen:** 2026-10-31 (Armin, `win-dev`, Visual Studio 2022 17.14 with MSVC 14.44, Qt 6.12.0 MSVC)
+  after a full rebuild following the merge of S022: the Error List shows two IntelliSense entries
+  for `tst_s005_theme.exe`, E2422 "defaulted default constructor cannot be constexpr because the
+  corresponding implicitly declared default constructor would not be constexpr" in
+  `QtCore/qrunnable.h` line 26, and E0028 "expression must have a constant value" in
+  `QtCore/qobjectdefs.h` line 604. The compiler (`cl`) builds the same code without error or
+  warning; the test target reaches `qrunnable.h` through `document_session.hpp` (since S017).
+- **Not a fix:** editing the Qt headers (Copilot proposed removing `constexpr` from `QRunnable()`
+  and `QAtomicInt(int)`). The headers are correct for `cl`, a changed installation is not
+  reproducible on other machines or in CI, and it would change what the real compiler sees.
+- **Cause:** open. IntelliSense uses its own front end (EDG), which may assume another language
+  standard or compiler mode than the build, for example `/Zc:__cplusplus`, or may not yet support
+  what Qt 6.12 relies on there.
+- **Open:** find the IntelliSense setting (CMake presets, `CMakeSettings`, `intelliSenseMode`) that
+  makes the entries go away, or a Qt or Visual Studio bug report; until then the Error List filter
+  "Build Only" hides them. Armin's goal: no entries in the Error List.
