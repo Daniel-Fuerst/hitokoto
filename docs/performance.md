@@ -67,7 +67,10 @@ before the code review (4aecf63) against three of the branch, on the same VM, `-
 Every other value stays within the spread of main. Key to paint in the 10 MB document without
 front matter has the same median as main, but a higher p95 in some runs (up to 4.6 against 1.8
 ms); the state before the code review shows the same spread (1.6–3.4 ms), and the difference stays
-below the 2 ms from which the gate compares. The first version left 5,000 edited keys in
+below the 2 ms from which the gate compares. After the merge of main 90a15b2 (S022), three runs of
+the branch against three of that main: every value within the spread of main, also key to paint
+in 10 MB (p95 1.7–3.7 against 1.8–3.2 ms); the `s024_*` values as in the table. The first
+version left 5,000 edited keys in
 about 110 ms: deleting 5,000 row widgets, laying out the old rows again before they were replaced,
 showing a widget with 5,000 children, and two passes over the hidden lines (laid out by
 `blockBoundingRect` when the view scrolled past them, rendered by the panels and decorations on
