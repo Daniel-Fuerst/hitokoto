@@ -4,6 +4,8 @@
 // rows and columns in the Markdown lines and moves the caret into and out of tables.
 #pragma once
 
+#include "block_layout.hpp"
+
 #include <QObject>
 #include <QPoint>
 #include <QTextBlock>
@@ -15,17 +17,22 @@ class QTableView;
 
 namespace hitokoto::ui {
 
-class BlockLayout;
 class BlockStyler;
 class EditorFormats;
 class EditorWidget;
 class TableWidget;
 
-class TableEmbedder : public QObject {
+class TableEmbedder : public QObject, public BlockLayout::Claimant {
     Q_OBJECT
 public:
     TableEmbedder(EditorWidget* editor, BlockStyler* styler, BlockLayout* layout);
     ~TableEmbedder() override;
+    TableEmbedder(const TableEmbedder&) = delete;
+    TableEmbedder& operator=(const TableEmbedder&) = delete;
+
+    /// A table's header line (reserved height), its other lines and the blank line below it
+    /// (hidden) while its view shows it (S024 review O4).
+    [[nodiscard]] bool claims(const QTextBlock& block) const override;
 
     [[nodiscard]] QTableView* viewAt(int blockNumber) const;
     [[nodiscard]] bool isSourceShown(int blockNumber) const;
@@ -111,7 +118,8 @@ private:
     void markStale(Table& table);
     /// Records where the table's line breaks are (after it was found or changed).
     void markBreaks(Table& table) const;
-    /// Shows lines in [from, to] that are hidden or reserve height but belong to no table.
+    /// Shows lines in [from, to] that are hidden or reserve height but belong to no table and to no
+    /// other embedded element.
     void sweep(int from, int to);
     TableWidget* createWidget();
     void focusCell(Table& table, int row, int column, bool atEnd = false);

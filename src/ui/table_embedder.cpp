@@ -39,12 +39,35 @@ void setLine(QTextCursor& cursor, const QTextBlock& block, const QString& text) 
 }  // namespace
 
 TableEmbedder::TableEmbedder(EditorWidget* editor, BlockStyler* styler, BlockLayout* layout)
-    : QObject(editor), editor_(editor), styler_(styler), layout_(layout) {}
+    : QObject(editor), editor_(editor), styler_(styler), layout_(layout) {
+    layout_->addClaimant(this);
+}
 
 TableEmbedder::~TableEmbedder() {
+    layout_->removeClaimant(this);
     for (Table& table : tables_) {
         delete table.widget;
     }
+}
+
+bool TableEmbedder::claims(const QTextBlock& block) const {
+    if (!block.isValid()) {
+        return false;
+    }
+    const int number = block.blockNumber();
+    for (const Table& table : tables_) {
+        if (table.stale || table.widget == nullptr || table.source || table.held || !table.header.isValid() ||
+            !table.last.isValid()) {
+            continue;
+        }
+        if (number >= table.header.blockNumber() && number <= table.last.blockNumber()) {
+            return true;
+        }
+        if (const QTextBlock separator = hiddenSeparatorOf(table); separator.isValid() && separator == block) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // --- lookup -----------------------------------------------------------------------------------
@@ -287,6 +310,12 @@ void TableEmbedder::sweep(int from, int to) {
     QTextBlock block = editor_->document()->findBlockByNumber(from);
     for (int number = from; block.isValid() && number <= to; ++number, block = block.next()) {
         const auto index = static_cast<std::size_t>(number - from);
+        if ((!block.isVisible() && hidden[index] == 0) ||
+            (layout_->reservedHeight(block) > 0 && reserved[index] == 0)) {
+            if (layout_->claimedByOther(block, this)) {
+                continue;  // another embedded element's line (S024 review O4)
+            }
+        }
         if (!block.isVisible() && hidden[index] == 0) {
             layout_->setHidden(block, false);
         }
