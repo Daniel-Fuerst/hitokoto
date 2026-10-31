@@ -9,6 +9,8 @@ qt_add_library(hitokoto_ui STATIC
     editor_widget.cpp editor_widget.hpp
     main_window.cpp main_window.hpp
     options.hpp
+    properties_embedder.cpp properties_embedder.hpp
+    properties_view.cpp properties_view.hpp
     qt_bridge.hpp
     table_embedder.cpp table_embedder.hpp
     table_model.cpp table_model.hpp

@@ -30,6 +30,10 @@ public:
     [[nodiscard]] const core::TableStyle& table() const noexcept { return table_; }
     /// Resolved thematic-break tokens (S023): the line the editor draws and its margin.
     [[nodiscard]] const core::ThematicBreakStyle& thematicBreak() const noexcept { return thematicBreak_; }
+    /// Resolved properties tokens (S024) and the fonts of the properties block and its badge.
+    [[nodiscard]] const core::PropertiesStyle& properties() const noexcept { return properties_; }
+    [[nodiscard]] QFont propertiesFont() const;
+    [[nodiscard]] QFont propertiesBadgeFont() const;
     [[nodiscard]] QFont tableFont(bool header) const;
     /// Font of the language badge on an opening fence (S021).
     [[nodiscard]] QFont badgeFont() const;
@@ -53,6 +57,7 @@ private:
     core::TableStyle table_;
     core::EscapeStyle escape_;
     core::ThematicBreakStyle thematicBreak_;
+    core::PropertiesStyle properties_;
     QStringList codeBlockFamilies_;
     QStringList inlineCodeFamilies_;
 };

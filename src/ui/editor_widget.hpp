@@ -22,6 +22,7 @@ class QTableView;
 
 namespace hitokoto::ui {
 
+class PropertiesEmbedder;
 class TableEmbedder;
 
 class EditorWidget : public QTextEdit {
@@ -52,6 +53,8 @@ public:
     /// S024: the badge after the first line of front matter that is not shown as properties
     /// ("Invalid YAML (line n): reason"), else empty.
     [[nodiscard]] QString frontMatterBadge() const;
+    /// S024 review O2: front matter as a properties block (on) or as plain text, as in S023 (off).
+    void setFrontMatterAsProperties(bool on);
 
 signals:
     void painted();
@@ -60,6 +63,7 @@ protected:
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void inputMethodEvent(QInputMethodEvent* event) override;
     void insertFromMimeData(const QMimeData* source) override;
@@ -67,6 +71,7 @@ protected:
 
 private:
     friend class TableEmbedder;
+    friend class PropertiesEmbedder;
 
     // Block geometry as QPlainTextEdit offered it: document coordinates, and the offset that maps
     // them into the viewport.
@@ -98,6 +103,7 @@ private:
     bool applyingShift_ = false;
     BlockStyler* styler_ = nullptr;
     std::unique_ptr<TableEmbedder> tables_;
+    std::unique_ptr<PropertiesEmbedder> properties_;
     double padding_ = 0;
     double maxWidth_ = 0;
     quint64 editCount_ = 0;

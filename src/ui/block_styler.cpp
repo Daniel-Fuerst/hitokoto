@@ -977,6 +977,7 @@ void BlockStyler::checkFrontMatter() {
         return;
     }
     frontMatter_ = {candidate, 0};
+    frontMatterClose_ = -1;  // unknown until confirmed again
     if (!continueFrontMatterSearch(kFenceSearchNanoseconds)) {
         frontMatterSearch_.start();  // a long or unclosed front matter: confirm in idle slices
     }
@@ -1012,6 +1013,7 @@ bool BlockStyler::continueFrontMatterSearch(qint64 nanoseconds) {
         setStyled(first, kUnstyled);
         styleRange(0, 0);
     }
+    emit frontMatterConfirmed();
     return true;
 }
 
