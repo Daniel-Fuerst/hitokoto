@@ -76,6 +76,10 @@ enum class PropertiesErrorReason : std::uint8_t {
 /// The reason as the badge names it, e.g. "duplicate key", "anchor or alias".
 [[nodiscard]] std::string_view reasonText(PropertiesErrorReason reason) noexcept;
 
+/// S024 code review O5: the compact JSON of an unsupported value as `JSON.stringify(value, null, 2)`
+/// writes it, at most `maxLines` lines, then a line "…" if more follows. Only that prefix is read.
+[[nodiscard]] std::u16string prettyJson(std::u16string_view json, std::size_t maxLines);
+
 struct PropertiesError {
     PropertiesErrorReason reason = PropertiesErrorReason::NotAMapping;
     std::size_t line = 0;  ///< index of the line in the YAML lines passed in

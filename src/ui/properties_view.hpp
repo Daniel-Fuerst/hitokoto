@@ -54,6 +54,9 @@ public:
     /// the system's short format, a checkbox "checked" or "not checked", items joined by ", ",
     /// the full JSON of an unsupported value).
     [[nodiscard]] static QString valueText(const core::Property& property);
+    /// The tooltip of row `row`: an unsupported value's JSON pretty-printed, at most 20 lines (code
+    /// review O5); empty for other values.
+    [[nodiscard]] QString toolTipText(int row) const;
     /// The type as the accessible description names it ("text", "date and time", ...).
     [[nodiscard]] static QString typeName(core::PropertyType type);
 

@@ -1459,6 +1459,11 @@ private:
 
 }  // namespace
 
+std::u16string prettyJson(std::u16string_view json, std::size_t maxLines) {
+    (void)maxLines;
+    return std::u16string(json);  // red: not pretty-printed yet
+}
+
 bool isUnsupported(PropertiesErrorReason reason) noexcept {
     switch (reason) {
         case Reason::AnchorOrAlias:

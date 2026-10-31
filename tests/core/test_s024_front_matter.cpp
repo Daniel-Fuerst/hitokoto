@@ -402,6 +402,41 @@ TEST(S024_FrontMatter, JsonAsJsonStringifyWritesIt) {
     EXPECT_EQ(control.rows[0].text, uR"({"c":"\u0001\b\n"})");
 }
 
+// Code review O5: the tooltip of an unsupported value, as JSON.stringify(value, null, 2) writes it
+// (Node 22), at most a number of lines.
+TEST(S024_FrontMatter, PrettyJsonForTheTooltip) {
+    const std::u16string json = uR"({"s":"a,b:{\"[","l":[1,[],{}],"o":{"x":null}})";
+    const std::u16string pretty =
+        u"{\n"
+        uR"(  "s": "a,b:{\"[",)"
+        u"\n"
+        uR"(  "l": [)"
+        u"\n    1,\n    [],\n    {}\n  ],\n"
+        uR"(  "o": {)"
+        u"\n"
+        uR"(    "x": null)"
+        u"\n  }\n}";
+    EXPECT_EQ(prettyJson(json, 12), pretty);
+    EXPECT_EQ(prettyJson(json, 100), pretty);
+    EXPECT_EQ(prettyJson(json, 5),
+              u"{\n"
+              uR"(  "s": "a,b:{\"[",)"
+              u"\n"
+              uR"(  "l": [)"
+              u"\n    1,\n    [],\n…");
+    EXPECT_EQ(prettyJson(u"[]", 20), u"[]");
+    EXPECT_EQ(prettyJson(u"\"x\"", 20), u"\"x\"");
+    // A long value: only the prefix of 20 lines is read and written.
+    std::u16string big = u"[";
+    for (int i = 0; i < 100000; ++i) {
+        big += (i == 0 ? u"" : u",") + std::u16string(u"{\"k\":1}");
+    }
+    big += u"]";
+    const std::u16string capped = prettyJson(big, 20);
+    EXPECT_EQ(std::count(capped.begin(), capped.end(), u'\n'), 20);
+    EXPECT_TRUE(capped.ends_with(u"\n…"));
+}
+
 // ---- Invalid and unsupported YAML (S024, "Invalid") ----------------------------------------
 
 TEST(S024_FrontMatter, InvalidYamlNamesLineAndReason) {

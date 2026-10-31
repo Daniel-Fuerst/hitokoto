@@ -657,14 +657,21 @@ void PropertiesView::mouseReleaseEvent(QMouseEvent* event) {
     event->accept();
 }
 
+QString PropertiesView::toolTipText(int row) const {
+    if (row < 0 || static_cast<std::size_t>(row) >= rows_.size() ||
+        properties_[static_cast<std::size_t>(row)].type != core::PropertyType::Unsupported) {
+        return {};
+    }
+    return toQString(properties_[static_cast<std::size_t>(row)].text);  // red: the full JSON
+}
+
 bool PropertiesView::event(QEvent* event) {
     if (event->type() == QEvent::ToolTip) {
-        // The full JSON of an unsupported value (review O1).
+        // The JSON of an unsupported value (review O1).
         auto* help = static_cast<QHelpEvent*>(event);
         const int row = rowAt(help->pos());
-        if (row >= 0 && properties_[static_cast<std::size_t>(row)].type == core::PropertyType::Unsupported) {
-            QToolTip::showText(help->globalPos(), toQString(properties_[static_cast<std::size_t>(row)].text), this,
-                               rows_[static_cast<std::size_t>(row)].rect);
+        if (const QString tip = toolTipText(row); !tip.isEmpty()) {
+            QToolTip::showText(help->globalPos(), tip, this, rows_[static_cast<std::size_t>(row)].rect);
         } else {
             QToolTip::hideText();
         }

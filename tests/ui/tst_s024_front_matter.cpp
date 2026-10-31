@@ -174,6 +174,15 @@ private slots:
                  qPrintable(QStringLiteral("%1 px").arg(view->height())));
         QCOMPARE(editor->styler().renderFor(editor->document()->findBlockByNumber(28)).headingLevel, std::uint8_t{1});
         QCOMPARE(editor->frontMatterBadge(), QString());
+        // Code review O5: the tooltip shows the JSON pretty-printed, 20 lines, then "…".
+        const auto* properties = qobject_cast<ui::PropertiesView*>(view);
+        QVERIFY(properties != nullptr);
+        const QStringList tip = properties->toolTipText(6).split(QLatin1Char('\n'));
+        QCOMPARE(tip.size(), 21);
+        QCOMPARE(tip.at(0), QStringLiteral("["));
+        QCOMPARE(tip.at(2), QStringLiteral(R"(    "id": "O19",)"));
+        QCOMPARE(tip.at(20), QStringLiteral("…"));
+        QCOMPARE(properties->toolTipText(0), QString());
     }
 
     void eachTypeHasItsLook() {
