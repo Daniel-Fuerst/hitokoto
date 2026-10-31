@@ -64,14 +64,16 @@ public:
     /// Up from the first line below the block goes to the closing line. True if handled.
     bool handleEditorKey(QKeyEvent* event);
     /// After opening (Armin, 2026-10-31): the caret at the start of the first line below closed
-    /// front matter with valid YAML, else at the start of the document. `loaded`: the whole file is
-    /// in; front matter still being confirmed then places the caret when it is, unless it moved.
+    /// front matter with valid YAML, unless that line is a table, else at the start of the
+    /// document. `loaded`: the whole file is in; front matter still being confirmed then places the
+    /// caret when it is, unless it moved.
     void placeCaretAfterOpening(bool loaded);
 
 private:
     /// The closing line the styler confirmed, or -1 (none, still confirming, toggle off).
     [[nodiscard]] int confirmedClose() const;
-    /// The caret below the front matter if its YAML is valid and a line follows it; false if not.
+    /// The caret below the front matter if its YAML is valid and a line that is no table follows
+    /// it; false if not.
     bool placeCaretBelow();
     /// Reads the YAML and builds the block for at most `nanoseconds`, then shows what the caret
     /// asks for; true when nothing is left to do.

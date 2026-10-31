@@ -168,7 +168,9 @@ bool PropertiesEmbedder::placeCaretBelow() {
         read();
     }
     const QTextBlock below = editor_->document()->findBlockByNumber(close_ + 1);
-    if (!error_ && below.isValid()) {
+    // A table there would take the caret and the keyboard focus into its first cell (code review
+    // O4): the caret stays at the start.
+    if (!error_ && below.isValid() && !styler_->renderFor(below).table) {
         editor_->setTextCursor(QTextCursor(below));  // reads and builds for at most 4 ms (caretMoved)
         if (busy() && !caretInside() && work(kOpeningNanoseconds)) {
             work_.stop();  // built within the frame of opening
