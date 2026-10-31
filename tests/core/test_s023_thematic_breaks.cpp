@@ -81,6 +81,13 @@ void expectHeadingLine(const LineRender& r, std::u16string_view line, std::uint8
 void expectPlain(const LineRender& r, const std::string& where) {
     EXPECT_TRUE(r.empty()) << where;
 }
+
+/// A line of front matter: its text as written, no element. Only the mark that S024 adds to show
+/// the block as properties (`LineRender::frontMatter`) may be set.
+void expectFrontMatterText(LineRender r, const std::string& where) {
+    r.frontMatter = false;
+    EXPECT_TRUE(r.empty()) << where;
+}
 }  // namespace
 
 // ---- Thematic breaks (4.1) ------------------------------------------------------------------
@@ -438,11 +445,11 @@ TEST(S023_ThematicBreaks, ClosedFrontMatterStaysText) {
             ++close;
         }
         for (std::size_t i = 0; i <= close; ++i) {
-            expectPlain(r[i], context(lines) + " line " + std::to_string(i));
+            expectFrontMatterText(r[i], context(lines) + " line " + std::to_string(i));
         }
         for (const std::int64_t caret : {std::int64_t{0}, static_cast<std::int64_t>(close)}) {
             const auto revealed = showAll(lines, caret);
-            expectPlain(revealed[static_cast<std::size_t>(caret)], context(lines) + " revealed");
+            expectFrontMatterText(revealed[static_cast<std::size_t>(caret)], context(lines) + " revealed");
         }
     }
     // Below the front matter the document renders as usual.
@@ -471,7 +478,7 @@ TEST(S023_ThematicBreaks, FrontMatterReachesTheNextDelimiter) {
                                                u"",    u"Section",          u"---", u"body"};
     const auto r = showAll(lines);
     for (std::size_t i = 0; i < 8; ++i) {
-        expectPlain(r[i], context(lines) + " line " + std::to_string(i));
+        expectFrontMatterText(r[i], context(lines) + " line " + std::to_string(i));
     }
     expectPlain(r[8], context(lines) + " line 8");
 }

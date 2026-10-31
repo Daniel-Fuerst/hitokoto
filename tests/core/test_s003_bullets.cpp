@@ -4,6 +4,9 @@
 
 #include <gtest/gtest.h>
 
+#include <string>
+#include <string_view>
+
 using namespace hitokoto::core;
 
 namespace {
@@ -29,6 +32,15 @@ public:
         out.hidden.push_back({m.marker, HideMode::Collapse});
     }
 };
+
+/// ASCII text of a line for failure messages; other characters as '?'.
+std::string narrow(std::u16string_view text) {
+    std::string out;
+    for (const char16_t c : text) {
+        out += c < 0x80 ? static_cast<char>(c) : '?';
+    }
+    return out;
+}
 }  // namespace
 
 TEST(S003_Bullets, DotReplacesMarkerWhenCursorElsewhere) {
@@ -48,7 +60,7 @@ TEST(S003_Bullets, RawMarkerOnCursorLine) {
 
 TEST(S003_Bullets, AllThreeMarkers) {
     for (std::u16string_view line : {u"- a", u"* a", u"+ a", u"-", u"-\ta"}) {
-        EXPECT_EQ(show(line).decorations.size(), 1u) << std::string(line.begin(), line.end());
+        EXPECT_EQ(show(line).decorations.size(), 1u) << narrow(line);
     }
 }
 
@@ -60,12 +72,12 @@ TEST(S003_Bullets, IndentationIsNestingDepth) {
 
 TEST(S003_Bullets, NonItemsArePlainText) {
     for (std::u16string_view line : {u"-x", u"--", u"a - b", u"+1"}) {
-        EXPECT_TRUE(show(line).empty()) << std::string(line.begin(), line.end());
+        EXPECT_TRUE(show(line).empty()) << narrow(line);
     }
     // Thematic breaks are no items; since S023 they render as a horizontal line.
     for (std::u16string_view line : {u"---", u"- - -", u"* * *", u"***", u"___"}) {
-        EXPECT_TRUE(show(line).decorations.empty()) << std::string(line.begin(), line.end());
-        EXPECT_EQ(show(line).headingLevel, 0) << std::string(line.begin(), line.end());
+        EXPECT_TRUE(show(line).decorations.empty()) << narrow(line);
+        EXPECT_EQ(show(line).headingLevel, 0) << narrow(line);
     }
 }
 

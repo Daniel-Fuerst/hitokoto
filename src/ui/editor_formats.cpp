@@ -43,6 +43,7 @@ EditorFormats::EditorFormats(const core::Theme& theme)
       escape_(core::escapeStyle(theme)),
       link_(core::linkStyle(theme)),
       thematicBreak_(core::thematicBreakStyle(theme)),
+      properties_(core::propertiesStyle(theme)),
       codeBlockFamilies_(codeFamilies(codeBlock_.fontFamily)),
       inlineCodeFamilies_(codeFamilies(inlineCode_.fontFamily)) {
     baseFont_ = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
@@ -64,6 +65,24 @@ QFont EditorFormats::badgeFont() const {
         font.setFamilies({QString::fromStdString(codeBlock_.badgeFontFamily)});
     }
     font.setPointSizeF(editorFontSize_ * codeBlock_.badgeFontScale);
+    return font;
+}
+
+QFont EditorFormats::propertiesFont() const {
+    QFont font = baseFont_;
+    if (!properties_.fontFamily.empty()) {
+        font.setFamilies({QString::fromStdString(properties_.fontFamily)});
+    }
+    font.setPointSizeF(editorFontSize_ * properties_.fontScale);
+    return font;
+}
+
+QFont EditorFormats::propertiesBadgeFont() const {
+    QFont font = baseFont_;
+    if (!properties_.badgeFontFamily.empty()) {
+        font.setFamilies({QString::fromStdString(properties_.badgeFontFamily)});
+    }
+    font.setPointSizeF(editorFontSize_ * properties_.badgeFontScale);
     return font;
 }
 

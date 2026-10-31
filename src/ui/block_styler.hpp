@@ -14,6 +14,7 @@
 #include <QString>
 #include <QTimer>
 
+#include <algorithm>
 #include <functional>
 #include <optional>
 #include <utility>
@@ -53,10 +54,27 @@ public:
 
     /// True while this class changes formats (document signals caused by it can be ignored).
     [[nodiscard]] bool isBusy() const noexcept { return busy_; }
-    /// True when every block is styled for the current reveal state.
-    [[nodiscard]] bool isComplete() const noexcept {
+    /// True when every block is styled for the current reveal state, and no embedded element
+    /// (registered with addPendingWork) has work left.
+    [[nodiscard]] bool isComplete() const {
         return !idle_.isActive() && !fenceSearch_.isActive() && !paragraphSearch_.isActive() &&
-               !frontMatterSearch_.isActive() && !underlineSearchTimer_.isActive();
+               !frontMatterSearch_.isActive() && !underlineSearchTimer_.isActive() &&
+               std::none_of(pendingWork_.begin(), pendingWork_.end(), [](const auto& work) { return work.second(); });
+    }
+    /// Work an embedded element does in idle slices after styling (S024: reading and building the
+    /// properties block); isComplete() is false while `pending` returns true. `owner` removes it
+    /// again before it goes away.
+    void addPendingWork(const void* owner, std::function<bool()> pending) {
+        pendingWork_.emplace_back(owner, std::move(pending));
+    }
+    void removePendingWork(const void* owner) {
+        std::erase_if(pendingWork_, [owner](const auto& work) { return work.first == owner; });
+    }
+    /// S023/S024: the closing line of the front matter confirmed last (-1 = none), and whether a
+    /// confirmation is still going on in idle slices (then the lines show as S023 shows them).
+    [[nodiscard]] int frontMatterClose() const noexcept { return frontMatterClose_; }
+    [[nodiscard]] bool frontMatterPending() const noexcept {
+        return frontMatterSearch_.isActive() || frontMatter_.next >= 0;
     }
     /// Number of blocks styled so far (instrumentation for tests and benchmarks).
     [[nodiscard]] quint64 styledCount() const noexcept { return styledCount_; }
@@ -72,6 +90,9 @@ public:
 
 signals:
     void completed();
+    /// The front matter was confirmed again (it may be the same); emitted possibly in the middle
+    /// of a document change, so receivers only schedule work.
+    void frontMatterConfirmed();
 
 private:
     void onContentsChange(int position, int charsRemoved, int charsAdded);
@@ -230,6 +251,7 @@ private:
     };
     FrontMatterSearch frontMatter_;
     QTimer frontMatterSearch_;
+    std::vector<std::pair<const void*, std::function<bool()>>> pendingWork_;
     int blockCount_ = 1;  ///< block count after the last change seen
     QTimer idle_;
     int idleNext_ = 0;

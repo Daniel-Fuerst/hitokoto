@@ -21,6 +21,23 @@ class BlockLayout : public QAbstractTextDocumentLayout {
 public:
     explicit BlockLayout(QTextDocument* document);
 
+    /// An embedded element that hides blocks or reserves height on them (S018 tables, S024
+    /// properties). Each one asks the layout before it undoes hidden or reserved state it finds,
+    /// so none undoes another's (S024 review O4); a new one registers and changes no other.
+    class Claimant {
+    public:
+        Claimant() = default;
+        Claimant(const Claimant&) = delete;
+        Claimant& operator=(const Claimant&) = delete;
+        virtual ~Claimant() = default;
+        /// Whether `block` is hidden or reserves its height for this element now.
+        [[nodiscard]] virtual bool claims(const QTextBlock& block) const = 0;
+    };
+    void addClaimant(const Claimant* claimant);
+    void removeClaimant(const Claimant* claimant);
+    /// Whether an element other than `asker` claims `block`.
+    [[nodiscard]] bool claimedByOther(const QTextBlock& block, const Claimant* asker) const;
+
     /// Makes `block` exactly `height` pixels high (its text is not drawn), e.g. for an embedded
     /// table; 0 restores the normal layout.
     void setReservedHeight(const QTextBlock& block, qreal height);
@@ -102,6 +119,7 @@ private:
     // Heights per block number with their prefix sums: block <-> y in O(log n), new lines too.
     // Mutable: blocks are laid out lazily from const queries (blockBoundingRect, hitTest), like
     // Qt's layouts.
+    std::vector<const Claimant*> claimants_;
     mutable core::HeightIndex heights_;
     mutable bool sizeChangePending_ = false;
     mutable std::vector<QTextBlock> deferred_;  ///< laid out while heights_ was stale

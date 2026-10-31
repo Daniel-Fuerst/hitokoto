@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "editor_widget.hpp"
 
+#include "properties_embedder.hpp"
 #include "qt_bridge.hpp"
 #include "table_embedder.hpp"
 
@@ -47,6 +48,7 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     setAcceptRichText(false);
     styler_ = new BlockStyler(document(), registry, [this] { return visibleBlockRange(); }, this);
     tables_ = std::make_unique<TableEmbedder>(this, styler_, layout_);
+    properties_ = std::make_unique<PropertiesEmbedder>(this, styler_, layout_);
     connect(layout_, &BlockLayout::blockHeightChanged, this, &EditorWidget::keepContentStill);
     connect(layout_, &BlockLayout::batchFinished, this, &EditorWidget::applyPendingShift);
 
@@ -69,6 +71,14 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     connect(layout_, &BlockLayout::documentSizeChanged, tables_.get(), &TableEmbedder::reposition);
     connect(layout_, &BlockLayout::blocksGoneUnreported, tables_.get(), &TableEmbedder::forgetAll);
     connect(this, &QTextEdit::selectionChanged, this, &EditorWidget::updateReveal);
+    // S024: front matter as properties.
+    connect(this, &QTextEdit::cursorPositionChanged, properties_.get(), &PropertiesEmbedder::caretMoved);
+    connect(this, &QTextEdit::selectionChanged, properties_.get(), &PropertiesEmbedder::caretMoved);
+    connect(document(), &QTextDocument::contentsChange, properties_.get(), &PropertiesEmbedder::documentChanged);
+    connect(styler_, &BlockStyler::frontMatterConfirmed, properties_.get(), &PropertiesEmbedder::schedule);
+    connect(styler_, &BlockStyler::completed, properties_.get(), &PropertiesEmbedder::schedule);
+    connect(layout_, &BlockLayout::documentSizeChanged, properties_.get(), &PropertiesEmbedder::reposition);
+    connect(layout_, &BlockLayout::blocksGoneUnreported, properties_.get(), &PropertiesEmbedder::forgetAll);
 }
 
 EditorWidget::~EditorWidget() = default;
@@ -159,6 +169,9 @@ void EditorWidget::applyTheme(const core::Theme& theme) {
     styler_->setFormats(formats);
     tables_->setFormats(&styler_->formats());
     tables_->setAvailableWidth(availableTableWidth());
+    properties_->setAvailableWidth(availableTableWidth());
+    properties_->setLook(styler_->formats().properties(), styler_->formats().propertiesFont(),
+                         styler_->formats().propertiesBadgeFont());
     if (!wasModified) {
         document()->setModified(false);
     }
@@ -219,11 +232,13 @@ void EditorWidget::resizeEvent(QResizeEvent* event) {
     QTextEdit::resizeEvent(event);
     updateMargins();
     tables_->setAvailableWidth(availableTableWidth());
+    properties_->setAvailableWidth(availableTableWidth());
     restoreAnchor(anchor);
     styler_->styleVisible();
     // The widgets follow at once; finding tables waits for the event loop, so it never runs in
     // the middle of a document change (opening a file scrolls while it replaces the text).
     tables_->reposition();
+    properties_->reposition();
     tables_->scheduleRefresh();
 }
 
@@ -231,6 +246,7 @@ void EditorWidget::scrollContentsBy(int dx, int dy) {
     QTextEdit::scrollContentsBy(dx, dy);
     styler_->styleVisible();
     tables_->reposition();
+    properties_->reposition();
     tables_->scheduleRefresh();
 }
 
@@ -252,6 +268,13 @@ void EditorWidget::paintEvent(QPaintEvent* event) {
     emit painted();
 }
 
+void EditorWidget::mouseReleaseEvent(QMouseEvent* event) {
+    QTextEdit::mouseReleaseEvent(event);
+    if (event->button() == Qt::LeftButton) {
+        properties_->setMouseHeld(false);  // S024 review O6: the block may switch now
+    }
+}
+
 void EditorWidget::mousePressEvent(QMouseEvent* event) {
     const QTextCursor hit = cursorForPosition(event->position().toPoint());
     const QTextBlock block = hit.block();
@@ -268,6 +291,7 @@ void EditorWidget::mousePressEvent(QMouseEvent* event) {
                 return;
             }
         }
+        properties_->setMouseHeld(true);  // S024 review O6
     }
     if (event->button() == Qt::LeftButton && event->modifiers() == Qt::NoModifier &&
         tables_->handleEditorClick(event->position().toPoint())) {
@@ -368,7 +392,7 @@ QString EditorWidget::anchorAt(const QPoint& pos) const {
 }
 
 void EditorWidget::keyPressEvent(QKeyEvent* event) {
-    if (tables_->handleEditorKey(event)) {
+    if (tables_->handleEditorKey(event) || properties_->handleEditorKey(event)) {
         return;
     }
     const TableEmbedder::Typing typing(tables_.get());
@@ -415,6 +439,9 @@ void EditorWidget::paintCodeBlockPanels() {
     // The panel spans its lines from the opening to the closing fence; the margin above and below
     // is part of the first and last line's geometry (BlockLayout, S021), so it stays outside.
     for (QTextBlock b = document()->findBlockByNumber(first); b.isValid() && b.blockNumber() <= last; b = b.next()) {
+        if (!b.isVisible()) {
+            continue;  // takes no space (an embedded element's line): nothing to paint, nothing to render
+        }
         const auto render = styler_->renderFor(b);
         const QRectF rect = blockBoundingGeometry(b).translated(offset);
         if (render.codeBlock) {
@@ -460,6 +487,22 @@ QString EditorWidget::codeBlockBadge(const QTextBlock& block) {
     QString language = toQString(render.codeLanguage);
     language[0] = language[0].toUpper();
     return language;
+}
+
+QWidget* EditorWidget::propertiesView() const {
+    return properties_->view();
+}
+
+QString EditorWidget::frontMatterBadge() const {
+    return properties_->badge();
+}
+
+void EditorWidget::setFrontMatterAsProperties(bool on) {
+    properties_->setEnabled(on);
+}
+
+void EditorWidget::placeCaretAfterOpening(bool loaded) {
+    properties_->placeCaretAfterOpening(loaded);
 }
 
 void EditorWidget::paintInlineCodeBoxes(QPainter& painter, const QTextBlock& block, const core::LineRender& render,
@@ -521,6 +564,9 @@ void EditorWidget::paintDecorations() {
         const QRectF rect = blockBoundingGeometry(block).translated(offset);
         if (rect.top() > bottom) {
             break;
+        }
+        if (!block.isVisible()) {
+            continue;
         }
         const auto render = styler_->renderFor(block);
         if (styler_->isRevealed(block.blockNumber())) {

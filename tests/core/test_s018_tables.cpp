@@ -37,6 +37,15 @@ std::vector<std::u16string> cellTexts(std::u16string_view line) {
     }
     return texts;
 }
+
+/// ASCII text of a line for failure messages; other characters as '?'.
+std::string narrow(std::u16string_view text) {
+    std::string out;
+    for (const char16_t c : text) {
+        out += c < 0x80 ? static_cast<char>(c) : '?';
+    }
+    return out;
+}
 }  // namespace
 
 TEST(S018_Tables, RecognizesHeaderDelimiterAndBodyRows) {
@@ -95,7 +104,7 @@ TEST(S018_Tables, TableContinuesUntilBlankLineOrBlockStart) {
          {u"***", u"---", u"# H", u"```", u"<div>x</div>", u"    code", u"- item", u"> quote", u"1. item", u"|"}) {
         const auto r = showAll({u"| a |", u"| - |", u"| b |", end});
         EXPECT_TRUE(r[2].table);
-        EXPECT_FALSE(r[3].table) << std::string(end.begin(), end.end());
+        EXPECT_FALSE(r[3].table) << narrow(end);
     }
 }
 

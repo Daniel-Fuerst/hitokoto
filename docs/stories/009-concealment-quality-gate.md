@@ -42,12 +42,21 @@ depend on it.
 - And no line of the block moves or changes height compared with the concealed state
 
 **Scenario: thematic breaks and setext headings (S023)**
-- Given front matter, thematic breaks after a heading, after text (`***`), after a list item, after
-  a blank line and after another break, and setext headings of one and two lines
+- Given thematic breaks after a heading, after text (`***`), after a list item, after a blank line
+  and after another break, and setext headings of one and two lines
 - When the caret walks with arbitrary sequences of Up/Down/Left/Right/Home/End/PageUp/PageDown
 - Then the break the caret is on is revealed and every other break is concealed (a line); an
   underline is revealed exactly while the caret is on a line of its heading or on the underline;
-  nothing in the front matter is concealed; no line moves or changes height
+  no line moves or changes height
+
+**Scenario: front matter shown as properties (S024)**
+- Given front matter with several properties, followed by a heading, a code block and text
+- When the caret walks with arbitrary sequences of Up/Down/Left/Right/Home/End/PageUp/PageDown
+- Then the YAML shows exactly while the caret is on a line of the front matter, the properties
+  block exactly while it is not, and the caret is never on a concealed line
+- And no line other than those of the front matter changes height; the lines below move only when
+  the caret enters or leaves the front matter, as when a table switches to its source (S018)
+- And a screen reader reads the properties block as a title and one element per row, `key: value`
 
 **Scenario: table cells (S018)**
 - Given a table shown as a table view, with the caret moving into it from the line above and below
@@ -74,6 +83,7 @@ concealment stays; this gate keeps checking it on the new surface.
 
 - UI: `tst_s009_concealment` – randomised caret walks (since 2026-10-28, with S021: headings,
   bullets, emphasis, inline code and code blocks; with S022 inline links; with S023 a walk over
-  thematic breaks, setext headings and front matter; the caret never in concealed text, code block
-  fences revealed and the block still). Residue measurement via `cursorRect` is still to come.
+  thematic breaks and setext headings; with S024 a walk into and out of front matter shown as
+  properties; the caret never in concealed text, code block fences revealed and the block still).
+  Residue measurement via `cursorRect` is still to come.
 - IME and screen-reader checks are manual, documented with platform and version in the ADR.

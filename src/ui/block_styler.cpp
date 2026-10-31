@@ -977,6 +977,7 @@ void BlockStyler::checkFrontMatter() {
         return;
     }
     frontMatter_ = {candidate, 0};
+    frontMatterClose_ = -1;  // unknown until confirmed again
     if (!continueFrontMatterSearch(kFenceSearchNanoseconds)) {
         frontMatterSearch_.start();  // a long or unclosed front matter: confirm in idle slices
     }
@@ -1012,6 +1013,7 @@ bool BlockStyler::continueFrontMatterSearch(qint64 nanoseconds) {
         setStyled(first, kUnstyled);
         styleRange(0, 0);
     }
+    emit frontMatterConfirmed();
     return true;
 }
 
@@ -1024,12 +1026,12 @@ void BlockStyler::frontMatterSlice() {
 void BlockStyler::frontMatterAfterEdit(int first, int last) {
     // Front matter depends on its first line and its closing line: an edit of the first line, at
     // or above the closing line, or of a line that could close it while it is not closed, confirms
-    // it again.
+    // it again. An edit on the line below the closing line cannot change it (S024 review O1).
     const core::BlockState candidate = registry_.documentStart();
     if (!candidate.active()) {
         return;
     }
-    if (first == 0 || frontMatter_.next >= 0 || (frontMatterClose_ >= 0 && first <= frontMatterClose_ + 1)) {
+    if (first == 0 || frontMatter_.next >= 0 || (frontMatterClose_ >= 0 && first <= frontMatterClose_)) {
         checkFrontMatter();
         return;
     }
@@ -1040,6 +1042,10 @@ void BlockStyler::frontMatterAfterEdit(int first, int last) {
     const core::BlockState inside = registry_.blockStateAfter(view(firstLine), candidate);
     if (inside.element != candidate.element) {
         return;  // the first line opens no front matter
+    }
+    if (last - first > kSynchronousLimit) {
+        checkFrontMatter();  // more lines than a key may look at (a file loaded in slices): in idle slices
+        return;
     }
     for (QTextBlock b = document_->findBlockByNumber(first);
          b.isValid() && b.blockNumber() <= std::min(last, first + kSynchronousLimit); b = b.next()) {

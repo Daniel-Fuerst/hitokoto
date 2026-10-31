@@ -78,5 +78,73 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   folder (outside the excluded `C:\Dev`), freeing large strings on the UI thread, Qt 6.12 instead of
   6.8.3. The 1 ms ticker is no artefact: Qt uses multimedia timers for coarse timers up to 20 ms on
   Windows (`qeventdispatcher_win.cpp`).
+- **2026-10-31** (Armin, `win-dev`, Qt 6.12.0 MSVC debug build, on `agents/s024-front-matter`
+  after the merge of main with S022): `savingTenMegabytesDoesNotStallTheEventLoop` reports a one-shot
+  copy of 34 ms and a longest stall of 35 ms against the bound 17 ms. The cases up to
+  `pendingSaveIsWrittenWhenAnotherFileIsOpened` pass; `quitSavesSynchronouslyWhileACopyRuns` prints
+  no result before the ctest timeout of 300 s, so the timeout comes from that case (or from the
+  time all cases take together in the debug build), not from the stall measurement. Whether it
+  hangs or only runs slowly is open: a run of that case alone
+  (`tst_s017_save_without_stall.exe quitSavesSynchronouslyWhileACopyRuns`) would tell.
 - **Open:** find the cause on Windows; Armin's goal is a green `win-dev`, for example by skipping
   timing assertions in unoptimised builds (`QSKIP`), without weakening the gate in CI.
+
+## IntelliSense errors in Qt headers in Visual Studio
+
+- **Seen:** 2026-10-31 (Armin, `win-dev`, Visual Studio 2022 17.14 with MSVC 14.44, Qt 6.12.0 MSVC)
+  after a full rebuild following the merge of S022: the Error List shows two IntelliSense entries
+  for `tst_s005_theme.exe`, E2422 "defaulted default constructor cannot be constexpr because the
+  corresponding implicitly declared default constructor would not be constexpr" in
+  `QtCore/qrunnable.h` line 26, and E0028 "expression must have a constant value" in
+  `QtCore/qobjectdefs.h` line 604. The compiler (`cl`) builds the same code without error or
+  warning; the test target reaches `qrunnable.h` through `document_session.hpp` (since S017).
+- **Gone again:** after Armin deleted the CMake cache and built again the same day, the entries
+  did not come back; probably IntelliSense worked on a state from before the merge. Open whether
+  they return.
+- **Not a fix:** editing the Qt headers (Copilot proposed removing `constexpr` from `QRunnable()`
+  and `QAtomicInt(int)`). The headers are correct for `cl`, a changed installation is not
+  reproducible on other machines or in CI, and it would change what the real compiler sees.
+- **Cause:** open. IntelliSense uses its own front end (EDG), which may assume another language
+  standard or compiler mode than the build, for example `/Zc:__cplusplus`, or may not yet support
+  what Qt 6.12 relies on there.
+- **Open:** find the IntelliSense setting (CMake presets, `CMakeSettings`, `intelliSenseMode`) that
+  makes the entries go away, or a Qt or Visual Studio bug report; until then the Error List filter
+  "Build Only" hides them. Armin's goal: no entries in the Error List.
+
+## Benchmark job on Linux red without a code change
+
+- **Seen:** repeatedly since S017, most recently on pull request #24 (2026-10-31): the Linux job
+  fails the 25 % comparison and a restart is green. The first run of #24 had a fast runner (the
+  older keys 10–45 % below their baseline); the `s024_*` values taken from it failed on the next,
+  ordinary runner (`s024_leave_5000_keys_built_ms` 63 → 84 ms, `s024_leave_long_text_built_ms`
+  37 → 55 ms), while the older keys lay about on their baseline again. Armin restarted the job
+  three times; the artefacts show the same runner type each time (core decoding 20 ms at
+  3.25 GHz, against 12 ms at 3.7 GHz in the first run), and the three runs agree within a few per
+  cent, except `s024_open_10mb_properties_ms` (31, 55, 61 ms) and single maxima
+  (`typing_small_max_ms` 6.8 ms once). `open_10mb_styled_ms` lies 19–20 % above its baseline in
+  all three (3.08–3.12 s against 2.60 s) but only 2 % above it on the fast runner, so it depends
+  on more than CPU speed (idle slices, timers); it is 5 % from failing.
+- **How the gate works:** `bench/baselines/linux.json` holds the values of one CI run per key; new
+  keys come from the first run of the pull request that adds them. A key fails when it is 25 %
+  and 2 ms above its baseline; medians and p95/p99 are compared, maxima and counts only reported.
+  Runner speed varies from run to run, and not by one factor for all kinds of work (2026-10-28:
+  decoding ×2.0, rendering ×1.04, typing ×1.8), so Armin declined normalising by runner speed.
+- **Options (open):** (1) a baseline per key from several runs (the slowest, or a high
+  percentile), and new keys only reported until they have it; (2) main and the branch measured
+  in turn in the same job on the same runner, the branch compared with main (as done locally;
+  about twice the job time and a change to `ci.yml`); (3) completion times in idle slices only
+  reported, as `s023_bullet_settled_ms` and `s023_underline_settled_ms`, with the hard 50 ms
+  budgets of the keys kept; (4) the first sample of an opening measurement dropped as warm-up
+  (`s024_open_10mb_properties_ms`: 49 ms, then 31 ms); (5) the runner's core decoding time,
+  already in the artefact, printed beside the comparison, so that a red run on a fast or slow
+  runner is recognised at once; (6) **preferred for now (Armin, 2026-10-31):** a baseline per class
+  of runner. The job records the runner's CPU (model name from `/proc/cpuinfo`, clock; the core
+  decoding time as a cross-check) and compares against the baseline of that class, for example
+  `bench/baselines/linux-<cpu>.json`; no factor converts between classes. A runner of a class
+  without a baseline fails the job with the message that a new class has to be recorded, and
+  leaves its values as an artefact to start that baseline. Within a class the spread is small (a
+  few per cent in the three runs above), so the tolerance could be tighter than 25 %. First step:
+  record the CPU in the artefact and collect a few runs to learn the classes (so far two clocks,
+  3.7 and 3.25 GHz, and once core decoding of 24 ms on 7e9e7d4).
+- **Open:** which of these to adopt, (6) preferred. Armin's goal: the job is red only for a real
+  regression, and a new kind of runner is never overlooked.
