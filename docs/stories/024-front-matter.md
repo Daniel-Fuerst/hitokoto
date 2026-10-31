@@ -82,7 +82,11 @@ of ADR 0007:
 | Reason | Kind | Examples |
 |---|---|---|
 | duplicate key | invalid | `a: 1` / `a: 2`, `a: 1` / `"a": 2` |
-| bad indentation | invalid | a sequence item less indented than its siblings, a key indented in the top mapping; also any other text the subset does not expect where it stands, such as `a: b: c`, text after a closing quote or an unknown escape (`"\q"`), as js-yaml names most of it |
+| bad indentation | invalid | a sequence item less indented than its siblings, a key indented in the top mapping or deeper than its siblings (`a: 1` / `  b: 2`), a list started on its key's line (`a: - x`) |
+| colon in a plain value (quote it) | invalid | `title: Note: draft`, `a: b:` (code review O6) |
+| unknown escape | invalid | `a: "C:\path"`, `"\q"` |
+| text after a value | invalid | `a: "x" y`, `a: [x] y`, `a: ["x" y]`, `a: \| text`, a line after a flow mapping, a flow key whose `:` is on the next line |
+| reserved character (quote it) | invalid | a value that starts with `@`, `` ` ``, `%`, `,`, `]` or `}` (`author: @armin`) |
 | tab in indentation | invalid | a tab before `- x` |
 | unclosed quote | invalid | `a: "abc` |
 | unclosed flow collection | invalid | `a: [1, 2` |

@@ -463,7 +463,7 @@ public:
                 (void)blockMapping(first, 0, 1, &top_);
                 if (!error_) {
                     if (const std::size_t rest = skipToContent(next_); !error_ && rest < lines_.size()) {
-                        unexpected(rest);
+                        fail(Reason::TextAfterValue, rest);
                     }
                 }
             } else if (!error_ && text[0] == u'{') {
@@ -474,7 +474,7 @@ public:
                 }
                 if (!error_) {
                     if (const std::size_t rest = skipToContent(p.line + 1); !error_ && rest < lines_.size()) {
-                        unexpected(rest);
+                        fail(Reason::TextAfterValue, rest);
                     }
                 }
             } else if (!error_) {
@@ -537,7 +537,6 @@ private:
 
     /// Text where the subset expects something else; js-yaml names most of these "bad indentation
     /// of a mapping entry".
-    bool unexpected(std::size_t line) { return fail(Reason::BadIndentation, line); }
 
     /// The next line from `from` that is neither blank nor a comment; lines_.size() at the end or on
     /// an error. Checks what the structure of the block cannot hold: tabs in the indentation and
@@ -630,7 +629,7 @@ private:
         const bool blankAfter = col + 1 == t.size() || isWhite(t[col + 1]);
         if (c == u'-' && blankAfter) {
             if (sameLine) {
-                unexpected(line);
+                fail(Reason::BadIndentation, line);
                 return addNull();
             }
             return blockSequence(line, col, depth + 1);
@@ -655,7 +654,7 @@ private:
                 return addNull();
             }
             if (sameLine) {
-                unexpected(line);
+                fail(Reason::ColonInPlainValue, line);
                 return addNull();
             }
             return blockMapping(line, col, depth + 1, nullptr);
@@ -696,7 +695,7 @@ private:
             fail(Reason::ComplexKey, p.line);
             return;
         }
-        unexpected(p.line);
+        fail(Reason::TextAfterValue, p.line);
     }
 
     /// A block mapping whose first key is at (line, col); its entries are at indentation `col`.
@@ -715,7 +714,7 @@ private:
             }
             if (!key) {
                 if (isSequenceEntry(i, col)) {
-                    unexpected(i);
+                    fail(Reason::BadIndentation, i);
                 } else {
                     fail(Reason::NotAMapping, i);
                 }
@@ -765,7 +764,7 @@ private:
                 break;
             }
             if (indent(j) > col) {
-                unexpected(j);
+                fail(Reason::BadIndentation, j);
                 return addNull();
             }
             i = j;
@@ -817,7 +816,7 @@ private:
                 break;
             }
             if (indent(j) > col) {
-                unexpected(j);
+                fail(Reason::BadIndentation, j);
                 return addNull();
             }
             if (!isSequenceEntry(j, col)) {
@@ -836,12 +835,12 @@ private:
         const std::u16string_view t = lineAt(line);
         const char16_t c = t[col];
         if (isIndicator(c) || ((c == u'-' || c == u'?' || c == u':') && (col + 1 == t.size() || isWhite(t[col + 1])))) {
-            unexpected(line);
+            fail(c == u':' ? Reason::ColonInPlainValue : Reason::ReservedCharacter, line);
             return addNull();
         }
         Node node;
         bool comment = false;
-        if (!plainSegment(line, col, node.text, comment)) {
+        if (!plainSegment(line, col, node.text, comment, false)) {
             return addNull();
         }
         std::size_t i = line + 1;
@@ -871,7 +870,7 @@ private:
                 node.text.append(empties, u'\n');
             }
             empties = 0;
-            if (!plainSegment(i, f, node.text, comment)) {
+            if (!plainSegment(i, f, node.text, comment, true)) {
                 return addNull();
             }
             ++i;
@@ -882,13 +881,14 @@ private:
     }
 
     /// Appends the text of a plain scalar's line from `col` up to a comment or the end; no `: `
-    /// may occur in it. `comment`: the line ends in a comment.
-    bool plainSegment(std::size_t line, std::size_t col, std::u16string& out, bool& comment) {
+    /// may occur in it. `comment`: the line ends in a comment. `continuation`: a later line of the
+    /// scalar, where `: ` is a key indented too far (code review O6).
+    bool plainSegment(std::size_t line, std::size_t col, std::u16string& out, bool& comment, bool continuation) {
         const std::u16string_view t = lineAt(line);
         std::size_t end = t.size();
         for (std::size_t i = col; i < t.size(); ++i) {
             if (t[i] == u':' && (i + 1 == t.size() || isWhite(t[i + 1]))) {
-                return unexpected(line);
+                return fail(continuation ? Reason::BadIndentation : Reason::ColonInPlainValue, line);
             }
             if (isWhite(t[i]) && i + 1 < t.size() && t[i + 1] == u'#') {
                 end = i;
@@ -921,7 +921,7 @@ private:
             ++i;
         }
         if (i < t.size() && !(t[i] == u'#' && i > headerEnd)) {
-            unexpected(line);
+            fail(Reason::TextAfterValue, line);
             return addNull();
         }
         // The content's indentation: that of its first non-blank line.
@@ -935,7 +935,7 @@ private:
         if (first < lines_.size() && static_cast<int>(indent(first)) > parent) {
             contentIndent = indent(first);
             if (leadingSpaces > contentIndent) {
-                unexpected(first);
+                fail(Reason::BadIndentation, first);
                 return addNull();
             }
         }
@@ -1032,7 +1032,7 @@ private:
                         break;
                     }
                     if (!escape(t, p.col, out)) {
-                        unexpected(p.line);
+                        fail(Reason::UnknownEscape, p.line);
                         return addNull();
                     }
                     whiteStart = kNone;
@@ -1233,7 +1233,7 @@ private:
             Pos valuePos = p;
             if (at(p) == u':' && (jsonLike || colonEnds(p))) {
                 if (p.line != keyPos.line) {
-                    unexpected(p.line);  // an implicit key and its `:` stay on one line
+                    fail(Reason::TextAfterValue, p.line);  // an implicit key and its `:` stay on one line
                     return addNull();
                 }
                 ++p.col;
@@ -1290,7 +1290,7 @@ private:
             if (at(p) == u',') {
                 ++p.col;
             } else if (at(p) != closing) {
-                unexpected(p.line);
+                fail(Reason::TextAfterValue, p.line);
                 return addNull();
             }
         }
@@ -1314,7 +1314,7 @@ private:
             return addNull();
         }
         if (isIndicator(c) || ((c == u'-' || c == u'?' || c == u':') && colonEnds(p))) {
-            unexpected(p.line);
+            fail(c == u':' ? Reason::ColonInPlainValue : Reason::ReservedCharacter, p.line);
             return addNull();
         }
         // A plain scalar, folded over lines, up to a flow indicator, `: ` or a comment.
@@ -1570,10 +1570,13 @@ std::string_view reasonText(PropertiesErrorReason reason) noexcept {
         case Reason::IndentationIndicator:
             return "indentation indicator";
         case Reason::ColonInPlainValue:
+            return "colon in a plain value (quote it)";
         case Reason::UnknownEscape:
+            return "unknown escape";
         case Reason::TextAfterValue:
+            return "text after a value";
         case Reason::ReservedCharacter:
-            return "bad indentation";  // red: code review O6 names them
+            return "reserved character (quote it)";
     }
     return {};
 }
