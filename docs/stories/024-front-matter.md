@@ -123,8 +123,10 @@ spaces: strings quoted with JSON escapes, `null`, `true`/`false`, keys in their 
 ECMAScript's Number::toString writes them (`007` → `7`, `1e3` → `1000`, `0x1A` → `26`, `1e20` →
 `100000000000000000000`, `1e21` → `1e+21`, `1e-6` → `0.000001`, `1e-7` → `1e-7`), `.inf` and `.nan`
 → `null`. Dates inside are strings as written (`"2026-10-30"`; js-yaml would write an ISO time
-stamp). The full JSON is the row's tooltip and accessible name; the row shows at most three wrapped
-lines and ends the third with `…` if there is more.
+stamp). The full JSON is the row's accessible name; the row shows at most three wrapped lines and
+ends the third with `…` if there is more. Its tooltip shows the JSON as `JSON.stringify(value,
+null, 2)` writes it, at most 20 lines, then a line `…` if there is more; a click shows the YAML
+for the rest (code review O5).
 
 **The block.** Unless the YAML shows (below), lines 0 to the closing line are concealed and the
 block shows, in their place:
@@ -192,7 +194,7 @@ text, no properties block, no badge.
 - And `branch` shows `feature/links_references` without the comment
 - And `reviewed_on` shows the date in the system's short format with a calendar icon
 - And `objections` shows `[{"id":"O19",…` in `properties.unsupported-text` with a question
-  mark, at most three lines, its full JSON as the tooltip
+  mark, at most three lines, its JSON pretty-printed as the tooltip (20 lines at most)
 - And the heading below the block renders as a heading
 
 **Scenario: each type has its look**

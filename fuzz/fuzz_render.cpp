@@ -9,6 +9,7 @@
 #include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/properties.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <span>
 #include <string>
@@ -29,6 +30,12 @@ void checkProperties(std::span<const std::u16string> lines) {
         if (row.keyLine >= lines.size() || row.valueLine >= lines.size() ||
             row.valueColumn > lines[row.valueLine].size())
             std::abort();
+        // Code review O5: the tooltip's JSON has at most 20 lines and one more for "…".
+        if (row.type == hitokoto::core::PropertyType::Unsupported) {
+            const auto tip = hitokoto::core::prettyJson(row.text, 20);
+            if (std::count(tip.begin(), tip.end(), u'\n') > 20)
+                std::abort();
+        }
     }
 }
 

@@ -1460,8 +1460,72 @@ private:
 }  // namespace
 
 std::u16string prettyJson(std::u16string_view json, std::size_t maxLines) {
-    (void)maxLines;
-    return std::u16string(json);  // red: not pretty-printed yet
+    // The input is compact JSON as appendJson writes it: no white space outside strings.
+    std::u16string out;
+    std::size_t lines = 1;
+    std::size_t depth = 0;
+    const auto newline = [&] {  // false: cut here
+        if (lines >= maxLines) {
+            out += u"\n\u2026";
+            return false;
+        }
+        ++lines;
+        out += u'\n';
+        out.append(2 * depth, u' ');
+        return true;
+    };
+    bool inString = false;
+    for (std::size_t i = 0; i < json.size(); ++i) {
+        const char16_t c = json[i];
+        if (inString) {
+            out += c;
+            if (c == u'\\' && i + 1 < json.size()) {
+                out += json[++i];
+            } else if (c == u'"') {
+                inString = false;
+            }
+            continue;
+        }
+        switch (c) {
+            case u'"':
+                inString = true;
+                out += c;
+                break;
+            case u'{':
+            case u'[':
+                out += c;
+                if (i + 1 < json.size() && (json[i + 1] == u'}' || json[i + 1] == u']')) {
+                    out += json[++i];  // empty: [] or {}
+                    break;
+                }
+                ++depth;
+                if (!newline()) {
+                    return out;
+                }
+                break;
+            case u'}':
+            case u']':
+                depth = depth > 0 ? depth - 1 : 0;
+                if (!newline()) {
+                    return out;
+                }
+                out += c;
+                break;
+            case u',':
+                out += c;
+                if (!newline()) {
+                    return out;
+                }
+                break;
+            case u':':
+                out += u": ";
+                break;
+            default:
+                out += c;
+                break;
+        }
+    }
+    return out;
 }
 
 bool isUnsupported(PropertiesErrorReason reason) noexcept {

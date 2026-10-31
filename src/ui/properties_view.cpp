@@ -26,7 +26,8 @@ namespace hitokoto::ui {
 
 namespace {
 
-constexpr int kJsonLines = 3;  ///< S024 review O1: an unsupported value shows at most three lines
+constexpr int kJsonLines = 3;              ///< S024 review O1: an unsupported value shows at most three lines
+constexpr std::size_t kToolTipLines = 20;  ///< S024 code review O5: its tooltip at most 20 lines
 const QString kEllipsis = QStringLiteral("…");
 
 /// The first `maxLines` lines of `text` wrapped at `width`; the last one ends in an ellipsis if
@@ -662,7 +663,7 @@ QString PropertiesView::toolTipText(int row) const {
         properties_[static_cast<std::size_t>(row)].type != core::PropertyType::Unsupported) {
         return {};
     }
-    return toQString(properties_[static_cast<std::size_t>(row)].text);  // red: the full JSON
+    return toQString(core::prettyJson(properties_[static_cast<std::size_t>(row)].text, kToolTipLines));
 }
 
 bool PropertiesView::event(QEvent* event) {
