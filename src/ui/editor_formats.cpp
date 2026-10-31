@@ -4,6 +4,7 @@
 #include "qt_bridge.hpp"
 
 #include <QFontDatabase>
+#include <QFontMetricsF>
 
 #include <algorithm>
 #include <optional>
@@ -30,6 +31,31 @@ void applyCodeFont(QTextCharFormat& format, const QStringList& families, double 
     format.setFontStyleHint(QFont::TypeWriter);
     format.setFontPointSize(size);
 }
+
+std::optional<core::Span> bulletSpaceSpan(const core::LineRender& render) {
+    if (render.wrapIndent == 0) {
+        return std::nullopt;
+    }
+    std::optional<std::uint32_t> markerChar;
+    for (const auto& d : render.decorations) {
+        if (d.kind == core::DecorationKind::Bullet) {
+            markerChar = d.column;
+            break;
+        }
+    }
+    if (!markerChar.has_value()) {
+        for (const auto& run : render.runs) {
+            if (run.role == core::Role::Marker && run.span.length == 1 && run.span.start + 1 <= render.wrapIndent) {
+                markerChar = run.span.start;
+                break;
+            }
+        }
+    }
+    if (markerChar.has_value() && render.wrapIndent > *markerChar + 1) {
+        return core::Span{*markerChar + 1, 1};
+    }
+    return std::nullopt;
+}
 }  // namespace
 
 EditorFormats::EditorFormats(const core::Theme& theme)
@@ -50,6 +76,8 @@ EditorFormats::EditorFormats(const core::Theme& theme)
         baseFont_.setFamilies({QString::fromStdString(theme.editorFontFamily)});
     }
     baseFont_.setPointSizeF(theme.editorFontSize);
+    const QFontMetricsF metrics(baseFont_);
+    bulletSpacing_ = std::max<double>(3.0, std::round(metrics.horizontalAdvance(QLatin1Char(' ')) * 0.75));
     for (int level = 1; level <= 6; ++level) {
         QTextCharFormat f;
         f.setFontPointSize(theme.editorFontSize * theme.headingScale[static_cast<std::size_t>(level - 1)]);
@@ -97,6 +125,11 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
         boundaries.push_back(link.span.start);
         boundaries.push_back(link.span.end());
     }
+    const auto bulletSpace = bulletSpaceSpan(render);
+    if (bulletSpace.has_value()) {
+        boundaries.push_back(bulletSpace->start);
+        boundaries.push_back(bulletSpace->end());
+    }
     std::sort(boundaries.begin(), boundaries.end());
     boundaries.erase(std::unique(boundaries.begin(), boundaries.end()), boundaries.end());
 
@@ -140,7 +173,8 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
                                    render.links[linkIndex].span.end() >= end
                                ? &render.links[linkIndex]
                                : nullptr;
-        if (baseRun == nullptr && inlineRun == nullptr && hidden == nullptr && link == nullptr) {
+        const bool isBulletSpace = bulletSpace.has_value() && start >= bulletSpace->start && end <= bulletSpace->end();
+        if (baseRun == nullptr && inlineRun == nullptr && hidden == nullptr && link == nullptr && !isBulletSpace) {
             continue;
         }
 
@@ -217,6 +251,10 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
                 format.clearProperty(QTextFormat::FontPointSize);
                 format.setProperty(QTextFormat::FontPixelSize, 1);
             }
+        }
+        if (isBulletSpace) {
+            format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
+            format.setFontLetterSpacing(bulletSpacing_);
         }
         out.append({static_cast<int>(start), static_cast<int>(end - start), format});
     }

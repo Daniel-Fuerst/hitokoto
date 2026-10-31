@@ -84,6 +84,7 @@ private:
     /// Space above and below a block (ADR 0003): a code block panel's margin (S021), a thematic
     /// break's margin (S023), the same concealed and revealed.
     void applyBlockSpacing(const QTextBlock& block, const core::LineRender& render);
+    void applyWrapIndent(const QTextBlock& block, const core::LineRender& render);
     /// The line after `block` when the table element needs it as lookahead, else empty.
     [[nodiscard]] static QString nextLineFor(const QTextBlock& block, core::BlockState state, const QString& text);
     [[nodiscard]] bool isStyled(const QTextBlock& block) const;

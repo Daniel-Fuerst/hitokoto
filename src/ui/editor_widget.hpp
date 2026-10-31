@@ -93,6 +93,9 @@ private:
     void paintDecorations();
     /// S023: the line of a concealed thematic break (`rect`: the block in viewport coordinates).
     void paintThematicBreak(QPainter& painter, const QTextBlock& block, const QRectF& rect);
+    bool handleBulletKey(QKeyEvent* event);
+    bool handleBulletEnter(QTextCursor& cursor);
+    bool handleBulletTab(QTextCursor& cursor, bool outdent);
 
     BlockLayout* layout_ = nullptr;
     qreal pendingShift_ = 0;  ///< height change above the viewport not yet scrolled away

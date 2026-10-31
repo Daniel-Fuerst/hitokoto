@@ -81,7 +81,7 @@ std::optional<core::BlockState> cachedBlockState(const QTextBlock& block) {
 void cacheBlockState(QTextBlock& block, core::BlockState state) {
     auto* data = dynamic_cast<BlockData*>(block.userData());
     const auto previous = cachedBlockState(block);
-    int keep = stateBits(block) & (kStyleMask | kLevelKnown | kLevelMask | kLinkKnown | kLinkMask);
+    int keep = stateBits(block) & (kStyleMask | kLevelKnown | kLevelMask | kLinkKnown | kLinkMask | kWrapIndentMask);
     if (previous && *previous != state) {
         keep &= ~kLevelKnown;  // found for another state
     }
@@ -248,6 +248,7 @@ void BlockStyler::styleBlock(const QTextBlock& block) {
     }
     updateParagraphAbove(block, render, link);
     applyBlockSpacing(block, render);
+    applyWrapIndent(block, render);
     const auto ranges = formats_.ranges(render);
     // Skip the relayout if nothing was and nothing is formatted (most body lines).
     const bool changed = !(ranges.isEmpty() && layout->formats().isEmpty());
@@ -294,6 +295,14 @@ void BlockStyler::applyBlockSpacing(const QTextBlock& block, const core::LineRen
         below = (render.fenceLine && !opening) || !block.next().isValid() ? margin : 0;
     }
     layout->setBlockSpacing(block, above, below);
+}
+
+void BlockStyler::applyWrapIndent(const QTextBlock& block, const core::LineRender& render) {
+    auto* layout = qobject_cast<BlockLayout*>(document_->documentLayout());
+    if (layout == nullptr) {
+        return;
+    }
+    layout->setWrapIndent(block, static_cast<int>(render.wrapIndent));
 }
 
 void BlockStyler::styleRange(int first, int last) {
