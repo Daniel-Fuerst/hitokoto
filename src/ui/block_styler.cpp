@@ -1041,6 +1041,10 @@ void BlockStyler::frontMatterAfterEdit(int first, int last) {
     if (inside.element != candidate.element) {
         return;  // the first line opens no front matter
     }
+    if (last - first > kSynchronousLimit) {
+        checkFrontMatter();  // more lines than a key may look at (a file loaded in slices): in idle slices
+        return;
+    }
     for (QTextBlock b = document_->findBlockByNumber(first);
          b.isValid() && b.blockNumber() <= std::min(last, first + kSynchronousLimit); b = b.next()) {
         const QString text = b.text();
