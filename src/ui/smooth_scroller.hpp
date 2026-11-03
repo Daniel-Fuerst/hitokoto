@@ -61,4 +61,3 @@ private:
 };
 
 }  // namespace hitokoto::ui
-

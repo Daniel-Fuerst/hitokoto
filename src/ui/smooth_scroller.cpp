@@ -75,8 +75,8 @@ void SmoothScroller::shift(double delta) {
     }
     target_ += delta;
     if (scrollBar_ != nullptr) {
-        target_ = std::clamp(target_, static_cast<double>(scrollBar_->minimum()),
-                             static_cast<double>(scrollBar_->maximum()));
+        target_ =
+            std::clamp(target_, static_cast<double>(scrollBar_->minimum()), static_cast<double>(scrollBar_->maximum()));
     }
     if (animation_.state() == QAbstractAnimation::Running) {
         const qreal curStart = animation_.startValue().toReal();
@@ -136,8 +136,8 @@ void SmoothScroller::onValueChanged(const QVariant& value) {
     if (scrollBar_ == nullptr) {
         return;
     }
-    const int newPos = std::clamp(static_cast<int>(std::lround(value.toReal())), scrollBar_->minimum(),
-                                  scrollBar_->maximum());
+    const int newPos =
+        std::clamp(static_cast<int>(std::lround(value.toReal())), scrollBar_->minimum(), scrollBar_->maximum());
     if (newPos != scrollBar_->value()) {
         updating_ = true;
         scrollBar_->setValue(newPos);
@@ -149,8 +149,8 @@ void SmoothScroller::onFinished() {
     if (scrollBar_ == nullptr) {
         return;
     }
-    const int finalPos = std::clamp(static_cast<int>(std::lround(target_)), scrollBar_->minimum(),
-                                    scrollBar_->maximum());
+    const int finalPos =
+        std::clamp(static_cast<int>(std::lround(target_)), scrollBar_->minimum(), scrollBar_->maximum());
     if (finalPos != scrollBar_->value()) {
         updating_ = true;
         scrollBar_->setValue(finalPos);
@@ -160,4 +160,3 @@ void SmoothScroller::onFinished() {
 }
 
 }  // namespace hitokoto::ui
-

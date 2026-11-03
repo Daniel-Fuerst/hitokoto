@@ -278,4 +278,3 @@ private slots:
 
 QTEST_MAIN(tst_s027_smooth_scrolling)
 #include "tst_s027_smooth_scrolling.moc"
-

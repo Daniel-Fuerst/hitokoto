@@ -1,6 +1,6 @@
 # S027 — Smooth scrolling in the editor view
 
-- **Status:** In progress · **Order:** 28 · **Size:** S · **Depends on:** S019
+- **Status:** In review · **Order:** 28 · **Size:** S · **Depends on:** S019
 - **Basis:** User request on 2026-11-03: implement smooth scrolling in the view. Mouse wheel scrolling
   animates fluidly towards the target scroll position instead of jumping instantaneously in a single
   step, with target accumulation for rapid successive wheel notches, immediate reversal when scrolling
@@ -43,10 +43,10 @@ moving through the document feels fluid and natural rather than jarring and abru
 - When wheel events scroll beyond the boundaries
 - Then the animation clamps cleanly at 0 or `maximum()` without overshooting
 
-**Scenario: touchpad pixel deltas are not delayed**
-- Given a high-resolution scroll event with non-zero `pixelDelta` (such as a touchpad)
+**Scenario: touchpad pixel deltas animate smoothly**
+- Given a scroll event with non-zero `pixelDelta` (such as a touchpad)
 - When the event arrives
-- Then the view scrolls 1:1 with the pixel delta without laggy momentum animation
+- Then the view animates smoothly towards the target without instantaneous jumps
 
 **Scenario: toggle via options**
 - Given `Options::smoothScrolling` is false (or disabled on the editor)
