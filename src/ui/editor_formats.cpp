@@ -143,9 +143,9 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
         const auto idx = static_cast<std::size_t>(lvl >= 1 && lvl <= 6 ? lvl : 0);
         const QTextCharFormat& hfmt =
             render.hidden[0].mode == core::HideMode::Collapse ? collapse_[idx] : keepSpace_[idx];
-        return {{static_cast<int>(render.hidden[0].span.start), static_cast<int>(render.hidden[0].span.length), hfmt},
-                {static_cast<int>(render.runs[0].span.start), static_cast<int>(render.runs[0].span.length),
-                 heading(lvl)}};
+        return {
+            {static_cast<int>(render.hidden[0].span.start), static_cast<int>(render.hidden[0].span.length), hfmt},
+            {static_cast<int>(render.runs[0].span.start), static_cast<int>(render.runs[0].span.length), heading(lvl)}};
     }
     QList<QTextLayout::FormatRange> out;
     const QTextCharFormat lineFormat = heading(render.headingLevel);

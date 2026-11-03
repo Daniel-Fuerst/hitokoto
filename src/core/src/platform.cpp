@@ -93,7 +93,7 @@ int syncToDisk(int fd) {
 
 std::optional<std::string> writeAndSync(const std::filesystem::path& path, std::string_view bytes,
                                         const std::filesystem::path* likeFile) {
-    struct stat original {};
+    struct stat original{};
     const bool haveOriginal = likeFile != nullptr && ::stat(likeFile->c_str(), &original) == 0;
     // Private until the original's permissions are applied, so contents never leak.
     const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, haveOriginal ? 0600 : 0666);
@@ -143,7 +143,7 @@ std::optional<std::string> replaceFile(const std::filesystem::path& temp, const 
 }
 
 bool isReadOnly(const std::filesystem::path& file) noexcept {
-    struct stat st {};
+    struct stat st{};
     return ::stat(file.c_str(), &st) == 0 && (st.st_mode & S_IWUSR) == 0;
 }
 

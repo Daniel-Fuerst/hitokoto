@@ -308,7 +308,8 @@ void BlockStyler::applyWrapIndent(const QTextBlock& block, const core::LineRende
         return;
     }
     if (columns < 31 && bits < 31 && block.layout()->lineCount() <= 0) {
-        const_cast<QTextBlock&>(block).setUserState((state & ~kWrapIndentMask) | ((columns & 0x1F) << kWrapIndentShift));
+        const_cast<QTextBlock&>(block).setUserState((state & ~kWrapIndentMask) |
+                                                    ((columns & 0x1F) << kWrapIndentShift));
         return;
     }
     auto* layout = qobject_cast<BlockLayout*>(document_->documentLayout());
