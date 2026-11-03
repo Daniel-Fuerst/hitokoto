@@ -36,6 +36,9 @@ public:
 
     [[nodiscard]] QTableView* viewAt(int blockNumber) const;
     [[nodiscard]] bool isSourceShown(int blockNumber) const;
+    [[nodiscard]] QTextBlock lastBlockOfTableAt(int blockNumber) const;
+    [[nodiscard]] bool isSeparatorBlock(const QTextBlock& block) const;
+    void focusCellAt(int blockNumber, int row, int column);
 
     void setFormats(const EditorFormats* formats);
     void setAvailableWidth(int width);

@@ -321,6 +321,24 @@ std::u16string makeEmptyTableRow(std::size_t columns) {
     return row;
 }
 
+std::u16string makeEmptyTable(std::size_t columns, std::size_t bodyRows) {
+    const std::size_t cols = std::max<std::size_t>(1, columns);
+    const std::u16string emptyRow = makeEmptyTableRow(cols);
+    std::u16string delimiter = u"|";
+    delimiter.reserve(1 + cols * 6);
+    for (std::size_t i = 0; i < cols; ++i) {
+        delimiter += u" --- |";
+    }
+    std::u16string out = emptyRow;
+    out += u'\n';
+    out += delimiter;
+    for (std::size_t r = 0; r < bodyRows; ++r) {
+        out += u'\n';
+        out += emptyRow;
+    }
+    return out;
+}
+
 std::u16string appendTableColumn(std::u16string_view line, bool delimiterRow) {
     std::u16string out(line.substr(0, trimmedEnd(line)));
     if (out.empty() || out.back() != u'|') {

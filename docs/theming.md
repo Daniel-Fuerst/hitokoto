@@ -185,6 +185,19 @@ follows the general tokens above.
 | `properties.key-width` | number (px) | Width of the key column, 40 to 1000 | 160 |
 | `properties.font-family` | string | Font family of the block; "" = editor font | "" |
 | `properties.font-scale` | number | Font size relative to the editor font, 0.5 to 2 | 1 |
+| `toolbar.background` | color | Background of the floating toolbar | `colors.surface` |
+| `toolbar.border` | color | Border of the floating toolbar | `colors.border` |
+| `toolbar.border-width` | number (px) | Border width of the floating toolbar, 0 to 8 | 1 |
+| `toolbar.radius` | number (px) | Corner radius of the floating toolbar, 0 to 32 | `layout.radius` |
+| `toolbar.padding` | number (px) | Space inside the floating toolbar around its buttons, 0 to 32 | 4 |
+| `toolbar.spacing` | number (px) | Space between buttons in the floating toolbar, 0 to 32 | 4 |
+| `toolbar.margin` | number (px) | Space between the floating toolbar and the right edge of the editor, 0 to 64 | 12 |
+| `toolbar.icon` | color | Icon colour of buttons in the floating toolbar | `colors.text` |
+| `toolbar.button-size` | number (px) | Width and height of each button in the floating toolbar, 16 to 64 | 28 |
+| `toolbar.button-radius` | number (px) | Corner radius of buttons in the floating toolbar, 0 to 32 | `layout.radius` |
+| `toolbar.hover-background` | color | Background of a button in the floating toolbar when hovered | `colors.border` |
+| `toolbar.active-background` | color | Background of a button in the floating toolbar while pressed | `colors.accent` |
+| `toolbar.active-icon` | color | Icon colour of a button in the floating toolbar while pressed | `colors.background` |
 
 A thematic break (`---`, `***`, `___`) is a line across the text column, centred vertically in its block.
 Setext headings (text underlined with `===` or `---`) add no tokens: their lines use the heading

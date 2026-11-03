@@ -400,6 +400,9 @@ std::size_t separateTextAfterTables(DecodedText& decoded, const ElementRegistry&
 
 /// Returns a blank GFM pipe-table row with `columns` empty cells, e.g. "|  |  |".
 [[nodiscard]] std::u16string makeEmptyTableRow(std::size_t columns);
+/// Returns a GFM pipe table with `columns` empty header cells, a delimiter row, and `bodyRows`
+/// empty body rows, separated by '\n' (S026).
+[[nodiscard]] std::u16string makeEmptyTable(std::size_t columns, std::size_t bodyRows = 1);
 /// Appends one new column to a table line (`|  |` for header/body rows, `| --- |` for delimiter rows).
 [[nodiscard]] std::u16string appendTableColumn(std::u16string_view line, bool delimiterRow);
 /// Removes `column` (0-based) from a table header, delimiter or body row when the row has at least 2 columns.

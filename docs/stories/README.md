@@ -37,6 +37,7 @@ story ID (see "Conventions").
 | 24 | [S023](023-thematic-breaks.md) | Thematic breaks and setext headings | S002, S003, S014, S018, S019, S021 | L | Done |
 | 25 | [S024](024-front-matter.md) | Front matter shown as properties | S023 | L | Done |
 | 26 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | Open |
+| 27 | [S026](026-floating-toolbar.md) | Floating toolbar on the right-hand side | S015, S018 | S | In review |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 
