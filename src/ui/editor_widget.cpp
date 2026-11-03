@@ -92,20 +92,16 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     positionToolbar();
 
     // S027: smooth scrolling on mouse wheel events.
-    verticalScroller_ = std::make_unique<SmoothScroller>(verticalScrollBar(), this);
+    verticalScroller_ = new SmoothScroller(verticalScrollBar(), this);
 }
 
 EditorWidget::~EditorWidget() = default;
 
-void EditorWidget::setSmoothScrolling(bool on) noexcept {
+void EditorWidget::setSmoothScrolling(bool on) {
     smoothScrolling_ = on;
-    if (!smoothScrolling_ && verticalScroller_) {
+    if (!smoothScrolling_) {
         verticalScroller_->stop();
     }
-}
-
-SmoothScroller* EditorWidget::smoothScroller() const noexcept {
-    return verticalScroller_.get();
 }
 
 QTableView* EditorWidget::tableViewAt(int blockNumber) const {
@@ -156,9 +152,7 @@ void EditorWidget::applyPendingShift() {
         bar->setMaximum(std::max(bar->maximum(), bar->value() + shift));
         bar->setValue(bar->value() + shift);
         applyingShift_ = false;
-        if (verticalScroller_) {
-            verticalScroller_->shift(shift);
-        }
+        verticalScroller_->shift(shift);
     }
 }
 
@@ -258,9 +252,6 @@ void EditorWidget::updateMargins() {
 }
 
 void EditorWidget::positionToolbar() {
-    if (toolbar_ == nullptr) {
-        return;
-    }
     const QScrollBar* bar = verticalScrollBar();
     const bool barTakesSpace = verticalScrollBarPolicy() != Qt::ScrollBarAlwaysOff &&
                                style()->styleHint(QStyle::SH_ScrollBar_Transient, nullptr, bar) == 0;
@@ -273,9 +264,7 @@ void EditorWidget::positionToolbar() {
 }
 
 void EditorWidget::resizeEvent(QResizeEvent* event) {
-    if (verticalScroller_) {
-        verticalScroller_->stop();
-    }
+    verticalScroller_->stop();
     const ScrollAnchor anchor = captureAnchor();
     QTextEdit::resizeEvent(event);
     updateMargins();
@@ -325,9 +314,7 @@ void EditorWidget::mouseReleaseEvent(QMouseEvent* event) {
 }
 
 void EditorWidget::mousePressEvent(QMouseEvent* event) {
-    if (verticalScroller_) {
-        verticalScroller_->stop();
-    }
+    verticalScroller_->stop();
     const QTextCursor hit = cursorForPosition(event->position().toPoint());
     const QTextBlock block = hit.block();
     const bool wasConcealed = block.isValid() && !styler_->isRevealed(block.blockNumber());
@@ -395,9 +382,7 @@ void EditorWidget::wheelEvent(QWheelEvent* event) {
     }
 
     if ((event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier)) != 0) {
-        if (verticalScroller_) {
-            verticalScroller_->stop();
-        }
+        verticalScroller_->stop();
         QTextEdit::wheelEvent(event);
         return;
     }
@@ -416,9 +401,7 @@ void EditorWidget::wheelEvent(QWheelEvent* event) {
 
     if (std::abs(delta) > 0.001 && verticalScrollBar() != nullptr &&
         verticalScrollBar()->maximum() > verticalScrollBar()->minimum()) {
-        if (verticalScroller_) {
-            verticalScroller_->scroll(delta);
-        }
+        verticalScroller_->scroll(delta);
         event->accept();
         return;
     }
@@ -486,9 +469,7 @@ QString EditorWidget::anchorAt(const QPoint& pos) const {
 }
 
 void EditorWidget::keyPressEvent(QKeyEvent* event) {
-    if (verticalScroller_) {
-        verticalScroller_->stop();
-    }
+    verticalScroller_->stop();
     if (tables_->handleEditorKey(event) || properties_->handleEditorKey(event)) {
         return;
     }

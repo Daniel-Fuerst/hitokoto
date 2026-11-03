@@ -39,8 +39,8 @@ public:
     void setDuration(int ms) noexcept { durationMs_ = ms; }
 
     /// Easing curve (default OutCubic).
-    [[nodiscard]] QEasingCurve easingCurve() const noexcept { return easingCurve_; }
-    void setEasingCurve(const QEasingCurve& curve) noexcept { easingCurve_ = curve; }
+    [[nodiscard]] const QEasingCurve& easingCurve() const noexcept { return easingCurve_; }
+    void setEasingCurve(const QEasingCurve& curve) { easingCurve_ = curve; }
 
 signals:
     void scrollStarted();

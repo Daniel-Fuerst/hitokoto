@@ -175,6 +175,7 @@ private slots:
         ui::EditorWidget* editor = f.editor();
         QScrollBar* bar = editor->verticalScrollBar();
         ui::SmoothScroller* scroller = editor->smoothScroller();
+        QVERIFY(scroller != nullptr);
 
         // Scroll up when at top (0): target clamped at 0
         sendWheel(editor->viewport(), 12000);
@@ -196,6 +197,7 @@ private slots:
         ui::EditorWidget* editor = f.editor();
         QScrollBar* bar = editor->verticalScrollBar();
         ui::SmoothScroller* scroller = editor->smoothScroller();
+        QVERIFY(scroller != nullptr);
 
         const int initial = bar->value();
         // High-resolution trackpad event with pixelDelta only (angleDelta 0)
@@ -215,6 +217,7 @@ private slots:
 
         ui::EditorWidget* editor = f.editor();
         ui::SmoothScroller* scroller = editor->smoothScroller();
+        QVERIFY(scroller != nullptr);
 
         ui::Options opts = f.window->options();
         opts.smoothScrolling = false;
@@ -264,6 +267,7 @@ private slots:
 
         ui::EditorWidget* editor = f.editor();
         ui::SmoothScroller* scroller = editor->smoothScroller();
+        QVERIFY(scroller != nullptr);
 
         sendWheel(editor->viewport(), -120);
         QVERIFY(scroller->isRunning());

@@ -73,9 +73,9 @@ public:
     /// S027: whether smooth scrolling on mouse wheel events is enabled.
     [[nodiscard]] bool isSmoothScrollingEnabled() const noexcept { return smoothScrolling_; }
     /// S027: enable or disable smooth scrolling on mouse wheel events.
-    void setSmoothScrolling(bool on) noexcept;
+    void setSmoothScrolling(bool on);
     /// S027: the vertical smooth scroller.
-    [[nodiscard]] class SmoothScroller* smoothScroller() const noexcept;
+    [[nodiscard]] SmoothScroller* smoothScroller() const noexcept { return verticalScroller_; }
 
 signals:
     void painted();
@@ -134,7 +134,7 @@ private:
     std::unique_ptr<TableEmbedder> tables_;
     std::unique_ptr<PropertiesEmbedder> properties_;
     FloatingToolbar* toolbar_ = nullptr;
-    std::unique_ptr<SmoothScroller> verticalScroller_;
+    SmoothScroller* verticalScroller_ = nullptr;
     bool smoothScrolling_ = true;
     double padding_ = 0;
     double maxWidth_ = 0;
