@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "editor_widget.hpp"
 
+#include "floating_toolbar.hpp"
 #include "properties_embedder.hpp"
 #include "qt_bridge.hpp"
 #include "table_embedder.hpp"
 
+#include <QApplication>
 #include <QDesktopServices>
 #include <QFontMetricsF>
 #include <QHelpEvent>
@@ -12,9 +14,11 @@
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPlainTextEdit>
 #include <QResizeEvent>
 #include <QScrollBar>
 #include <QStyle>
+#include <QTableView>
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextLayout>
@@ -79,6 +83,12 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     connect(styler_, &BlockStyler::completed, properties_.get(), &PropertiesEmbedder::schedule);
     connect(layout_, &BlockLayout::documentSizeChanged, properties_.get(), &PropertiesEmbedder::reposition);
     connect(layout_, &BlockLayout::blocksGoneUnreported, properties_.get(), &PropertiesEmbedder::forgetAll);
+
+    // S026: floating toolbar on the right-hand side.
+    toolbar_ = new FloatingToolbar(this);
+    connect(toolbar_, &FloatingToolbar::createTableRequested, this, &EditorWidget::insertTable);
+    connect(toolbar_, &FloatingToolbar::createInlineCodeRequested, this, &EditorWidget::insertInlineCode);
+    positionToolbar();
 }
 
 EditorWidget::~EditorWidget() = default;
@@ -172,6 +182,8 @@ void EditorWidget::applyTheme(const core::Theme& theme) {
     properties_->setAvailableWidth(availableTableWidth());
     properties_->setLook(styler_->formats().properties(), styler_->formats().propertiesFont(),
                          styler_->formats().propertiesBadgeFont());
+    toolbar_->applyStyle(core::toolbarStyle(theme));
+    positionToolbar();
     if (!wasModified) {
         document()->setModified(false);
     }
@@ -227,10 +239,26 @@ void EditorWidget::updateMargins() {
     setViewportMargins(side, 0, side, 0);
 }
 
+void EditorWidget::positionToolbar() {
+    if (toolbar_ == nullptr) {
+        return;
+    }
+    const QScrollBar* bar = verticalScrollBar();
+    const bool barTakesSpace = verticalScrollBarPolicy() != Qt::ScrollBarAlwaysOff &&
+                               style()->styleHint(QStyle::SH_ScrollBar_Transient, nullptr, bar) == 0;
+    const int barWidth = barTakesSpace ? bar->sizeHint().width() : 0;
+    const int margin = std::max(0, static_cast<int>(std::lround(toolbar_->toolbarStyle().margin)));
+    const int x = std::max(0, width() - barWidth - margin - toolbar_->width());
+    const int y = std::max(0, (height() - toolbar_->height()) / 2);
+    toolbar_->move(x, y);
+    toolbar_->raise();
+}
+
 void EditorWidget::resizeEvent(QResizeEvent* event) {
     const ScrollAnchor anchor = captureAnchor();
     QTextEdit::resizeEvent(event);
     updateMargins();
+    positionToolbar();
     tables_->setAvailableWidth(availableTableWidth());
     properties_->setAvailableWidth(availableTableWidth());
     restoreAnchor(anchor);
@@ -506,6 +534,88 @@ void EditorWidget::setFrontMatterAsProperties(bool on) {
 
 void EditorWidget::placeCaretAfterOpening(bool loaded) {
     properties_->placeCaretAfterOpening(loaded);
+}
+
+void EditorWidget::insertTable() {
+    if (isReadOnly()) {
+        return;
+    }
+    QTextCursor cursor = textCursor();
+    QTextBlock block = cursor.block();
+    bool needsBlankBefore = false;
+    if (const QTextBlock tableLast = tables_->lastBlockOfTableAt(block.blockNumber()); tableLast.isValid()) {
+        const QTextBlock sep = tableLast.next();
+        if (sep.isValid() && sep.text().trimmed().isEmpty()) {
+            block = sep;
+        } else {
+            block = tableLast;
+            needsBlankBefore = true;
+        }
+    }
+
+    const QString tableMarkdown = toQString(core::makeEmptyTable(2, 1));
+    const bool replaceEmptyBlock = block.text().trimmed().isEmpty() && !tables_->isSeparatorBlock(block) &&
+                                   !styler_->renderFor(block).codeBlock && !styler_->renderFor(block).frontMatter;
+    const QTextBlock next = block.next();
+    const bool needsSeparatorAfter = next.isValid() && !next.text().trimmed().isEmpty();
+
+    cursor.beginEditBlock();
+    int headerBlockNumber = block.blockNumber();
+    if (replaceEmptyBlock) {
+        cursor.setPosition(block.position());
+        cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+        cursor.insertText(needsSeparatorAfter ? tableMarkdown + QLatin1Char('\n') : tableMarkdown);
+    } else {
+        cursor.setPosition(block.position() + block.length() - 1);
+        const QString prefix = needsBlankBefore ? QStringLiteral("\n\n") : QStringLiteral("\n");
+        cursor.insertText(prefix + (needsSeparatorAfter ? tableMarkdown + QLatin1Char('\n') : tableMarkdown));
+        headerBlockNumber = block.blockNumber() + (needsBlankBefore ? 2 : 1);
+    }
+    cursor.endEditBlock();
+
+    const QTextBlock headerBlock = document()->findBlockByNumber(headerBlockNumber);
+    if (headerBlock.isValid()) {
+        QTextCursor headerCursor(headerBlock);
+        setTextCursor(headerCursor);
+    }
+    styler_->styleVisible();
+    tables_->refresh();
+    tables_->focusCellAt(headerBlockNumber, 0, 0);
+}
+
+void EditorWidget::insertInlineCode() {
+    if (isReadOnly()) {
+        return;
+    }
+    if (auto* cell = qobject_cast<QPlainTextEdit*>(QApplication::focusWidget());
+        cell != nullptr && viewport()->isAncestorOf(cell)) {
+        QTextCursor c = cell->textCursor();
+        c.beginEditBlock();
+        if (c.hasSelection()) {
+            const QString selected = c.selectedText();
+            c.insertText(QLatin1Char('`') + selected + QLatin1Char('`'));
+        } else {
+            c.insertText(QStringLiteral("``"));
+            c.movePosition(QTextCursor::Left);
+        }
+        c.endEditBlock();
+        cell->setTextCursor(c);
+        cell->setFocus();
+        return;
+    }
+
+    QTextCursor cursor = textCursor();
+    cursor.beginEditBlock();
+    if (cursor.hasSelection()) {
+        const QString selected = cursor.selectedText();
+        cursor.insertText(QLatin1Char('`') + selected + QLatin1Char('`'));
+    } else {
+        cursor.insertText(QStringLiteral("``"));
+        cursor.movePosition(QTextCursor::Left);
+    }
+    cursor.endEditBlock();
+    setTextCursor(cursor);
+    setFocus();
 }
 
 void EditorWidget::paintInlineCodeBoxes(QPainter& painter, const QTextBlock& block, const core::LineRender& render,

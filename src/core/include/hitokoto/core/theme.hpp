@@ -84,6 +84,13 @@ struct PropertiesTokens {
     friend bool operator==(const PropertiesTokens&, const PropertiesTokens&) = default;
 };
 
+/// Tokens of `[toolbar]` (S026); resolved by toolbarStyle().
+struct ToolbarTokens {
+    std::optional<Color> background, border, icon, hoverBackground, activeBackground, activeIcon;
+    std::optional<double> borderWidth, radius, padding, spacing, margin, buttonSize, buttonRadius;
+    friend bool operator==(const ToolbarTokens&, const ToolbarTokens&) = default;
+};
+
 /// Every value the UI uses for colours, fonts, radii and spacing. Hard-coded styling values
 /// in UI code are bugs; add a token instead.
 struct Theme {
@@ -122,6 +129,7 @@ struct Theme {
     LinkTokens link;
     ThematicBreakTokens thematicBreak;
     PropertiesTokens properties;
+    ToolbarTokens toolbar;
 
     friend bool operator==(const Theme&, const Theme&) = default;
 };
@@ -220,6 +228,19 @@ struct PropertiesStyle {
     friend bool operator==(const PropertiesStyle&, const PropertiesStyle&) = default;
 };
 
+/// Resolved look of the floating toolbar (S026).
+struct ToolbarStyle {
+    Color background, border, icon, hoverBackground, activeBackground, activeIcon;
+    double borderWidth = 1;
+    double radius = 0;
+    double padding = 4;
+    double spacing = 4;
+    double margin = 12;
+    double buttonSize = 28;
+    double buttonRadius = 0;
+    friend bool operator==(const ToolbarStyle&, const ToolbarStyle&) = default;
+};
+
 [[nodiscard]] CodeStyle codeBlockStyle(const Theme& theme);
 [[nodiscard]] CodeStyle inlineCodeStyle(const Theme& theme);
 [[nodiscard]] EmphasisStyle emphasisStyle(const Theme& theme);
@@ -228,6 +249,7 @@ struct PropertiesStyle {
 [[nodiscard]] LinkStyle linkStyle(const Theme& theme);
 [[nodiscard]] ThematicBreakStyle thematicBreakStyle(const Theme& theme);
 [[nodiscard]] PropertiesStyle propertiesStyle(const Theme& theme);
+[[nodiscard]] ToolbarStyle toolbarStyle(const Theme& theme);
 
 /// All tokens of the theme format, in documentation order.
 std::span<const ThemeTokenInfo> themeTokens();

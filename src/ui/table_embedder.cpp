@@ -105,6 +105,21 @@ bool TableEmbedder::isSourceShown(int blockNumber) const {
     return table != nullptr && table->source;
 }
 
+QTextBlock TableEmbedder::lastBlockOfTableAt(int blockNumber) const {
+    const Table* table = tableAt(blockNumber);
+    return table != nullptr ? table->last : QTextBlock();
+}
+
+bool TableEmbedder::isSeparatorBlock(const QTextBlock& block) const {
+    return const_cast<TableEmbedder*>(this)->tableAbove(block) != nullptr;
+}
+
+void TableEmbedder::focusCellAt(int blockNumber, int row, int column) {
+    if (Table* table = tableAt(blockNumber)) {
+        focusCell(*table, row, column);
+    }
+}
+
 QTextBlock TableEmbedder::lastLineOf(const QTextBlock& header) const {
     QTextBlock last = header;
     for (QTextBlock next = header.next(); next.isValid(); next = next.next()) {
@@ -674,7 +689,8 @@ void TableEmbedder::caretMoved() {
         return;
     }
     Table* table = tableAt(cursor.blockNumber());
-    if (table == nullptr || table->source || !table->widget) {
+    if (table == nullptr || table->source || !table->widget ||
+        table->widget->isAncestorOf(QApplication::focusWidget())) {
         return;
     }
     // The caret never stays on lines the table view stands for (S009); behind the text of a

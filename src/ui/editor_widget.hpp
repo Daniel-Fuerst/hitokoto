@@ -22,6 +22,7 @@ class QTableView;
 
 namespace hitokoto::ui {
 
+class FloatingToolbar;
 class PropertiesEmbedder;
 class TableEmbedder;
 
@@ -62,6 +63,12 @@ public:
     [[nodiscard]] QString anchorAt(const QPoint& pos) const;
     /// Merged character format at viewport point `pos` (S022).
     [[nodiscard]] QTextCharFormat formatAt(const QPoint& pos) const;
+    /// S026: the floating toolbar on the right-hand side of the editor.
+    [[nodiscard]] FloatingToolbar* floatingToolbar() const noexcept { return toolbar_; }
+    /// S026: inserts a 2-column × 1-body-row table and focuses its first header cell.
+    void insertTable();
+    /// S026: wraps the selection in single backticks, or inserts `` `` `` with the caret inside.
+    void insertInlineCode();
 
 signals:
     void painted();
@@ -100,6 +107,7 @@ private:
 
     void updateReveal();
     void updateMargins();
+    void positionToolbar();
     [[nodiscard]] int availableTableWidth() const;
     void paintCodeBlockPanels();
     void paintInlineCodeBoxes(QPainter& painter, const QTextBlock& block, const core::LineRender& render,
@@ -117,6 +125,7 @@ private:
     BlockStyler* styler_ = nullptr;
     std::unique_ptr<TableEmbedder> tables_;
     std::unique_ptr<PropertiesEmbedder> properties_;
+    FloatingToolbar* toolbar_ = nullptr;
     double padding_ = 0;
     double maxWidth_ = 0;
     quint64 editCount_ = 0;

@@ -58,7 +58,7 @@ std::optional<std::string> colorValue(const Value& v, Color& out) {
     return std::nullopt;
 }
 
-template <Color Theme::*Member>
+template <Color Theme::* Member>
 std::optional<std::string> applyColor(Theme& t, const Value& v) {
     return colorValue(v, t.*Member);
 }
@@ -84,7 +84,7 @@ std::optional<std::string> applyOptString(Theme& t, const Value& v) {
     return std::nullopt;
 }
 
-template <std::string Theme::*Member>
+template <std::string Theme::* Member>
 std::optional<std::string> applyString(Theme& t, const Value& v) {
     const auto* s = std::get_if<std::string>(&v);
     if (!s) {
@@ -108,7 +108,7 @@ std::optional<std::string> numberIn(const Value& v, double lo, double hi, double
     return std::nullopt;
 }
 
-template <double Theme::*Member, int Lo, int Hi>
+template <double Theme::* Member, int Lo, int Hi>
 std::optional<std::string> applyNumber(Theme& t, const Value& v) {
     return numberIn(v, Lo, Hi, t.*Member);
 }
@@ -300,6 +300,19 @@ const Token kTokens[] = {
     {{"properties", "key-width", "number (px)", "Width of the key column, 40 to 1000", "160"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::keyWidth, 400, 10000>},
     {{"properties", "font-family", "string", "Font family of the block; \"\" = editor font", "\"\""}, &applyOptString<&Theme::properties, &PropertiesTokens::fontFamily>},
     {{"properties", "font-scale", "number", "Font size relative to the editor font, 0.5 to 2", "1"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::fontScale, 5, 20>},
+    {{"toolbar", "background", "color", "Background of the floating toolbar", "colors.surface"}, &applyOptColor<&Theme::toolbar, &ToolbarTokens::background>},
+    {{"toolbar", "border", "color", "Border of the floating toolbar", "colors.border"}, &applyOptColor<&Theme::toolbar, &ToolbarTokens::border>},
+    {{"toolbar", "border-width", "number (px)", "Border width of the floating toolbar, 0 to 8", "1"}, &applyOptNumber<&Theme::toolbar, &ToolbarTokens::borderWidth, 0, 80>},
+    {{"toolbar", "radius", "number (px)", "Corner radius of the floating toolbar, 0 to 32", "layout.radius"}, &applyOptNumber<&Theme::toolbar, &ToolbarTokens::radius, 0, 320>},
+    {{"toolbar", "padding", "number (px)", "Space inside the floating toolbar around its buttons, 0 to 32", "4"}, &applyOptNumber<&Theme::toolbar, &ToolbarTokens::padding, 0, 320>},
+    {{"toolbar", "spacing", "number (px)", "Space between buttons in the floating toolbar, 0 to 32", "4"}, &applyOptNumber<&Theme::toolbar, &ToolbarTokens::spacing, 0, 320>},
+    {{"toolbar", "margin", "number (px)", "Space between the floating toolbar and the right edge of the editor, 0 to 64", "12"}, &applyOptNumber<&Theme::toolbar, &ToolbarTokens::margin, 0, 640>},
+    {{"toolbar", "icon", "color", "Icon colour of buttons in the floating toolbar", "colors.text"}, &applyOptColor<&Theme::toolbar, &ToolbarTokens::icon>},
+    {{"toolbar", "button-size", "number (px)", "Width and height of each button in the floating toolbar, 16 to 64", "28"}, &applyOptNumber<&Theme::toolbar, &ToolbarTokens::buttonSize, 160, 640>},
+    {{"toolbar", "button-radius", "number (px)", "Corner radius of buttons in the floating toolbar, 0 to 32", "layout.radius"}, &applyOptNumber<&Theme::toolbar, &ToolbarTokens::buttonRadius, 0, 320>},
+    {{"toolbar", "hover-background", "color", "Background of a button in the floating toolbar when hovered", "colors.border"}, &applyOptColor<&Theme::toolbar, &ToolbarTokens::hoverBackground>},
+    {{"toolbar", "active-background", "color", "Background of a button in the floating toolbar while pressed", "colors.accent"}, &applyOptColor<&Theme::toolbar, &ToolbarTokens::activeBackground>},
+    {{"toolbar", "active-icon", "color", "Icon colour of a button in the floating toolbar while pressed", "colors.background"}, &applyOptColor<&Theme::toolbar, &ToolbarTokens::activeIcon>},
 };
 // clang-format on
 
@@ -805,6 +818,25 @@ PropertiesStyle propertiesStyle(const Theme& t) {
         .keyWidth = p.keyWidth.value_or(160),
         .fontScale = p.fontScale.value_or(1),
         .fontFamily = p.fontFamily.value_or(""),
+    };
+}
+
+ToolbarStyle toolbarStyle(const Theme& t) {
+    const ToolbarTokens& tb = t.toolbar;
+    return {
+        .background = tb.background.value_or(t.surface),
+        .border = tb.border.value_or(t.border),
+        .icon = tb.icon.value_or(t.text),
+        .hoverBackground = tb.hoverBackground.value_or(t.border),
+        .activeBackground = tb.activeBackground.value_or(t.accent),
+        .activeIcon = tb.activeIcon.value_or(t.background),
+        .borderWidth = tb.borderWidth.value_or(1),
+        .radius = tb.radius.value_or(t.radius),
+        .padding = tb.padding.value_or(4),
+        .spacing = tb.spacing.value_or(4),
+        .margin = tb.margin.value_or(12),
+        .buttonSize = tb.buttonSize.value_or(28),
+        .buttonRadius = tb.buttonRadius.value_or(t.radius),
     };
 }
 
