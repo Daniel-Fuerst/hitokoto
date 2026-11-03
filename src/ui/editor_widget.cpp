@@ -4,6 +4,7 @@
 #include "floating_toolbar.hpp"
 #include "properties_embedder.hpp"
 #include "qt_bridge.hpp"
+#include "smooth_scroller.hpp"
 #include "table_embedder.hpp"
 
 #include <QApplication>
@@ -89,9 +90,19 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     connect(toolbar_, &FloatingToolbar::createTableRequested, this, &EditorWidget::insertTable);
     connect(toolbar_, &FloatingToolbar::createInlineCodeRequested, this, &EditorWidget::insertInlineCode);
     positionToolbar();
+
+    // S027: smooth scrolling on mouse wheel events.
+    verticalScroller_ = new SmoothScroller(verticalScrollBar(), this);
 }
 
 EditorWidget::~EditorWidget() = default;
+
+void EditorWidget::setSmoothScrolling(bool on) {
+    smoothScrolling_ = on;
+    if (!smoothScrolling_) {
+        verticalScroller_->stop();
+    }
+}
 
 QTableView* EditorWidget::tableViewAt(int blockNumber) const {
     return tables_->viewAt(blockNumber);
@@ -141,6 +152,7 @@ void EditorWidget::applyPendingShift() {
         bar->setMaximum(std::max(bar->maximum(), bar->value() + shift));
         bar->setValue(bar->value() + shift);
         applyingShift_ = false;
+        verticalScroller_->shift(shift);
     }
 }
 
@@ -240,9 +252,6 @@ void EditorWidget::updateMargins() {
 }
 
 void EditorWidget::positionToolbar() {
-    if (toolbar_ == nullptr) {
-        return;
-    }
     const QScrollBar* bar = verticalScrollBar();
     const bool barTakesSpace = verticalScrollBarPolicy() != Qt::ScrollBarAlwaysOff &&
                                style()->styleHint(QStyle::SH_ScrollBar_Transient, nullptr, bar) == 0;
@@ -255,6 +264,7 @@ void EditorWidget::positionToolbar() {
 }
 
 void EditorWidget::resizeEvent(QResizeEvent* event) {
+    verticalScroller_->stop();
     const ScrollAnchor anchor = captureAnchor();
     QTextEdit::resizeEvent(event);
     updateMargins();
@@ -304,6 +314,7 @@ void EditorWidget::mouseReleaseEvent(QMouseEvent* event) {
 }
 
 void EditorWidget::mousePressEvent(QMouseEvent* event) {
+    verticalScroller_->stop();
     const QTextCursor hit = cursorForPosition(event->position().toPoint());
     const QTextBlock block = hit.block();
     const bool wasConcealed = block.isValid() && !styler_->isRevealed(block.blockNumber());
@@ -364,12 +375,50 @@ void EditorWidget::mouseMoveEvent(QMouseEvent* event) {
     QTextEdit::mouseMoveEvent(event);
 }
 
+void EditorWidget::wheelEvent(QWheelEvent* event) {
+    if (!smoothScrolling_) {
+        QTextEdit::wheelEvent(event);
+        return;
+    }
+
+    if ((event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier)) != 0) {
+        verticalScroller_->stop();
+        QTextEdit::wheelEvent(event);
+        return;
+    }
+
+    const int angleY = event->angleDelta().y();
+    double delta = 0.0;
+    if (angleY != 0) {
+        const int lineSpacing =
+            fontMetrics().lineSpacing() > 0 ? fontMetrics().lineSpacing() : verticalScrollBar()->singleStep();
+        const int lines = QApplication::wheelScrollLines() > 0 ? QApplication::wheelScrollLines() : 3;
+        const double distancePerNotch = static_cast<double>(lines * (lineSpacing > 0 ? lineSpacing : 20));
+        delta = -(static_cast<double>(angleY) / 120.0) * distancePerNotch;
+    } else if (!event->pixelDelta().isNull() && event->pixelDelta().y() != 0) {
+        delta = -static_cast<double>(event->pixelDelta().y());
+    }
+
+    if (std::abs(delta) > 0.001 && verticalScrollBar() != nullptr &&
+        verticalScrollBar()->maximum() > verticalScrollBar()->minimum()) {
+        verticalScroller_->scroll(delta);
+        event->accept();
+        return;
+    }
+
+    QTextEdit::wheelEvent(event);
+}
+
 void EditorWidget::leaveEvent(QEvent* event) {
     viewport()->setCursor(Qt::IBeamCursor);
     QTextEdit::leaveEvent(event);
 }
 
 bool EditorWidget::viewportEvent(QEvent* event) {
+    if (event->type() == QEvent::Wheel) {
+        wheelEvent(static_cast<QWheelEvent*>(event));
+        return event->isAccepted();
+    }
     if (event->type() == QEvent::ToolTip) {
         auto* help = static_cast<QHelpEvent*>(event);
         const QTextCharFormat fmt = formatAt(help->pos());
@@ -420,6 +469,7 @@ QString EditorWidget::anchorAt(const QPoint& pos) const {
 }
 
 void EditorWidget::keyPressEvent(QKeyEvent* event) {
+    verticalScroller_->stop();
     if (tables_->handleEditorKey(event) || properties_->handleEditorKey(event)) {
         return;
     }
