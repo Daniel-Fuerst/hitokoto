@@ -38,6 +38,7 @@ story ID (see "Conventions").
 | 25 | [S024](024-front-matter.md) | Front matter shown as properties | S023 | L | Done |
 | 26 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | Open |
 | 27 | [S026](026-floating-toolbar.md) | Floating toolbar on the right-hand side | S015, S018 | S | In review |
+| 28 | [S027](027-smooth-scrolling.md) | Smooth scrolling in the editor view | S019 | S | In progress |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 

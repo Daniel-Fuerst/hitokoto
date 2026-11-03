@@ -13,6 +13,8 @@ struct Options {
     /// S024 (review O2): front matter shows as a properties block while the caret is elsewhere; off
     /// gives the S023 behaviour (plain text), as Obsidian's "Source". On by default.
     bool frontMatterAsProperties = true;
+    /// S027: smooth scrolling in the editor view when scrolling with the mouse wheel. On by default.
+    bool smoothScrolling = true;
 };
 
 }  // namespace hitokoto::ui

@@ -24,6 +24,7 @@ namespace hitokoto::ui {
 
 class FloatingToolbar;
 class PropertiesEmbedder;
+class SmoothScroller;
 class TableEmbedder;
 
 class EditorWidget : public QTextEdit {
@@ -69,6 +70,12 @@ public:
     void insertTable();
     /// S026: wraps the selection in single backticks, or inserts `` `` `` with the caret inside.
     void insertInlineCode();
+    /// S027: whether smooth scrolling on mouse wheel events is enabled.
+    [[nodiscard]] bool isSmoothScrollingEnabled() const noexcept { return smoothScrolling_; }
+    /// S027: enable or disable smooth scrolling on mouse wheel events.
+    void setSmoothScrolling(bool on) noexcept;
+    /// S027: the vertical smooth scroller.
+    [[nodiscard]] class SmoothScroller* smoothScroller() const noexcept;
 
 signals:
     void painted();
@@ -81,6 +88,7 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void inputMethodEvent(QInputMethodEvent* event) override;
     void insertFromMimeData(const QMimeData* source) override;
@@ -126,6 +134,8 @@ private:
     std::unique_ptr<TableEmbedder> tables_;
     std::unique_ptr<PropertiesEmbedder> properties_;
     FloatingToolbar* toolbar_ = nullptr;
+    std::unique_ptr<SmoothScroller> verticalScroller_;
+    bool smoothScrolling_ = true;
     double padding_ = 0;
     double maxWidth_ = 0;
     quint64 editCount_ = 0;

@@ -2,6 +2,7 @@
 #include "table_view.hpp"
 
 #include "editor_formats.hpp"
+#include "editor_widget.hpp"
 #include "qt_bridge.hpp"
 #include "table_model.hpp"
 
@@ -32,6 +33,18 @@
 
 namespace hitokoto::ui {
 
+namespace {
+void forwardWheelToEditor(QWidget* from, QWheelEvent* event) {
+    for (QWidget* p = from->parentWidget(); p != nullptr; p = p->parentWidget()) {
+        auto* editor = qobject_cast<EditorWidget*>(p);
+        if (editor != nullptr) {
+            QApplication::sendEvent(editor->viewport(), event);
+            return;
+        }
+    }
+}
+}  // namespace
+
 // --- CellEditor -------------------------------------------------------------------------------
 
 CellEditor::CellEditor(TableView* view, QWidget* parent) : QPlainTextEdit(parent), view_(view) {
@@ -57,6 +70,11 @@ CellEditor::CellEditor(TableView* view, QWidget* parent) : QPlainTextEdit(parent
 
 void CellEditor::scrollContentsBy(int /*dx*/, int /*dy*/) {
     // Keep the cell contents fixed at the top-left padding.
+}
+
+void CellEditor::wheelEvent(QWheelEvent* event) {
+    event->ignore();
+    forwardWheelToEditor(this, event);
 }
 
 void CellEditor::keyPressEvent(QKeyEvent* event) {
@@ -722,6 +740,11 @@ void TableView::mouseReleaseEvent(QMouseEvent* event) {
     QTableView::mouseReleaseEvent(event);
 }
 
+void TableView::wheelEvent(QWheelEvent* event) {
+    event->ignore();
+    forwardWheelToEditor(this, event);
+}
+
 QModelIndex TableView::moveCursor(CursorAction cursorAction, Qt::KeyboardModifiers modifiers) {
     QAbstractItemModel* m = model();
     const QModelIndex current = currentIndex();
@@ -846,6 +869,11 @@ bool TableWidget::eventFilter(QObject* watched, QEvent* event) {
         hideControls();
     }
     return QWidget::eventFilter(watched, event);
+}
+
+void TableWidget::wheelEvent(QWheelEvent* event) {
+    event->ignore();
+    forwardWheelToEditor(this, event);
 }
 
 void TableWidget::hideControls() {

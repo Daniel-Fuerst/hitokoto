@@ -33,6 +33,7 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
     void scrollContentsBy(int dx, int dy) override;
+    void wheelEvent(QWheelEvent* event) override;
 
 private:
     TableView* view_;
@@ -138,6 +139,7 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
     QModelIndex moveCursor(CursorAction cursorAction, Qt::KeyboardModifiers modifiers) override;
     void currentChanged(const QModelIndex& current, const QModelIndex& previous) override;
 
@@ -177,6 +179,7 @@ signals:
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
 
 private:
     void updateHover(QPoint position);
