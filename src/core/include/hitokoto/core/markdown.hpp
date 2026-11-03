@@ -154,10 +154,11 @@ struct LineRender {
     std::vector<Span> opaqueSpans;     ///< spans that later inline elements must not parse (code spans, link markers)
     std::vector<Span> inlineContexts;  ///< isolated inline contexts (e.g. link text: delimiters never pair outside)
     std::u16string codeLanguage;       ///< opening fence: language of the info string (S021), else empty
+    std::uint32_t wrapIndent = 0;      ///< column where continuation lines align (hanging indent, S003); 0 = none
     [[nodiscard]] bool empty() const noexcept {
         return headingLevel == 0 && !codeBlock && !fenceLine && !table && !thematicBreak && setextUnderline == 0 &&
                !frontMatter && runs.empty() && inlineStyles.empty() && hidden.empty() && decorations.empty() &&
-               links.empty() && opaqueSpans.empty() && inlineContexts.empty();
+               links.empty() && opaqueSpans.empty() && inlineContexts.empty() && wrapIndent == 0;
     }
     friend bool operator==(const LineRender&, const LineRender&) = default;
 };
@@ -359,6 +360,7 @@ private:
     /// For each ASCII character, bit i is set if it triggers inline element i.
     std::array<std::uint64_t, 128> asciiTriggers_{};
     bool hasOtherTriggers_ = false;
+    bool hasAlwaysInline_ = false;
     std::vector<std::unique_ptr<MultiLineElement>> multiLineElements_;
 };
 
@@ -372,6 +374,24 @@ std::unique_ptr<InlineElement> makeEscapeElement();
 std::unique_ptr<MultiLineElement> makeFencedCodeElement();
 std::unique_ptr<MultiLineElement> makeTableElement();
 std::unique_ptr<MultiLineElement> makeFrontMatterElement();
+
+struct BulletLineInfo {
+    std::uint32_t prefixLength = 0;  ///< length of the full prefix up to content (e.g. 4 for "  - ")
+    std::uint32_t markerChar = 0;    ///< column of '-', '*', '+'
+    char16_t marker = 0;             ///< '-', '*', or '+'
+    bool isEmpty = false;            ///< true if content after prefix is empty or only whitespace
+    friend bool operator==(const BulletLineInfo&, const BulletLineInfo&) = default;
+};
+
+/// If `line` is a bullet item, returns its prefix information; else nullopt.
+[[nodiscard]] std::optional<BulletLineInfo> parseBulletLine(std::u16string_view line);
+
+/// Returns the new line with one level of indentation added (2 spaces before marker).
+[[nodiscard]] std::u16string indentBulletLine(std::u16string_view line);
+
+/// Returns the new line with one level of indentation removed (up to 2 spaces before marker),
+/// or the original line if it is already at the top level.
+[[nodiscard]] std::u16string outdentBulletLine(std::u16string_view line);
 
 /// ADR 0002, decision 6 (S018): adds a blank line before each line without `|` that directly
 /// follows a table's rows, which GFM would make a row and Obsidian ends the table with. Added
