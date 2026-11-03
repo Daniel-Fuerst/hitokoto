@@ -143,6 +143,7 @@ struct LineRender {
     bool tableDelimiter = false;       ///< delimiter row (| --- | --- |) of a table
     bool thematicBreak = false;        ///< thematic break (S023); concealed, the UI draws a horizontal line
     std::uint8_t setextUnderline = 0;  ///< 1 or 2: the line underlines a setext heading of that level (S023)
+    bool frontMatter = false;          ///< line of closed front matter, delimiters included (S024)
     BlockState blockState;             ///< state to pass when rendering the next line
     std::vector<TableCell> cells;      ///< cells of a table header or body row
     std::vector<StyleRun> runs;
@@ -156,8 +157,8 @@ struct LineRender {
     std::uint32_t wrapIndent = 0;      ///< column where continuation lines align (hanging indent, S003); 0 = none
     [[nodiscard]] bool empty() const noexcept {
         return headingLevel == 0 && !codeBlock && !fenceLine && !table && !thematicBreak && setextUnderline == 0 &&
-               runs.empty() && inlineStyles.empty() && hidden.empty() && decorations.empty() && links.empty() &&
-               opaqueSpans.empty() && inlineContexts.empty() && wrapIndent == 0;
+               !frontMatter && runs.empty() && inlineStyles.empty() && hidden.empty() && decorations.empty() &&
+               links.empty() && opaqueSpans.empty() && inlineContexts.empty() && wrapIndent == 0;
     }
     friend bool operator==(const LineRender&, const LineRender&) = default;
 };

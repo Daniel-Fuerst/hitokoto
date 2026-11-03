@@ -59,3 +59,12 @@ surface that can hold tables, so that tables can come without a step back elsewh
 - UI: `tst_s019_editor_surface` for pixel scrolling, reserved and hidden blocks, input method
   pre-edit and commit, accessibility interface.
 - All existing core and UI tests and the benchmark gate unchanged.
+
+## Fixes found later
+
+- On `agents/s024-front-matter` (2026-10-31, found with S024's long front matter, kept on that
+  branch with Armin's approval; S024 code review O9): `BlockLayout::blockBoundingRect` no longer
+  lays out hidden blocks, and `EditorWidget`'s panels and decorations no longer render them.
+  Walking over 5,000 hidden lines cost about 60 ms on a key, a repaint about 35 ms. Tests
+  `tst_s019_editor_surface::hiddenBlocksAreNotLaidOut` and
+  `tst_s019_editor_surface::paintingSkipsHiddenBlocks`.

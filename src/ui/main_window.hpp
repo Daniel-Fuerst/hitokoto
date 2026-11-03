@@ -38,7 +38,7 @@ public:
 
     /// Options (no options dialog yet: the defaults in options.hpp apply).
     [[nodiscard]] const Options& options() const noexcept { return options_; }
-    void setOptions(const Options& options) { options_ = options; }
+    void setOptions(const Options& options);
 
     void applyTheme(const core::Theme& theme);
     void showMessage(const QString& title, const QString& text);

@@ -17,6 +17,7 @@ add_library(hitokoto_core STATIC
     src/elements/fenced_code.cpp
     src/elements/table.cpp
     src/elements/front_matter.cpp
+    src/properties.cpp
     src/reveal.cpp
     src/theme.cpp
 )

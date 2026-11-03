@@ -181,6 +181,7 @@ void DocumentSession::beginInsert(QString text, core::DecodedText meta, const QS
     editor_->setReadOnly(true);
     const qsizetype cut = cutAfter(pendingText_, 0, kFirstChunk);
     editor_->setPlainText(pendingText_.left(cut));
+    editor_->placeCaretAfterOpening(false);  // below front matter on the first screen (S024)
     pendingOffset_ = cut;
     path_ = path;
     emit pathChanged(path_);
@@ -237,7 +238,7 @@ void DocumentSession::finishInsert() {
     const std::size_t added = std::exchange(pendingBlankLines_, 0);
     doc->setModified(added > 0);
     editor_->setReadOnly(false);
-    editor_->moveCursor(QTextCursor::Start);
+    editor_->placeCaretAfterOpening(true);  // the start, or below front matter (S024)
     loading_ = false;
     if (firstChunk_) {
         firstChunk_ = false;

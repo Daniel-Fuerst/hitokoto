@@ -1,6 +1,6 @@
 # S022 — Inline Markdown links and titles
 
-- **Status:** In review · **Order:** 23 · **Depends on:** S013, S015, S020
+- **Status:** Done (accepted by the user on 2026-10-31) · **Order:** 23 · **Depends on:** S013, S015, S020
 
 ## Story
 

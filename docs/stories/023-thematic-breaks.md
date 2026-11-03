@@ -1,8 +1,8 @@
 # S023 — Thematic breaks and setext headings
 
-- **Status:** In review (CI green on Linux, Windows and macOS, PR #22, 2026-10-30; confirmed by
-  Armin on 2026-10-30 after review `docs/reviews/023-thematic-breaks-spec.md`) · **Order:** 24 ·
-  **Size:** L ·
+- **Status:** Done (accepted by the user on 2026-10-31; merged through pull request #22;
+  confirmed by Armin on 2026-10-30 after review `docs/reviews/023-thematic-breaks-spec.md`) ·
+  **Order:** 24 · **Size:** L ·
   **Depends on:** S002, S003, S014, S018, S019, S021 · **Decision:** ADR 0006
 - **Basis:** Armin's feature request from everyday use on Windows (2026-10-28): `---` alone on a line
   shows as text. CommonMark 0.31.2, sections 4.1 (thematic breaks) and 4.3 (setext headings); GFM
@@ -226,6 +226,10 @@ On `agents/s023-thematic-break`, 2026-10-30, following ADR 0006 (section "Implem
   of PR #22.
 - Code review `docs/reviews/023-thematic-breaks-code.md`: every objection dispositioned. A fix to
   S021 (a fence directly after a table) stays on this branch (O8).
+- Fix on `agents/s024-front-matter` (2026-10-31, found with S024, kept on that branch with Armin's
+  approval; S024 code review O9): front matter whose closing line arrives in a slice of a loading
+  file with more than 400 lines was never confirmed; such a slice now confirms it in idle slices.
+  Test `tst_s023_thematic_breaks::frontMatterClosedInALaterSliceOfALongFile`.
 
 Next: Armin's test of the functionality and acceptance (Done); S024 (front matter shown as
 properties).

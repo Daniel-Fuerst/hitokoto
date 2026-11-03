@@ -1572,6 +1572,41 @@ private slots:
         f.settle();
         QCOMPARE(text(f), QStringLiteral("| Key | Value |\n| --- | --- |\n| hello |  |\n"));
     }
+
+    // S024 review O4: lines that another embedded element hides or reserves height on stay so
+    // when the tables refresh (before, TableEmbedder::sweep showed every such line again).
+    void anotherElementsLinesSurviveATableRefresh() {
+        struct Other final : ui::BlockLayout::Claimant {
+            [[nodiscard]] bool claims(const QTextBlock& block) const override { return block.blockNumber() <= 1; }
+        };
+        Other other;
+        test::Fixture f;
+        QVERIFY(f.open(
+            f.writeFile(QStringLiteral("other.md"), "reserved\nhidden\n| a | b |\n| - | - |\n| 1 | 2 |\n\nafter\n")));
+        f.placeCaret(6);
+        f.settle();
+        auto* editor = f.editor();
+        ui::BlockLayout* layout = editor->blockLayout();
+        layout->addClaimant(&other);
+        const QTextBlock reserved = editor->document()->findBlockByNumber(0);
+        const QTextBlock hidden = editor->document()->findBlockByNumber(1);
+        layout->setReservedHeight(reserved, 40);
+        layout->setHidden(hidden, true);
+        QVERIFY(editor->tableViewAt(2) != nullptr);
+        // A change to the table's lines and scrolling refresh the tables.
+        QTextCursor c(editor->document()->findBlockByNumber(4));
+        c.movePosition(QTextCursor::EndOfBlock);
+        c.insertText(QStringLiteral(" 3 |"));
+        f.settle();
+        editor->verticalScrollBar()->setValue(editor->verticalScrollBar()->maximum());
+        f.settle();
+        editor->verticalScrollBar()->setValue(0);
+        f.settle();
+        QCOMPARE(layout->reservedHeight(reserved), 40.0);
+        QVERIFY(!hidden.isVisible());
+        QVERIFY(editor->tableViewAt(2) != nullptr);
+        layout->removeClaimant(&other);
+    }
 };
 
 QTEST_MAIN(tst_s018_tables)

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S023: front matter (Obsidian, not CommonMark). `---` on the first line of a document, closed by
-// the next line `---` (both may end in blanks), is front matter; all its lines stay plain text.
-// S024 will show it as properties. Without a closing line the first line is a thematic break: the
-// caller confirms the closing line (ElementRegistry::documentStart, ADR 0006).
+// the next line `---` (both may end in blanks), is front matter; all its lines stay plain text and
+// carry LineRender::frontMatter, so that the UI can show them as properties (S024). Without a
+// closing line the first line is a thematic break: the caller confirms the closing line
+// (ElementRegistry::documentStart, ADR 0006).
 #include "hitokoto/core/markdown.hpp"
 
 #include "../block_rules.hpp"
@@ -44,8 +45,9 @@ public:
     }
 
     void render(std::u16string_view /*line*/, const BlockLine& /*parsed*/, const LineContext& /*context*/,
-                LineRender& /*out*/) const override {
-        // Plain text, revealed or not (S024 will show it as properties).
+                LineRender& out) const override {
+        // Plain text, revealed or not; the UI shows closed front matter as properties (S024).
+        out.frontMatter = true;
     }
 };
 

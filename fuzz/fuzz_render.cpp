@@ -3,13 +3,43 @@
 // not, with the block state carried from line to line as the editor does. Spans stay inside the
 // line, hidden and styled ranges never overlap, a revealed non-table line hides nothing, and the
 // registry's block-state shortcut agrees with render(). The whole-document reference (S023, ADR
-// 0006) renders the same text with the same guarantees and the same block states.
+// 0006) renders the same text with the same guarantees and the same block states. The YAML of
+// closed front matter, and the whole input as lines, go to the properties parser (S024, ADR 0007):
+// it returns, and every line and column it reports lies in its input.
 #include "hitokoto/core/markdown.hpp"
+#include "hitokoto/core/properties.hpp"
 
+#include <algorithm>
 #include <cstdlib>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
+
+namespace {
+
+/// What the parser reports lies in `lines` (S024).
+void checkProperties(std::span<const std::u16string> lines) {
+    const auto p = hitokoto::core::parseProperties(lines);
+    if (p.error) {
+        if (!p.rows.empty() || (p.error->line >= lines.size() && !lines.empty()))
+            std::abort();
+        return;
+    }
+    for (const auto& row : p.rows) {
+        if (row.keyLine >= lines.size() || row.valueLine >= lines.size() ||
+            row.valueColumn > lines[row.valueLine].size())
+            std::abort();
+        // Code review O5: the tooltip's JSON has at most 20 lines and one more for "…".
+        if (row.type == hitokoto::core::PropertyType::Unsupported) {
+            const auto tip = hitokoto::core::prettyJson(row.text, 20);
+            if (std::count(tip.begin(), tip.end(), u'\n') > 20)
+                std::abort();
+        }
+    }
+}
+
+}  // namespace
 
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     static const auto registry = hitokoto::core::ElementRegistry::withBuiltins();
@@ -86,5 +116,14 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         if (!frontMatter && i + 1 < lines.size() && r.blockState != states[i + 1])
             std::abort();
     }
+    // S024: the YAML of closed front matter (lines 1 to before the closing one), and every line.
+    std::size_t close = 0;
+    while (close < document.size() && document[close].frontMatter)
+        ++close;
+    if (close >= 2)
+        checkProperties(std::span<const std::u16string>(lines).subspan(1, close - 2));
+    if (close == 1 || (close > 0 && !document[0].frontMatter))
+        std::abort();
+    checkProperties(lines);
     return 0;
 }

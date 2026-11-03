@@ -306,21 +306,45 @@ private slots:
         }
     }
 
+    // Front matter is no break and no heading. Since S024 it shows as properties while the caret is
+    // elsewhere; with the caret in it, its lines are text as S023 specified.
     void frontMatterStaysText() {
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("note.md"), "---\ntitle: x\n---\n\n***\n")));
-        f.placeCaret(3);
+        f.placeCaret(1);
         f.settle();
         const auto* doc = f.editor()->document();
         const auto [left, right] = textColumn(f.editor());
         for (const int n : {0, 1, 2}) {
             const QTextBlock block = doc->findBlockByNumber(n);
-            QVERIFY2(f.editor()->styler().renderFor(block).empty(), qPrintable(QString::number(n)));
+            auto render = f.editor()->styler().renderFor(block);
+            render.frontMatter = false;  // S024's mark for the properties block
+            QVERIFY2(render.empty(), qPrintable(QString::number(n)));
             QVERIFY(test::formatAt(block, 0).foreground().color() != QColor(Qt::transparent));
             QVERIFY(rowsWithColour(f.editor(), block, (left + right) / 2, lineColour()).isEmpty());
         }
         QCOMPARE(rowsWithColour(f.editor(), doc->findBlockByNumber(4), (left + right) / 2, lineColour()).size(),
                  expectedThickness(f.editor(), 1));
+    }
+
+    // Found with S024: front matter whose closing line comes with a later slice of a long file, more
+    // lines than a key may look at, is confirmed as well; it was a thematic break and a setext
+    // heading.
+    void frontMatterClosedInALaterSliceOfALongFile() {
+        QByteArray document = "---\n";
+        for (int i = 0; i < 6000; ++i) {
+            document += "key" + QByteArray::number(i) + ": value\n";
+        }
+        document += "---\n# Heading\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), document)));
+        f.placeCaret(6002);
+        f.settle();
+        auto& styler = f.editor()->styler();
+        const auto* doc = f.editor()->document();
+        QVERIFY(!styler.renderFor(doc->findBlockByNumber(0)).thematicBreak);
+        QCOMPARE(styler.renderFor(doc->findBlockByNumber(6001)).setextUnderline, std::uint8_t{0});
+        QCOMPARE(styler.renderFor(doc->findBlockByNumber(6002)).headingLevel, std::uint8_t{1});
     }
 
     // ADR 0006: the lazy rendering gives every line the LineRender of the whole-document reference,

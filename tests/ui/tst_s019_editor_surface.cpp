@@ -136,6 +136,79 @@ private slots:
         QCOMPARE(layout->documentSize().height(), heightBefore);
     }
 
+    // Found with S024: geometry queries do not lay out the text of hidden blocks. Walking over the
+    // screen (visibleBlockRange, painting) passed every hidden line and laid it out: 5,000 hidden
+    // lines of front matter cost 60 ms on the key that hid them.
+    void hiddenBlocksAreNotLaidOut() {
+        struct Hider final : ui::BlockLayout::Claimant {  // so that the tables leave the lines hidden
+            [[nodiscard]] bool claims(const QTextBlock& block) const override {
+                return block.blockNumber() >= 1 && block.blockNumber() < 2999;
+            }
+        };
+        Hider hider;
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("hidden.md"), numberedLines(3000))));
+        f.settle();
+        auto* editor = f.editor();
+        auto* layout = editor->blockLayout();
+        const auto* doc = editor->document();
+        QVERIFY(doc->findBlockByNumber(500).layout()->lineCount() == 0);  // never on screen
+        layout->addClaimant(&hider);
+        {
+            const ui::BlockLayout::Batch batch(layout);
+            for (QTextBlock b = doc->findBlockByNumber(1); b.isValid() && b.blockNumber() < 2999; b = b.next()) {
+                layout->setHidden(b, true);
+            }
+        }
+        f.settle();
+        editor->verticalScrollBar()->setValue(editor->verticalScrollBar()->maximum());
+        f.settle();
+        (void)editor->visibleBlockRange();
+        for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+            (void)layout->blockBoundingRect(b);
+        }
+        int laidOut = 0;
+        for (QTextBlock b = doc->findBlockByNumber(100); b.isValid() && b.blockNumber() < 2999; b = b.next()) {
+            laidOut += b.layout()->lineCount() > 0 ? 1 : 0;
+        }
+        QCOMPARE(laidOut, 0);
+        QVERIFY(!doc->findBlockByNumber(500).isVisible());
+        QCOMPARE(layoutErrors(editor), QString());
+        layout->removeClaimant(&hider);
+    }
+
+    // Found with S024: painting passes hidden blocks without rendering them. The panels of code
+    // blocks and the decorations rendered every block between the first and the last on screen,
+    // hidden ones too: 5,000 hidden lines of front matter cost about 35 ms on every repaint.
+    void paintingSkipsHiddenBlocks() {
+        struct Hider final : ui::BlockLayout::Claimant {  // so that the tables leave the lines hidden
+            [[nodiscard]] bool claims(const QTextBlock& block) const override {
+                return block.blockNumber() >= 1 && block.blockNumber() < 2999;
+            }
+        };
+        Hider hider;
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("hidden.md"), numberedLines(3000))));
+        f.settle();
+        auto* editor = f.editor();
+        auto* layout = editor->blockLayout();
+        const auto* doc = editor->document();
+        layout->addClaimant(&hider);
+        {
+            const ui::BlockLayout::Batch batch(layout);
+            for (QTextBlock b = doc->findBlockByNumber(1); b.isValid() && b.blockNumber() < 2999; b = b.next()) {
+                layout->setHidden(b, true);
+            }
+        }
+        f.placeCaret(0);
+        f.settle();
+        const quint64 before = editor->styler().renderCount();
+        editor->viewport()->repaint();
+        QVERIFY2(editor->styler().renderCount() - before < 100,
+                 qPrintable(QString::number(editor->styler().renderCount() - before)));
+        layout->removeClaimant(&hider);
+    }
+
     // Qt emits contentsChange before it tells the layout; the styler lays out visible blocks in
     // between (review of d11f16d, finding 1).
     void heightsStayConsistentWhenManyLinesAreInsertedInView() {
