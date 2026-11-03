@@ -69,20 +69,15 @@ TEST(S003_Bullets, WrapIndentPointsToContentStart) {
 }
 
 TEST(S003_Bullets, ParseBulletLineIdentifiesPrefixAndEmptyState) {
-    const auto item1 = parseBulletLine(u"- milk");
-    ASSERT_TRUE(item1.has_value());
-    EXPECT_EQ(*item1, (BulletLineInfo{2, 0, u'-', false}));
-
-    const auto item2 = parseBulletLine(u"  * foo bar");
-    ASSERT_TRUE(item2.has_value());
-    EXPECT_EQ(*item2, (BulletLineInfo{4, 2, u'*', false}));
-
-    const auto empty1 = parseBulletLine(u"- ");
-    ASSERT_TRUE(empty1.has_value());
-    EXPECT_EQ(*empty1, (BulletLineInfo{2, 0, u'-', true}));
+    EXPECT_EQ(parseBulletLine(u"- milk"), (BulletLineInfo{2, 0, u'-', false}));
+    EXPECT_EQ(parseBulletLine(u"  * foo bar"), (BulletLineInfo{4, 2, u'*', false}));
+    EXPECT_EQ(parseBulletLine(u"- "), (BulletLineInfo{2, 0, u'-', true}));
 
     const auto empty2 = parseBulletLine(u"    +   ");
-    ASSERT_TRUE(empty2.has_value());
+    // Explicit branch for bugprone-unchecked-optional-access (it ignores ASSERT_TRUE and flags value()).
+    if (!empty2) {
+        FAIL() << "expected a bullet line";
+    }
     EXPECT_EQ(empty2->markerChar, 4u);
     EXPECT_EQ(empty2->marker, u'+');
     EXPECT_TRUE(empty2->isEmpty);
