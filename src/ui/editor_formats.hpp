@@ -44,7 +44,11 @@ private:
     [[nodiscard]] double textSize(int level) const;
 
     QFont baseFont_;
-    std::array<QTextCharFormat, 7> heading_{};  // index 0 = body text
+    std::array<QTextCharFormat, 7> heading_{};    // index 0 = body text
+    std::array<QTextCharFormat, 7> keepSpace_{};  // transparent foreground at heading level
+    std::array<QTextCharFormat, 7> collapse_{};   // 1px collapsed format at heading level
+    QTextCharFormat bulletSpace_{};
+    QTextCharFormat italic0_{};
     QColor marker_;
     QColor bullet_;
     double bulletSpacing_ = 0;

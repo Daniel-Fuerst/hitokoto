@@ -583,11 +583,8 @@ bool EditorWidget::handleBulletKey(QKeyEvent* event) {
 
 bool EditorWidget::handleBulletEnter(QTextCursor& cursor) {
     QTextBlock block = cursor.block();
-    if (styler_->renderFor(block).codeBlock) {
-        return false;
-    }
     const auto info = core::parseBulletLine(view(block.text()));
-    if (!info.has_value()) {
+    if (!info.has_value() || styler_->renderFor(block).codeBlock) {
         return false;
     }
 
@@ -641,11 +638,8 @@ bool EditorWidget::handleBulletTab(QTextCursor& cursor, bool outdent) {
     }
 
     if (startBlock == endBlock) {
-        if (styler_->renderFor(startBlock).codeBlock) {
-            return false;
-        }
         const auto info = core::parseBulletLine(view(startBlock.text()));
-        if (!info.has_value()) {
+        if (!info.has_value() || styler_->renderFor(startBlock).codeBlock) {
             return false;
         }
 
@@ -679,7 +673,7 @@ bool EditorWidget::handleBulletTab(QTextCursor& cursor, bool outdent) {
 
     bool anyBullet = false;
     for (QTextBlock b = startBlock; b.isValid() && b.blockNumber() <= endBlock.blockNumber(); b = b.next()) {
-        if (!styler_->renderFor(b).codeBlock && core::parseBulletLine(view(b.text())).has_value()) {
+        if (core::parseBulletLine(view(b.text())).has_value() && !styler_->renderFor(b).codeBlock) {
             anyBullet = true;
             break;
         }
@@ -690,7 +684,7 @@ bool EditorWidget::handleBulletTab(QTextCursor& cursor, bool outdent) {
 
     cursor.beginEditBlock();
     for (QTextBlock b = startBlock; b.isValid() && b.blockNumber() <= endBlock.blockNumber(); b = b.next()) {
-        if (styler_->renderFor(b).codeBlock || !core::parseBulletLine(view(b.text())).has_value()) {
+        if (!core::parseBulletLine(view(b.text())).has_value() || styler_->renderFor(b).codeBlock) {
             continue;
         }
         const int blockPos = b.position();

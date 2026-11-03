@@ -5,10 +5,10 @@
 
 #include <QFontDatabase>
 #include <QFontMetricsF>
+#include <QVarLengthArray>
 
 #include <algorithm>
 #include <optional>
-#include <vector>
 
 namespace hitokoto::ui {
 
@@ -84,6 +84,23 @@ EditorFormats::EditorFormats(const core::Theme& theme)
         f.setFontWeight(theme.headingWeight);
         heading_[static_cast<std::size_t>(level)] = f;
     }
+    for (std::size_t level = 0; level <= 6; ++level) {
+        QTextCharFormat ks = heading_[level];
+        ks.setForeground(Qt::transparent);  // theme-lint: allow
+        keepSpace_[level] = ks;
+        QTextCharFormat col = ks;
+        col.clearProperty(QTextFormat::FontPointSize);
+        col.setProperty(QTextFormat::FontPixelSize, 1);
+        collapse_[level] = col;
+    }
+    bulletSpace_ = heading_[0];
+    bulletSpace_.setFontLetterSpacingType(QFont::AbsoluteSpacing);
+    bulletSpace_.setFontLetterSpacing(bulletSpacing_);
+    italic0_ = heading_[0];
+    italic0_.setFontItalic(true);
+    if (emphasis_.italicText) {
+        italic0_.setForeground(toQColor(*emphasis_.italicText));
+    }
 }
 
 QFont EditorFormats::badgeFont() const {
@@ -104,11 +121,35 @@ QTextCharFormat EditorFormats::heading(int level) const {
 }
 
 QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& render) const {
+    if (render.headingLevel == 0 && !render.codeBlock && render.runs.empty() && render.inlineStyles.empty() &&
+        render.hidden.empty() && render.links.empty() && render.wrapIndent == 0) {
+        return {};
+    }
+    if (render.headingLevel == 0 && !render.codeBlock && render.runs.empty() && render.inlineStyles.empty() &&
+        render.links.empty() && render.hidden.size() == 1 && render.decorations.size() == 1 &&
+        render.decorations[0].kind == core::DecorationKind::Bullet &&
+        render.hidden[0].mode == core::HideMode::KeepSpace &&
+        render.hidden[0].span == (core::Span{render.decorations[0].column, 1})) {
+        const auto col = render.decorations[0].column;
+        if (render.wrapIndent > col + 1) {
+            return {{static_cast<int>(col), 1, keepSpace_[0]}, {static_cast<int>(col + 1), 1, bulletSpace_}};
+        }
+        return {{static_cast<int>(col), 1, keepSpace_[0]}};
+    }
+    if (!render.codeBlock && render.inlineStyles.empty() && render.links.empty() && render.wrapIndent == 0 &&
+        render.hidden.size() == 1 && render.runs.size() == 1 && render.runs[0].role == core::Role::HeadingText &&
+        render.hidden[0].span.end() == render.runs[0].span.start) {
+        const int lvl = render.runs[0].level != 0 ? render.runs[0].level : render.headingLevel;
+        const auto idx = static_cast<std::size_t>(lvl >= 1 && lvl <= 6 ? lvl : 0);
+        const QTextCharFormat& hfmt =
+            render.hidden[0].mode == core::HideMode::Collapse ? collapse_[idx] : keepSpace_[idx];
+        return {{static_cast<int>(render.hidden[0].span.start), static_cast<int>(render.hidden[0].span.length), hfmt},
+                {static_cast<int>(render.runs[0].span.start), static_cast<int>(render.runs[0].span.length),
+                 heading(lvl)}};
+    }
     QList<QTextLayout::FormatRange> out;
     const QTextCharFormat lineFormat = heading(render.headingLevel);
-    std::vector<std::uint32_t> boundaries;
-    boundaries.reserve((render.runs.size() + render.inlineStyles.size() + render.hidden.size() + render.links.size()) *
-                       2);
+    QVarLengthArray<std::uint32_t, 16> boundaries;
     for (const auto& run : render.runs) {
         boundaries.push_back(run.span.start);
         boundaries.push_back(run.span.end());
@@ -131,13 +172,14 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
         boundaries.push_back(bulletSpace->end());
     }
     std::sort(boundaries.begin(), boundaries.end());
-    boundaries.erase(std::unique(boundaries.begin(), boundaries.end()), boundaries.end());
+    const auto uniqueEnd = std::unique(boundaries.begin(), boundaries.end());
+    boundaries.resize(std::distance(boundaries.begin(), uniqueEnd));
 
     std::size_t runIndex = 0;
     std::size_t inlineIndex = 0;
     std::size_t hiddenIndex = 0;
     std::size_t linkIndex = 0;
-    for (std::size_t i = 1; i < boundaries.size(); ++i) {
+    for (qsizetype i = 1; i < boundaries.size(); ++i) {
         const auto start = boundaries[i - 1];
         const auto end = boundaries[i];
         if (start == end) {
@@ -175,6 +217,31 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
                                : nullptr;
         const bool isBulletSpace = bulletSpace.has_value() && start >= bulletSpace->start && end <= bulletSpace->end();
         if (baseRun == nullptr && inlineRun == nullptr && hidden == nullptr && link == nullptr && !isBulletSpace) {
+            continue;
+        }
+
+        if (isBulletSpace && baseRun == nullptr && inlineRun == nullptr && hidden == nullptr && link == nullptr &&
+            render.headingLevel == 0 && !render.codeBlock) {
+            out.append({static_cast<int>(start), static_cast<int>(end - start), bulletSpace_});
+            continue;
+        }
+        if (hidden != nullptr && baseRun == nullptr && link == nullptr && !render.codeBlock && !isBulletSpace &&
+            !isInlineCodeDelimiter(render, start)) {
+            const auto idx = static_cast<std::size_t>(
+                render.headingLevel >= 1 && render.headingLevel <= 6 ? render.headingLevel : 0);
+            const QTextCharFormat& fmt = hidden->mode == core::HideMode::Collapse ? collapse_[idx] : keepSpace_[idx];
+            out.append({static_cast<int>(start), static_cast<int>(end - start), fmt});
+            continue;
+        }
+        if (inlineRun != nullptr && inlineRun->style == core::InlineStyle::Italic && baseRun == nullptr &&
+            hidden == nullptr && link == nullptr && render.headingLevel == 0 && !render.codeBlock && !isBulletSpace) {
+            out.append({static_cast<int>(start), static_cast<int>(end - start), italic0_});
+            continue;
+        }
+        if (baseRun != nullptr && baseRun->role == core::Role::HeadingText && inlineRun == nullptr &&
+            hidden == nullptr && link == nullptr && !render.codeBlock && !isBulletSpace) {
+            const int lvl = baseRun->level != 0 ? baseRun->level : render.headingLevel;
+            out.append({static_cast<int>(start), static_cast<int>(end - start), heading(lvl)});
             continue;
         }
 

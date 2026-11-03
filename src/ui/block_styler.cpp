@@ -277,6 +277,9 @@ void BlockStyler::styleBlock(const QTextBlock& block) {
 void BlockStyler::applyBlockSpacing(const QTextBlock& block, const core::LineRender& render) {
     // S021: the panel's margin is part of the geometry of its first and last line (ADR 0003),
     // never applied while painting (review O3). S023: a thematic break's margin likewise.
+    if (!render.thematicBreak && !render.codeBlock && block.userData() == nullptr) {
+        return;
+    }
     auto* layout = qobject_cast<BlockLayout*>(document_->documentLayout());
     if (layout == nullptr) {
         return;
@@ -298,11 +301,21 @@ void BlockStyler::applyBlockSpacing(const QTextBlock& block, const core::LineRen
 }
 
 void BlockStyler::applyWrapIndent(const QTextBlock& block, const core::LineRender& render) {
+    const int columns = static_cast<int>(render.wrapIndent);
+    const int state = stateBits(block);
+    const int bits = (state & kWrapIndentMask) >> kWrapIndentShift;
+    if (columns == bits && bits < 31) {
+        return;
+    }
+    if (columns < 31 && bits < 31 && block.layout()->lineCount() <= 0) {
+        const_cast<QTextBlock&>(block).setUserState((state & ~kWrapIndentMask) | ((columns & 0x1F) << kWrapIndentShift));
+        return;
+    }
     auto* layout = qobject_cast<BlockLayout*>(document_->documentLayout());
     if (layout == nullptr) {
         return;
     }
-    layout->setWrapIndent(block, static_cast<int>(render.wrapIndent));
+    layout->setWrapIndent(block, columns);
 }
 
 void BlockStyler::styleRange(int first, int last) {
@@ -622,7 +635,6 @@ BlockStyler::Level BlockStyler::setextLevel(const QTextBlock& block, core::Block
     // Most paragraphs are short: walk down from the line without numbering lines.
     ParagraphSearch search{.inside = after};
     QElapsedTimer timer;
-    timer.start();
     int steps = 0;
     QTextBlock b = block.next();
     for (; b.isValid(); b = b.next()) {
@@ -630,7 +642,10 @@ BlockStyler::Level BlockStyler::setextLevel(const QTextBlock& block, core::Block
             giveLevel(block, b, *level);
             return {*level, true};
         }
-        if (++steps % 64 == 0 && timer.nsecsElapsed() > kParagraphSearchNanoseconds) {
+        ++steps;
+        if (steps == 64) {
+            timer.start();
+        } else if (steps > 64 && steps % 64 == 0 && timer.nsecsElapsed() > kParagraphSearchNanoseconds) {
             // A long paragraph (a cold walk takes about 0.3 us per line): walk on in idle slices
             // and show the level the line had until then.
             search.from = block.blockNumber();
@@ -646,6 +661,13 @@ BlockStyler::Level BlockStyler::setextLevel(const QTextBlock& block, core::Block
 }
 
 std::optional<std::uint8_t> BlockStyler::paragraphStep(QTextBlock& block, ParagraphSearch& search) {
+    if (block.length() <= 1) {
+        storeLink(block, {});
+        if (search.previousChanged) {
+            restyleLater(block);
+        }
+        return std::uint8_t{0};
+    }
     const QString text = block.text();
     const QString next = nextLineFor(block, search.inside, text);
     const core::ParagraphLink link = registry_.paragraphLink(view(text), search.inside, viewOrEmpty(next));

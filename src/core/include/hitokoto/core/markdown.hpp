@@ -359,6 +359,7 @@ private:
     /// For each ASCII character, bit i is set if it triggers inline element i.
     std::array<std::uint64_t, 128> asciiTriggers_{};
     bool hasOtherTriggers_ = false;
+    bool hasAlwaysInline_ = false;
     std::vector<std::unique_ptr<MultiLineElement>> multiLineElements_;
 };
 

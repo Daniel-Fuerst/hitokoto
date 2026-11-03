@@ -45,6 +45,9 @@ void splitAroundInlineRuns(LineRender& out, std::size_t firstInlineRun) {
 
 /// Runs of markers and inline code inside link text take precedence over LinkText runs.
 void carveLinkTextAroundOtherRuns(LineRender& out) {
+    if (out.runs.size() <= 1) {
+        return;
+    }
     const bool hasLinkText =
         std::any_of(out.runs.begin(), out.runs.end(), [](const StyleRun& run) { return run.role == Role::LinkText; });
     if (!hasLinkText) {
@@ -88,11 +91,16 @@ void carveRunsAroundHidden(LineRender& out) {
     if (out.hidden.empty()) {
         return;
     }
-    const auto byStart = [](const HiddenRange& left, const HiddenRange& right) {
-        return left.span.start < right.span.start;
-    };
-    if (!std::is_sorted(out.hidden.begin(), out.hidden.end(), byStart)) {
-        std::sort(out.hidden.begin(), out.hidden.end(), byStart);
+    if (out.hidden.size() > 1) {
+        const auto byStart = [](const HiddenRange& left, const HiddenRange& right) {
+            return left.span.start < right.span.start;
+        };
+        if (!std::is_sorted(out.hidden.begin(), out.hidden.end(), byStart)) {
+            std::sort(out.hidden.begin(), out.hidden.end(), byStart);
+        }
+    }
+    if (out.runs.empty()) {
+        return;
     }
     const bool overlap = std::any_of(out.runs.begin(), out.runs.end(), [&](const StyleRun& run) {
         return std::any_of(out.hidden.begin(), out.hidden.end(), [&](const HiddenRange& hidden) {
@@ -292,6 +300,9 @@ void ElementRegistry::addInline(std::unique_ptr<InlineElement> element) {
         const std::size_t index = inlineElements_.size();
         const auto triggers = element->triggerCharacters();
         entry.always = triggers.empty() || index >= 64;
+        if (entry.always) {
+            hasAlwaysInline_ = true;
+        }
         for (const char16_t c : triggers) {
             if (entry.always) {
                 break;
@@ -367,6 +378,9 @@ BlockState ElementRegistry::documentStart() const noexcept {
 }
 
 void ElementRegistry::runInlineElements(std::u16string_view line, const LineContext& context, LineRender& out) const {
+    if (line.empty() && !hasAlwaysInline_) {
+        return;
+    }
     // One table lookup per character tells which inline elements this line can trigger;
     // most lines trigger none.
     std::uint64_t triggered = 0;
@@ -377,6 +391,9 @@ void ElementRegistry::runInlineElements(std::u16string_view line, const LineCont
         } else {
             nonAscii = true;
         }
+    }
+    if (triggered == 0 && !hasAlwaysInline_ && (!nonAscii || !hasOtherTriggers_)) {
+        return;
     }
     for (std::size_t i = 0; i < inlineElements_.size(); ++i) {
         const auto& entry = inlineElements_[i];

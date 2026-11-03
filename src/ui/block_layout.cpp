@@ -111,27 +111,31 @@ void BlockLayout::setWrapIndent(const QTextBlock& block, int columns) {
         return;
     }
     const int state = block.userState() < 0 ? 0 : block.userState();
+    const int prevBits = (state & kWrapIndentMask) >> kWrapIndentShift;
     const int stateIndent = std::min(columns, 31);
     const int updated = (state & ~kWrapIndentMask) | ((stateIndent & 0x1F) << kWrapIndentShift);
     const_cast<QTextBlock&>(block).setUserState(updated);
 
-    auto* data = dynamic_cast<BlockData*>(block.userData());
-    if (columns > 31) {
-        if (data == nullptr) {
-            data = new BlockData;
-            const_cast<QTextBlock&>(block).setUserData(data);
-        }
-        data->wrapIndent = columns;
-    } else if (data != nullptr && data->wrapIndent > 0) {
-        data->wrapIndent = 0;
-        if (data->empty()) {
-            const_cast<QTextBlock&>(block).setUserData(nullptr);
+    if (columns >= 31 || prevBits >= 31) {
+        auto* data = dynamic_cast<BlockData*>(block.userData());
+        if (columns > 31) {
+            if (data == nullptr) {
+                data = new BlockData;
+                const_cast<QTextBlock&>(block).setUserData(data);
+            }
+            data->wrapIndent = columns;
+        } else if (data != nullptr && data->wrapIndent > 0) {
+            data->wrapIndent = 0;
+            if (data->empty()) {
+                const_cast<QTextBlock&>(block).setUserData(nullptr);
+            }
         }
     }
 
-    if (block.layout()->lineCount() > 0 && reservedHeight(block) <= 0) {
-        layoutBlock(block);
+    if (block.layout()->lineCount() <= 0 || reservedHeight(block) > 0) {
+        return;
     }
+    layoutBlock(block);
     if (!inSync()) {
         deferred_.push_back(block);
         return;
@@ -148,12 +152,13 @@ int BlockLayout::wrapIndent(const QTextBlock& block) const {
     if (!block.isValid()) {
         return 0;
     }
-    const BlockData* data = dataOf(block);
-    if (data != nullptr && data->wrapIndent > 0) {
-        return data->wrapIndent;
-    }
     const int state = block.userState();
-    return state < 0 ? 0 : (state & kWrapIndentMask) >> kWrapIndentShift;
+    const int bits = state < 0 ? 0 : (state & kWrapIndentMask) >> kWrapIndentShift;
+    if (bits < 31) {
+        return bits;
+    }
+    const BlockData* data = dataOf(block);
+    return data != nullptr && data->wrapIndent > 0 ? data->wrapIndent : bits;
 }
 
 qreal BlockLayout::bulletIndent() const {
