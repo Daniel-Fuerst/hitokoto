@@ -72,6 +72,17 @@ depend on it.
 - Then the caret is never placed inside concealed link markers (`[` and `](...)`)
 - And revealing the markers on the active line positions the caret on the character clicked or navigated to without visual clipping
 
+**Scenario: find highlights (S028)**
+- Given matches of a search whose source ranges cover concealed delimiters (emphasis, link
+  brackets), with "Highlight all" on, and matches in a table and in front matter
+- When the caret walks with arbitrary sequences of Up/Down/Left/Right/Home/End/PageUp/PageDown and
+  the current match moves
+- Then no concealed marker becomes visible under a highlight and no line moves or changes height;
+  only a table or properties block that switches to or from its source for the current match
+  changes height, at that moment
+- And after `Escape` selects a match in a table or front matter, the caret and the selection are
+  only ever on lines that are shown
+
 ## Outcome
 
 **ADR 0003 – concealment technique**: keep the `QPlainTextEdit` adapter, or switch to the
@@ -84,6 +95,7 @@ concealment stays; this gate keeps checking it on the new surface.
 - UI: `tst_s009_concealment` – randomised caret walks (since 2026-10-28, with S021: headings,
   bullets, emphasis, inline code and code blocks; with S022 inline links; with S023 a walk over
   thematic breaks and setext headings; with S024 a walk into and out of front matter shown as
-  properties; the caret never in concealed text, code block fences revealed and the block still).
+  properties; with S028 a walk with find highlights; the caret never in concealed text, code block
+  fences revealed and the block still).
   Residue measurement via `cursorRect` is still to come.
 - IME and screen-reader checks are manual, documented with platform and version in the ADR.

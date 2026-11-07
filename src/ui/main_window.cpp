@@ -4,6 +4,8 @@
 #include "application_icon.hpp"
 #include "document_session.hpp"
 #include "editor_widget.hpp"
+#include "find_bar.hpp"
+#include "find_controller.hpp"
 
 #include <QAction>
 #include <QCloseEvent>
@@ -13,6 +15,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QScreen>
+#include <QVBoxLayout>
 
 #include <algorithm>
 
@@ -28,7 +31,16 @@ MainWindow::MainWindow(const core::ElementRegistry& registry, QWidget* parent)
     const QIcon icon = applicationIcon();
     QGuiApplication::setWindowIcon(icon);
     setWindowIcon(icon);
-    setCentralWidget(editor_);
+    // S028: the find bar below the editor.
+    auto* central = new QWidget(this);
+    auto* column = new QVBoxLayout(central);
+    column->setContentsMargins(0, 0, 0, 0);
+    column->setSpacing(0);
+    column->addWidget(editor_, 1);
+    findBar_ = new FindBar(central);
+    column->addWidget(findBar_);
+    setCentralWidget(central);
+    find_ = new FindController(editor_, findBar_, registry, this);
     createMenus();
 
     askSave_ = [this](const QString& name) {
@@ -97,6 +109,21 @@ void MainWindow::createMenus() {
     edit->addAction(tr("&Copy"), QKeySequence::Copy, editor_, &QTextEdit::copy);
     edit->addAction(tr("&Paste"), QKeySequence::Paste, editor_, &QTextEdit::paste);
     edit->addAction(tr("Select &All"), QKeySequence::SelectAll, editor_, &QTextEdit::selectAll);
+    // S028: find in the file (decision 7; review O10: the platform's find-next keys plus F3).
+    edit->addSeparator();
+    edit->addAction(tr("&Find…"), QKeySequence::Find, find_, &FindController::open);
+    QAction* findNext = edit->addAction(tr("Find &Next"), find_, &FindController::next);
+    QAction* findPrevious = edit->addAction(tr("Find Pre&vious"), find_, &FindController::previous);
+    QList<QKeySequence> nextKeys = QKeySequence::keyBindings(QKeySequence::FindNext);
+    QList<QKeySequence> previousKeys = QKeySequence::keyBindings(QKeySequence::FindPrevious);
+    if (!nextKeys.contains(QKeySequence(Qt::Key_F3))) {
+        nextKeys << QKeySequence(Qt::Key_F3);
+    }
+    if (!previousKeys.contains(QKeySequence(Qt::SHIFT | Qt::Key_F3))) {
+        previousKeys << QKeySequence(Qt::SHIFT | Qt::Key_F3);
+    }
+    findNext->setShortcuts(nextKeys);
+    findPrevious->setShortcuts(previousKeys);
 
     QMenu* view = menuBar()->addMenu(tr("&View"));
     view->addAction(tr("&Reload Theme"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R), this,
@@ -105,6 +132,7 @@ void MainWindow::createMenus() {
 
 void MainWindow::applyTheme(const core::Theme& theme) {
     editor_->applyTheme(theme);
+    find_->applyTheme(theme);
 }
 
 void MainWindow::showMessage(const QString& title, const QString& text) {

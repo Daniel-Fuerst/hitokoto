@@ -82,6 +82,10 @@ public:
     /// A click in the editor above a table that starts the document or below one that ends it
     /// adds a line there for the caret. Returns true if the click was handled.
     bool handleEditorClick(QPoint position);
+    /// S028 review O8: a table with lines in [first, last] shows its lines while it holds the
+    /// current match of the find bar; `untilCaretLeaves` (after Escape): until the caret and the
+    /// anchor have both left it. first < 0: no table is held.
+    void setFindHold(int first, int last, bool untilCaretLeaves);
 
 private:
     struct Table {
@@ -89,6 +93,8 @@ private:
         QTextBlock last;
         bool source = false;
         bool held = false;              ///< shows its lines while the caret is in a line typed in the editor
+        bool found = false;             ///< S028: shows its lines while it holds the find bar's current match
+        bool parked = false;            ///< S028: `widget` is kept hidden while `found` (not built again)
         TableWidget* widget = nullptr;  ///< owned by the table; deleted in release()
         quint64 signature = 0;          ///< of the lines and width the widget was fitted to
         /// A change removed one of its lines (or the line break before it): its QTextBlocks may
@@ -115,6 +121,13 @@ private:
     [[nodiscard]] quint64 signatureOf(const Table& table) const;
     void apply(Table& table);
     void release(Table& table);
+    /// S028: shows the table's lines for the find bar and keeps its view hidden, to show it again
+    /// without building it (a 1,000-row table takes about 90 ms to build).
+    void park(Table& table);
+    /// Shows the lines a table view covered again.
+    void showLines(Table& table);
+    /// Moves the focus from the table's view into its lines.
+    void leaveView(Table& table);
     /// Forgets a stale table without touching its lines.
     void drop(Table& table);
     /// Marks a table stale: its view forgets its lines, and keys go to the editor.
@@ -155,6 +168,9 @@ private:
     bool leaving_ = false;  ///< moving the caret out of a table: caretMoved() lets it
     QTextBlock typing_;     ///< the line the editor's caret types in; invalid once it leaves
     QTextBlock revealed_;   ///< a blank line below a table shown because the caret is on it
+    int findFirst_ = -1;    ///< S028: lines of the find bar's current match (-1: none)
+    int findLast_ = -1;
+    bool findUntilCaretLeaves_ = false;
     bool refreshPending_ = false;
     bool refreshing_ = false;
 };

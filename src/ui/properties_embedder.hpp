@@ -54,6 +54,9 @@ public:
     /// A mouse button went down in the editor or on the block (true) or up (false): while one is
     /// held, the block keeps its form (review O6).
     void setMouseHeld(bool held);
+    /// S028 review O8: the YAML shows while the find bar's current match lies in lines
+    /// [first, last] of the front matter; first < 0 releases it.
+    void setFindHold(int first, int last);
     /// A change to the document; lines of the front matter are read again.
     void documentChanged(int position, int charsRemoved, int charsAdded);
     /// The document's blocks are gone (a replaced document): forget them without touching them.
@@ -110,6 +113,8 @@ private:
     bool afterOpening_ = false;  ///< opened while the front matter was being confirmed
     std::optional<core::PropertiesError> error_;
     QTimer work_;
+    int findFirst_ = -1;  ///< S028: lines of the find bar's current match
+    int findLast_ = -1;
 };
 
 }  // namespace hitokoto::ui

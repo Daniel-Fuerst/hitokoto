@@ -308,6 +308,9 @@ public:
 
     /// How to show `line`. Never throws for any input.
     [[nodiscard]] LineRender render(std::u16string_view line, const LineContext& context) const;
+    /// Only the inline elements on `text`, as inside a table cell (S028: cells hold inline content
+    /// only, so `- x` stays text). Never throws for any input.
+    [[nodiscard]] LineRender renderInline(std::u16string_view text) const;
     /// `render`, and `paragraphLink(line, context.blockState, context.nextLine)` from the same pass.
     [[nodiscard]] LineRender render(std::u16string_view line, const LineContext& context, ParagraphLink& link) const;
     /// `render(line, {any, state, nextLine}).blockState`, without rendering (the UI walks lines with it).
