@@ -659,12 +659,11 @@ SaveTiming measureSaves(ui::MainWindow& w, const QString& path, int runs) {
 
 /// S028: key-to-paint samples of keys in the find bar's field: the search text typed and erased
 /// again, each key restarting the search of the whole document.
-std::vector<double> measureFindTyping(ui::MainWindow& w, int keys) {
+std::vector<double> measureFindTyping(ui::MainWindow& w, int keys, const QString& text = QStringLiteral("dolor sit")) {
     ui::FindController* find = w.findController();
     find->open();
     QLineEdit* field = w.findBar()->searchField();
     field->clear();
-    const QString text = QStringLiteral("dolor sit");
     std::vector<double> samples;
     for (int i = 0; i < keys; ++i) {
         const int at = i % (2 * static_cast<int>(text.size()));
@@ -721,6 +720,30 @@ std::vector<double> measureFindSteps(ui::MainWindow& w, int keys) {
     return samples;
 }
 
+/// S028 code review O9: next match right after a new search text, before the count is complete,
+/// key to paint: `runs` times the last letter of the text, then `steps` times Enter.
+std::vector<double> measureFindStepsIncomplete(ui::MainWindow& w, int runs, int steps) {
+    ui::FindController* find = w.findController();
+    QLineEdit* field = w.findBar()->searchField();
+    std::vector<double> samples;
+    for (int i = 0; i < runs; ++i) {
+        find->open();
+        field->clear();
+        QCoreApplication::processEvents();
+        test::keyClicks(field, QStringLiteral("ipsu"));
+        test::keyClick(field, 'm');
+        for (int k = 0; k < steps; ++k) {
+            QElapsedTimer t;
+            t.start();
+            test::keyClick(field, Qt::Key_Return);
+            w.editor()->viewport()->repaint();
+            samples.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
+        }
+        (void)QTest::qWaitFor([&] { return find->isComplete(); }, 120000);
+    }
+    return samples;
+}
+
 struct Budget {
     const char* key;
     double limit;
@@ -770,6 +793,9 @@ constexpr std::string_view kReportOnly[] = {"save_10mb_total_ms",
                                             "s028_doc_typing_max_ms",
                                             "s028_doc_typing_over_16ms",
                                             "s028_typing_settled_ms",
+                                            "s028_step_incomplete_max_ms",
+                                            "s028_table_field_typing_max_ms",
+                                            "s028_table_step_max_ms",
                                             "startup_p95_ms"};
 
 // Brief, section 4. Most budgets are meaningful on reference hardware only (S011) and fail the run
@@ -811,6 +837,10 @@ const Budget kBudgets[] = {
     {"s028_field_typing_p95_ms", 16, "key in the find bar <= 16 ms (10 MB)"},
     {"s028_field_typing_max_ms", 50, "no key in the find bar above 50 ms, 10 MB (hard)", true},
     {"s028_step_max_ms", 50, "no next match above 50 ms, 10 MB (hard)", true},
+    {"s028_step_incomplete_max_ms", 50, "no next match above 50 ms before the count is complete, 10 MB (hard)", true},
+    {"s028_table_field_typing_max_ms", 50, "no key in the find bar above 50 ms, 1000-row table, highlight all (hard)",
+     true},
+    {"s028_table_step_max_ms", 50, "no next match above 50 ms, 1000-row table, highlight all (hard)", true},
     {"s028_doc_typing_p95_ms", 16, "key to screen <= 16 ms (10 MB, highlight all)"},
     {"s028_doc_typing_max_ms", 50, "no key event above 50 ms, 10 MB with find open (hard)", true},
     {"save_10mb_ui_blocked_ms", 16, "saving never stalls the UI (hard)", true},
@@ -1029,6 +1059,9 @@ int main(int argc, char* argv[]) {
         const auto steps = stats(measureFindSteps(w, 200));
         r["s028_step_median_ms"] = steps.median;
         r["s028_step_max_ms"] = steps.max;
+        const auto early = stats(measureFindStepsIncomplete(w, kOpenRuns, 5));
+        r["s028_step_incomplete_median_ms"] = early.median;
+        r["s028_step_incomplete_max_ms"] = early.max;
         w.findBar()->highlightAllAction()->setChecked(true);
         w.editor()->setFocus();
         const auto docTyping = stats(measureTyping(w, 200));
@@ -1040,6 +1073,29 @@ int main(int argc, char* argv[]) {
         settled.start();
         (void)QTest::qWaitFor([&] { return w.findController()->isComplete(); }, 120000);
         r["s028_typing_settled_ms"] = static_cast<double>(settled.nsecsElapsed()) / 1e6;
+        w.findController()->close();
+        w.editor()->document()->setModified(false);
+    }
+
+    // S028 code review O8: find in a 1000-row table with "Highlight all": keys in the field and
+    // next match, the current match in the middle of the table.
+    w.session()->newDocument();
+    (void)measureOpen(w, table1000);
+    {
+        QTextCursor middle(w.editor()->document()->findBlockByNumber(w.editor()->document()->blockCount() / 2));
+        w.editor()->setTextCursor(middle);
+        w.findController()->open();
+        w.findBar()->highlightAllAction()->setChecked(true);
+        const auto fieldTyping = stats(measureFindTyping(w, 100, QStringLiteral("note with")));
+        r["s028_table_field_typing_median_ms"] = fieldTyping.median;
+        r["s028_table_field_typing_max_ms"] = fieldTyping.max;
+        w.findBar()->searchField()->clear();
+        test::keyClicks(w.findBar()->searchField(), QStringLiteral("row"));
+        (void)QTest::qWaitFor([&] { return w.findController()->isComplete(); }, 120000);
+        const auto steps = stats(measureFindSteps(w, 200));
+        r["s028_table_step_median_ms"] = steps.median;
+        r["s028_table_step_max_ms"] = steps.max;
+        w.findBar()->highlightAllAction()->setChecked(false);
         w.findController()->close();
         w.editor()->document()->setModified(false);
     }

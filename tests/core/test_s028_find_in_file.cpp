@@ -396,6 +396,41 @@ TEST(S028_FindInFile, TableRowUnitsMapBackToTheLine) {
     EXPECT_TRUE(atomicPipe);
 }
 
+// Code review O8: a lookup starts at a table row with the header's column count, not at the header.
+TEST(S028_FindInFile, ABuilderContinuedInATableBuildsItsRowsAsFromTheHeader) {
+    const auto lines = splitLines(kTable);
+    const auto renders = registry().renderDocument(lines);
+    const auto lineOf = [](const FindUnit& u) {
+        if (u.kind == FindUnitKind::Destination) {
+            return u.linkStart.line;
+        }
+        return u.segments.empty() ? std::size_t{0} : u.segments.front().source.line;
+    };
+    std::vector<FindUnit> fromHeader;
+    FindUnitBuilder whole(registry());
+    for (std::size_t i = 2; i < lines.size(); ++i) {
+        whole.addLine(lines[i], i, renders[i], fromHeader);
+    }
+    // From the first unit of line 5 on (an empty line has a unit without segments).
+    const auto row = std::find_if(fromHeader.begin(), fromHeader.end(), [&](const FindUnit& u) {
+        return u.kind != FindUnitKind::Destination && !u.segments.empty() && lineOf(u) == 5;
+    });
+    const std::vector<FindUnit> expected(row, fromHeader.end());
+    std::vector<FindUnit> fromRow;
+    FindUnitBuilder builder(registry());
+    builder.continueTable(2);
+    for (std::size_t i = 5; i < lines.size(); ++i) {
+        builder.addLine(lines[i], i, renders[i], fromRow);
+    }
+    ASSERT_EQ(fromRow.size(), expected.size());
+    for (std::size_t k = 0; k < expected.size(); ++k) {
+        EXPECT_EQ(fromRow[k].text, expected[k].text) << k;
+        EXPECT_EQ(fromRow[k].kind, expected[k].kind) << k;
+        EXPECT_EQ(fromRow[k].before, expected[k].before) << k;
+        EXPECT_EQ(lineOf(fromRow[k]), lineOf(expected[k])) << k;
+    }
+}
+
 // --- Decision 3: front matter --------------------------------------------------------------------
 
 namespace {
@@ -580,6 +615,20 @@ TEST(S028_FindInFile, ScanningInPiecesFindsWhatOneScanFinds) {
     }
 }
 
+// Code review O1: a match across a line end does not swallow the destinations of that line.
+TEST(S028_FindInFile, ADestinationSkippedByAMatchAcrossALineEndIsStillSearched) {
+    EXPECT_EQ(find(u"x [y](<a a>) a\na", u"a a").sources(), (Strings{"@y", "a\na"}));
+}
+
+// Code review O2: the context read to a screen reader leaves out destinations the match skipped.
+TEST(S028_FindInFile, MatchContextLeavesOutSkippedDestinations) {
+    const std::vector<std::u16string> lines{u"Absatz [Doku](https://example.com/handbuch) hier", u"weiter geht es"};
+    const auto units = documentUnits(registry(), lines);
+    const auto matches = findInUnits(units, FindQuery(u"hier weiter", {}));
+    ASSERT_EQ(matches.size(), 1U);
+    EXPECT_EQ(matchContext(units, matches[0]), u"Absatz Doku hier weiter geht es");
+}
+
 TEST(S028_FindInFile, MatchContextForScreenReaders) {
     const std::vector<std::u16string> lines{u"Die **Agenten** arbeiten heute"};
     const auto units = documentUnits(registry(), lines);
@@ -647,7 +696,9 @@ TEST(S028_FindInFile, FindTokensAreParsed) {
         "active-icon = \"#0c0c0c\"\ncurrent-background = \"#0d0d0d\"\ncurrent-text = \"#0e0e0e\"\n"
         "match-background = \"#0f0f0f\"\nmatch-text = \"#101010\"\n",
         builtinTheme(ColorScheme::Light));
-    ASSERT_TRUE(parsed.theme.has_value());
+    if (!parsed.theme) {  // explicit for bugprone-unchecked-optional-access
+        FAIL() << "theme not parsed";
+    }
     const FindStyle s = findStyle(*parsed.theme);
     EXPECT_EQ(s.background, (Color{1, 1, 1, 255}));
     EXPECT_EQ(s.border, (Color{2, 2, 2, 255}));

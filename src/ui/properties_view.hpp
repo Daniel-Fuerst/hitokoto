@@ -74,6 +74,8 @@ public:
     /// Lines of keys and text values painted by the last paint event (code review O2: only those on
     /// screen).
     [[nodiscard]] int paintedTextLines() const noexcept { return paintedTextLines_; }
+    /// The rectangles "Highlight all" fills, in the view's coordinates (S028 code review O3).
+    [[nodiscard]] std::vector<QRect> findMarkRects() const;
 
 signals:
     /// A click released on row `row` (-1: the title or elsewhere in the block); `extend`: with

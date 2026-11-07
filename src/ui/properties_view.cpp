@@ -732,6 +732,16 @@ void PropertiesView::forgetAccessibleElements() {
     accessibleElements_.clear();
 }
 
+std::vector<QRect> PropertiesView::findMarkRects() const {
+    std::vector<QRect> out;
+    for (const int row : findRows_) {
+        if (row >= 0 && row < static_cast<int>(rows_.size())) {
+            out.push_back(rows_[static_cast<std::size_t>(row)].rect);
+        }
+    }
+    return out;
+}
+
 void PropertiesView::setFindRows(std::vector<int> rows, const QColor& background) {
     if (rows == findRows_ && background == findBackground_) {
         return;

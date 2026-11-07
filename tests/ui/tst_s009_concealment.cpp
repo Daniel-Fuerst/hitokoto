@@ -18,6 +18,7 @@
 #include <QMap>
 #include <QRandomGenerator>
 
+#include <algorithm>
 #include <array>
 
 using namespace hitokoto;
@@ -272,6 +273,7 @@ private slots:
         const auto* doc = editor->document();
         const auto rectOf = [&](int n) { return editor->blockLayout()->blockBoundingRect(doc->findBlockByNumber(n)); };
         std::vector<QRectF> before;
+        before.reserve(static_cast<std::size_t>(doc->blockCount()));
         for (int n = 0; n < doc->blockCount(); ++n) {
             before.push_back(rectOf(n));
         }
@@ -294,9 +296,14 @@ private slots:
                     if (!r.format.hasProperty(QTextFormat::ForegroundBrush)) {
                         continue;
                     }
+                    // Code review O11: no hidden range at all (collapsed or keeping its space).
+                    const auto hidden = editor->styler().renderFor(b).hidden;
                     for (int col = r.start; col < r.start + r.length; ++col) {
+                        const bool inHidden = std::any_of(hidden.begin(), hidden.end(), [col](const auto& h) {
+                            return col >= static_cast<int>(h.span.start) && col < static_cast<int>(h.span.end());
+                        });
                         QVERIFY2(
-                            !test::isCollapsed(b, col),
+                            !test::isCollapsed(b, col) && !inHidden,
                             qPrintable(
                                 where +
                                 QStringLiteral(": marker on line %1, column %2 shows").arg(b.blockNumber()).arg(col)));
@@ -311,11 +318,19 @@ private slots:
         QRandomGenerator rng(20261107);
         for (int step = 0; step < 150; ++step) {
             test::keyClick(editor, kKeys.at(rng.bounded(static_cast<quint32>(kKeys.size()))));
-            if (step % 10 == 0) {
+            const bool stepped = step % 10 == 0;
+            if (stepped) {
                 test::keyClick(editor, Qt::Key_F3);  // the current match moves
             }
             f.settle();
             noMarkerUnderAHighlight(QStringLiteral("step %1").arg(step));
+            if (stepped) {
+                // Code review O11: no line moves when the current match moves (no table here).
+                for (int n = 0; n < doc->blockCount(); ++n) {
+                    QVERIFY2(rectOf(n) == before.at(static_cast<std::size_t>(n)),
+                             qPrintable(QStringLiteral("step %1: line %2 moved").arg(step).arg(n)));
+                }
+            }
         }
     }
 

@@ -63,6 +63,10 @@ public:
     [[nodiscard]] QList<QTextLayout::FormatRange> highlightFormats(int blockNumber) const;
     /// The accessible announcement made for the current match last (review O11).
     [[nodiscard]] QString lastAnnouncement() const { return lastAnnouncement_; }
+    /// Lines rendered to look up the positions of matches (instrumentation, code review O8).
+    [[nodiscard]] quint64 lookupRenders() const noexcept { return lookupRenders_; }
+    /// Times the front matter was parsed for the search (instrumentation, code review O12).
+    [[nodiscard]] quint64 propertyParses() const noexcept { return propertyParses_; }
 
 signals:
     /// The matches, the current match or the count changed.
@@ -175,6 +179,8 @@ private:
     QList<QTextEdit::ExtraSelection> selections_;
     std::vector<QPointer<TableModel>> markedTables_;
     bool refreshScheduled_ = false;
+    mutable quint64 lookupRenders_ = 0;
+    mutable quint64 propertyParses_ = 0;
 };
 
 }  // namespace hitokoto::ui

@@ -400,6 +400,7 @@ bool FindController::frontMatterStep(const QElapsedTimer& timer, qint64 nanoseco
                 yaml.push_back(textOf(y));
             }
             pass_.frontMatterPhase = false;
+            ++propertyParses_;
             if (editor_->frontMatterAsProperties() && !core::parseProperties(yaml).error) {
                 frontMatterClose_ = i;
                 frontMatterYaml_ = std::move(yaml);
@@ -413,6 +414,7 @@ bool FindController::frontMatterStep(const QElapsedTimer& timer, qint64 nanoseco
                                                       after.isValid() ? textOf(after) : std::u16string{});
                 }
                 const std::size_t first = pass_.units.size();
+                ++propertyParses_;
                 pass_.builder->addProperties(frontMatterYaml_, 1, pass_.units);
                 for (std::size_t u = first; u < pass_.units.size(); ++u) {
                     pass_.unitBlock.push_back(lineOfUnit(pass_.units[u], 1));
@@ -647,6 +649,7 @@ FindController::BlockMatches FindController::matchesOfBlock(int block) const {
     core::FindUnitBuilder builder(registry_);
     int start = block;
     if (frontMatterClose_ >= 0 && block <= frontMatterClose_) {
+        ++propertyParses_;
         builder.addProperties(frontMatterYaml_, 1, out.units);
         start = frontMatterClose_ + 1;
     } else {
@@ -686,6 +689,7 @@ FindController::BlockMatches FindController::matchesOfBlock(int block) const {
         const std::u16string text = textOf(b);
         const std::u16string next = nextBlock.isValid() ? textOf(nextBlock) : std::u16string{};
         const core::LineRender render = registry_.render(text, core::LineContext{false, state, next});
+        ++lookupRenders_;
         builder.addLine(text, static_cast<std::size_t>(b.blockNumber()), render, out.units);
         state = render.blockState;
         take(core::scanUnits(out.units, resumeUnit, resumeOffset, query_, nextBlock.isValid()));

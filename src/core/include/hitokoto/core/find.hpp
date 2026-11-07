@@ -135,6 +135,9 @@ public:
     /// Appends the units of front matter shown as properties: `yaml` are the lines between the
     /// delimiters, the first of them has the index `firstLine`.
     void addProperties(std::span<const std::u16string> yaml, std::size_t firstLine, std::vector<FindUnit>& out);
+    /// Starts inside a table whose header has `columns` cells: the next line added is one of its
+    /// rows, after a soft boundary (a lookup starts at a row, not at the header; code review O8).
+    void continueTable(std::size_t columns) noexcept;
 
 private:
     void push(std::vector<FindUnit>&& units, std::vector<FindUnit>& out);

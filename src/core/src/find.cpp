@@ -346,6 +346,10 @@ void FindUnitBuilder::addProperties(std::span<const std::u16string> yaml, std::s
     hardNext_ = true;
 }
 
+void FindUnitBuilder::continueTable(std::size_t columns) noexcept {
+    (void)columns;  // red: not yet
+}
+
 std::vector<FindUnit> documentUnits(const ElementRegistry& registry, std::span<const std::u16string> lines,
                                     const FindDocumentOptions& options) {
     const std::vector<LineRender> renders = registry.renderDocument(lines);
