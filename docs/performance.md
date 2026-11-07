@@ -38,6 +38,34 @@ Qt 6.12), release build, offscreen, 10 runs. These are the baselines in `bench/b
 | Key to paint, 10 MB file (median / p95) | 0.9 / 1.0 ms | 0.9 / 1.0 ms | 1.2 / 2.2 ms | ≤ 16 ms |
 | Save 10 MB: UI thread blocked (duration of the save() call; S017 measures the longest stall instead) | 6 ms | 36 ms | 24 ms | imperceptible |
 
+### 2026-11-07, development VM, S028 (release build, offscreen, Qt 6.12.0)
+
+`s028_*` (story S028, review O4 and O6): the 10 MB document (`largeDocument`, 445,000 lines) with
+the caret in the middle; 200 keys in the find bar's field (`dolor sit` typed and erased again,
+each key a new search of the whole document), the search text `ipsum` typed five times until the
+current match and until the full count, 200 times Enter (next match), then 200 keys typed in the
+document with "Highlight all" on and the time until the count is complete again.
+
+| Measurement | S028 | Budget |
+|---|---|---|
+| Key in the find bar, median / p95 / max | 6.0 / 6.6 / 14.9 ms | ≤ 16 ms p95, 50 ms max (hard) |
+| Until the current match (pass ahead from the caret) | 4.6 ms | – |
+| Until the full count (pass from the start, idle slices) | 1.1–1.4 s | informational: < 1 s on the CI runner |
+| Next match, median / max | 2.6–3.4 / 5.0–9.2 ms | 50 ms max (hard) |
+| Typing in the document with highlight all, median / p95 / max | 0.9–1.1 / 1.0–1.7 / 7.3–8.8 ms | ≤ 16 ms p95, 50 ms max (hard) |
+| After typing until the count is complete again | 11–12 ms | – |
+
+Three things made these numbers. First, the key budget: a key in the field searches for at most
+8 ms (half of it for the pass ahead), the rest goes on in idle slices of 6 ms. Second, an edit
+restarts the pass a little above the edited line and stops it where the block state and the
+results meet the earlier ones; an edit while such a pass still runs goes on from where that pass
+is, so typing never sets off a pass over the whole document (before: every key in the document
+cost a 6-ms slice and the count settled only after 1.2–1.5 s). Third, the pass ahead from the
+caret (review O6) uses the styler's block states once it has styled the document, so the current
+match comes after 5 ms instead of after the pass from the start reached the middle (about 0.6 s).
+Lines without any character of the search text are rendered for their state but get no units;
+with `ipsum` in this document that saves little, every paragraph holds those letters.
+
 ### 2026-10-31, development VM, S024 (release build, offscreen, Qt 6.12.0)
 
 `s024_*` (story S024, review O7 and O8, code review O1 to O3): the 10 MB document

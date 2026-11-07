@@ -539,6 +539,47 @@ TEST(S028_FindInFile, RandomDocumentsFindWhatTheyConceal) {
     }
 }
 
+// Added with the implementation: the UI scans the units in pieces (a line at a time, keeping only
+// what a pending match needs); that finds exactly what one scan finds.
+TEST(S028_FindInFile, ScanningInPiecesFindsWhatOneScanFinds) {
+    std::mt19937 rng(28112);
+    const std::vector<std::u16string> pieces{u"a", u"b", u" ", u"\t", u"**", u"[", u"](", u")", u"|", u"- ", u"\n"};
+    for (int round = 0; round < 400; ++round) {
+        std::u16string doc;
+        const int n = 5 + static_cast<int>(rng() % 30);
+        for (int p = 0; p < n; ++p) {
+            doc += pieces[rng() % pieces.size()];
+        }
+        const auto lines = splitLines(doc);
+        const auto units = documentUnits(registry(), lines);
+        for (const std::u16string_view text : {u"a", u"a b", u" a", u"b ", u"a  b a", u"ab"}) {
+            const FindQuery query(text, {});
+            const auto whole = findInUnits(units, query);
+            std::vector<FindMatch> pieces2;
+            std::vector<FindUnit> buffer;
+            std::size_t resumeUnit = 0;
+            std::uint32_t resumeOffset = 0;
+            for (std::size_t u = 0; u < units.size(); ++u) {
+                buffer.push_back(units[u]);
+                const FindScan scan = scanUnits(buffer, resumeUnit, resumeOffset, query, u + 1 < units.size());
+                pieces2.insert(pieces2.end(), scan.matches.begin(), scan.matches.end());
+                const std::size_t keep = std::min(scan.resumeUnit, buffer.size());
+                buffer.erase(buffer.begin(), buffer.begin() + static_cast<std::ptrdiff_t>(keep));
+                resumeUnit = 0;
+                resumeOffset = buffer.empty() ? 0 : scan.resumeOffset;
+            }
+            std::stable_sort(pieces2.begin(), pieces2.end(),
+                             [](const FindMatch& a, const FindMatch& b) { return a.start < b.start; });
+            ASSERT_EQ(pieces2.size(), whole.size()) << utf8(doc) << " / " << utf8(text);
+            for (std::size_t i = 0; i < whole.size(); ++i) {
+                EXPECT_EQ(pieces2[i].start, whole[i].start) << utf8(doc);
+                EXPECT_EQ(pieces2[i].end, whole[i].end) << utf8(doc);
+                EXPECT_EQ(pieces2[i].inDestination, whole[i].inDestination) << utf8(doc);
+            }
+        }
+    }
+}
+
 TEST(S028_FindInFile, MatchContextForScreenReaders) {
     const std::vector<std::u16string> lines{u"Die **Agenten** arbeiten heute"};
     const auto units = documentUnits(registry(), lines);

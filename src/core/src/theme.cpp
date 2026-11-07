@@ -313,6 +313,31 @@ const Token kTokens[] = {
     {{"toolbar", "hover-background", "color", "Background of a button in the floating toolbar when hovered", "colors.border"}, &applyOptColor<&Theme::toolbar, &ToolbarTokens::hoverBackground>},
     {{"toolbar", "active-background", "color", "Background of a button in the floating toolbar while pressed", "colors.accent"}, &applyOptColor<&Theme::toolbar, &ToolbarTokens::activeBackground>},
     {{"toolbar", "active-icon", "color", "Icon colour of a button in the floating toolbar while pressed", "colors.background"}, &applyOptColor<&Theme::toolbar, &ToolbarTokens::activeIcon>},
+    {{"find", "background", "color", "Background of the find bar", "colors.surface"}, &applyOptColor<&Theme::find, &FindTokens::background>},
+    {{"find", "border", "color", "Line between the editor and the find bar", "colors.border"}, &applyOptColor<&Theme::find, &FindTokens::border>},
+    {{"find", "border-width", "number (px)", "Width of that line, 0 to 8", "1"}, &applyOptNumber<&Theme::find, &FindTokens::borderWidth, 0, 80>},
+    {{"find", "padding", "number (px)", "Space inside the find bar, 0 to 32", "layout.spacing"}, &applyOptNumber<&Theme::find, &FindTokens::padding, 0, 320>},
+    {{"find", "spacing", "number (px)", "Space between the find bar's controls, 0 to 32", "layout.spacing"}, &applyOptNumber<&Theme::find, &FindTokens::spacing, 0, 320>},
+    {{"find", "text", "color", "Count and labels of the find bar", "colors.text-muted"}, &applyOptColor<&Theme::find, &FindTokens::text>},
+    {{"find", "font-family", "string", "Font of the search field and count; \"\" = UI font", "\"\""}, &applyOptString<&Theme::find, &FindTokens::fontFamily>},
+    {{"find", "font-scale", "number", "Size of the search field and count relative to the UI font, 0.5 to 2", "1"}, &applyOptNumber<&Theme::find, &FindTokens::fontScale, 5, 20>},
+    {{"find", "field-background", "color", "Search field", "colors.background"}, &applyOptColor<&Theme::find, &FindTokens::fieldBackground>},
+    {{"find", "field-text", "color", "Text in the search field", "colors.text"}, &applyOptColor<&Theme::find, &FindTokens::fieldText>},
+    {{"find", "field-border", "color", "Border of the search field", "colors.border"}, &applyOptColor<&Theme::find, &FindTokens::fieldBorder>},
+    {{"find", "field-focus-border", "color", "Border of the focused search field", "colors.primary"}, &applyOptColor<&Theme::find, &FindTokens::fieldFocusBorder>},
+    {{"find", "field-border-width", "number (px)", "Border width of the search field, 0 to 8", "1"}, &applyOptNumber<&Theme::find, &FindTokens::fieldBorderWidth, 0, 80>},
+    {{"find", "field-radius", "number (px)", "Corner radius of the search field, 0 to 32", "layout.radius"}, &applyOptNumber<&Theme::find, &FindTokens::fieldRadius, 0, 320>},
+    {{"find", "no-match-background", "color", "Search field when nothing matches", "#f8d7da (light), #5c2b2e (dark)"}, &applyOptColor<&Theme::find, &FindTokens::noMatchBackground>},
+    {{"find", "icon", "color", "Icons of the find bar's buttons and toggles", "colors.text"}, &applyOptColor<&Theme::find, &FindTokens::icon>},
+    {{"find", "button-size", "number (px)", "Width and height of the find bar's buttons and toggles, 16 to 64", "24"}, &applyOptNumber<&Theme::find, &FindTokens::buttonSize, 160, 640>},
+    {{"find", "button-radius", "number (px)", "Corner radius of the find bar's buttons and toggles, 0 to 32", "layout.radius"}, &applyOptNumber<&Theme::find, &FindTokens::buttonRadius, 0, 320>},
+    {{"find", "hover-background", "color", "Button or toggle of the find bar under the mouse", "colors.border"}, &applyOptColor<&Theme::find, &FindTokens::hoverBackground>},
+    {{"find", "active-background", "color", "Pressed button or toggle that is on", "colors.selection"}, &applyOptColor<&Theme::find, &FindTokens::activeBackground>},
+    {{"find", "active-icon", "color", "Icon of a pressed button or a toggle that is on", "colors.selection-text"}, &applyOptColor<&Theme::find, &FindTokens::activeIcon>},
+    {{"find", "current-background", "color", "Current match", "#ffd43b (light), #c99a06 (dark)"}, &applyOptColor<&Theme::find, &FindTokens::currentBackground>},
+    {{"find", "current-text", "color", "Text of the current match", "#1a1a1a"}, &applyOptColor<&Theme::find, &FindTokens::currentText>},
+    {{"find", "match-background", "color", "Other matches (highlight all); cells, values and chips with a match", "#fff3bf (light), #5c4a12 (dark)"}, &applyOptColor<&Theme::find, &FindTokens::matchBackground>},
+    {{"find", "match-text", "color", "Text of other matches", "#1a1a1a (light), #f1f1f1 (dark)"}, &applyOptColor<&Theme::find, &FindTokens::matchText>},
 };
 // clang-format on
 
@@ -841,8 +866,42 @@ ToolbarStyle toolbarStyle(const Theme& t) {
 }
 
 FindStyle findStyle(const Theme& t) {
-    (void)t;
-    return {};  // S028: stub for the red tests
+    const FindTokens& f = t.find;
+    const bool dark = t.scheme == ColorScheme::Dark;
+    // S028: fixed highlight colours per built-in base, text colours fixed so the contrast holds
+    // whatever a theme sets for colors.text.
+    const Color noMatch = dark ? Color{0x5c, 0x2b, 0x2e, 255} : Color{0xf8, 0xd7, 0xda, 255};
+    const Color current = dark ? Color{0xc9, 0x9a, 0x06, 255} : Color{0xff, 0xd4, 0x3b, 255};
+    const Color match = dark ? Color{0x5c, 0x4a, 0x12, 255} : Color{0xff, 0xf3, 0xbf, 255};
+    const Color darkText{0x1a, 0x1a, 0x1a, 255};
+    const Color lightText{0xf1, 0xf1, 0xf1, 255};
+    return {
+        .background = f.background.value_or(t.surface),
+        .border = f.border.value_or(t.border),
+        .text = f.text.value_or(t.textMuted),
+        .fieldBackground = f.fieldBackground.value_or(t.background),
+        .fieldText = f.fieldText.value_or(t.text),
+        .fieldBorder = f.fieldBorder.value_or(t.border),
+        .fieldFocusBorder = f.fieldFocusBorder.value_or(t.primary),
+        .noMatchBackground = f.noMatchBackground.value_or(noMatch),
+        .icon = f.icon.value_or(t.text),
+        .hoverBackground = f.hoverBackground.value_or(t.border),
+        .activeBackground = f.activeBackground.value_or(t.selection),
+        .activeIcon = f.activeIcon.value_or(t.selectionText),
+        .currentBackground = f.currentBackground.value_or(current),
+        .currentText = f.currentText.value_or(darkText),
+        .matchBackground = f.matchBackground.value_or(match),
+        .matchText = f.matchText.value_or(dark ? lightText : darkText),
+        .borderWidth = f.borderWidth.value_or(1),
+        .padding = f.padding.value_or(t.spacing),
+        .spacing = f.spacing.value_or(t.spacing),
+        .fontScale = f.fontScale.value_or(1),
+        .fieldBorderWidth = f.fieldBorderWidth.value_or(1),
+        .fieldRadius = f.fieldRadius.value_or(t.radius),
+        .buttonSize = f.buttonSize.value_or(24),
+        .buttonRadius = f.buttonRadius.value_or(t.radius),
+        .fontFamily = f.fontFamily.value_or(""),
+    };
 }
 
 std::string_view builtinThemeSource(ColorScheme scheme) {

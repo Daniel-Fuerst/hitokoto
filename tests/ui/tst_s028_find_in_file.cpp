@@ -280,7 +280,8 @@ private slots:
         QVERIFY(bar(f)->noMatch());
         const QImage field = bar(f)->searchField()->grab().toImage();
         QVERIFY(pixelsOf(field, field.rect(), qcolor(lightFindStyle().noMatchBackground)) > field.width());
-        test::keyClick(bar(f)->searchField(), Qt::Key_Backspace);
+        bar(f)->searchField()->selectAll();
+        test::keyClick(bar(f)->searchField(), Qt::Key_Backspace);  // no search text: nothing to mark
         QTRY_VERIFY(!bar(f)->noMatch());
     }
 
@@ -638,10 +639,13 @@ private slots:
             QTextCursor c(f.editor()->document());
             c.setPosition(static_cast<int>(rng.bounded(f.editor()->document()->characterCount())));
             f.editor()->setTextCursor(c);
+            const QString piece = pieces[static_cast<int>(rng.bounded(pieces.size()))];
             if (rng.bounded(3) == 0) {
                 test::keyClick(f.editor(), Qt::Key_Backspace);
+            } else if (piece == QStringLiteral("\n")) {
+                test::keyClick(f.editor(), Qt::Key_Return);
             } else {
-                test::keyClicks(f.editor(), pieces[static_cast<int>(rng.bounded(pieces.size()))]);
+                test::typeText(f.editor(), piece);
             }
             QVERIFY(waitComplete(f));
             const auto expected = core::findInDocument(test::registry(), documentLines(f), u"wort");

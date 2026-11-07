@@ -354,9 +354,11 @@ struct Node {
     enum class Style : std::uint8_t { Plain, Quoted, Block };
     Kind kind = Kind::Scalar;
     Style style = Style::Plain;
-    std::u16string text;                ///< Scalar: its value (plain: folded, as written)
-    std::vector<std::size_t> children;  ///< Sequence: items; Mapping: values
-    std::vector<std::u16string> keys;   ///< Mapping: keys as JavaScript strings (JSON)
+    std::u16string text;                 ///< Scalar: its value (plain: folded, as written)
+    std::vector<std::size_t> children;   ///< Sequence: items; Mapping: values
+    std::vector<std::u16string> keys;    ///< Mapping: keys as JavaScript strings (JSON)
+    std::vector<std::size_t> keyNodes;   ///< Mapping: the keys as scalar nodes (S028: with their source)
+    std::vector<PropertySourceRun> map;  ///< Scalar: where the runs of `text` come from (S028)
 };
 
 /// A plain scalar as JavaScript sees it after js-yaml resolved it (null, boolean, number, string).
@@ -452,10 +454,62 @@ struct Pos {
     std::size_t col = 0;
 };
 
+/// S028: records that `length` code units appended to `n.text` at `start` come from [from, to).
+/// One-to-one runs that continue the previous run on the same line are merged.
+void addRun(Node& n, std::size_t start, std::size_t length, Pos from, Pos to) {
+    if (length == 0) {
+        return;
+    }
+    const bool oneToOne = from.line == to.line && to.col - from.col == length;
+    if (oneToOne && !n.map.empty()) {
+        PropertySourceRun& last = n.map.back();
+        const bool lastOneToOne = last.line == last.endLine && last.endColumn - last.column == last.textLength;
+        if (lastOneToOne && last.endLine == from.line && last.endColumn == from.col &&
+            last.textStart + last.textLength == start) {
+            last.textLength += length;
+            last.endColumn = to.col;
+            return;
+        }
+    }
+    n.map.push_back(PropertySourceRun{start, length, from.line, from.col, to.line, to.col});
+}
+
+/// Appends `piece`, which stands at `from` in the source, one to one.
+void appendMapped(Node& n, std::u16string_view piece, Pos from) {
+    const std::size_t start = n.text.size();
+    n.text += piece;
+    addRun(n, start, piece.size(), from, Pos{from.line, from.col + piece.size()});
+}
+
+/// Appends `piece`, which stands for the source range [from, to) as a whole.
+void appendAtomic(Node& n, std::u16string_view piece, Pos from, Pos to) {
+    const std::size_t start = n.text.size();
+    n.text += piece;
+    addRun(n, start, piece.size(), from, to);
+}
+
+/// Drops the runs beyond `n.text` after it was shortened.
+void truncateMap(Node& n) {
+    while (!n.map.empty() && n.map.back().textStart >= n.text.size()) {
+        n.map.pop_back();
+    }
+    if (!n.map.empty()) {
+        PropertySourceRun& last = n.map.back();
+        const std::size_t keep = n.text.size() - last.textStart;
+        if (keep < last.textLength) {
+            if (last.line == last.endLine && last.endColumn - last.column == last.textLength) {
+                last.endColumn = last.column + keep;
+            }
+            last.textLength = keep;
+        }
+    }
+}
+
 /// A top-level key with where its value starts.
 struct TopEntry {
     std::u16string key;
     std::size_t value = 0;
+    std::size_t keyNode = 0;  ///< S028: the key as a scalar node
     std::size_t keyLine = 0;
     std::size_t valueLine = 0;
     std::size_t valueColumn = 0;
@@ -466,6 +520,8 @@ struct Key {
     std::u16string text;  ///< without quotes, escapes resolved
     bool plain = true;
     std::size_t colon = 0;  ///< column of the `:`
+    Pos start;              ///< S028: where the key starts
+    std::size_t node = 0;   ///< S028: a quoted key's scalar node
 };
 
 class Parser {
@@ -518,7 +574,57 @@ public:
         return result;
     }
 
+    /// S028: the searchable units after a successful run (see propertySourceUnits).
+    [[nodiscard]] std::vector<PropertyUnit> units() const {
+        std::vector<PropertyUnit> out;
+        for (const TopEntry& e : top_) {
+            emitScalar(e.keyNode, out);
+            emitValue(e.value, out);
+        }
+        return out;
+    }
+
 private:
+    void emitScalar(std::size_t index, std::vector<PropertyUnit>& out) const {
+        const Node& n = nodes_[index];
+        if (n.kind != Node::Kind::Scalar || n.text.empty() || (n.style == Node::Style::Plain && isNull(n.text))) {
+            return;
+        }
+        out.push_back(PropertyUnit{n.text, n.map});
+    }
+
+    void emitValue(std::size_t index, std::vector<PropertyUnit>& out) const {
+        const Node& n = nodes_[index];
+        switch (n.kind) {
+            case Node::Kind::Scalar:
+                emitScalar(index, out);
+                return;
+            case Node::Kind::Sequence:
+                for (const std::size_t c : n.children) {
+                    emitValue(c, out);
+                }
+                return;
+            case Node::Kind::Mapping:
+                for (std::size_t i = 0; i < n.children.size(); ++i) {
+                    if (i < n.keyNodes.size()) {
+                        emitScalar(n.keyNodes[i], out);
+                    }
+                    emitValue(n.children[i], out);
+                }
+                return;
+        }
+    }
+
+    /// S028: the node of a key scanKey found (a quoted key has one already).
+    std::size_t keyNode(const Key& key) {
+        if (!key.plain) {
+            return key.node;
+        }
+        Node n;
+        appendMapped(n, key.text, key.start);
+        return add(std::move(n));
+    }
+
     // ---- lines ----------------------------------------------------------------------------
 
     [[nodiscard]] std::u16string_view lineAt(std::size_t i) const { return lines_[i]; }
@@ -619,7 +725,7 @@ private:
                 ++i;
             }
             if (i < t.size() && t[i] == u':' && (i + 1 == t.size() || isWhite(t[i + 1]))) {
-                return Key{nodes_[node].text, false, i};
+                return Key{nodes_[node].text, false, i, Pos{line, col}, node};
             }
             return std::nullopt;
         }
@@ -631,7 +737,7 @@ private:
         }
         for (std::size_t i = col; i < t.size(); ++i) {
             if (t[i] == u':' && (i + 1 == t.size() || isWhite(t[i + 1]))) {
-                return Key{std::u16string(trimRight(t.substr(col, i - col))), true, i};
+                return Key{std::u16string(trimRight(t.substr(col, i - col))), true, i, Pos{line, col}};
             }
             if (isWhite(t[i]) && i + 1 < t.size() && t[i + 1] == u'#') {
                 return std::nullopt;
@@ -780,10 +886,12 @@ private:
             if (error_) {
                 return addNull();
             }
+            const std::size_t keyIndex = keyNode(*key);
             if (entries != nullptr) {
-                entries->push_back(TopEntry{key->text, value, i, valuePos.line, valuePos.col});
+                entries->push_back(TopEntry{key->text, value, keyIndex, i, valuePos.line, valuePos.col});
             }
             map.keys.push_back(std::move(name));
+            map.keyNodes.push_back(keyIndex);
             map.children.push_back(value);
             const std::size_t j = skipToContent(next_);
             if (error_ || j >= lines_.size() || indent(j) < col) {
@@ -866,7 +974,8 @@ private:
         }
         Node node;
         bool comment = false;
-        if (!plainSegment(line, col, node.text, comment, false)) {
+        Pos end{line, col};
+        if (!plainSegment(line, col, node, comment, false, end)) {
             return addNull();
         }
         std::size_t i = line + 1;
@@ -891,12 +1000,12 @@ private:
                 break;
             }
             if (empties == 0) {
-                node.text += u' ';
+                appendAtomic(node, u" ", end, Pos{i, f});
             } else {
-                node.text.append(empties, u'\n');
+                appendAtomic(node, std::u16string(empties, u'\n'), end, Pos{i, f});
             }
             empties = 0;
-            if (!plainSegment(i, f, node.text, comment, true)) {
+            if (!plainSegment(i, f, node, comment, true, end)) {
                 return addNull();
             }
             ++i;
@@ -909,20 +1018,23 @@ private:
     /// Appends the text of a plain scalar's line from `col` up to a comment or the end; no `: `
     /// may occur in it. `comment`: the line ends in a comment. `continuation`: a later line of the
     /// scalar, where `: ` is a key indented too far (code review O6).
-    bool plainSegment(std::size_t line, std::size_t col, std::u16string& out, bool& comment, bool continuation) {
+    /// `end`: set to where the appended text ends in the source.
+    bool plainSegment(std::size_t line, std::size_t col, Node& out, bool& comment, bool continuation, Pos& end) {
         const std::u16string_view t = lineAt(line);
-        std::size_t end = t.size();
+        std::size_t stop = t.size();
         for (std::size_t i = col; i < t.size(); ++i) {
             if (t[i] == u':' && (i + 1 == t.size() || isWhite(t[i + 1]))) {
                 return fail(continuation ? Reason::BadIndentation : Reason::ColonInPlainValue, line);
             }
             if (isWhite(t[i]) && i + 1 < t.size() && t[i + 1] == u'#') {
-                end = i;
+                stop = i;
                 comment = true;
                 break;
             }
         }
-        out += trimRight(t.substr(col, end - col));
+        const std::u16string_view piece = trimRight(t.substr(col, stop - col));
+        appendMapped(out, piece, Pos{line, col});
+        end = Pos{line, col + piece.size()};
         return true;
     }
 
@@ -971,7 +1083,7 @@ private:
         node.style = Node::Style::Block;
         std::size_t end = line + 1;
         std::size_t trailingEmpties = 0;
-        std::u16string& out = node.text;
+        Pos last{line, t.size()};  // S028: where the text appended last ends in the source
         bool any = false;
         bool previousMore = false;
         std::size_t empties = 0;
@@ -990,19 +1102,22 @@ private:
             }
             const std::u16string_view content = u.substr(contentIndent);
             const bool more = !content.empty() && isWhite(content[0]);
+            const Pos here{k, contentIndent};
             if (!any) {
-                out.append(empties, u'\n');
+                appendAtomic(node, std::u16string(empties, u'\n'), last, here);
             } else if (!literal && !more && !previousMore) {
                 // Folded: a line break between two lines of text becomes a space, empty lines stay.
                 if (empties == 0) {
-                    out += u' ';
+                    appendAtomic(node, u" ", last, here);
                 } else {
-                    out.append(empties, u'\n');
+                    appendAtomic(node, std::u16string(empties, u'\n'), last, here);
                 }
             } else {
-                out.append(1 + empties, u'\n');  // literal, or next to a more indented line
+                // literal, or next to a more indented line
+                appendAtomic(node, std::u16string(1 + empties, u'\n'), last, here);
             }
-            out += content;
+            appendMapped(node, content, here);
+            last = Pos{k, u.size()};
             any = true;
             previousMore = more;
             empties = 0;
@@ -1011,12 +1126,12 @@ private:
         trailingEmpties = empties;
         if (any) {
             if (chomp == u'+') {
-                out.append(1 + trailingEmpties, u'\n');
+                appendAtomic(node, std::u16string(1 + trailingEmpties, u'\n'), last, last);
             } else if (chomp == 0) {
-                out += u'\n';
+                appendAtomic(node, u"\n", last, last);
             }
         } else if (chomp == u'+') {
-            out.append(trailingEmpties, u'\n');
+            appendAtomic(node, std::u16string(trailingEmpties, u'\n'), last, last);
         }
         next_ = end;
         return add(std::move(node));
@@ -1040,7 +1155,7 @@ private:
                 const char16_t c = t[p.col];
                 if (q == u'\'' && c == u'\'') {
                     if (p.col + 1 < t.size() && t[p.col + 1] == u'\'') {
-                        out += u'\'';
+                        appendAtomic(node, u"'", p, Pos{p.line, p.col + 2});
                         whiteStart = kNone;
                         p.col += 2;
                         continue;
@@ -1058,10 +1173,13 @@ private:
                         p.col = t.size();
                         break;
                     }
+                    const Pos before = p;
+                    const std::size_t textBefore = out.size();
                     if (!escape(t, p.col, out)) {
                         fail(Reason::UnknownEscape, p.line);
                         return addNull();
                     }
+                    addRun(node, textBefore, out.size() - textBefore, before, p);
                     whiteStart = kNone;
                     continue;
                 }
@@ -1072,12 +1190,14 @@ private:
                 } else {
                     whiteStart = kNone;
                 }
-                out += c;
+                appendMapped(node, std::u16string_view(&t[p.col], 1), p);
                 ++p.col;
             }
             if (!escapedBreak && whiteStart != kNone) {
                 out.resize(whiteStart);
+                truncateMap(node);
             }
+            const Pos lineEnd{p.line, t.size()};
             whiteStart = kNone;
             std::size_t empties = 0;
             ++p.line;
@@ -1095,9 +1215,10 @@ private:
             }
             p.col = firstNonWhite(p.line);
             if (!escapedBreak && empties == 0) {
-                out += u' ';  // a line break between two lines of text
+                appendAtomic(node, u" ", lineEnd, p);  // a line break between two lines of text
             } else {
-                out.append(empties, u'\n');  // empty lines stay; an escaped break adds nothing
+                // empty lines stay; an escaped break adds nothing
+                appendAtomic(node, std::u16string(empties, u'\n'), lineEnd, p);
             }
         }
     }
@@ -1293,9 +1414,10 @@ private:
                         return addNull();
                     }
                     if (entries != nullptr) {
-                        entries->push_back(TopEntry{k.text, value, keyPos.line, valuePos.line, valuePos.col});
+                        entries->push_back(TopEntry{k.text, value, key, keyPos.line, valuePos.line, valuePos.col});
                     }
                     node.keys.push_back(std::move(name));
+                    node.keyNodes.push_back(key);
                     node.children.push_back(value);
                 } else {
                     // `[a: b]`: a single pair, a mapping of one key.
@@ -1305,6 +1427,7 @@ private:
                     Node pair;
                     pair.kind = Node::Kind::Mapping;
                     pair.keys.push_back(std::move(name));
+                    pair.keyNodes.push_back(key);
                     pair.children.push_back(value);
                     node.children.push_back(add(std::move(pair)));
                 }
@@ -1357,7 +1480,9 @@ private:
                     break;
                 }
             }
-            node.text += trimRight(t.substr(p.col, i - p.col));
+            const std::u16string_view piece = trimRight(t.substr(p.col, i - p.col));
+            appendMapped(node, piece, p);
+            const Pos pieceEnd{p.line, p.col + piece.size()};
             p.col = i;
             if (stopped) {
                 break;
@@ -1378,9 +1503,9 @@ private:
                 break;
             }
             if (empties == 0) {
-                node.text += u' ';
+                appendAtomic(node, u" ", pieceEnd, Pos{next, f});
             } else {
-                node.text.append(empties, u'\n');
+                appendAtomic(node, std::u16string(empties, u'\n'), pieceEnd, Pos{next, f});
             }
             p = {next, f};
         }
@@ -1611,6 +1736,14 @@ std::string_view reasonText(PropertiesErrorReason reason) noexcept {
 
 Properties parseProperties(std::span<const std::u16string> yamlLines) {
     return Parser(yamlLines).run();
+}
+
+std::vector<PropertyUnit> propertySourceUnits(std::span<const std::u16string> yamlLines) {
+    Parser parser(yamlLines);
+    if (parser.run().error) {
+        return {};
+    }
+    return parser.units();
 }
 
 }  // namespace hitokoto::core

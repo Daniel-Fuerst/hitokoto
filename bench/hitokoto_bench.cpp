@@ -12,11 +12,14 @@
 // reports the brief's budgets (section 4); hard budgets fail the run on any machine.
 #include "document_session.hpp"
 #include "editor_widget.hpp"
+#include "find_bar.hpp"
+#include "find_controller.hpp"
 #include "hitokoto/core/markdown.hpp"
 #include "key_input.hpp"
 #include "main_window.hpp"
 #include "theme_applier.hpp"
 
+#include <QAction>
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QElapsedTimer>
@@ -24,6 +27,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLineEdit>
 #include <QProcess>
 #include <QSignalSpy>
 #include <QTableView>
@@ -653,6 +657,70 @@ SaveTiming measureSaves(ui::MainWindow& w, const QString& path, int runs) {
     return {stats(blocked).median, stats(total).median};
 }
 
+/// S028: key-to-paint samples of keys in the find bar's field: the search text typed and erased
+/// again, each key restarting the search of the whole document.
+std::vector<double> measureFindTyping(ui::MainWindow& w, int keys) {
+    ui::FindController* find = w.findController();
+    find->open();
+    QLineEdit* field = w.findBar()->searchField();
+    field->clear();
+    const QString text = QStringLiteral("dolor sit");
+    std::vector<double> samples;
+    for (int i = 0; i < keys; ++i) {
+        const int at = i % (2 * static_cast<int>(text.size()));
+        QElapsedTimer t;
+        t.start();
+        if (at < text.size()) {
+            test::keyClick(field, text.at(at).toLatin1());
+        } else {
+            test::keyClick(field, Qt::Key_Backspace);
+        }
+        w.editor()->viewport()->repaint();
+        samples.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
+    }
+    return samples;
+}
+
+struct FindTiming {
+    std::vector<double> firstMatch;  ///< from the last key until the current match is known
+    std::vector<double> complete;    ///< from the last key until the count is complete
+};
+
+/// S028: typing a search text in one go, `runs` times: until the first match and the full count.
+FindTiming measureFindSearch(ui::MainWindow& w, int runs) {
+    ui::FindController* find = w.findController();
+    QLineEdit* field = w.findBar()->searchField();
+    FindTiming out;
+    for (int i = 0; i < runs; ++i) {
+        find->open();
+        field->clear();
+        QCoreApplication::processEvents();
+        test::keyClicks(field, QStringLiteral("ipsu"));
+        QElapsedTimer t;
+        t.start();
+        test::keyClick(field, 'm');
+        (void)QTest::qWaitFor([&] { return find->currentMatch().has_value(); }, 120000);
+        out.firstMatch.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
+        (void)QTest::qWaitFor([&] { return find->isComplete(); }, 120000);
+        out.complete.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
+    }
+    return out;
+}
+
+/// S028: F3 (next match) with the count complete, key to paint.
+std::vector<double> measureFindSteps(ui::MainWindow& w, int keys) {
+    QLineEdit* field = w.findBar()->searchField();
+    std::vector<double> samples;
+    for (int i = 0; i < keys; ++i) {
+        QElapsedTimer t;
+        t.start();
+        test::keyClick(field, Qt::Key_Return);
+        w.editor()->viewport()->repaint();
+        samples.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
+    }
+    return samples;
+}
+
 struct Budget {
     const char* key;
     double limit;
@@ -695,6 +763,13 @@ constexpr std::string_view kReportOnly[] = {"save_10mb_total_ms",
                                             "s024_long_text_typing_max_ms",
                                             "s024_long_text_typing_over_16ms",
                                             "s024_leave_long_text_max_ms",
+                                            "s028_field_typing_max_ms",
+                                            "s028_field_typing_over_16ms",
+                                            "s028_full_count_ms",
+                                            "s028_step_max_ms",
+                                            "s028_doc_typing_max_ms",
+                                            "s028_doc_typing_over_16ms",
+                                            "s028_typing_settled_ms",
                                             "startup_p95_ms"};
 
 // Brief, section 4. Most budgets are meaningful on reference hardware only (S011) and fail the run
@@ -733,6 +808,11 @@ const Budget kBudgets[] = {
     {"s024_long_text_typing_p95_ms", 16, "key to screen <= 16 ms (below a long value)"},
     {"s024_long_text_typing_max_ms", 50, "no key event above 50 ms, below a long value (hard)", true},
     {"s024_leave_long_text_max_ms", 50, "leaving a text value of 2,000 lines <= 50 ms (hard)", true},
+    {"s028_field_typing_p95_ms", 16, "key in the find bar <= 16 ms (10 MB)"},
+    {"s028_field_typing_max_ms", 50, "no key in the find bar above 50 ms, 10 MB (hard)", true},
+    {"s028_step_max_ms", 50, "no next match above 50 ms, 10 MB (hard)", true},
+    {"s028_doc_typing_p95_ms", 16, "key to screen <= 16 ms (10 MB, highlight all)"},
+    {"s028_doc_typing_max_ms", 50, "no key event above 50 ms, 10 MB with find open (hard)", true},
     {"save_10mb_ui_blocked_ms", 16, "saving never stalls the UI (hard)", true},
     {"save_10mb_total_ms", 1000, "10 MB on disk within 1 s (hard)", true},
 };
@@ -925,6 +1005,42 @@ int main(int argc, char* argv[]) {
             r["s024_long_text_typing_max_ms"] = typing.max;
             r["s024_long_text_typing_over_16ms"] = typing.over16;
         }
+        w.editor()->document()->setModified(false);
+    }
+
+    // S028: find in the 10 MB document: keys in the field, the first match and the full count, next
+    // match, and typing in the document with "Highlight all" on (review O4: until settled).
+    w.session()->newDocument();
+    (void)measureOpen(w, tenMb);
+    {
+        QTextCursor middle(w.editor()->document()->findBlockByNumber(w.editor()->document()->blockCount() / 2));
+        w.editor()->setTextCursor(middle);
+        const auto fieldTyping = stats(measureFindTyping(w, 200));
+        r["s028_field_typing_median_ms"] = fieldTyping.median;
+        r["s028_field_typing_p95_ms"] = fieldTyping.p95;
+        r["s028_field_typing_p99_ms"] = fieldTyping.p99;
+        r["s028_field_typing_max_ms"] = fieldTyping.max;
+        r["s028_field_typing_over_16ms"] = fieldTyping.over16;
+        const FindTiming search = measureFindSearch(w, kOpenRuns);
+        printSamples("s028_first_match_ms", search.firstMatch);
+        printSamples("s028_full_count_ms", search.complete);
+        r["s028_first_match_ms"] = stats(search.firstMatch).median;
+        r["s028_full_count_ms"] = stats(search.complete).median;
+        const auto steps = stats(measureFindSteps(w, 200));
+        r["s028_step_median_ms"] = steps.median;
+        r["s028_step_max_ms"] = steps.max;
+        w.findBar()->highlightAllAction()->setChecked(true);
+        w.editor()->setFocus();
+        const auto docTyping = stats(measureTyping(w, 200));
+        r["s028_doc_typing_median_ms"] = docTyping.median;
+        r["s028_doc_typing_p95_ms"] = docTyping.p95;
+        r["s028_doc_typing_max_ms"] = docTyping.max;
+        r["s028_doc_typing_over_16ms"] = docTyping.over16;
+        QElapsedTimer settled;
+        settled.start();
+        (void)QTest::qWaitFor([&] { return w.findController()->isComplete(); }, 120000);
+        r["s028_typing_settled_ms"] = static_cast<double>(settled.nsecsElapsed()) / 1e6;
+        w.findController()->close();
         w.editor()->document()->setModified(false);
     }
 

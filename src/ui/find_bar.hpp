@@ -47,7 +47,13 @@ signals:
     void matchCaseChanged(bool on);
     void highlightAllChanged(bool on);
 
+protected:
+    void paintEvent(QPaintEvent* event) override;
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
 private:
+    void updateFieldStyle();
+
     core::FindStyle style_{core::findStyle(core::builtinTheme(core::ColorScheme::Light))};
     QLineEdit* field_ = nullptr;
     QToolButton* previous_ = nullptr;

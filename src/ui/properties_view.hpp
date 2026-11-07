@@ -12,6 +12,7 @@
 #include "hitokoto/core/theme.hpp"
 
 #include <QAccessible>
+#include <QColor>
 #include <QElapsedTimer>
 #include <QFont>
 #include <QStringList>
@@ -43,6 +44,8 @@ public:
 
     /// Starts over with these properties; no row is laid out yet.
     void reset(std::vector<core::Property> properties);
+    /// S028 highlight all: rows whose key or value holds a match, drawn on `background`.
+    void setFindRows(std::vector<int> rows, const QColor& background);
     /// Lays out rows in document order until `nanoseconds` have passed since `timer` started; true
     /// when every row is laid out and the block has its height.
     bool build(const QElapsedTimer& timer, qint64 nanoseconds);
@@ -135,7 +138,9 @@ private:
 
     Look look_;
     std::vector<core::Property> properties_;
-    std::vector<Row> rows_;  ///< laid out so far, in document order
+    std::vector<Row> rows_;      ///< laid out so far, in document order
+    std::vector<int> findRows_;  ///< S028
+    QColor findBackground_;
     QRect title_;
     qreal line_ = 0;  ///< line spacing of the block's font
     qreal gap_ = 0;   ///< width of a space

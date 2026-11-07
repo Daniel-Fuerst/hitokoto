@@ -1,6 +1,7 @@
 # S028 — Find in the open file
 
-- **Status:** Confirmed (Armin, 2026-11-07, after review `docs/reviews/028-find-in-file-spec.md`) ·
+- **Status:** In progress (confirmed by Armin on 2026-11-07, after review
+  `docs/reviews/028-find-in-file-spec.md`) ·
   **Order:** 29 · **Size:** L ·
   **Depends on:** S013–S015, S018, S019, S020, S022, S023, S024, S026 · **Decision:** ADR 0008
 - **Basis:** Armin's feature request and decisions of 2026-11-07. Search is listed in the brief
@@ -391,10 +392,34 @@ fallbacks keep the contrast whatever a theme sets for `colors.text`.
 ## Tests
 
 - Core: `S028_FindInFile` (units, boundaries, whitespace, case, cells, properties with escapes and
-  unsupported values, destinations, overlap, start position, random documents against
-  `renderDocument`).
+  unsupported values, destinations, overlap, random documents against `renderDocument`, tokens);
+  added with the implementation: `ScanningInPiecesFindsWhatOneScanFinds` (the UI's pieces).
 - UI: `tst_s028_find_in_file` (bar, keys per platform binding, stepping and wrapping, count, source
-  view of tables and properties per review O8, `Escape`, clicks, edits, highlight all, painting
-  without marker pixels, no document change, accessibility names and announcements, tokens).
-- S009: `tst_s009_concealment::findHighlightsWhileWalking`.
-- Benchmarks: `s028_*`.
+  view of tables and properties per review O8, `Escape`, clicks, edits against a fresh search,
+  highlight all in text and cells, highlights without marker pixels, no document change,
+  accessibility names and announcements, tokens, case folding against `QChar::toCaseFolded`).
+- S009: `tst_s009_concealment::findHighlightsWhileWalking` and
+  `caretOnShownLinesAfterEscapeIntoATable`.
+- Benchmarks: `s028_*` (keys in the field, first match, full count, next match, typing in the
+  document with "Highlight all" on, settled).
+
+## Implementation
+
+On `agents/s028-find-in-file`, 2026-11-07:
+
+- Core (`find.hpp`, `find.cpp`): `FindQuery`, `lineUnits`, `tableRowUnits` (only the inline
+  elements run on a cell: `ElementRegistry::renderInline`), `propertyUnits` on
+  `propertySourceUnits`, which the YAML parser now fills with a source map per key, value and item
+  (escapes, `''` and folded breaks atomic), `FindUnitBuilder` for the boundaries, `scanUnits` that
+  resumes where a match needs more units, `documentUnits` and `findInDocument` as the reference,
+  `matchContext`. Case folding from `case_folding_table.inc`, generated from Unicode 18.0.0
+  `CaseFolding.txt` (1,533 mappings, ADR 0008); it agrees with `QChar::toCaseFolded` of Qt 6.12
+  for every character Qt knows.
+- UI: `FindBar`, `FindController`, `EditorWidget::setFindHold` and `showPosition`,
+  `TableEmbedder::setFindHold` (a table with the current match, and after `Escape` until the caret
+  and the anchor leave it), `PropertiesEmbedder::setFindHold`, `TableModel::setFindCells`,
+  `PropertiesView::setFindRows`; Edit › Find, Find Next and Find Previous in `MainWindow`.
+- Tokens `[find]` in `docs/theming.md`.
+- Two test fixes found while making the tests green: `nothingFoundMarksTheField` erased one letter
+  and still had no match (now it clears the field); `editsUpdateTheMatchesLikeAFreshSearch` typed
+  its pieces with `keyClicks`, which asserts on a line break (now `Key_Return` and `test::typeText`).

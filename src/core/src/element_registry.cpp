@@ -458,6 +458,16 @@ LineRender ElementRegistry::render(std::u16string_view line, const LineContext& 
     return out;
 }
 
+LineRender ElementRegistry::renderInline(std::u16string_view text) const {
+    LineRender out;
+    runInlineElements(text, {}, out);
+    splitAroundInlineRuns(out, 0);
+    carveLinkTextAroundOtherRuns(out);
+    carveRunsAroundHidden(out);
+    carveInlineStylesAroundHidden(out);
+    return out;
+}
+
 std::vector<LineRender> ElementRegistry::renderDocument(std::span<const std::u16string> lines,
                                                         LineRange revealed) const {
     // ADR 0006: the reference for the lazy rendering in the UI. States from above, front matter

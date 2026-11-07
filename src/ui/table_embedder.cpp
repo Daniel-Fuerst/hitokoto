@@ -56,8 +56,8 @@ bool TableEmbedder::claims(const QTextBlock& block) const {
     }
     const int number = block.blockNumber();
     for (const Table& table : tables_) {
-        if (table.stale || table.widget == nullptr || table.source || table.held || !table.header.isValid() ||
-            !table.last.isValid()) {
+        if (table.stale || table.widget == nullptr || table.source || table.held || table.found ||
+            !table.header.isValid() || !table.last.isValid()) {
             continue;
         }
         if (number >= table.header.blockNumber() && number <= table.last.blockNumber()) {
@@ -102,7 +102,17 @@ QTableView* TableEmbedder::viewAt(int blockNumber) const {
 
 bool TableEmbedder::isSourceShown(int blockNumber) const {
     const Table* table = tableAt(blockNumber);
-    return table != nullptr && table->source;
+    return table != nullptr && (table->source || table->found);
+}
+
+void TableEmbedder::setFindHold(int first, int last, bool untilCaretLeaves) {
+    if (findFirst_ == first && findLast_ == last && findUntilCaretLeaves_ == untilCaretLeaves) {
+        return;
+    }
+    findFirst_ = first;
+    findLast_ = first < 0 ? -1 : last;
+    findUntilCaretLeaves_ = first >= 0 && untilCaretLeaves;
+    refresh();
 }
 
 QTextBlock TableEmbedder::lastBlockOfTableAt(int blockNumber) const {
@@ -133,7 +143,7 @@ QTextBlock TableEmbedder::lastLineOf(const QTextBlock& header) const {
 }
 
 bool TableEmbedder::shows(const Table& table) {
-    return !table.stale && table.widget != nullptr && !table.source && !table.held;
+    return !table.stale && table.widget != nullptr && !table.source && !table.held && !table.found;
 }
 
 QTextBlock TableEmbedder::separatorOf(const Table& table) {
@@ -306,7 +316,7 @@ void TableEmbedder::sweep(int from, int to) {
     std::vector<char> hidden(static_cast<std::size_t>(std::max(0, to - from + 1)), 0);
     std::vector<char> reserved(hidden.size(), 0);
     for (const Table& table : tables_) {
-        if (table.stale || table.widget == nullptr || table.source || table.held) {
+        if (table.stale || table.widget == nullptr || table.source || table.held || table.found) {
             continue;
         }
         const int header = table.header.blockNumber();
@@ -410,6 +420,8 @@ void TableEmbedder::refresh() {
     for (Table& table : tables_) {
         table.held = table.header.isValid() && table.last.isValid() && typing >= table.header.blockNumber() &&
                      typing <= table.last.blockNumber();
+        table.found = findFirst_ >= 0 && table.header.isValid() && table.last.isValid() &&
+                      findFirst_ <= table.last.blockNumber() && findLast_ >= table.header.blockNumber();
         apply(table);
         markBreaks(table);
     }
@@ -514,7 +526,7 @@ void TableEmbedder::apply(Table& table) {
         release(table);
         return;
     }
-    if (table.source || table.held) {
+    if (table.source || table.held || table.found) {
         release(table);
         return;
     }
@@ -666,6 +678,19 @@ void TableEmbedder::caretMoved() {
         return;  // the caret is on its way out of a table
     }
     const QTextCursor cursor = editor_->textCursor();
+    if (findUntilCaretLeaves_) {
+        // S028 review O8: after Escape the table keeps its lines until the caret and the anchor
+        // have both left them.
+        const int caret = cursor.blockNumber();
+        const int anchor = editor_->document()->findBlock(cursor.anchor()).blockNumber();
+        const auto outside = [this](int n) { return n < findFirst_ || n > findLast_; };
+        if (outside(caret) && outside(anchor)) {
+            findFirst_ = -1;
+            findLast_ = -1;
+            findUntilCaretLeaves_ = false;
+            scheduleRefresh();
+        }
+    }
     if (typing_.isValid() && cursor.block() != typing_) {
         typing_ = QTextBlock();  // left the typed line: a table held for it appears
         scheduleRefresh();

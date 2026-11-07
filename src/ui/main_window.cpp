@@ -109,6 +109,21 @@ void MainWindow::createMenus() {
     edit->addAction(tr("&Copy"), QKeySequence::Copy, editor_, &QTextEdit::copy);
     edit->addAction(tr("&Paste"), QKeySequence::Paste, editor_, &QTextEdit::paste);
     edit->addAction(tr("Select &All"), QKeySequence::SelectAll, editor_, &QTextEdit::selectAll);
+    // S028: find in the file (decision 7; review O10: the platform's find-next keys plus F3).
+    edit->addSeparator();
+    edit->addAction(tr("&Find…"), QKeySequence::Find, find_, &FindController::open);
+    QAction* findNext = edit->addAction(tr("Find &Next"), find_, &FindController::next);
+    QAction* findPrevious = edit->addAction(tr("Find Pre&vious"), find_, &FindController::previous);
+    QList<QKeySequence> nextKeys = QKeySequence::keyBindings(QKeySequence::FindNext);
+    QList<QKeySequence> previousKeys = QKeySequence::keyBindings(QKeySequence::FindPrevious);
+    if (!nextKeys.contains(QKeySequence(Qt::Key_F3))) {
+        nextKeys << QKeySequence(Qt::Key_F3);
+    }
+    if (!previousKeys.contains(QKeySequence(Qt::SHIFT | Qt::Key_F3))) {
+        previousKeys << QKeySequence(Qt::SHIFT | Qt::Key_F3);
+    }
+    findNext->setShortcuts(nextKeys);
+    findPrevious->setShortcuts(previousKeys);
 
     QMenu* view = menuBar()->addMenu(tr("&View"));
     view->addAction(tr("&Reload Theme"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R), this,
@@ -117,6 +132,7 @@ void MainWindow::createMenus() {
 
 void MainWindow::applyTheme(const core::Theme& theme) {
     editor_->applyTheme(theme);
+    find_->applyTheme(theme);
 }
 
 void MainWindow::showMessage(const QString& title, const QString& text) {

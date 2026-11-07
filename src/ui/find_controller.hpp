@@ -7,10 +7,16 @@
 #include "hitokoto/core/find.hpp"
 #include "hitokoto/core/theme.hpp"
 
+#include <QElapsedTimer>
+#include <QList>
 #include <QObject>
+#include <QPointer>
 #include <QString>
+#include <QTextEdit>
 #include <QTextLayout>
+#include <QTimer>
 
+#include <climits>
 #include <optional>
 #include <vector>
 
@@ -18,6 +24,7 @@ namespace hitokoto::ui {
 
 class EditorWidget;
 class FindBar;
+class TableModel;
 
 class FindController : public QObject {
     Q_OBJECT
@@ -37,34 +44,137 @@ public:
     void next();
     void previous();
 
-    [[nodiscard]] bool isOpen() const;
+    [[nodiscard]] bool isOpen() const noexcept { return open_; }
     /// Whether the whole document has been searched for the current text.
-    [[nodiscard]] bool isComplete() const;
+    [[nodiscard]] bool isComplete() const noexcept { return complete_; }
     /// The current match, if any.
-    [[nodiscard]] std::optional<core::FindMatch> currentMatch() const;
+    [[nodiscard]] std::optional<core::FindMatch> currentMatch() const { return current_; }
     /// 1-based index of the current match once the count is complete, else 0.
     [[nodiscard]] int currentIndex() const;
     /// Matches found so far (all of them once complete).
     [[nodiscard]] int matchCount() const;
     /// The text of the count: "n of m", "m+ matches" or "No matches" (empty for no search text).
     [[nodiscard]] QString countText() const;
-    [[nodiscard]] bool matchCase() const;
-    [[nodiscard]] bool highlightAll() const;
+    [[nodiscard]] bool matchCase() const noexcept { return matchCase_; }
+    [[nodiscard]] bool highlightAll() const noexcept { return highlightAll_; }
     /// The matches whose highlights are on screen (only the current one unless "Highlight all").
-    [[nodiscard]] std::vector<core::FindMatch> visibleMatches() const;
+    [[nodiscard]] std::vector<core::FindMatch> visibleMatches() const { return shown_; }
     /// The highlight formats on a block (tests: their text colour must never cover concealed text).
     [[nodiscard]] QList<QTextLayout::FormatRange> highlightFormats(int blockNumber) const;
     /// The accessible announcement made for the current match last (review O11).
-    [[nodiscard]] QString lastAnnouncement() const;
+    [[nodiscard]] QString lastAnnouncement() const { return lastAnnouncement_; }
 
 signals:
     /// The matches, the current match or the count changed.
     void resultsChanged();
 
 private:
+    /// What is known about one block (line) of the document for the current search.
+    struct BlockInfo {
+        core::BlockState entering;  ///< the state entering the line
+        std::uint32_t count = 0;    ///< matches that start on the line
+        bool crossed = false;       ///< a match starting above reaches into the line
+        bool known = false;         ///< `entering` and `count` are from a scan of this search
+    };
+
+    /// The matches that start on one block and the units they were found in (for the context).
+    struct BlockMatches {
+        std::vector<core::FindMatch> matches;
+        std::vector<core::FindUnit> units;
+    };
+
+    void startSearch(core::DocPos anchor);
+    void restartFrom(int block);
+    /// Runs the pass for at most `nanoseconds`; true when it is complete.
+    bool work(qint64 nanoseconds);
+    void slice();
+    /// Front matter at the start of the document: walks until it closes (or the document ends).
+    bool frontMatterStep(const QElapsedTimer& timer, qint64 nanoseconds);
+    void scanBuffer(bool more);
+    void finalizeUpTo(int block);
+    void finishPass();
+    /// Review O6: a second pass from the caret forward finds the current match before the pass
+    /// from the start gets there (with the styler's states, once it has styled everything).
+    void startAhead();
+    /// Runs the pass ahead for at most `nanoseconds`; true while it goes on.
+    bool aheadWork(qint64 nanoseconds);
+
+    [[nodiscard]] BlockMatches matchesOfBlock(int block) const;
+    [[nodiscard]] bool isTableInside(const core::BlockState& state) const noexcept;
+    /// Whether `text` holds a character of the search text (folded unless "Match case").
+    [[nodiscard]] bool mayMatch(std::u16string_view text) const;
+    void setCurrent(std::optional<core::FindMatch> match, int ordinal);
+    void resolveCurrentFromCounts();
+    [[nodiscard]] int firstBlockWithMatches(int from, int to) const;
+    [[nodiscard]] int lastBlockWithMatches(int from, int to) const;
+    void step(int direction);
+
+    void onContentsChange(int position, int charsRemoved, int charsAdded);
+    void scheduleRefresh();
+    void refreshView();
+    void updateHighlights();
+    void updateEmbeddedMarks();
+    void updateBar();
+    void announce();
+    void showCurrent();
+    [[nodiscard]] core::DocPos caretPos() const;
+    [[nodiscard]] int position(core::DocPos p) const;
+
     EditorWidget* editor_;
     FindBar* bar_;
     const core::ElementRegistry& registry_;
+    core::FindStyle style_;
+
+    bool open_ = false;
+    bool matchCase_ = false;
+    bool highlightAll_ = false;
+    QString text_;
+    core::FindQuery query_;
+    std::vector<char32_t> queryChars_;  ///< the search text's characters, sorted
+
+    std::vector<BlockInfo> blocks_;
+    int scanned_ = 0;  ///< blocks below this have their final count
+    bool complete_ = true;
+    int blockCount_ = 0;  ///< the document's block count the vectors follow
+
+    // The pass over the document.
+    struct Pass {
+        bool active = false;
+        bool frontMatterPhase = false;
+        int next = 0;  ///< next block to read
+        core::BlockState state;
+        std::optional<core::FindUnitBuilder> builder;
+        std::vector<core::FindUnit> units;
+        std::vector<int> unitBlock;  ///< the block each unit belongs to
+        std::size_t resumeUnit = 0;
+        std::uint32_t resumeOffset = 0;
+        // Front matter at the start (S024): the walk to its closing line.
+        core::BlockState frontState;
+        int frontWalk = 0;
+        // Settling after an edit: blocks from `settleAfter` on may still hold the earlier results.
+        int settleAfter = INT_MAX;
+        int oldScanned = 0;
+        bool oldComplete = false;
+        bool lastWasTable = false;
+    } pass_;
+    Pass ahead_;                               ///< from the caret forward, until the current match is found
+    std::vector<core::FindMatch> aheadFound_;  ///< matches the pass ahead found so far
+    int frontMatterClose_ = -1;                ///< closing line of front matter searched as properties, else -1
+    std::vector<std::u16string> frontMatterYaml_;
+    QTimer sliceTimer_;
+
+    std::optional<core::FindMatch> current_;
+    int currentOrdinal_ = -1;
+    bool needCurrent_ = false;
+    core::DocPos anchor_;
+    int pendingStep_ = 0;
+    bool announcePending_ = false;
+    QString lastAnnouncement_;
+
+    std::vector<core::FindMatch> shown_;
+    QList<QTextEdit::ExtraSelection> selections_;
+    std::vector<QPointer<TableModel>> markedTables_;
+    bool refreshScheduled_ = false;
 };
 
 }  // namespace hitokoto::ui

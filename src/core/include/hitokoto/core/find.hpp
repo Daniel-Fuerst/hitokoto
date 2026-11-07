@@ -124,6 +124,40 @@ private:
 /// the index `firstLine` in the document. Empty if the YAML has an error.
 [[nodiscard]] std::vector<FindUnit> propertyUnits(std::span<const std::u16string> yamlLines, std::size_t firstLine);
 
+/// Builds the units of a document line by line in document order, with the boundaries around
+/// tables and properties, as documentUnits does (the UI renders the lines itself, in slices).
+/// Start it outside a table.
+class FindUnitBuilder {
+public:
+    explicit FindUnitBuilder(const ElementRegistry& registry) noexcept : registry_(&registry) {}
+    /// Appends the units of line `index`, rendered not revealed with the state from the line above.
+    void addLine(std::u16string_view line, std::size_t index, const LineRender& render, std::vector<FindUnit>& out);
+    /// Appends the units of front matter shown as properties: `yaml` are the lines between the
+    /// delimiters, the first of them has the index `firstLine`.
+    void addProperties(std::span<const std::u16string> yaml, std::size_t firstLine, std::vector<FindUnit>& out);
+
+private:
+    void push(std::vector<FindUnit>&& units, std::vector<FindUnit>& out);
+
+    const ElementRegistry* registry_;
+    bool hardNext_ = false;
+    bool inTable_ = false;
+    std::size_t columns_ = 0;
+};
+
+/// What scanUnits found.
+struct FindScan {
+    std::vector<FindMatch> matches;  ///< in the order found, not sorted
+    std::size_t resumeUnit = 0;      ///< where the scan goes on once more units follow
+    std::uint32_t resumeOffset = 0;
+};
+
+/// The matches of `query` in `units` from code unit `fromOffset` of unit `fromUnit` on. With
+/// `more`, units may follow: a match that would need them stops the scan, which resumes at its
+/// start. Without, the end of `units` is the end of the document.
+[[nodiscard]] FindScan scanUnits(std::span<const FindUnit> units, std::size_t fromUnit, std::uint32_t fromOffset,
+                                 const FindQuery& query, bool more);
+
 /// All units of a document in order, with their boundaries (the reference for the UI).
 [[nodiscard]] std::vector<FindUnit> documentUnits(const ElementRegistry& registry,
                                                   std::span<const std::u16string> lines,

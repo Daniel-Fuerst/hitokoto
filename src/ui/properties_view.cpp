@@ -446,6 +446,10 @@ void PropertiesView::paintEvent(QPaintEvent* event) {
     }
     paintedTextLines_ = 0;
     for (; it != rows_.end() && it->rect.top() <= area.bottom(); ++it) {
+        const auto row = static_cast<int>(std::distance(rows_.begin(), it));
+        if (std::find(findRows_.begin(), findRows_.end(), row) != findRows_.end()) {
+            painter.fillRect(it->rect, findBackground_);  // S028: a row with a match ("Highlight all")
+        }
         paintedTextLines_ +=
             paintRow(painter, *it, properties_[static_cast<std::size_t>(std::distance(rows_.begin(), it))], area);
     }
@@ -726,6 +730,15 @@ void PropertiesView::forgetAccessibleElements() {
         }
     }
     accessibleElements_.clear();
+}
+
+void PropertiesView::setFindRows(std::vector<int> rows, const QColor& background) {
+    if (rows == findRows_ && background == findBackground_) {
+        return;
+    }
+    findRows_ = std::move(rows);
+    findBackground_ = background;
+    update();
 }
 
 }  // namespace hitokoto::ui
