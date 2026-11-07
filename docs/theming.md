@@ -221,7 +221,7 @@ follows the general tokens above.
 | `find.active-icon` | color | Icon of a pressed button or a toggle that is on | `colors.selection-text` |
 | `find.current-background` | color | Current match | #ffd43b (light), #c99a06 (dark) |
 | `find.current-text` | color | Text of the current match | #1a1a1a |
-| `find.match-background` | color | Other matches (highlight all); cells, values and chips with a match | #fff3bf (light), #5c4a12 (dark) |
+| `find.match-background` | color | Other matches (highlight all); cells, property keys and values, and chips with a match | #fff3bf (light), #5c4a12 (dark) |
 | `find.match-text` | color | Text of other matches | #1a1a1a (light), #f1f1f1 (dark) |
 
 A thematic break (`---`, `***`, `___`) is a line across the text column, centred vertically in its block.
@@ -238,7 +238,7 @@ a badge after its first line (`properties.badge-*`).
 The find bar (S028) sits below the editor. "(light)" and "(dark)" name the fallbacks of the
 built-in light and dark bases; the highlight text colours fall back to fixed values, so the text on a
 highlight keeps its contrast whatever a theme sets for `colors.text`. With "Highlight all", a table
-cell, a property value or a chip that contains a match takes `find.match-background` as its
+cell, a property key or value, or a chip that contains a match takes `find.match-background` as its
 background while its element shows cells or rows.
 
 Bold text is never lighter than the text around it: inside a heading the weight is the larger of

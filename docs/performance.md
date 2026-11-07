@@ -38,6 +38,33 @@ Qt 6.12), release build, offscreen, 10 runs. These are the baselines in `bench/b
 | Key to paint, 10 MB file (median / p95) | 0.9 / 1.0 ms | 0.9 / 1.0 ms | 1.2 / 2.2 ms | ≤ 16 ms |
 | Save 10 MB: UI thread blocked (duration of the save() call; S017 measures the longest stall instead) | 6 ms | 36 ms | 24 ms | imperceptible |
 
+### 2026-11-07, development VM, S028 after the code review (release build, offscreen, Qt 6.12.0)
+
+The same measurements as below, two new ones (code review O8, O9): Enter five times right after
+the last letter of `ipsum`, before the count is complete (five runs), and the 1,000-row table of
+S018 (`tableDocument(1000)`) with "Highlight all" on and the caret in the middle: 100 keys in the
+field (`note with` typed and erased), then 200 times Enter in the table.
+
+| Measurement | After the code review | Budget |
+|---|---|---|
+| Key in the find bar, median / p95 / max | 5.6 / 6.0–6.4 / 7.5–8.2 ms | ≤ 16 ms p95, 50 ms max (hard) |
+| Until the current match | 4.6 ms | – |
+| Until the full count | 1.17–1.27 s | informational: < 1 s on the CI runner |
+| Next match, median / max | 2.7 / 3.4 ms | 50 ms max (hard) |
+| Next match before the count is complete, median / max | 0.9 / 9.7 ms | 50 ms max (hard) |
+| 1,000-row table, highlight all: key in the field, median / max | 5.1–5.7 / 17.2 ms | 50 ms max (hard) |
+| 1,000-row table, highlight all: next match, median / max | 2.7–3.3 / 3.6–8.7 ms | 50 ms max (hard) |
+| Typing in the document with highlight all, median / p95 / max | 0.9–1.1 / 1.7–2.0 / 5.0–6.0 ms | ≤ 16 ms p95, 50 ms max (hard) |
+| After typing until the count is complete again | 11–12 ms | – |
+
+Before the fixes, a step before the count was complete worked the pass for up to twice 30 ms (62 ms
+in the reviewer's probe), and in a 4,000-row table with "Highlight all" one step took 206 ms,
+because every lookup read the table from its header. Now a step works at most 8 ms, and a lookup
+starts at its row. The first run of the table benchmark still showed 88 ms for a key: the table
+that held the current match was built again (about 90 ms for 1,000 rows) each time the match left
+it. A table that shows its source only for the find bar now keeps its view hidden and shows it again
+as it was (`TableEmbedder::park`).
+
 ### 2026-11-07, development VM, S028 (release build, offscreen, Qt 6.12.0)
 
 `s028_*` (story S028, review O4 and O6): the 10 MB document (`largeDocument`, 445,000 lines) with

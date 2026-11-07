@@ -244,8 +244,9 @@ the find bar if the step came from there, otherwise to the editor at the start o
 - When I turn on "Highlight all" (`Alt+A`, `Cmd+Option+A` on macOS, or the toggle)
 - Then every match in the visible area of the text is highlighted in `find.match-background` and the
   current one in `find.current-background`
-- And a cell, a property value or a chip that contains a match, while its element shows cells or
-  rows, gets `find.match-background` as its background (its characters are not marked)
+- And a cell, a property key or value, or a chip that contains a match, while its element shows
+  cells or rows, gets `find.match-background` as its background (its characters are not marked;
+  code review O3: the part that holds the match, not the whole row)
 - And no element switches to its source for this, and no line moves
 - And the toggle is off by default and kept for the session
 
@@ -402,6 +403,25 @@ fallbacks keep the contrast whatever a theme sets for `colors.text`.
   `caretOnShownLinesAfterEscapeIntoATable`.
 - Benchmarks: `s028_*` (keys in the field, first match, full count, next match, typing in the
   document with "Highlight all" on, settled).
+- Added with the code review (`docs/reviews/028-find-in-file-code.md`):
+  - Core: `ADestinationSkippedByAMatchAcrossALineEndIsStillSearched` (O1),
+    `MatchContextLeavesOutSkippedDestinations` (O2),
+    `ABuilderContinuedInATableBuildsItsRowsAsFromTheHeader` (O8).
+  - UI: `anEditCompletesAMatchAcrossLinesWithoutConcealedText` (O4),
+    `aDelimiterRowTypedOrDeletedMakesOrBreaksATable` (O5),
+    `frontMatterClosedOrFixedByAnEditIsSearchedAsProperties` (O6),
+    `frontMatterIsParsedOncePerChange` (O12), `thePassAheadOnlyPicksMatchesOfTheDocument` (O7),
+    `aLongTableLooksUpMatchesFromTheirRow` (O8), `stepsBeforeTheCountIsCompleteAreQueued` (O9),
+    `escapeIntoATableHoldsTheWholeTable` (O10), `findNextFromACellIntoItsOwnTable` (review O8,
+    rule 4), `highlightAllMarksTheKeyTheValueOrTheChip` (O3),
+    `aLinkWhoseTextIsItsDestinationGivesTwoMatchesAndAnnouncesBoth`, `noMatchesIsAnnounced`,
+    `theBarsButtonsTakeTheFocusWithTab`; `aMatchInATableShowsItsSourceWhileCurrent` also checks
+    that the table view is kept; `editsUpdateTheMatchesLikeAFreshSearch` now covers
+    multi-word queries, tables, front matter and chained edits and compares the count, the current
+    match, its number and the matches on screen with a fresh search (O11).
+  - S009: geometry after every step and no hidden range under a highlight's text colour (O11).
+  - Benchmarks: `s028_step_incomplete_*` (O9), `s028_table_field_typing_*` and
+    `s028_table_step_*` on the 1,000-row table with "Highlight all" (O8).
 
 ## Implementation
 
@@ -423,3 +443,25 @@ On `agents/s028-find-in-file`, 2026-11-07:
 - Two test fixes found while making the tests green: `nothingFoundMarksTheField` erased one letter
   and still had no match (now it clears the field); `editsUpdateTheMatchesLikeAFreshSearch` typed
   its pieces with `keyClicks`, which asserts on a line break (now `Key_Return` and `test::typeText`).
+
+After the code review (`docs/reviews/028-find-in-file-code.md`, all twelve objections fixed):
+
+- Core: `scanUnits` keeps the matches of destinations a match went past (O1); `matchContext`
+  leaves them out (O2); `FindUnitBuilder::continueTable` (a lookup starts at a table row, O8) and
+  `addPropertyUnits` (front matter parsed once, O12).
+- `FindController`: front matter found and parsed once per change of it, with explicit triggers on
+  edits (O6, O12); the walk up from an edit and the start of the pass ahead count only lines with
+  concealed text (O4, O7), and an edit restarts at least on the line above it (O5); a match of the
+  pass ahead that the pass from the start does not confirm is found again (O7); steps work the pass
+  for at most 8 ms and wait in a queue (O9); an edit below where the pass reads goes on with that
+  pass; "Highlight all" marks only what is on screen (O8) and the key, value or chip in the
+  properties block (`PropertiesView::setFindMarks`, O3); `inDestination` tells two matches of one
+  range apart; "No matches" is announced.
+- `TableEmbedder::setFindHold` holds the whole table after `Escape` (O10); a table that shows its
+  source only for the find bar keeps its view hidden and shows it again without building it (found
+  with the new table benchmark: 88 ms for a key that moved the match out of a 1,000-row table);
+  the bar's buttons take the focus with Tab.
+- Not done, documented in the record: prefix sums for the index `n` (the counts per line are added
+  up on refresh, well under a millisecond for 10 MB).
+- One test fix: `frontMatterIsParsedOncePerChange` expected one match after typing `x` before
+  `Hallo`, but `xHallo` still contains it; it now compares with a fresh search.

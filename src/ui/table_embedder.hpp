@@ -94,6 +94,7 @@ private:
         bool source = false;
         bool held = false;              ///< shows its lines while the caret is in a line typed in the editor
         bool found = false;             ///< S028: shows its lines while it holds the find bar's current match
+        bool parked = false;            ///< S028: `widget` is kept hidden while `found` (not built again)
         TableWidget* widget = nullptr;  ///< owned by the table; deleted in release()
         quint64 signature = 0;          ///< of the lines and width the widget was fitted to
         /// A change removed one of its lines (or the line break before it): its QTextBlocks may
@@ -120,6 +121,13 @@ private:
     [[nodiscard]] quint64 signatureOf(const Table& table) const;
     void apply(Table& table);
     void release(Table& table);
+    /// S028: shows the table's lines for the find bar and keeps its view hidden, to show it again
+    /// without building it (a 1,000-row table takes about 90 ms to build).
+    void park(Table& table);
+    /// Shows the lines a table view covered again.
+    void showLines(Table& table);
+    /// Moves the focus from the table's view into its lines.
+    void leaveView(Table& table);
     /// Forgets a stale table without touching its lines.
     void drop(Table& table);
     /// Marks a table stale: its view forgets its lines, and keys go to the editor.

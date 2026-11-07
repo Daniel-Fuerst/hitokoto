@@ -28,7 +28,7 @@ class BarButton final : public QToolButton {
 public:
     BarButton(Icon icon, const core::FindStyle* style, QWidget* parent)
         : QToolButton(parent), icon_(icon), style_(style) {
-        setFocusPolicy(Qt::NoFocus);
+        setFocusPolicy(Qt::TabFocus);  // code review: reachable with Tab, a click leaves the focus in the field
         setCursor(Qt::PointingHandCursor);
         setAttribute(Qt::WA_Hover, true);
     }

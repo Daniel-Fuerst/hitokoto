@@ -20,6 +20,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QRandomGenerator>
+#include <QSignalSpy>
 #include <QTableView>
 #include <QToolButton>
 #include <QUrl>
@@ -552,6 +553,9 @@ private slots:
         QVERIFY(waitComplete(f));
         QCOMPARE(controller(f)->countText(), QStringLiteral("1 of 3"));
         QVERIFY(!f.editor()->isTableSourceShown(2));
+        QTableView* view = f.editor()->tableViewAt(2);
+        QVERIFY(view != nullptr);
+        const QSignalSpy destroyed(view, &QObject::destroyed);
         test::keyClick(bar(f)->searchField(), Qt::Key_Return);
         QCOMPARE(controller(f)->countText(), QStringLiteral("2 of 3"));
         QTRY_VERIFY(f.editor()->isTableSourceShown(2));
@@ -561,6 +565,9 @@ private slots:
         QCOMPARE(controller(f)->countText(), QStringLiteral("3 of 3"));
         QTRY_VERIFY(!f.editor()->isTableSourceShown(2));
         QVERIFY(f.editor()->tableViewAt(2) != nullptr);
+        // The view was kept, not built again (a 1,000-row table takes about 90 ms to build).
+        QCOMPARE(destroyed.count(), 0);
+        QCOMPARE(f.editor()->tableViewAt(2), view);
         QCOMPARE(f.editor()->textCursor().blockNumber(), 0);  // the caret never moved
     }
 
@@ -859,7 +866,8 @@ private slots:
         typeAt(f, 1, 7, QStringLiteral("x"));  // "title: xHallo Welt"
         QVERIFY(waitComplete(f));
         QVERIFY(controller(f)->propertyParses() > before);
-        QCOMPARE(controller(f)->matchCount(), 1);
+        const QString difference = differenceToFresh(f, QStringLiteral("Hallo"));
+        QVERIFY2(difference.isEmpty(), qPrintable(difference));
     }
 
     // Code review O7: the pass ahead from the caret must not pick a match that a match from above
@@ -1115,13 +1123,16 @@ private slots:
             "[find]\nbackground = \"#102030\"\nborder = \"#405060\"\nborder-width = 2\n"
             "current-background = \"#00ff00\"\nfield-background = \"#ffeedd\"\n",
             core::builtinTheme(core::ColorScheme::Light));
-        QVERIFY(parsed.theme.has_value());
-        f.window->applyTheme(*parsed.theme);
+        if (!parsed.theme) {
+            QFAIL("theme not parsed");  // explicit for bugprone-unchecked-optional-access
+        }
+        const core::Theme theme = *parsed.theme;
+        f.window->applyTheme(theme);
         QVERIFY(load(f, QStringLiteral("Anfang\nwort\n")));
         f.placeCaret(0, 0);
         search(f, QStringLiteral("wort"));
         QVERIFY(waitComplete(f));
-        QCOMPARE(bar(f)->findStyle(), core::findStyle(*parsed.theme));
+        QCOMPARE(bar(f)->findStyle(), core::findStyle(theme));
         const QImage barImage = bar(f)->grab().toImage();
         QCOMPARE(barImage.pixelColor(barImage.width() / 2, 0).rgb(), QColor(0x40, 0x50, 0x60).rgb());
         QCOMPARE(barImage.pixelColor(1, barImage.height() / 2).rgb(), QColor(0x10, 0x20, 0x30).rgb());

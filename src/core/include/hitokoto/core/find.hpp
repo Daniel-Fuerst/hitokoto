@@ -138,6 +138,8 @@ public:
     /// Starts inside a table whose header has `columns` cells: the next line added is one of its
     /// rows, after a soft boundary (a lookup starts at a row, not at the header; code review O8).
     void continueTable(std::size_t columns) noexcept;
+    /// Appends units propertyUnits() gave (front matter parsed once and kept; code review O12).
+    void addPropertyUnits(std::span<const FindUnit> units, std::vector<FindUnit>& out);
 
 private:
     void push(std::vector<FindUnit>&& units, std::vector<FindUnit>& out);

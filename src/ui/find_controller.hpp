@@ -17,6 +17,7 @@
 #include <QTimer>
 
 #include <climits>
+#include <functional>
 #include <optional>
 #include <vector>
 
@@ -85,6 +86,22 @@ private:
     struct BlockMatches {
         std::vector<core::FindMatch> matches;
         std::vector<core::FindUnit> units;
+        bool front = false;  ///< in the properties block: the units are front_.units
+    };
+
+    /// Front matter at the start of the document (S023/S024), found and parsed once per change of
+    /// it, not per search (code review O6, O12).
+    struct FrontMatter {
+        bool known = false;                      ///< the fields below describe the document as it is
+        bool option = false;                     ///< frontMatterAsProperties() when it was read
+        bool opens = false;                      ///< line 0 opens front matter
+        int close = -1;                          ///< its closing line, -1 = not closed
+        bool asProperties = false;               ///< closed, valid YAML and the option on: searched as properties
+        core::BlockState textState;              ///< otherwise: the state the first line is entered with
+        std::vector<core::BlockState> entering;  ///< as properties: lines 0 to close + 1
+        std::vector<core::FindUnit> units;       ///< as properties: the units of the block
+        /// As properties, per unit: the row and the part of the PropertiesView it shows in.
+        std::vector<std::pair<int, int>> parts;
     };
 
     void startSearch(core::DocPos anchor);
@@ -102,6 +119,23 @@ private:
     void startAhead();
     /// Runs the pass ahead for at most `nanoseconds`; true while it goes on.
     bool aheadWork(qint64 nanoseconds);
+    /// Front matter walked to its end: keeps what was found (`close` -1: not closed).
+    void keepFrontMatter(bool opens, int close);
+    /// Starts the pass at line 0 with the front matter known.
+    void startAfterFrontMatter();
+    /// Whether line `line`, entered with `entering`, has a non-whitespace character in its
+    /// concealed text (code review O4: only such a line holds a word of a match).
+    [[nodiscard]] bool hasWord(int line, const core::BlockState& entering) const;
+    /// The line a pass must start at to find every match that ends on line `line` or later and
+    /// starts at or below `lowest`: up over one line with a word per word of the search text but
+    /// the last (code review O4, O7). -1 if that takes more than a bounded walk.
+    /// `atLeast`: lines to go up in any case; `holds`: a match from above reaches into the line.
+    [[nodiscard]] int wordWalk(int line, int lowest, int atLeast, const std::function<bool(int)>& wordAt,
+                               const std::function<bool(int)>& holds) const;
+    /// The column count of the table that line `line` (entered inside it) belongs to: its header's.
+    [[nodiscard]] std::size_t tableColumnsAt(int line, const std::function<core::BlockState(int)>& entering) const;
+    /// The matches in the properties block (scanned once per search).
+    [[nodiscard]] const std::vector<core::FindMatch>& frontMatches() const;
 
     [[nodiscard]] BlockMatches matchesOfBlock(int block) const;
     [[nodiscard]] bool isTableInside(const core::BlockState& state) const noexcept;
@@ -112,6 +146,11 @@ private:
     [[nodiscard]] int firstBlockWithMatches(int from, int to) const;
     [[nodiscard]] int lastBlockWithMatches(int from, int to) const;
     void step(int direction);
+    /// One step if the matches it needs are known, working the pass for at most `nanoseconds`
+    /// to get them; false if it has to wait for the pass.
+    bool tryStep(int direction, qint64 nanoseconds);
+    /// Takes the steps asked for before the pass got far enough (code review O9).
+    void takePendingSteps();
 
     void onContentsChange(int position, int charsRemoved, int charsAdded);
     void scheduleRefresh();
@@ -164,14 +203,15 @@ private:
     Pass ahead_;                               ///< from the caret forward, until the current match is found
     std::vector<core::FindMatch> aheadFound_;  ///< matches the pass ahead found so far
     int frontMatterClose_ = -1;                ///< closing line of front matter searched as properties, else -1
-    std::vector<std::u16string> frontMatterYaml_;
+    FrontMatter front_;
+    mutable std::optional<std::vector<core::FindMatch>> frontMatches_;
     QTimer sliceTimer_;
 
     std::optional<core::FindMatch> current_;
     int currentOrdinal_ = -1;
     bool needCurrent_ = false;
     core::DocPos anchor_;
-    int pendingStep_ = 0;
+    int pendingSteps_ = 0;  ///< steps asked for before the pass got far enough (+ next, - previous)
     bool announcePending_ = false;
     QString lastAnnouncement_;
 
@@ -179,6 +219,7 @@ private:
     QList<QTextEdit::ExtraSelection> selections_;
     std::vector<QPointer<TableModel>> markedTables_;
     bool refreshScheduled_ = false;
+    bool stepsScheduled_ = false;
     mutable quint64 lookupRenders_ = 0;
     mutable quint64 propertyParses_ = 0;
 };

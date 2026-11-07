@@ -346,8 +346,15 @@ void FindUnitBuilder::addProperties(std::span<const std::u16string> yaml, std::s
     hardNext_ = true;
 }
 
+void FindUnitBuilder::addPropertyUnits(std::span<const FindUnit> units, std::vector<FindUnit>& out) {
+    push(std::vector<FindUnit>(units.begin(), units.end()), out);
+    hardNext_ = true;
+}
+
 void FindUnitBuilder::continueTable(std::size_t columns) noexcept {
-    (void)columns;  // red: not yet
+    inTable_ = true;
+    hardNext_ = false;
+    columns_ = columns;
 }
 
 std::vector<FindUnit> documentUnits(const ElementRegistry& registry, std::span<const std::u16string> lines,
@@ -412,8 +419,20 @@ public:
                     return scan;
                 }
                 if (end) {
-                    scan.matches.push_back(toMatch(c, *end));
-                    c = *end;
+                    const Cursor stop = *end;
+                    scan.matches.push_back(toMatch(c, stop));
+                    // Code review O1: the destinations the match went past are side units of
+                    // their own; their matches are kept.
+                    for (std::size_t u = c.unit + 1; u < stop.unit; ++u) {
+                        if (units_[u].kind == FindUnitKind::Destination) {
+                            for (FindMatch m : Matcher(units_.subspan(u, 1), query_, false).run(Cursor{}).matches) {
+                                m.unit += u;
+                                m.endUnit += u;
+                                scan.matches.push_back(m);
+                            }
+                        }
+                    }
+                    c = stop;
                     continue;
                 }
             }
@@ -588,6 +607,9 @@ std::u16string matchContext(std::span<const FindUnit> units, const FindMatch& ma
         text += c;
     };
     for (std::size_t u = match.unit; u <= match.endUnit; ++u) {
+        if (u > match.unit && units[u].kind == FindUnitKind::Destination) {
+            continue;  // code review O2: a destination the match went past is not read out
+        }
         if (u > match.unit) {
             space = true;
         }
