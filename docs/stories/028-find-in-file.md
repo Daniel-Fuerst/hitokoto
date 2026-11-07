@@ -1,7 +1,7 @@
 # S028 — Find in the open file
 
-- **Status:** In progress (confirmed by Armin on 2026-11-07, after review
-  `docs/reviews/028-find-in-file-spec.md`) ·
+- **Status:** In review (since 2026-11-07, pull request #27; confirmed by Armin on 2026-11-07,
+  after review `docs/reviews/028-find-in-file-spec.md`) ·
   **Order:** 29 · **Size:** L ·
   **Depends on:** S013–S015, S018, S019, S020, S022, S023, S024, S026 · **Decision:** ADR 0008
 - **Basis:** Armin's feature request and decisions of 2026-11-07. Search is listed in the brief
@@ -465,3 +465,9 @@ After the code review (`docs/reviews/028-find-in-file-code.md`, all twelve objec
   up on refresh, well under a millisecond for 10 MB).
 - One test fix: `frontMatterIsParsedOncePerChange` expected one match after typing `x` before
   `Hallo`, but `xHallo` still contains it; it now compares with a fresh search.
+
+CI of pull request #27 green on Linux, Windows and macOS (2026-11-07); the `s028_*` Linux baselines
+come from that run.
+
+Next: Armin's test of the functionality in practice; changes become stories of their own. Then
+acceptance (Done).

@@ -65,6 +65,13 @@ that held the current match was built again (about 90 ms for 1,000 rows) each ti
 it. A table that shows its source only for the find bar now keeps its view hidden and shows it again
 as it was (`TableEmbedder::park`).
 
+On the Linux CI runner (pull request #27, 2026-11-07, an ordinary runner: core decoding 20 ms at
+3.25 GHz) every hard budget held: key in the find bar median / p95 / max 6.1 / 6.5 / 7.1 ms, next
+match max 4.2 ms, before the count is complete max 9.9 ms, the 1,000-row table with "Highlight
+all" 7.5 / 22.7 ms per key (median / max) and 4.9 ms max per step, typing in the document
+1.0 / 1.3 / 8.7 ms. The full count took 1.5 s, above the informational target of 1 s. The
+`s028_*` values in `bench/baselines/linux.json` come from that run, added like `s023_*`.
+
 ### 2026-11-07, development VM, S028 (release build, offscreen, Qt 6.12.0)
 
 `s028_*` (story S028, review O4 and O6): the 10 MB document (`largeDocument`, 445,000 lines) with

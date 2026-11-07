@@ -36,6 +36,10 @@ The `s023_*` values (a 10 MB document of breaks, setext headings and long hard-w
 paragraphs: opening, typing on a break, `- ` before and an underline below a 20,000-line
 paragraph) were added the same way from the CI run of pull request #22 (2026-10-30); their
 maxima and the times until restyling are `info` only, the keys have a hard budget of 50 ms.
+The `s028_*` values (find: keys in the bar, next match before and after the count is complete,
+typing with "Highlight all" in 10 MB, and keys and steps in a 1,000-row table) were added the same
+way from the CI run of pull request #27 (2026-11-07); their maxima and the full count are `info`,
+keys and steps have a hard budget of 50 ms.
 Since 2026-10-28 the Windows and macOS benchmarks are off until further notice (user decision,
 `ci.yml`): their runners swing too much for a gate, and a comparison that only reports is read by
 nobody. `windows.json` and `macos.json` keep values of the earlier measurement and need new ones
