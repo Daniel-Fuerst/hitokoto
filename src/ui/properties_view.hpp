@@ -12,6 +12,7 @@
 #include "hitokoto/core/theme.hpp"
 
 #include <QAccessible>
+#include <QColor>
 #include <QElapsedTimer>
 #include <QFont>
 #include <QStringList>
@@ -43,6 +44,16 @@ public:
 
     /// Starts over with these properties; no row is laid out yet.
     void reset(std::vector<core::Property> properties);
+    /// S028 highlight all: a key, a value or a chip of a list that holds a match (code review O3).
+    struct FindMark {
+        static constexpr int kKey = -1;
+        static constexpr int kValue = -2;
+        int row = 0;
+        int part = kValue;  ///< kKey, kValue, or the index of a chip
+        friend bool operator==(const FindMark&, const FindMark&) = default;
+    };
+    /// Draws these parts on `background` (a chip: as its background).
+    void setFindMarks(std::vector<FindMark> marks, const QColor& background);
     /// Lays out rows in document order until `nanoseconds` have passed since `timer` started; true
     /// when every row is laid out and the block has its height.
     bool build(const QElapsedTimer& timer, qint64 nanoseconds);
@@ -71,6 +82,8 @@ public:
     /// Lines of keys and text values painted by the last paint event (code review O2: only those on
     /// screen).
     [[nodiscard]] int paintedTextLines() const noexcept { return paintedTextLines_; }
+    /// The rectangles "Highlight all" fills, in the view's coordinates (S028 code review O3).
+    [[nodiscard]] std::vector<QRect> findMarkRects() const;
 
 signals:
     /// A click released on row `row` (-1: the title or elsewhere in the block); `extend`: with
@@ -125,7 +138,10 @@ private:
     /// Paints the lines of `text` that lie in `area`, at `origin`; returns how many.
     static int paintText(QPainter& painter, const Text& text, QPointF origin, const QRect& area);
     /// Returns the lines of keys and text values painted.
-    int paintRow(QPainter& painter, const Row& row, const core::Property& property, const QRect& area) const;
+    int paintRow(QPainter& painter, const Row& row, const core::Property& property, const QRect& area,
+                 int rowIndex) const;
+    /// Where mark `mark` lies, in the view's coordinates (empty if its row is not laid out).
+    [[nodiscard]] QRectF markRect(const FindMark& mark) const;
     void paintIcon(QPainter& painter, const QRectF& rect, core::PropertyType type) const;
     void finishLayout();
     void forgetAccessibleElements();
@@ -135,7 +151,9 @@ private:
 
     Look look_;
     std::vector<core::Property> properties_;
-    std::vector<Row> rows_;  ///< laid out so far, in document order
+    std::vector<Row> rows_;            ///< laid out so far, in document order
+    std::vector<FindMark> findMarks_;  ///< S028
+    QColor findBackground_;
     QRect title_;
     qreal line_ = 0;  ///< line spacing of the block's font
     qreal gap_ = 0;   ///< width of a space

@@ -529,7 +529,25 @@ QString EditorWidget::frontMatterBadge() const {
 }
 
 void EditorWidget::setFrontMatterAsProperties(bool on) {
+    frontMatterAsProperties_ = on;
     properties_->setEnabled(on);
+}
+
+void EditorWidget::setFindHold(int first, int last, bool untilCaretLeaves) {
+    tables_->setFindHold(first, last, untilCaretLeaves);
+    properties_->setFindHold(untilCaretLeaves ? -1 : first, last);  // after Escape the caret holds the YAML
+}
+
+void EditorWidget::showPosition(int position) {
+    QTextCursor c(document());
+    c.setPosition(std::clamp(position, 0, std::max(0, document()->characterCount() - 1)));
+    const QRect r = cursorRect(c);
+    const QRect view = viewport()->rect();
+    if (r.top() >= view.top() && r.bottom() <= view.bottom()) {
+        return;
+    }
+    QScrollBar* bar = verticalScrollBar();
+    bar->setValue(bar->value() + r.center().y() - view.height() / 2);
 }
 
 void EditorWidget::placeCaretAfterOpening(bool loaded) {

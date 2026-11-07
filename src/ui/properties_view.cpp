@@ -19,8 +19,10 @@
 #include <QWindow>
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <memory>
+#include <utility>
 
 namespace hitokoto::ui {
 
@@ -446,8 +448,15 @@ void PropertiesView::paintEvent(QPaintEvent* event) {
     }
     paintedTextLines_ = 0;
     for (; it != rows_.end() && it->rect.top() <= area.bottom(); ++it) {
-        paintedTextLines_ +=
-            paintRow(painter, *it, properties_[static_cast<std::size_t>(std::distance(rows_.begin(), it))], area);
+        const auto row = static_cast<int>(std::distance(rows_.begin(), it));
+        const auto [lo, hi] = std::equal_range(findMarks_.begin(), findMarks_.end(), FindMark{row, INT_MIN},
+                                               [](const FindMark& a, const FindMark& b) { return a.row < b.row; });
+        for (auto mark = lo; mark != hi; ++mark) {
+            if (mark->part < 0) {
+                painter.fillRect(markRect(*mark), findBackground_);  // S028 "Highlight all"; chips below
+            }
+        }
+        paintedTextLines_ += paintRow(painter, *it, properties_[static_cast<std::size_t>(row)], area, row);
     }
 }
 
@@ -488,7 +497,8 @@ int PropertiesView::paintText(QPainter& painter, const Text& text, QPointF origi
     return painted;
 }
 
-int PropertiesView::paintRow(QPainter& painter, const Row& row, const core::Property& p, const QRect& area) const {
+int PropertiesView::paintRow(QPainter& painter, const Row& row, const core::Property& p, const QRect& area,
+                             int rowIndex) const {
     const core::PropertiesStyle& s = look_.style;
     const QPointF origin = row.rect.topLeft();
     paintIcon(painter, QRectF(origin.x(), origin.y() + (line_ - icon_) / 2, icon_, icon_), p.type);
@@ -516,8 +526,14 @@ int PropertiesView::paintRow(QPainter& painter, const Row& row, const core::Prop
         }
         case core::PropertyType::List:
         case core::PropertyType::Tags:
-            for (const Chip& chip : row.chips) {
+            for (std::size_t c = 0; c < row.chips.size(); ++c) {
+                const Chip& chip = row.chips[c];
                 const QRectF r = chip.rect.translated(value.topLeft());
+                const bool marked =
+                    std::binary_search(findMarks_.begin(), findMarks_.end(), FindMark{rowIndex, static_cast<int>(c)},
+                                       [](const FindMark& a, const FindMark& b) {
+                                           return std::pair(a.row, a.part) < std::pair(b.row, b.part);
+                                       });
                 if (r.bottom() < area.top()) {
                     continue;  // only the chips in the area
                 }
@@ -526,7 +542,7 @@ int PropertiesView::paintRow(QPainter& painter, const Row& row, const core::Prop
                 }
                 const qreal border = s.chipBorderWidth;
                 painter.setPen(border > 0 ? QPen(toQColor(s.chipBorder), border) : QPen(Qt::NoPen));
-                painter.setBrush(toQColor(s.chipBackground));
+                painter.setBrush(marked ? findBackground_ : toQColor(s.chipBackground));
                 const qreal radius = std::min<qreal>(s.chipRadius, r.height() / 2);
                 painter.drawRoundedRect(r.adjusted(border / 2, border / 2, -border / 2, -border / 2), radius, radius);
                 painter.setPen(toQColor(s.chipText));
@@ -726,6 +742,61 @@ void PropertiesView::forgetAccessibleElements() {
         }
     }
     accessibleElements_.clear();
+}
+
+QRectF PropertiesView::markRect(const FindMark& mark) const {
+    if (mark.row < 0 || mark.row >= static_cast<int>(rows_.size())) {
+        return {};
+    }
+    const Row& row = rows_[static_cast<std::size_t>(mark.row)];
+    const QPointF origin = row.rect.topLeft();
+    const QFontMetricsF metrics(look_.font);
+    const auto extent = [&](const Text& text) {
+        const qreal width =
+            text.layout == nullptr ? std::min(text.width, metrics.horizontalAdvance(text.line)) : text.width;
+        return QSizeF(std::max<qreal>(1, width), std::max(line_, text.height));
+    };
+    if (mark.part == FindMark::kKey) {
+        return {QPointF(origin.x() + icon_ + gap_, origin.y()), extent(row.keyText)};
+    }
+    const QPointF value(origin.x() + row.valueX, origin.y());
+    if (mark.part >= 0) {
+        if (mark.part >= static_cast<int>(row.chips.size())) {
+            return {};
+        }
+        return row.chips[static_cast<std::size_t>(mark.part)].rect.translated(value);
+    }
+    const bool noText = row.valueText.line.isEmpty() && row.valueText.layout == nullptr;
+    if (!row.chips.empty() || !row.lines.isEmpty() || noText) {
+        return {value, QSizeF(row.valueWidth, row.valueHeight)};  // a checkbox, JSON, or an empty value
+    }
+    return {value, extent(row.valueText)};
+}
+
+std::vector<QRect> PropertiesView::findMarkRects() const {
+    std::vector<QRect> out;
+    for (const FindMark& mark : findMarks_) {
+        const QRectF r = markRect(mark);
+        if (!r.isEmpty()) {
+            out.push_back(r.toAlignedRect());
+        }
+    }
+    return out;
+}
+
+void PropertiesView::setFindMarks(std::vector<FindMark> marks, const QColor& background) {
+    // Sorted by row and part, each once: the paint event looks them up per row.
+    const auto less = [](const FindMark& a, const FindMark& b) {
+        return std::pair(a.row, a.part) < std::pair(b.row, b.part);
+    };
+    std::sort(marks.begin(), marks.end(), less);
+    marks.erase(std::unique(marks.begin(), marks.end()), marks.end());
+    if (marks == findMarks_ && background == findBackground_) {
+        return;
+    }
+    findMarks_ = std::move(marks);
+    findBackground_ = background;
+    update();
 }
 
 }  // namespace hitokoto::ui

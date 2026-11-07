@@ -131,6 +131,9 @@ bool PropertiesEmbedder::caretInside() const {
     if (close_ < 0) {
         return false;
     }
+    if (findFirst_ >= 0 && findFirst_ <= close_ && findLast_ >= 0) {
+        return true;  // S028: the find bar's current match is in the YAML
+    }
     const QTextCursor c = editor_->textCursor();
     const int anchor = editor_->document()->findBlock(c.anchor()).blockNumber();
     return c.blockNumber() <= close_ && anchor <= close_;
@@ -286,6 +289,15 @@ void PropertiesEmbedder::caretMoved() {
     }
     apply();
     updateBadge();
+}
+
+void PropertiesEmbedder::setFindHold(int first, int last) {
+    if (findFirst_ == first && findLast_ == last) {
+        return;
+    }
+    findFirst_ = first;
+    findLast_ = first < 0 ? -1 : last;
+    caretMoved();
 }
 
 void PropertiesEmbedder::setMouseHeld(bool held) {

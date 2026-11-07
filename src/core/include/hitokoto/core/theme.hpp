@@ -91,6 +91,17 @@ struct ToolbarTokens {
     friend bool operator==(const ToolbarTokens&, const ToolbarTokens&) = default;
 };
 
+/// Tokens of `[find]` (S028); resolved by findStyle().
+struct FindTokens {
+    std::optional<Color> background, border, text, fieldBackground, fieldText, fieldBorder, fieldFocusBorder,
+        noMatchBackground, icon, hoverBackground, activeBackground, activeIcon, currentBackground, currentText,
+        matchBackground, matchText;
+    std::optional<double> borderWidth, padding, spacing, fontScale, fieldBorderWidth, fieldRadius, buttonSize,
+        buttonRadius;
+    std::optional<std::string> fontFamily;
+    friend bool operator==(const FindTokens&, const FindTokens&) = default;
+};
+
 /// Every value the UI uses for colours, fonts, radii and spacing. Hard-coded styling values
 /// in UI code are bugs; add a token instead.
 struct Theme {
@@ -130,6 +141,7 @@ struct Theme {
     ThematicBreakTokens thematicBreak;
     PropertiesTokens properties;
     ToolbarTokens toolbar;
+    FindTokens find;
 
     friend bool operator==(const Theme&, const Theme&) = default;
 };
@@ -241,6 +253,22 @@ struct ToolbarStyle {
     friend bool operator==(const ToolbarStyle&, const ToolbarStyle&) = default;
 };
 
+/// Resolved look of the find bar and its highlights (S028).
+struct FindStyle {
+    Color background, border, text, fieldBackground, fieldText, fieldBorder, fieldFocusBorder, noMatchBackground, icon,
+        hoverBackground, activeBackground, activeIcon, currentBackground, currentText, matchBackground, matchText;
+    double borderWidth = 1;
+    double padding = 0;
+    double spacing = 0;
+    double fontScale = 1;
+    double fieldBorderWidth = 1;
+    double fieldRadius = 0;
+    double buttonSize = 24;
+    double buttonRadius = 0;
+    std::string fontFamily;  ///< empty = UI font
+    friend bool operator==(const FindStyle&, const FindStyle&) = default;
+};
+
 [[nodiscard]] CodeStyle codeBlockStyle(const Theme& theme);
 [[nodiscard]] CodeStyle inlineCodeStyle(const Theme& theme);
 [[nodiscard]] EmphasisStyle emphasisStyle(const Theme& theme);
@@ -250,6 +278,7 @@ struct ToolbarStyle {
 [[nodiscard]] ThematicBreakStyle thematicBreakStyle(const Theme& theme);
 [[nodiscard]] PropertiesStyle propertiesStyle(const Theme& theme);
 [[nodiscard]] ToolbarStyle toolbarStyle(const Theme& theme);
+[[nodiscard]] FindStyle findStyle(const Theme& theme);
 
 /// All tokens of the theme format, in documentation order.
 std::span<const ThemeTokenInfo> themeTokens();

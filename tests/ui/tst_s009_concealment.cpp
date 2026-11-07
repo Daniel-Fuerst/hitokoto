@@ -5,12 +5,20 @@
 // Extended for thematic breaks and setext headings (S023): breaks revealed under the caret, underlines
 // while the caret is on their heading; no line moves. Extended for front matter shown as properties
 // (S024): the YAML shows exactly while the caret is in it; only then the lines below move.
+// Extended for find highlights (S028): highlights change no geometry and never show a concealed
+// marker; after Escape into a table the caret stays on shown lines.
+#include "find_bar.hpp"
+#include "find_controller.hpp"
 #include "ui_test_support.hpp"
+
+#include <QLineEdit>
+#include <QToolButton>
 
 #include <QAccessible>
 #include <QMap>
 #include <QRandomGenerator>
 
+#include <algorithm>
 #include <array>
 
 using namespace hitokoto;
@@ -253,6 +261,114 @@ private slots:
                     QVERIFY2(r.top() == c.top(), qPrintable(where + QStringLiteral(": line %1 moved").arg(n)));
                 }
             }
+        }
+    }
+
+    void findHighlightsWhileWalking() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("find.md"), kDocument)));
+        f.placeCaret(9);
+        f.settle();
+        auto* editor = f.editor();
+        const auto* doc = editor->document();
+        const auto rectOf = [&](int n) { return editor->blockLayout()->blockBoundingRect(doc->findBlockByNumber(n)); };
+        std::vector<QRectF> before;
+        before.reserve(static_cast<std::size_t>(doc->blockCount()));
+        for (int n = 0; n < doc->blockCount(); ++n) {
+            before.push_back(rectOf(n));
+        }
+        ui::FindController* find = f.window->findController();
+        ui::FindBar* bar = f.window->findBar();
+        find->open();
+        test::keyClicks(bar->searchField(), QStringLiteral("link"));
+        QVERIFY(QTest::qWaitFor([&] { return find->isComplete(); }, 30000));
+        QVERIFY(find->matchCount() >= 4);
+        QTest::mouseClick(bar->highlightAllToggle(), Qt::LeftButton);
+        QVERIFY(find->highlightAll());
+        f.settle();
+        for (int n = 0; n < doc->blockCount(); ++n) {
+            QVERIFY2(rectOf(n) == before.at(static_cast<std::size_t>(n)),
+                     qPrintable(QStringLiteral("line %1 moved or changed height under the highlights").arg(n)));
+        }
+        const auto noMarkerUnderAHighlight = [&](const QString& where) {
+            for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+                for (const auto& r : find->highlightFormats(b.blockNumber())) {
+                    if (!r.format.hasProperty(QTextFormat::ForegroundBrush)) {
+                        continue;
+                    }
+                    // Code review O11: no hidden range at all (collapsed or keeping its space).
+                    const auto hidden = editor->styler().renderFor(b).hidden;
+                    for (int col = r.start; col < r.start + r.length; ++col) {
+                        const bool inHidden = std::any_of(hidden.begin(), hidden.end(), [col](const auto& h) {
+                            return col >= static_cast<int>(h.span.start) && col < static_cast<int>(h.span.end());
+                        });
+                        QVERIFY2(
+                            !test::isCollapsed(b, col) && !inHidden,
+                            qPrintable(
+                                where +
+                                QStringLiteral(": marker on line %1, column %2 shows").arg(b.blockNumber()).arg(col)));
+                    }
+                }
+            }
+        };
+        noMarkerUnderAHighlight(QStringLiteral("start"));
+        editor->setFocus();
+        constexpr std::array kKeys = {Qt::Key_Up,   Qt::Key_Down, Qt::Key_Left,   Qt::Key_Right,
+                                      Qt::Key_Home, Qt::Key_End,  Qt::Key_PageUp, Qt::Key_PageDown};
+        QRandomGenerator rng(20261107);
+        for (int step = 0; step < 150; ++step) {
+            test::keyClick(editor, kKeys.at(rng.bounded(static_cast<quint32>(kKeys.size()))));
+            const bool stepped = step % 10 == 0;
+            if (stepped) {
+                test::keyClick(editor, Qt::Key_F3);  // the current match moves
+            }
+            f.settle();
+            noMarkerUnderAHighlight(QStringLiteral("step %1").arg(step));
+            if (stepped) {
+                // Code review O11: no line moves when the current match moves (no table here).
+                for (int n = 0; n < doc->blockCount(); ++n) {
+                    QVERIFY2(rectOf(n) == before.at(static_cast<std::size_t>(n)),
+                             qPrintable(QStringLiteral("step %1: line %2 moved").arg(step).arg(n)));
+                }
+            }
+        }
+    }
+
+    void caretOnShownLinesAfterEscapeIntoATable() {
+        constexpr auto document =
+            "Above\n"
+            "\n"
+            "| Colour | Text |\n"
+            "| --- | --- |\n"
+            "| **red** and green | blue |\n"
+            "\n"
+            "Below\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("table.md"), document)));
+        f.placeCaret(0);
+        f.settle();
+        auto* editor = f.editor();
+        const auto* doc = editor->document();
+        ui::FindController* find = f.window->findController();
+        find->open();
+        test::keyClicks(f.window->findBar()->searchField(), QStringLiteral("red and"));
+        QVERIFY(QTest::qWaitFor([&] { return find->isComplete(); }, 30000));
+        test::keyClick(f.window->findBar()->searchField(), Qt::Key_Escape);
+        QVERIFY(editor->textCursor().hasSelection());
+        const auto rectOf = [&](int n) { return editor->blockLayout()->blockBoundingRect(doc->findBlockByNumber(n)); };
+        constexpr std::array kKeys = {Qt::Key_Up, Qt::Key_Down, Qt::Key_Left, Qt::Key_Right, Qt::Key_Home, Qt::Key_End};
+        QRandomGenerator rng(2811);
+        for (int step = 0; step < 100; ++step) {
+            f.settle();
+            if (QApplication::focusWidget() == editor) {
+                const int caret = editor->textCursor().blockNumber();
+                const int anchor = doc->findBlock(editor->textCursor().anchor()).blockNumber();
+                const QString where = QStringLiteral("step %1, caret on %2").arg(step).arg(caret);
+                QVERIFY2(rectOf(caret).height() > 0, qPrintable(where + QStringLiteral(": caret on a hidden line")));
+                QVERIFY2(rectOf(anchor).height() > 0, qPrintable(where + QStringLiteral(": anchor on a hidden line")));
+            }
+            QWidget* target = QApplication::focusWidget() != nullptr ? QApplication::focusWidget() : editor;
+            test::keyClick(target, kKeys.at(rng.bounded(static_cast<quint32>(kKeys.size()))));
         }
     }
 };

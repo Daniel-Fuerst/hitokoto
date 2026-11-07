@@ -198,6 +198,31 @@ follows the general tokens above.
 | `toolbar.hover-background` | color | Background of a button in the floating toolbar when hovered | `colors.border` |
 | `toolbar.active-background` | color | Background of a button in the floating toolbar while pressed | `colors.accent` |
 | `toolbar.active-icon` | color | Icon colour of a button in the floating toolbar while pressed | `colors.background` |
+| `find.background` | color | Background of the find bar | `colors.surface` |
+| `find.border` | color | Line between the editor and the find bar | `colors.border` |
+| `find.border-width` | number (px) | Width of that line, 0 to 8 | 1 |
+| `find.padding` | number (px) | Space inside the find bar, 0 to 32 | `layout.spacing` |
+| `find.spacing` | number (px) | Space between the find bar's controls, 0 to 32 | `layout.spacing` |
+| `find.text` | color | Count and labels of the find bar | `colors.text-muted` |
+| `find.font-family` | string | Font of the search field and count; "" = UI font | "" |
+| `find.font-scale` | number | Size of the search field and count relative to the UI font, 0.5 to 2 | 1 |
+| `find.field-background` | color | Search field | `colors.background` |
+| `find.field-text` | color | Text in the search field | `colors.text` |
+| `find.field-border` | color | Border of the search field | `colors.border` |
+| `find.field-focus-border` | color | Border of the focused search field | `colors.primary` |
+| `find.field-border-width` | number (px) | Border width of the search field, 0 to 8 | 1 |
+| `find.field-radius` | number (px) | Corner radius of the search field, 0 to 32 | `layout.radius` |
+| `find.no-match-background` | color | Search field when nothing matches | #f8d7da (light), #5c2b2e (dark) |
+| `find.icon` | color | Icons of the find bar's buttons and toggles | `colors.text` |
+| `find.button-size` | number (px) | Width and height of the find bar's buttons and toggles, 16 to 64 | 24 |
+| `find.button-radius` | number (px) | Corner radius of the find bar's buttons and toggles, 0 to 32 | `layout.radius` |
+| `find.hover-background` | color | Button or toggle of the find bar under the mouse | `colors.border` |
+| `find.active-background` | color | Pressed button or toggle that is on | `colors.selection` |
+| `find.active-icon` | color | Icon of a pressed button or a toggle that is on | `colors.selection-text` |
+| `find.current-background` | color | Current match | #ffd43b (light), #c99a06 (dark) |
+| `find.current-text` | color | Text of the current match | #1a1a1a |
+| `find.match-background` | color | Other matches (highlight all); cells, property keys and values, and chips with a match | #fff3bf (light), #5c4a12 (dark) |
+| `find.match-text` | color | Text of other matches | #1a1a1a (light), #f1f1f1 (dark) |
 
 A thematic break (`---`, `***`, `___`) is a line across the text column, centred vertically in its block.
 Setext headings (text underlined with `===` or `---`) add no tokens: their lines use the heading
@@ -209,6 +234,12 @@ chips; the key column takes `properties.key-width`, at most half the block; a ch
 only; a nested value shows its JSON in `properties.unsupported-text`, at most three lines. Margin
 and padding are part of the block's geometry, as for a code block. Invalid YAML stays text and shows
 a badge after its first line (`properties.badge-*`).
+
+The find bar (S028) sits below the editor. "(light)" and "(dark)" name the fallbacks of the
+built-in light and dark bases; the highlight text colours fall back to fixed values, so the text on a
+highlight keeps its contrast whatever a theme sets for `colors.text`. With "Highlight all", a table
+cell, a property key or value, or a chip that contains a match takes `find.match-background` as its
+background while its element shows cells or rows.
 
 Bold text is never lighter than the text around it: inside a heading the weight is the larger of
 `headings.weight` and `emphasis.bold-weight`. The built-in themes set both to 700, so bold inside a

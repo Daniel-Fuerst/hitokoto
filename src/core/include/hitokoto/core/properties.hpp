@@ -99,4 +99,29 @@ struct Properties {
 /// throws; linear in the length of the input; nesting deeper than 64 levels is an error.
 [[nodiscard]] Properties parseProperties(std::span<const std::u16string> yamlLines);
 
+/// S028: a run of a unit's text and the source range it comes from, in the YAML lines passed in
+/// ([line, column] to [endLine, endColumn), UTF-16). A run is one to one if its source lies on one
+/// line and has its length; otherwise it is atomic (an escape, `''`, a folded line break).
+struct PropertySourceRun {
+    std::size_t textStart = 0;
+    std::size_t textLength = 0;
+    std::size_t line = 0;
+    std::size_t column = 0;
+    std::size_t endLine = 0;
+    std::size_t endColumn = 0;
+    friend bool operator==(const PropertySourceRun&, const PropertySourceRun&) = default;
+};
+
+/// S028: a key, a scalar value, a list or tags item, or a key or scalar inside an unsupported
+/// value, as the parser reads it (quotes, escapes and folding resolved), with its source.
+struct PropertyUnit {
+    std::u16string text;
+    std::vector<PropertySourceRun> runs;  ///< cover `text` in order, without gaps
+    friend bool operator==(const PropertyUnit&, const PropertyUnit&) = default;
+};
+
+/// S028: the searchable units of the front matter in document order (keys, then their values);
+/// nulls and empty scalars give none. Empty if the YAML has an error.
+[[nodiscard]] std::vector<PropertyUnit> propertySourceUnits(std::span<const std::u16string> yamlLines);
+
 }  // namespace hitokoto::core
