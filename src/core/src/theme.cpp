@@ -840,6 +840,11 @@ ToolbarStyle toolbarStyle(const Theme& t) {
     };
 }
 
+FindStyle findStyle(const Theme& t) {
+    (void)t;
+    return {};  // S028: stub for the red tests
+}
+
 std::string_view builtinThemeSource(ColorScheme scheme) {
     return scheme == ColorScheme::Dark ? kDark : kLight;
 }

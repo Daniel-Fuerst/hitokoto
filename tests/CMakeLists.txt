@@ -16,6 +16,7 @@ add_executable(hitokoto_core_tests
     core/test_s023_thematic_breaks.cpp
     core/test_s024_front_matter.cpp
     core/test_s026_floating_toolbar.cpp
+    core/test_s028_find_in_file.cpp
     core/test_s004_save.cpp
     core/test_s005_theme.cpp
     core/test_s007_large_files.cpp

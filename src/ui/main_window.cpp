@@ -4,6 +4,8 @@
 #include "application_icon.hpp"
 #include "document_session.hpp"
 #include "editor_widget.hpp"
+#include "find_bar.hpp"
+#include "find_controller.hpp"
 
 #include <QAction>
 #include <QCloseEvent>
@@ -13,6 +15,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QScreen>
+#include <QVBoxLayout>
 
 #include <algorithm>
 
@@ -28,7 +31,16 @@ MainWindow::MainWindow(const core::ElementRegistry& registry, QWidget* parent)
     const QIcon icon = applicationIcon();
     QGuiApplication::setWindowIcon(icon);
     setWindowIcon(icon);
-    setCentralWidget(editor_);
+    // S028: the find bar below the editor.
+    auto* central = new QWidget(this);
+    auto* column = new QVBoxLayout(central);
+    column->setContentsMargins(0, 0, 0, 0);
+    column->setSpacing(0);
+    column->addWidget(editor_, 1);
+    findBar_ = new FindBar(central);
+    column->addWidget(findBar_);
+    setCentralWidget(central);
+    find_ = new FindController(editor_, findBar_, registry, this);
     createMenus();
 
     askSave_ = [this](const QString& name) {

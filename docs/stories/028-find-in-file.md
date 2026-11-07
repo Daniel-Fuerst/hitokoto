@@ -67,10 +67,12 @@ document (ADR 0002).
 
 Between two units lies a boundary. A **soft** boundary (between lines, between cells of one table,
 between keys, values and items of one block) counts as a whitespace run for decision 4 and as a line
-boundary for decision 5. A **hard** boundary (both sides of a link destination, the first and last
-cell of a table, the first and last unit of a properties block) counts as a line boundary for
+boundary for decision 5. A **hard** boundary (before the first and after the last cell of a table,
+before the first and after the last unit of a properties block) counts as a line boundary for
 decision 5, and no match crosses it. Two adjacent whitespace runs separated by a soft boundary are
-one run.
+one run. A link destination is a side unit with hard edges: no match enters or leaves it, and the
+text around its link goes on past it as if it were not there (`hier` at the end of a line with a
+link and `weiter` on the next line are found by `hier weiter`).
 
 **Concealed text of a line.** What the hidden ranges remove: heading markers (`#` and the space
 after them), bullet markers, emphasis and strikethrough delimiters, backticks of code spans, the

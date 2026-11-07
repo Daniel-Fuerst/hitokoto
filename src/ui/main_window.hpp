@@ -13,6 +13,8 @@ namespace hitokoto::ui {
 
 class EditorWidget;
 class DocumentSession;
+class FindBar;
+class FindController;
 
 /// Answer to "save changes?" (S008).
 enum class SaveChoice { Save, Discard, Cancel };
@@ -27,6 +29,9 @@ public:
 
     [[nodiscard]] EditorWidget* editor() const noexcept { return editor_; }
     [[nodiscard]] DocumentSession* session() const noexcept { return session_; }
+    /// S028: the find bar below the editor and what drives it.
+    [[nodiscard]] FindBar* findBar() const noexcept { return findBar_; }
+    [[nodiscard]] FindController* findController() const noexcept { return find_; }
 
     // Test seams: replace the dialogs.
     using AskSaveFn = std::function<SaveChoice(const QString& documentName)>;
@@ -67,6 +72,8 @@ private:
 
     EditorWidget* editor_;
     DocumentSession* session_;
+    FindBar* findBar_ = nullptr;
+    FindController* find_ = nullptr;
     AskSaveFn askSave_;
     MessageFn message_;
     PickPathFn pickPath_;
