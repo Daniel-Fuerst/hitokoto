@@ -30,6 +30,16 @@ local measurements.
 
 ## Measurements
 
+### 2026-11-08, CI runner, S029 gate (pull request #31)
+
+The Linux benchmark job with the main stage (no `bench-data` yet: build of the base commit and four
+more runs of `hitokoto-bench`) took 7 min 52 s, of which the build of the pull request 57 s and the
+core benchmarks 9 s. The job's `timeout-minutes` is 30. The first run (AMD EPYC 9V45, 4 CPUs) failed
+on `open_10mb_first_chunk_ms` alone: the round medians were 48.1 and 47.9 ms for the base and 64.6
+and 64.6 ms for the pull request, and every round had single opens at both levels, one frame apart.
+Since then a first-screen key needs 20 ms of difference (story S029, rule "First screen of an
+opening").
+
 ### 2026-10-25, CI runners (run #18, pull request #5)
 
 GitHub-hosted runners (ubuntu-24.04 with Qt 6.12, windows-2022 with Qt 6.8.3, macos-15 with

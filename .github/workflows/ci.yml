@@ -134,8 +134,9 @@ jobs:
     name: Benchmarks (${{ matrix.name }})
     needs: build-test
     runs-on: ${{ matrix.os }}
-    # Until the duration of the main stage is measured on the S029 pull request (then derived from it).
-    timeout-minutes: 120
+    # S029: with the main stage (base build and four more rounds) the job took 7 min 52 s on pull
+    # request #31 (2026-11-08); about four times that leaves room for slower runner classes.
+    timeout-minutes: 30
     permissions:
       contents: read
       issues: read
