@@ -403,7 +403,9 @@ void EditorWidget::wheelEvent(QWheelEvent* event) {
         const int lineSpacing =
             fontMetrics().lineSpacing() > 0 ? fontMetrics().lineSpacing() : verticalScrollBar()->singleStep();
         const int lines = QApplication::wheelScrollLines() > 0 ? QApplication::wheelScrollLines() : 3;
-        const double distancePerNotch = static_cast<double>(lines * (lineSpacing > 0 ? lineSpacing : 20));
+        // One notch scrolls 1.8 times the system's wheel lines (S027, Daniel 2026-11-08).
+        constexpr double kNotchFactor = 1.8;
+        const double distancePerNotch = kNotchFactor * lines * (lineSpacing > 0 ? lineSpacing : 20);
         delta = -(static_cast<double>(angleY) / 120.0) * distancePerNotch;
     }
 
