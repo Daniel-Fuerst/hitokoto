@@ -364,7 +364,7 @@ private slots:
         QVERIFY(scroller->isRunning());
 
         QVERIFY(anim.stepUntil([&] { return !scroller->isRunning(); }));
-        QCOMPARE(bar->value(), static_cast<int>(targetBefore) + 40);
+        QCOMPARE(bar->value(), static_cast<int>(std::lround(targetBefore + 40.0)));
     }
 
     void programmaticScrollDuringAnimationStopsIt() {
