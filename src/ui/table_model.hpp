@@ -6,8 +6,10 @@
 #include "hitokoto/core/markdown.hpp"
 
 #include <QAbstractTableModel>
+#include <QColor>
 #include <QTextBlock>
 
+#include <utility>
 #include <vector>
 
 class QTextDocument;
@@ -47,6 +49,8 @@ public:
     [[nodiscard]] int positionOfCell(int row, int column) const;
     [[nodiscard]] bool isRowEmpty(int row) const;
 
+    /// S028 highlight all: cells (row, column) holding a match, drawn on `background`.
+    void setFindCells(std::vector<std::pair<int, int>> cells, const QColor& background);
     [[nodiscard]] int rowCount(const QModelIndex& parent = {}) const override;
     [[nodiscard]] int columnCount(const QModelIndex& parent = {}) const override;
     [[nodiscard]] QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
@@ -63,6 +67,8 @@ private:
     QTextBlock last_;
     std::vector<core::TableAlign> aligns_;
     int columns_ = 0;
+    std::vector<std::pair<int, int>> findCells_;  ///< S028
+    QColor findBackground_;
 };
 
 }  // namespace hitokoto::ui

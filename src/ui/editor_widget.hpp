@@ -57,6 +57,13 @@ public:
     [[nodiscard]] QString frontMatterBadge() const;
     /// S024 review O2: front matter as a properties block (on) or as plain text, as in S023 (off).
     void setFrontMatterAsProperties(bool on);
+    [[nodiscard]] bool frontMatterAsProperties() const noexcept { return frontMatterAsProperties_; }
+    /// S028 review O8: a table or the front matter with lines in [first, last] shows its source
+    /// while the find bar's current match is there; `untilCaretLeaves` (after Escape, tables): until
+    /// the caret and the anchor have left it. first < 0 releases it.
+    void setFindHold(int first, int last, bool untilCaretLeaves);
+    /// S028: scrolls so that document position `position` is on screen, without moving the caret.
+    void showPosition(int position);
     /// After opening a file (`loaded`: all of it is in): the caret below closed front matter, else at
     /// the start of the document (S024).
     void placeCaretAfterOpening(bool loaded);
@@ -136,6 +143,7 @@ private:
     FloatingToolbar* toolbar_ = nullptr;
     SmoothScroller* verticalScroller_ = nullptr;
     bool smoothScrolling_ = true;
+    bool frontMatterAsProperties_ = true;
     double padding_ = 0;
     double maxWidth_ = 0;
     quint64 editCount_ = 0;

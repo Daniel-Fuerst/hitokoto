@@ -35,4 +35,14 @@ inline void keyClicks([[maybe_unused]] QWidget* widget, [[maybe_unused]] const Q
 #endif
 }
 
+/// Types `text` one character at a time, also characters outside ASCII, for which
+/// QTest::keyClicks asserts (S028: "äpfel" in the search field).
+inline void typeText([[maybe_unused]] QWidget* widget, [[maybe_unused]] const QString& text) {
+#ifndef __clang_analyzer__
+    for (const QChar c : text) {
+        QTest::sendKeyEvent(QTest::Click, widget, Qt::Key_unknown, QString(c), Qt::NoModifier);
+    }
+#endif
+}
+
 }  // namespace hitokoto::test

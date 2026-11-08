@@ -21,24 +21,47 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   line break is shown; how the caret moves over a flowing paragraph; the cost for long hard-wrapped
   paragraphs (S007 budgets). Related: bullet list indentation below, ADR 0003 (editor surface).
 
+## Emphasis across a line break
+
+- **Seen:** 2026-11-04 (Armin, Windows release on main 6c67e67, a bullet list with hard-wrapped
+  items; confirmed as a bug by Daniel). `- … (manuell, VPN), **nie durch einen` followed by
+  `  Agenten**. Kontrolle …` shows both `**` as text and nothing bold; Obsidian shows "nie durch
+  einen Agenten" bold.
+- **CommonMark:** inline content belongs to the whole paragraph, so delimiters pair across soft
+  line breaks: `**a` / `b**` gives `<strong>a\nb</strong>`, also in a list item with or without
+  the continuation indent (`- **a` / `  b**`, `- **a` / `b**`); `*a` / `b*` and `_a` / `b_` give
+  `<em>`; `` `a `` / `` b` `` gives `<code>a b</code>`; `[a` / `b](u)` is one link. Nothing pairs
+  across a block boundary: not over a blank line, not from one list item to the next (`- **a` /
+  `- b**`), not out of a heading (`# **a` / `b**`), not into a fenced code block. GFM
+  strikethrough pairs across the line break as well (`~~a` / `b~~` gives `<del>`). Checked with
+  commonmark.js 0.31.2 and markdown-it-py 4.2.0 (mode `commonmark`), `~~` with cmark-gfm.
+- **hitokoto:** inline elements are decided per line (S013: "Nested and adjacent combinations work
+  within one line"; S015 and S022 work on one line as well); an unpaired delimiter stays text.
+- **Open:** pairing over the lines of a paragraph (ADR 0006 gives the paragraph context and
+  `renderDocument` the reference); which lines reveal their markers when the caret is on one of
+  them; what an edit on one line re-renders on the others; the cost for long hard-wrapped
+  paragraphs (S007 budgets). Related: soft line breaks above, bullet list indentation below.
+
 ## Indentation of bullet lists
 
 - **Seen:** 2026-10-28 (Armin, Windows release on main e1d011e, `docs/stories/021-code-block-fences-in-panel.md`).
   Continuation lines of a hard-wrapped bullet start with two spaces; hitokoto shows those spaces as
   indentation, so the line does not stand under the item's text. Lines the window wraps start at the
-  left edge instead of under the item's text.
+  left edge instead of under the item's text. Seen again 2026-11-04 (Armin, main 6c67e67, after
+  `fix/bullet_points`; confirmed as a bug by Daniel): hard-wrapped continuation lines
+  (`  Agenten**.`, `  erfassen.`) still do not stand under the item's text; Obsidian indents them
+  like the item's text.
 - **CommonMark:** continuation lines indented to the item's content column (marker, then 1–4
   spaces) belong to the item's paragraph; unindented ones continue it lazily. Nesting is decided by
   the content column of the parent item, not by a fixed indentation per level.
 - **hitokoto:** the nesting depth is the indentation divided by 2 (`bullet.cpp`, S003); continuation
   lines are plain lines.
-- **In progress elsewhere:** Daniel's branch `fix/bullet_points` (6ad446d, e53cf0c, ee5bada,
-  2026-10-30, not merged) aligns window-wrapped continuation lines with the item's text (hanging
-  indent), continues and leaves lists with Enter, indents with Tab and Shift+Tab, and adds a default
-  indent. It changes the behaviour of S003 (Done), so it needs a story of its own.
+- **Merged:** Daniel's `fix/bullet_points` (pull request #23, cdd2d21, 2026-11-03, scenarios added
+  to S003) aligns window-wrapped continuation lines with the item's text (hanging indent),
+  continues and leaves lists with Enter, indents with Tab and Shift+Tab, and adds a default indent.
 - **Open:** hard-wrapped continuation lines (concealing their indentation, hanging indent); nesting
-  by content column; what is left after `fix/bullet_points`. Related: soft line breaks above,
-  numbered lists below.
+  by content column. Related: soft line breaks and emphasis across a line break above, numbered
+  lists below.
 
 ## Numbered lists
 

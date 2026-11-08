@@ -9,6 +9,8 @@
 #include <QTextCursor>
 #include <QTextDocument>
 
+#include <algorithm>
+
 namespace hitokoto::ui {
 
 TableModel::TableModel(QTextDocument* document, const EditorFormats* formats, QObject* parent)
@@ -175,6 +177,10 @@ QVariant TableModel::data(const QModelIndex& index, int role) const {
     const core::TableStyle& style = formats_->table();
     switch (role) {
         case Qt::BackgroundRole:
+            if (std::find(findCells_.begin(), findCells_.end(), std::pair{index.row(), index.column()}) !=
+                findCells_.end()) {
+                return findBackground_;  // S028: a cell with a match while "Highlight all" is on
+            }
             return toQColor(header ? style.headerBackground : row % 2 == 1 ? style.background : style.stripeBackground);
         case Qt::ForegroundRole:
             return toQColor(header ? style.headerText : style.text);
@@ -221,6 +227,17 @@ Qt::ItemFlags TableModel::flags(const QModelIndex& index) const {
         return Qt::NoItemFlags;
     }
     return Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsEditable;
+}
+
+void TableModel::setFindCells(std::vector<std::pair<int, int>> cells, const QColor& background) {
+    if (cells == findCells_ && background == findBackground_) {
+        return;
+    }
+    findCells_ = std::move(cells);
+    findBackground_ = background;
+    if (rowCount() > 0 && columnCount() > 0) {
+        emit dataChanged(index(0, 0), index(rowCount() - 1, columnCount() - 1), {Qt::BackgroundRole});
+    }
 }
 
 }  // namespace hitokoto::ui

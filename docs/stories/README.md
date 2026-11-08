@@ -39,6 +39,7 @@ story ID (see "Conventions").
 | 26 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | Open |
 | 27 | [S026](026-floating-toolbar.md) | Floating toolbar on the right-hand side | S015, S018 | S | In review |
 | 28 | [S027](027-smooth-scrolling.md) | Smooth scrolling in the editor view | S019 | S | In review |
+| 29 | [S028](028-find-in-file.md) | Find in the open file | S018, S022, S023, S024 | L | In review |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 

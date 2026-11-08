@@ -7,6 +7,8 @@ qt_add_library(hitokoto_ui STATIC
     document_session.cpp document_session.hpp
     editor_formats.cpp editor_formats.hpp
     editor_widget.cpp editor_widget.hpp
+    find_bar.cpp find_bar.hpp
+    find_controller.cpp find_controller.hpp
     floating_toolbar.cpp floating_toolbar.hpp
     main_window.cpp main_window.hpp
     options.hpp

@@ -18,6 +18,7 @@ add_library(hitokoto_core STATIC
     src/elements/table.cpp
     src/elements/front_matter.cpp
     src/properties.cpp
+    src/find.cpp
     src/reveal.cpp
     src/theme.cpp
 )
