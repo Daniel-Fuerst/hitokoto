@@ -18,10 +18,11 @@ namespace hitokoto::bench_gate {
 /// Results of one run of hitokoto-bench: key -> value (ms or count), as in e2e-bench.json.
 using Values = std::map<std::string, double, std::less<>>;
 
-inline constexpr int kMinSamples = 3;       ///< samples before a class is established (and for an anchor)
-inline constexpr int kWindow = 5;           ///< newest samples per key in a class baseline
-inline constexpr double kTolerance = 0.25;  ///< allowed slowdown in both stages and for drift
-inline constexpr double kMinDeltaMs = 2.0;  ///< smaller differences are timer and scheduler noise
+inline constexpr int kMinSamples = 3;          ///< samples before a class is established (and for an anchor)
+inline constexpr int kWindow = 5;              ///< newest samples per key in a class baseline
+inline constexpr double kTolerance = 0.25;     ///< allowed slowdown in both stages and for drift
+inline constexpr double kMinDeltaMs = 2.0;     ///< smaller differences are timer and scheduler noise
+inline constexpr double kFrameDeltaMs = 20.0;  ///< first-screen keys jump by one frame (~17 ms) on one runner
 
 /// The runner class: linux-<model>-<n>cpu-l2-<l2>-l3-<l3>. `cpuinfo` is the text of /proc/cpuinfo,
 /// `cpus` the CPUs the job may use (nproc), `l2`/`l3` the sizes from /sys/.../cache/index2 and index3
@@ -33,6 +34,11 @@ std::string modelName(std::string_view cpuinfo);
 
 /// True for a class whose model part is "unknown"; such a class never becomes established.
 bool isUnknownClass(std::string_view runnerClass);
+
+/// The smallest difference that counts for a key: kFrameDeltaMs for the first screen of an opening
+/// (open_*_first_chunk_ms, s023_open_10mb_first_chunk_ms, s024_open_10mb_properties_ms), whose
+/// samples lie on two levels one frame apart on one runner (PR #31); kMinDeltaMs for all others.
+double minDeltaMs(std::string_view key);
 
 /// Keys that are compared and reported but never fail a comparison (maxima, counts, settle times).
 bool isReportOnly(std::string_view key);

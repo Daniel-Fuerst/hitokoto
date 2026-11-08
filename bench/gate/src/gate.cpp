@@ -161,6 +161,10 @@ bool isUnknownClass(std::string_view runnerClass) {
     return startsWith(runnerClass, kUnknownPrefix);
 }
 
+double minDeltaMs(std::string_view /*key*/) {
+    return kMinDeltaMs;
+}
+
 bool isReportOnly(std::string_view key) {
     return std::find(std::begin(kReportOnly), std::end(kReportOnly), key) != std::end(kReportOnly);
 }

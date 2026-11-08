@@ -235,6 +235,34 @@ TEST(S029_RunnerClasses, MainStageFailsAKeyOnlyIfMeansDifferAndRoundsDoNotOverla
     EXPECT_EQ(find(keys, "s030_new_key_ms")->status, KeyStatus::OneSide);
 }
 
+TEST(S029_RunnerClasses, FirstScreenKeysNeedAFrameOfDifference) {
+    EXPECT_DOUBLE_EQ(minDeltaMs("open_10mb_first_chunk_ms"), kFrameDeltaMs);
+    EXPECT_DOUBLE_EQ(minDeltaMs("open_1mb_first_chunk_ms"), kFrameDeltaMs);
+    EXPECT_DOUBLE_EQ(minDeltaMs("s023_open_10mb_first_chunk_ms"), kFrameDeltaMs);
+    EXPECT_DOUBLE_EQ(minDeltaMs("s024_open_10mb_properties_ms"), kFrameDeltaMs);
+    EXPECT_DOUBLE_EQ(minDeltaMs("open_10mb_styled_ms"), kMinDeltaMs);
+    EXPECT_DOUBLE_EQ(minDeltaMs("typing_small_p99_ms"), kMinDeltaMs);
+}
+
+TEST(S029_RunnerClasses, AFrameSlipOfTheFirstScreenDoesNotFailButARegressionDoes) {
+    // PR #31 (2026-11-08, AMD EPYC 9V45): round medians 48.08 and 47.92 ms for the base, 64.57 and
+    // 64.63 ms for the pull request, every round with single opens at both levels. No code change.
+    const std::array<Values, 2> base = {Values{{"open_10mb_first_chunk_ms", 48.075046}},
+                                        Values{{"open_10mb_first_chunk_ms", 47.922364}}};
+    const std::array<Values, 2> slip = {Values{{"open_10mb_first_chunk_ms", 64.566111}},
+                                        Values{{"open_10mb_first_chunk_ms", 64.633316}}};
+    const auto keys = compareRounds(base, slip);
+    ASSERT_NE(find(keys, "open_10mb_first_chunk_ms"), nullptr);
+    EXPECT_EQ(find(keys, "open_10mb_first_chunk_ms")->status, KeyStatus::Ok);
+    const std::array<Values, 2> slower = {Values{{"open_10mb_first_chunk_ms", 75.0}},
+                                          Values{{"open_10mb_first_chunk_ms", 78.0}}};
+    EXPECT_EQ(compareRounds(base, slower)[0].status, KeyStatus::Slow);
+    // The class stage and drift use the same rule.
+    EXPECT_EQ(compareWithBaseline({{"open_10mb_first_chunk_ms", 48}}, {{"open_10mb_first_chunk_ms", 65}})[0].status,
+              KeyStatus::Ok);
+    EXPECT_EQ(drift({{"open_10mb_first_chunk_ms", 48}}, {{"open_10mb_first_chunk_ms", 65}})[0].status, KeyStatus::Ok);
+}
+
 TEST(S029_RunnerClasses, DriftComparesTheBaselineWithItsAnchor) {
     const auto keys = drift({{"open_1mb_loaded_ms", 100}, {"open_10mb_styled_ms", 2600}},
                             {{"open_1mb_loaded_ms", 130}, {"open_10mb_styled_ms", 2700}});
