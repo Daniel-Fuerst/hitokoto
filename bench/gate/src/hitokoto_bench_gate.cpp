@@ -7,6 +7,10 @@
 //                       --data <checkout of bench-data> [--base-rounds a.json,b.json]
 //                       [--pr-rounds a.json,b.json] [--changed-paths paths.txt] [--accepted]
 //                       [--report report.md]
+//   hitokoto-bench-gate --print-class --cpuinfo /proc/cpuinfo --cpus N --l2 512K --l3 32768K
+//                       [--output bench-class.json]
+//   hitokoto-bench-gate --make-sample --results e2e-bench.json --context context.json
+//                       --output sample.json
 //
 // bench-data holds linux/<class>/<sample>.json ({"start_time": ..., "values": {...}, context}) and
 // linux/accepted/<marker>.json ({"start_time": ...}).
@@ -222,6 +226,67 @@ QString report(const Inputs& in, const Decision& d) {
     return text;
 }
 
+/// --print-class: the runner class and its context, printed and written as JSON.
+int printClass(const QString& cpuinfoPath, const QString& cpus, const QString& l2, const QString& l3,
+               const QString& output) {
+    QFile f(cpuinfoPath);
+    const QByteArray cpuinfo = f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+    const std::string text = cpuinfo.toStdString();
+    QJsonObject o;
+    o[QStringLiteral("class")] =
+        QString::fromStdString(runnerClass(text, cpus.toInt(), l2.toStdString(), l3.toStdString()));
+    o[QStringLiteral("model_name")] = QString::fromStdString(modelName(text));
+    o[QStringLiteral("cpus")] = cpus;
+    o[QStringLiteral("l2")] = l2;
+    o[QStringLiteral("l3")] = l3;
+    const QByteArray json = QJsonDocument(o).toJson();
+    std::printf("%s\n%s", qPrintable(o[QStringLiteral("class")].toString()), json.constData());
+    if (!output.isEmpty()) {
+        QFile out(output);
+        if (!out.open(QIODevice::WriteOnly) || out.write(json) != json.size()) {
+            std::fprintf(stderr, "hitokoto-bench-gate: cannot write %s\n", qPrintable(output));
+            return static_cast<int>(Outcome::Fails);
+        }
+    }
+    return 0;
+}
+
+/// --make-sample: a sample from complete results with every context field, or a refusal (exit 1).
+int makeSample(const QString& resultsPath, const QString& contextPath, const QString& output) {
+    const auto results = readObject(resultsPath);
+    const auto context = readObject(contextPath);
+    const Values values = results ? toValues(*results) : Values{};
+    std::map<std::string, std::string, std::less<>> fields;
+    if (context) {
+        for (auto it = context->begin(); it != context->end(); ++it) {
+            fields[it.key().toStdString()] = it.value().toVariant().toString().toStdString();
+        }
+    }
+    QStringList missing;
+    for (const auto& b : hardBudgets()) {
+        if (values.count(b.key) == 0) {
+            missing << QString::fromStdString(b.key);
+        }
+    }
+    for (const auto& field : missingContextFields(fields)) {
+        missing << QString::fromStdString(field);
+    }
+    if (!missing.isEmpty() || output.isEmpty() || !results || !context) {
+        std::printf("sample refused: missing %s\n", qPrintable(missing.join(QStringLiteral(", "))));
+        return static_cast<int>(Outcome::Fails);
+    }
+    QJsonObject sample = *context;
+    sample[QStringLiteral("values")] = *results;
+    QFile out(output);
+    const QByteArray json = QJsonDocument(sample).toJson();
+    if (!out.open(QIODevice::WriteOnly) || out.write(json) != json.size()) {
+        std::fprintf(stderr, "hitokoto-bench-gate: cannot write %s\n", qPrintable(output));
+        return static_cast<int>(Outcome::Fails);
+    }
+    std::printf("sample written: %s\n", qPrintable(output));
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -247,8 +312,33 @@ int main(int argc, char* argv[]) {
                                          QStringLiteral("The pull request carries bench-accepted."));
     const QCommandLineOption reportOpt(QStringLiteral("report"), QStringLiteral("Write the report (Markdown) here."),
                                        QStringLiteral("file"));
-    parser.addOptions({kindOpt, classOpt, resultsOpt, dataOpt, baseOpt, prOpt, changedOpt, acceptedOpt, reportOpt});
+    const QCommandLineOption printClassOpt(QStringLiteral("print-class"),
+                                           QStringLiteral("Print the runner class and its context."));
+    const QCommandLineOption cpuinfoOpt(QStringLiteral("cpuinfo"), QStringLiteral("Path of /proc/cpuinfo."),
+                                        QStringLiteral("file"), QStringLiteral("/proc/cpuinfo"));
+    const QCommandLineOption cpusOpt(QStringLiteral("cpus"), QStringLiteral("CPUs the job may use (nproc)."),
+                                     QStringLiteral("n"));
+    const QCommandLineOption l2Opt(QStringLiteral("l2"), QStringLiteral("L2 size as in sysfs."),
+                                   QStringLiteral("size"));
+    const QCommandLineOption l3Opt(QStringLiteral("l3"), QStringLiteral("L3 size as in sysfs."),
+                                   QStringLiteral("size"));
+    const QCommandLineOption makeSampleOpt(QStringLiteral("make-sample"),
+                                           QStringLiteral("Write a sample from --results and --context."));
+    const QCommandLineOption contextOpt(QStringLiteral("context"), QStringLiteral("Context of the run (JSON)."),
+                                        QStringLiteral("file"));
+    const QCommandLineOption outputOpt(QStringLiteral("output"), QStringLiteral("File to write."),
+                                       QStringLiteral("file"));
+    parser.addOptions({kindOpt, classOpt, resultsOpt, dataOpt, baseOpt, prOpt, changedOpt, acceptedOpt, reportOpt,
+                       printClassOpt, cpuinfoOpt, cpusOpt, l2Opt, l3Opt, makeSampleOpt, contextOpt, outputOpt});
     parser.process(app);
+
+    if (parser.isSet(printClassOpt)) {
+        return printClass(parser.value(cpuinfoOpt), parser.value(cpusOpt), parser.value(l2Opt), parser.value(l3Opt),
+                          parser.value(outputOpt));
+    }
+    if (parser.isSet(makeSampleOpt)) {
+        return makeSample(parser.value(resultsOpt), parser.value(contextOpt), parser.value(outputOpt));
+    }
 
     const QString kind = parser.value(kindOpt);
     if ((kind != QLatin1String("pr") && kind != QLatin1String("main")) || !parser.isSet(classOpt) ||

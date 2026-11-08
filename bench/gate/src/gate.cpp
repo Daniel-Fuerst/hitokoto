@@ -153,8 +153,8 @@ std::string runnerClass(std::string_view cpuinfo, int cpus, std::string_view l2,
     return "linux-" + model + "-" + std::to_string(cpus) + "cpu-l2-" + slug(l2) + "-l3-" + slug(l3);
 }
 
-std::string modelName(std::string_view /*cpuinfo*/) {
-    return {};
+std::string modelName(std::string_view cpuinfo) {
+    return firstModelName(cpuinfo);
 }
 
 bool isUnknownClass(std::string_view runnerClass) {
