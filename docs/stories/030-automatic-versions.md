@@ -31,10 +31,13 @@ later can be told apart and updated.
    at configure time from `git describe`: on a tagged commit `0.4.0`, three commits later
    `0.4.0+3.gabc1234`, with uncommitted changes `.dirty` appended (SemVer build metadata).
    Commits pushed to main directly (such as 083b03e and 6e0eb29, stories and notes) make no new
-   version; builds of them carry the distance.
+   version; builds of them carry the distance. The version is that of the last configure: an
+   incremental build that does not reconfigure (Visual Studio in folder mode, `cmake --build`
+   after a pull) keeps the old string. CI builds and package builds always configure afresh.
 5. **Starting point.** Before the workflow first runs, `v0.3.0` is set by hand on main 705c578, the
    state Daniel named 0.3.0 in debe80e. Only tags of the exact form `vMAJOR.MINOR.PATCH` count; the
-   existing tag `v0.3.0-tulip` stays and is ignored.
+   existing tag `v0.3.0-tulip` stays and is ignored. Apart from this starting tag, nobody sets a
+   version tag by hand: such a tag would become the base of every later version.
 6. **Builds without git** (a source archive) take the version from `-DHITOKOTO_VERSION=…`;
    without it they get `0.0.0+unknown` and a CMake warning.
 
@@ -57,19 +60,39 @@ later can be told apart and updated.
 - Then the base for the next version is `v0.3.0` (numeric comparison, so `v0.10.0` would beat
   `v0.9.0`)
 
+**Scenario: only merges of pull requests into main make versions**
+- Given main's history since the last version tag holds, on its first-parent line, the merge of a
+  pull request into main (like 705c578, PR #26), a commit pushed to main directly (like 083b03e),
+  and, reached only through a second parent, the merge of a pull request into another branch (like
+  e75458c, PR #30 into `feature/smooth_scrolling`)
+- Then only the merge of the pull request into main gets a version
+- And the commit pushed directly and the merge into the other branch get none
+
 **Scenario: a missing label after the merge is visible and repairable**
 - Given a pull request merged into main without exactly one version label (the check was not
   required, or the label was removed)
 - Then the tag job on main is red, says which pull request lacks the label, and sets no tag
 - And after the label is set, re-running the job sets the tag
 
+**Scenario: a later merge waits for an earlier merge without a label**
+- Given merge A of a pull request without a version label, and after it merge B of a pull request
+  with `version:patch`, both untagged
+- Then the tag job stops at A: it is red, names A's pull request, and tags neither A nor B
+- And after A's label is set, a re-run tags A and then B, in merge order
+
 **Scenario: merges in quick succession each get their version**
 - Given three pull requests merged into main within a minute
 - Then each merge commit gets its own version, in merge order, also when GitHub cancels a pending
-  run of the tag job (a run tags every merge commit of a pull request into main since the last
+  run of the tag job (a run tags every untagged merge of a pull request into main since the last
   version tag, oldest first)
 - And a run of the CI workflow on main never cancels the tag job (`ci.yml` cancels in-progress runs
   per ref)
+
+**Scenario: no version tag, no new version**
+- Given no tag of the form `vMAJOR.MINOR.PATCH` is reachable from the merge commit (for example a
+  checkout without tags)
+- Then computing the next version fails, the tag job is red and sets no tag (it never starts over
+  at `v0.0.1`)
 
 **Scenario: tagging is idempotent**
 - Given a merge commit that already has a version tag
@@ -79,8 +102,8 @@ later can be told apart and updated.
 **Scenario: the build reports the version**
 - Given a working copy configured on the commit tagged `v0.4.0`
 - Then `QApplication::applicationVersion()` is `0.4.0`
-- And three commits later it is `0.4.0+3.g` followed by the abbreviated hash, with uncommitted
-  changes `.dirty` at the end
+- And configured three commits later it is `0.4.0+3.g` followed by the abbreviated hash, with
+  uncommitted changes `.dirty` at the end
 - And macOS `CFBundleShortVersionString` and `CFBundleVersion` are `0.4.0` (numbers only)
 - And `CPACK_PACKAGE_VERSION` carries the full version
 
@@ -96,6 +119,10 @@ later can be told apart and updated.
 **Scenario: documented**
 - Then `CLAUDE.md` and `README.md` say that the version comes from the tag, which label to choose
   (the meaning from ADR 0010), and that `VERSION` in `project()` and tags by hand are no longer used
+  (no `v*` tag by hand apart from the starting tag `v0.3.0`)
+- And they say that the label is part of the review before the merge and must fit the pull
+  request's final content, not only what it was opened for
+- And they say that the version is that of the last configure
 
 ## Requirements
 
@@ -107,15 +134,25 @@ later can be told apart and updated.
 - **Workflow:** a new file `.github/workflows/version.yml`, separate from `ci.yml`. Job "Version
   label" on `pull_request` (opened, reopened, edited, labeled, unlabeled, synchronize) for base
   `main`, read-only token, never `pull_request_target`. Job "Tag" on push to main with
-  `contents: write`: finds the pull request of each untagged merge commit through the GitHub API,
-  reads its labels, computes the next version with `NextVersion.cmake` and pushes the tag with
-  `GITHUB_TOKEN`. Its concurrency group never cancels a running run.
+  `contents: write`:
+  - Candidates are the commits on main's first-parent line after the last version tag, oldest
+    first. A candidate is a version only if a pull request with base `main` has it as its
+    `merge_commit_sha` (looked up through the GitHub API for the commit's pull requests); other
+    candidates, such as commits pushed directly, are skipped. Commits reached only through a second
+    parent are never candidates, whatever pull request merged them elsewhere.
+  - For each version in order it reads the pull request's labels, computes the next version with
+    `NextVersion.cmake` and tags the merge commit. At the first version without exactly one
+    version label it stops, is red and names that pull request; nothing after it is tagged.
+  - Tags are pushed with `GITHUB_TOKEN`. Its concurrency group never cancels a running run.
 - **Tags pushed with `GITHUB_TOKEN` start no other workflow** (GitHub's protection against loops).
   Builds that should run for a new version (packages, S012) must run in the same workflow after the
   tag job or be started with `workflow_dispatch`. Recorded here for the package story.
-- **Checkouts:** `actions/checkout` fetches one commit without tags by default; jobs whose artefacts
-  carry the version use `fetch-depth: 0`. The test jobs in `ci.yml` keep the shallow checkout and
-  accept `0.0.0+unknown`.
+- **Checkouts:** `actions/checkout` fetches one commit without tags by default. The tag job and
+  jobs whose artefacts carry the version use `fetch-depth: 0`, which brings the tags.
+  `NextVersion.cmake` fails when no version tag is reachable instead of assuming `v0.0.0`. The test
+  jobs in `ci.yml` keep the shallow checkout and accept `0.0.0+unknown`.
+- **macOS bundle versions** carry only the numeric core, so builds between two tags look the same to
+  Launch Services and installers. Harmless for builds by hand; S012 distributes tagged builds only.
 - **Repository settings** (Daniel as owner): the check "Version label" as a required status check
   for main; only merge commits allowed (the project merges with a merge commit after green CI).
 - Changes under `.github/` need Armin's approval; Armin copies the workflow by hand.
@@ -130,7 +167,8 @@ later can be told apart and updated.
 ## Open questions (for Daniel and Armin)
 
 1. Label names, and whether pull requests that change only stories, notes or CI also make a version
-   (Armin: every pull request into main is a version).
+   (Armin: every pull request into main is a version; if not, a fourth label `version:none` under
+   the same check; spec review O1, open until Armin and Daniel decide).
 2. Required status check and "merge commits only" as repository settings (Daniel).
 3. The starting tag `v0.3.0` on 705c578, and what `v0.3.0-tulip` means: are release names such as
    "tulip" meant to continue?

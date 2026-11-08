@@ -4,6 +4,7 @@ mode: spec
 spec: docs/stories/030-automatic-versions.md
 also_read: docs/adr/0010-versions-from-pull-request-labels.md, .github/workflows/ci.yml, CMakeLists.txt, src/app/CMakeLists.txt, docs/stories/unrefined.md
 date: 2026-11-08
+dispositioned: 2026-11-08 (Armin; O1 open until Armin and Daniel decide, O6 documented by Armin's choice, the others as proposed by Claude, before confirmation of the story)
 reviewer: Advocatus Diaboli (same session as the author; no independent subagent available in this chat)
 objections:
   - id: O1
@@ -11,49 +12,49 @@ objections:
     severity: minor
     title: "Every pull request into main makes a version, also those that change nothing users get"
     disposition: pending
-    disposition_rationale: null
+    disposition_rationale: "Open until Armin and Daniel decide whether every pull request into main makes a version or a fourth label version:none exists (story, open question 1)."
   - id: O2
     category: design
     severity: major
     title: "Which commits the tag job tags is ambiguous: an associated pull request is not the same as the merge of a pull request into main"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "Story, requirement 'Workflow' and scenario 'only merges of pull requests into main make versions': candidates are the commits on main's first-parent line after the last version tag; one counts only if a pull request with base main has it as its merge_commit_sha; direct pushes and merges reached through a second parent (like e75458c) get no version. ADR 0010, mechanics."
   - id: O3
     category: failure
     severity: major
     title: "No rule for later merges while an earlier merge lacks its label"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "Story, requirement 'Workflow' and scenario 'a later merge waits for an earlier merge without a label': versions follow merge order; the tag job stops at the first merge without exactly one label, is red, names its pull request and tags nothing after it; after the label is set a re-run tags them in order. ADR 0010, mechanics and consequences."
   - id: O4
     category: failure
     severity: major
     title: "Without tags in the checkout the tag job would restart the numbering"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "Story, requirement 'Checkouts' and scenario 'no version tag, no new version': the tag job checks out with fetch-depth 0 (history and tags); NextVersion.cmake fails when no version tag is reachable instead of assuming v0.0.0. ADR 0010, mechanics."
   - id: O5
     category: failure
     severity: minor
     title: "The version is computed at configure time and goes stale in incremental builds"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "Story, decision 4, scenario 'the build reports the version' (configured three commits later) and scenario 'documented': the version is that of the last configure; CI and package builds always configure afresh. A build step running git describe on every build is left until a case needs it. ADR 0010, consequences."
   - id: O6
     category: threat
     severity: minor
     title: "A version tag set by hand becomes the base of every later version"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "Armin, 2026-11-08: documented. Story, decision 5 and scenario 'documented': no v* tag by hand apart from the starting tag v0.3.0. ADR 0010, consequences: nothing enforces it; a tag rule in the repository settings could later."
   - id: O7
     category: failure
     severity: minor
     title: "macOS bundle versions are equal for all builds between two tags"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "Story, requirement 'macOS bundle versions', and ADR 0010, consequences: bundle versions carry the numeric core; harmless for builds by hand; S012 distributes tagged builds only."
   - id: O8
     category: operational
     severity: minor
     title: "The label is checked for presence, not for fitting the final content"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "Story, scenario 'documented': CLAUDE.md and README.md say that the label is part of the review before the merge and must fit the final content. ADR 0010, consequences."
 ---
 
 # Objection record: S030 (spec)

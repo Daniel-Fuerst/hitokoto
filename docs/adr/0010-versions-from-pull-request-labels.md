@@ -56,10 +56,16 @@ Option 2.
   `cmake -P`, tested by ctest on fixed inputs. No new language and no new dependency (brief,
   section 3); the workflow uses only `git`, `gh` and CMake, which the GitHub runners provide.
 - A workflow `version.yml`, separate from `ci.yml`: a label check on pull requests into main and a
-  tag job on push to main. The tag job tags every untagged merge commit of a pull request into main
-  since the last version tag, oldest first, so a run that GitHub cancels while pending is caught up
-  by the next. It pushes with `GITHUB_TOKEN`; such a push starts no other workflow, so builds for a
-  new version run in the same workflow after the tag job or through `workflow_dispatch`.
+  tag job on push to main. The tag job walks main's first-parent line since the last version tag,
+  oldest first, and tags each commit that is the `merge_commit_sha` of a pull request with base
+  `main`; commits pushed directly and merges into other branches (reached through a second parent)
+  get no version. A run that GitHub cancels while pending is caught up by the next. Versions follow
+  merge order: at the first merge without exactly one version label the job stops and is red, and
+  tags nothing after it until the label is set and the job re-run.
+- The tag job checks out the full history with tags; without a reachable version tag it fails
+  instead of starting over. It pushes with `GITHUB_TOKEN`; such a push starts no other workflow, so
+  builds for a new version run in the same workflow after the tag job or through
+  `workflow_dispatch`.
 
 ## Consequences
 
@@ -67,9 +73,19 @@ Option 2.
 - A forgotten or wrong label shows as a red check before the merge (if required) or a red tag job
   after it; a wrong level cannot be undone once tagged (a tag is never moved), only the next pull
   request can correct the course.
+- The label is checked for presence only; whether it fits the final content is part of the review
+  before the merge.
+- One merge without a label holds back the versions of all later merges until it is labelled.
 - Commits pushed to main directly make no version; their builds carry the distance to the last one.
 - Builds from a shallow checkout report `0.0.0+unknown`; jobs whose artefacts carry the version
   fetch the full history.
+- The version is that of the last configure; an incremental build without a reconfigure keeps the
+  old string.
+- A version tag set by hand would become the base of all later versions; nobody sets one apart from
+  the starting tag `v0.3.0`. Nothing enforces this; a tag rule in the repository settings could
+  later.
+- macOS bundle versions carry only the numeric core, so builds between two tags look the same
+  there; only tagged builds are distributed (S012).
 - No changelog is written; GitHub can generate release notes from pull request titles later.
 - Daniel's habit of setting `VERSION` and tags by hand ends; `CLAUDE.md` and `README.md` say so.
 
