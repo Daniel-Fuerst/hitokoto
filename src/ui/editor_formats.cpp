@@ -5,7 +5,6 @@
 
 #include <QFontDatabase>
 #include <QFontMetricsF>
-#include <QVarLengthArray>
 
 #include <algorithm>
 #include <optional>
@@ -168,7 +167,8 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
     }
     QList<QTextLayout::FormatRange> out;
     const QTextCharFormat lineFormat = heading(render.headingLevel);
-    QVarLengthArray<std::uint32_t, 16> boundaries;
+    auto& boundaries = boundaries_;
+    boundaries.clear();
     for (const auto& run : render.runs) {
         boundaries.push_back(run.span.start);
         boundaries.push_back(run.span.end());
@@ -191,14 +191,13 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
         boundaries.push_back(bulletSpace->end());
     }
     std::sort(boundaries.begin(), boundaries.end());
-    const auto uniqueEnd = std::unique(boundaries.begin(), boundaries.end());
-    boundaries.resize(std::distance(boundaries.begin(), uniqueEnd));
+    boundaries.erase(std::unique(boundaries.begin(), boundaries.end()), boundaries.end());
 
     std::size_t runIndex = 0;
     std::size_t inlineIndex = 0;
     std::size_t hiddenIndex = 0;
     std::size_t linkIndex = 0;
-    for (qsizetype i = 1; i < boundaries.size(); ++i) {
+    for (std::size_t i = 1; i < boundaries.size(); ++i) {
         const auto start = boundaries[i - 1];
         const auto end = boundaries[i];
         if (start == end) {

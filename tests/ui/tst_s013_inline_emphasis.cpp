@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S013: inline emphasis is styled without altering source text.
+#include "editor_formats.hpp"
 #include "ui_test_support.hpp"
 
 using namespace hitokoto;
@@ -145,6 +146,29 @@ private slots:
         QCOMPARE(test::formatAt(heading, 2).fontWeight(), 800);
         QVERIFY2(test::formatAt(heading, 6).fontWeight() >= 800, "bold text in a heading keeps the heading weight");
         QCOMPARE(test::formatAt(heading, 10).fontWeight(), 800);
+    }
+
+    // Follow-up to MSVC warning C4702 (agents/fix-c4702-editor-formats): EditorFormats::ranges()
+    // may keep its working buffer between calls. The format ranges of a line never depend on the
+    // line formatted before it, also after a line with more than 16 span boundaries and back.
+    void formatRangesDoNotDependOnTheLineFormattedBefore() {
+        const auto theme = core::builtinTheme(core::ColorScheme::Light);
+        const std::u16string many = u"**a** *b* ~~c~~ `d` **e** *f* ~~g~~ `h` **i** *j* [k](l) `m`";
+        const std::u16string few = u"plain *x* text";
+        const std::u16string heading = u"## Head **bold** and `code`";
+        const auto renderOf = [](std::u16string_view line) { return test::registry().render(line, {}); };
+        const auto wantMany = ui::EditorFormats(theme).ranges(renderOf(many));
+        const auto wantFew = ui::EditorFormats(theme).ranges(renderOf(few));
+        const auto wantHeading = ui::EditorFormats(theme).ranges(renderOf(heading));
+        QVERIFY2(wantMany.size() > 16, "the long line has more than 16 span boundaries");
+
+        ui::EditorFormats reused(theme);
+        for (int round = 0; round < 2; ++round) {
+            QVERIFY(reused.ranges(renderOf(many)) == wantMany);
+            QVERIFY(reused.ranges(renderOf(few)) == wantFew);
+            QVERIFY(reused.ranges(renderOf(heading)) == wantHeading);
+            QVERIFY(reused.ranges(renderOf(many)) == wantMany);
+        }
     }
 };
 

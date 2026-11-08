@@ -12,6 +12,8 @@
 #include <QTextLayout>
 
 #include <array>
+#include <cstdint>
+#include <vector>
 
 namespace hitokoto::ui {
 
@@ -67,6 +69,9 @@ private:
     core::PropertiesStyle properties_;
     QStringList codeBlockFamilies_;
     QStringList inlineCodeFamilies_;
+    /// Working buffer of ranges(): once grown, formatting a line allocates nothing (GUI thread
+    /// only). Not a QVarLengthArray: its growth path made MSVC report C4702 in Release builds.
+    mutable std::vector<std::uint32_t> boundaries_;
 };
 
 }  // namespace hitokoto::ui
