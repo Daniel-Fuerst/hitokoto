@@ -7,73 +7,74 @@ branch: feature/smooth_scrolling
 commits_examined: "0ee602b..debe80e (13dd591, b056494, debe80e)"
 date: 2026-11-08
 reviewer: Advocatus Diaboli (Claude, the session that also makes the fixes)
+dispositioned: 2026-11-08 (Claude, after Armin's go-ahead for agents/s027-smooth-scrolling-fixes; red tests first)
 objections:
   - id: O1
     category: failure
     severity: major
     title: "A scroll by the program while the animation runs is undone by the next frame"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "A value of the scroll bar that the scroller did not set stops a running animation and becomes the target (smooth_scroller.cpp, valueChanged). EditorWidget::applyPendingShift moves the bar through SmoothScroller::shift(), which moves a running animation with it instead of stopping it. The updating flag is restored with QScopedValueRollback: a layout shift re-enters through setValue() while the outer setValue() still notifies. UI tests programmaticScrollDuringAnimationStopsIt and layoutShiftMovesTheBarAndTheAnimation; story scenario added."
   - id: O2
     category: operational
     severity: major
     title: "The clang-tidy job fails on the QPointer member of SmoothScroller"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "Plain QScrollBar pointer, cleared (and the animation stopped) on QObject::destroyed; no NOLINT. clang-tidy over src, tests and bench without a finding."
   - id: O3
     category: failure
     severity: major
     title: "The reversal test depends on a frame within 40 ms and is red on macOS"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "All S027 UI tests run on a ManualAnimationDriver (QAnimationDriver that only moves on step()) and wait for states (stepUntil), not for milliseconds; 30 runs under CPU load with Qt 6.12 and 6.8.3 without a failure."
   - id: O4
     category: design
     severity: major
     title: "Touchpad and trackpad scrolling is animated and measured in wheel notches"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "Pixel deltas scroll directly by their amount, stop a running animation and continue from the current position; on X11 (platform xcb) the angle delta is used, as Qt documents. Story scenario changed (Armin, 2026-11-08). UI tests touchpadPixelDeltaScrollsDirectly and touchpadDeltaDuringAnimationContinuesFromTheCurrentPosition, with an angle delta in the event as real trackpads send it."
   - id: O5
     category: failure
     severity: minor
     title: "applyPendingShift may run before the scroller exists"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "The scroller is created right after the document, before the first connect and before anything that scrolls. No test: the constructor gives no hook between the two points."
   - id: O6
     category: operational
     severity: minor
     title: "Tests and code arrived in one commit, not test-first"
-    disposition: pending
-    disposition_rationale: null
+    disposition: resolved
+    disposition_rationale: "The fixes of this review came test-first (red tests, then fixes) with this record. The history of 13dd591 stays as it is (merge, not rebase)."
   - id: O7
     category: operational
     severity: minor
     title: "The story is In review while the CI is red"
-    disposition: pending
-    disposition_rationale: null
+    disposition: resolved
+    disposition_rationale: "The status stays In review: the fixes make the CI green on the pull request into feature/smooth_scrolling. If it is not green on all three platforms before the merge into main, the status goes back to In progress."
   - id: O8
     category: design
     severity: minor
     title: "Forwarding the wheel from embedded tables is not in the story"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "Story scenario \"wheel over an embedded table scrolls the editor\"; the existing test wheelOverEmbeddedTableScrollsEditor covers it."
   - id: O9
     category: cost
     severity: minor
     title: "The cost of a frame is not measured"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "Probe with the release build (Qt 6.12, offscreen, 200,000 lines with headings, emphasis, code and links, middle of the document, 20 notches, 280 frames): 1.9 to 2.0 ms per frame on average, at most 3.5 ms, in three runs; well within a 16 ms frame. A benchmark case for scrolling is left to a story about scrolling performance."
   - id: O10
     category: operational
     severity: minor
     title: "The S026 test writes the toolbar colours twice"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "Each colour is a named constant used for the token and for the expected pixel; no dereference of the optional token."
   - id: O11
     category: operational
     severity: minor
     title: "The version is raised to 0.3.0 inside a feature branch"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "VERSION 0.3.0 stays on Daniel's branch (Armin, 2026-11-08); versioning and release decisions remain the open topic in docs/stories/unrefined.md."
 ---
 
 # Review S027 — Smooth scrolling in the editor view (code)
@@ -255,3 +256,17 @@ release decision.
   resize stop the animation.
 - **Clamping and the option.** Targets are clamped to the scroll range, and the option switches back
   to Qt's own wheel handling, including Ctrl and Shift.
+
+## Disposition of the capped concerns
+
+- **Double shift on a range change:** resolved. `applyPendingShift` now moves the bar through
+  `shift()`, which clamps the target once; the case is covered by the clamp as before.
+- **The Wheel branch in `viewportEvent`:** fixed. Removed; `QAbstractScrollArea` routes the event to
+  `wheelEvent()`, and the S027 tests send their events to the viewport.
+- **`scrollStarted` and `scrollFinished` without a receiver:** documented. Kept as Daniel's
+  interface for later use.
+- **Positions of the forwarded wheel event:** documented. The editor's wheel handling reads only the
+  deltas and the modifiers.
+- **`Options::smoothScrolling` neither stored nor in the UI:** documented. Same as
+  `frontMatterAsProperties`; a settings dialog is a story of its own.
+- **Reduced motion:** documented. Qt offers no portable query; the option switches the animation off.
