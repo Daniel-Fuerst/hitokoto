@@ -38,15 +38,32 @@ moving through the document feels fluid and natural rather than jarring and abru
 - When the user presses the scroll bar slider, clicks in the editor, or presses a key
 - Then the animation stops immediately at the current position, giving immediate control to the user
 
+**Scenario: a scroll by the program wins over the animation**
+- Given an active smooth scroll animation
+- When the program scrolls the view (for example to a search match, or to keep the content still
+  while the layout above the viewport changes its height)
+- Then a jump stops the animation and stays where the program put it
+- And a shift of the layout moves the running animation and its target by the same distance
+
 **Scenario: boundary clamping**
 - Given the editor near the top (0) or bottom (`maximum()`)
 - When wheel events scroll beyond the boundaries
 - Then the animation clamps cleanly at 0 or `maximum()` without overshooting
 
-**Scenario: touchpad pixel deltas animate smoothly**
-- Given a scroll event with non-zero `pixelDelta` (such as a touchpad)
+**Scenario: touchpad pixel deltas scroll directly**
+- Given a scroll event with a non-zero `pixelDelta` (a trackpad or high-resolution touchpad, which
+  also reports an `angleDelta`)
 - When the event arrives
-- Then the view animates smoothly towards the target without instantaneous jumps
+- Then the view scrolls by exactly the pixel delta, without an animation of its own, as Qt's
+  documentation of `QWheelEvent::pixelDelta()` asks; the system already moves the content smoothly
+- And a running wheel animation stops and the view continues from its current position
+- On X11, where pixel deltas are driver-specific and unreliable, the angle delta is used instead
+  (review O4, decided by Armin on 2026-11-08)
+
+**Scenario: wheel over an embedded table scrolls the editor**
+- Given the mouse pointer over a table embedded in the editor (its cells or its controls)
+- When a wheel event occurs
+- Then the editor scrolls as it would anywhere else in the view; the table itself never scrolls
 
 **Scenario: toggle via options**
 - Given `Options::smoothScrolling` is false (or disabled on the editor)

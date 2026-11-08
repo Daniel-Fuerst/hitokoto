@@ -4,7 +4,6 @@
 
 #include <QEasingCurve>
 #include <QObject>
-#include <QPointer>
 #include <QVariantAnimation>
 
 class QScrollBar;
@@ -31,7 +30,8 @@ public:
     /// Target position towards which the scroller is animating, or the current position if idle.
     [[nodiscard]] double target() const noexcept { return target_; }
 
-    /// Shifts the target and ongoing animation (e.g. when lazy layout shifts content above the viewport).
+    /// Moves the scroll bar, the target and a running animation by `delta` together (e.g. when lazy
+    /// layout shifts content above the viewport); a running animation goes on.
     void shift(double delta);
 
     /// Animation duration in milliseconds (default 200 ms).
@@ -50,7 +50,11 @@ private:
     void onValueChanged(const QVariant& value);
     void onFinished();
 
-    QPointer<QScrollBar> scrollBar_;
+    void setBarValue(int value);
+
+    // Owned by the scroll area; a plain pointer, cleared on destroyed() (review O2: clang-tidy's
+    // analyzer reports a false NewDelete in the destructor of a QPointer member).
+    QScrollBar* scrollBar_ = nullptr;
     QVariantAnimation animation_;
     double target_ = 0.0;
     int durationMs_ = 200;
