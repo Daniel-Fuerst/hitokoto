@@ -63,6 +63,7 @@ Sample sample(const std::string& time, const Values& values) {
 /// `n` samples with the given value of `open_1mb_loaded_ms`, at 2026-11-0<day>T0<i>:00:00Z.
 std::vector<Sample> samples(int n, double value, int day = 1) {
     std::vector<Sample> s;
+    s.reserve(static_cast<std::size_t>(n));
     for (int i = 0; i < n; ++i) {
         s.push_back(sample("2026-11-0" + std::to_string(day) + "T0" + std::to_string(i) + ":00:00Z",
                            result({{"open_1mb_loaded_ms", value}})));
@@ -175,7 +176,7 @@ TEST(S029_RunnerClasses, AnchorIsTheMedianOfTheOldestThreeSamples) {
     s.insert(s.end(), later.begin(), later.end());
     const auto a = anchor(s, {});
     ASSERT_TRUE(a.has_value());
-    EXPECT_DOUBLE_EQ(a->at("open_1mb_loaded_ms"), 100.0);
+    EXPECT_DOUBLE_EQ(a.value_or(Values{}).at("open_1mb_loaded_ms"), 100.0);
 }
 
 TEST(S029_RunnerClasses, AnchorFormsAnewAfterTheNewestMarker) {
@@ -187,7 +188,7 @@ TEST(S029_RunnerClasses, AnchorFormsAnewAfterTheNewestMarker) {
     s.push_back(sample("2026-11-04T00:00:00Z", result({{"open_1mb_loaded_ms", 140}})));
     const auto a = anchor(s, markers);
     ASSERT_TRUE(a.has_value());
-    EXPECT_DOUBLE_EQ(a->at("open_1mb_loaded_ms"), 130.0);
+    EXPECT_DOUBLE_EQ(a.value_or(Values{}).at("open_1mb_loaded_ms"), 130.0);
 }
 
 // --- Comparisons --------------------------------------------------------------------------------
