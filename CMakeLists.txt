@@ -56,6 +56,16 @@ set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_CONTACT "daniel@fuerst.priv.at")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
 
+# 1. Set architecture inside the .deb control file (e.g., amd64, arm64, armhf, all)
+set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
+
+# 2. Set the system/architecture string used in generated package filenames (e.g., for TGZ)
+set(CPACK_SYSTEM_NAME "linux-amd64")
+
+# Alternatively, to use Debian's standard naming scheme for the .deb file itself
+# (<name>_<version>_<arch>.deb):
+set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+
 # For Debian/Ubuntu (.deb): auto-detect shared library dependencies (like libqt6widgets6)
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 
