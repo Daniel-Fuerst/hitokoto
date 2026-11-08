@@ -12,6 +12,8 @@
 #include <QTest>
 #include <QWheelEvent>
 
+#include <cmath>
+
 using namespace hitokoto;
 
 namespace {
@@ -31,6 +33,12 @@ void sendWheel(QWidget* target, int angleDeltaY, int angleDeltaX = 0, QPoint pix
     QWheelEvent event(pos, globalPos, pixelDelta, QPoint(angleDeltaX, angleDeltaY), Qt::NoButton, modifiers,
                       Qt::NoScrollPhase, false);
     QApplication::sendEvent(target, &event);
+}
+
+/// Distance of one wheel notch: the system's lines per notch, 1.8 times as far (Daniel, 2026-11-08).
+double notchDistance(const QWidget* editor) {
+    const int lineSpacing = editor->fontMetrics().lineSpacing() > 0 ? editor->fontMetrics().lineSpacing() : 20;
+    return 1.8 * QApplication::wheelScrollLines() * lineSpacing;
 }
 
 /// Review O3: drives every animation by hand, so the tests do not depend on when the animation
@@ -89,8 +97,7 @@ private slots:
         QVERIFY(bar->maximum() > 0);
         QCOMPARE(bar->value(), 0);
 
-        const int lineSpacing = editor->fontMetrics().lineSpacing() > 0 ? editor->fontMetrics().lineSpacing() : 20;
-        const int expectedStep = QApplication::wheelScrollLines() * lineSpacing;
+        const double expectedStep = notchDistance(editor);
 
         QSignalSpy valueSpy(bar, &QScrollBar::valueChanged);
 
@@ -99,11 +106,11 @@ private slots:
         ui::SmoothScroller* scroller = editor->smoothScroller();
         QVERIFY(scroller != nullptr);
         QVERIFY(scroller->isRunning());
-        QCOMPARE(scroller->target(), static_cast<double>(expectedStep));
+        QCOMPARE(scroller->target(), expectedStep);
 
         // Let the animation finish
         QVERIFY(anim.stepUntil([&] { return !scroller->isRunning(); }));
-        QCOMPARE(bar->value(), expectedStep);
+        QCOMPARE(bar->value(), static_cast<int>(std::lround(expectedStep)));
 
         // Smooth scrolling delivered intermediate frames, not a single instantaneous jump
         QVERIFY2(valueSpy.count() > 1,
@@ -118,8 +125,7 @@ private slots:
 
         ui::EditorWidget* editor = f.editor();
         QScrollBar* bar = editor->verticalScrollBar();
-        const int lineSpacing = editor->fontMetrics().lineSpacing() > 0 ? editor->fontMetrics().lineSpacing() : 20;
-        const int expectedStep = QApplication::wheelScrollLines() * lineSpacing;
+        const double expectedStep = notchDistance(editor);
 
         sendWheel(editor->viewport(), -120);
         anim.step(30);
@@ -129,10 +135,10 @@ private slots:
         ui::SmoothScroller* scroller = editor->smoothScroller();
         QVERIFY(scroller != nullptr);
         QVERIFY(scroller->isRunning());
-        QCOMPARE(scroller->target(), static_cast<double>(expectedStep * 2));
+        QCOMPARE(scroller->target(), expectedStep * 2);
 
         QVERIFY(anim.stepUntil([&] { return !scroller->isRunning(); }));
-        QCOMPARE(bar->value(), expectedStep * 2);
+        QCOMPARE(bar->value(), static_cast<int>(std::lround(expectedStep * 2)));
     }
 
     void reversingWheelDirectionRedirectsImmediately() {

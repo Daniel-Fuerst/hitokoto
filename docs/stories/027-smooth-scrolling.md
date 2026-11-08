@@ -20,6 +20,9 @@ moving through the document feels fluid and natural rather than jarring and abru
 - Then the vertical scroll position does not jump to the destination in a single frame
 - And it animates smoothly across multiple frames to the target using an easing curve (OutCubic)
 - And after the animation duration (200 ms), the scroll bar settles at the exact target value
+- And one notch (120 units of `angleDelta`) scrolls 1.8 times the system's wheel lines
+  (`QApplication::wheelScrollLines()`, usually 3) of the editor's line spacing; Daniel asked for
+  faster scrolling on 2026-11-08. Pixel deltas (trackpads) keep their own distance
 
 **Scenario: rapid wheel events accumulate target smoothly**
 - Given an active smooth scroll animation
