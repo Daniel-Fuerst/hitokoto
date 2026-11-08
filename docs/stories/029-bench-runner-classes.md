@@ -143,6 +143,13 @@ is resolved by finding the cause, or, if the slowdown is wanted, by accepting it
    still does. The label is read through the REST API at run time, not from the event that started
    the run, so adding the label and re-running the job is enough.
 
+**First screen of an opening.** For `open_*_first_chunk_ms`, `s023_open_10mb_first_chunk_ms` and
+`s024_open_10mb_properties_ms` a difference counts only above 20 ms instead of 2 ms, in both stages
+and for drift (Armin, 2026-11-08, after the first CI run on pull request #31): their single opens
+lie on two levels one frame (about 17 ms) apart on one runner, and the medians of two rounds can
+fall on different levels for the base and the pull request without a code change (48.0 against
+64.6 ms), which the rule without overlap does not catch.
+
 The tolerance stays 25 % in both stages. Whether it can be tighter within a class or between two
 measurements on one runner is decided later, on the recorded data.
 

@@ -118,8 +118,8 @@ std::vector<const Sample*> readableByTime(const std::vector<Sample>& samples) {
     return r;
 }
 
-bool slower(double was, double now) {
-    return now > was * (1 + kTolerance) && now - was > kMinDeltaMs;
+bool slower(std::string_view key, double was, double now) {
+    return now > was * (1 + kTolerance) && now - was > minDeltaMs(key);
 }
 
 KeyStatus slowStatus(std::string_view key) {
@@ -161,8 +161,10 @@ bool isUnknownClass(std::string_view runnerClass) {
     return startsWith(runnerClass, kUnknownPrefix);
 }
 
-double minDeltaMs(std::string_view /*key*/) {
-    return kMinDeltaMs;
+double minDeltaMs(std::string_view key) {
+    const bool firstChunk = key.starts_with("open_") && key.ends_with("_first_chunk_ms");
+    return firstChunk || key == "s023_open_10mb_first_chunk_ms" || key == "s024_open_10mb_properties_ms" ? kFrameDeltaMs
+                                                                                                         : kMinDeltaMs;
 }
 
 bool isReportOnly(std::string_view key) {
@@ -294,7 +296,8 @@ std::vector<KeyResult> compareWithBaseline(const Values& baseline, const Values&
             keys.push_back({key, KeyStatus::NoBaseline, 0, value});
             continue;
         }
-        keys.push_back({key, slower(found->second, value) ? slowStatus(key) : KeyStatus::Ok, found->second, value});
+        keys.push_back(
+            {key, slower(key, found->second, value) ? slowStatus(key) : KeyStatus::Ok, found->second, value});
     }
     return keys;
 }
@@ -324,7 +327,7 @@ std::vector<KeyResult> compareRounds(const std::array<Values, 2>& base, const st
         const double was = (b0 + b1) / 2;
         const double now = (p0 + p1) / 2;
         const bool apart = std::min(p0, p1) > std::max(b0, b1);
-        results.push_back({key, slower(was, now) && apart ? slowStatus(key) : KeyStatus::Ok, was, now});
+        results.push_back({key, slower(key, was, now) && apart ? slowStatus(key) : KeyStatus::Ok, was, now});
     }
     return results;
 }
@@ -334,7 +337,8 @@ std::vector<KeyResult> drift(const Values& anchorValues, const Values& baseline)
     for (const auto& [key, was] : anchorValues) {
         const auto found = baseline.find(key);
         if (found != baseline.end()) {
-            keys.push_back({key, slower(was, found->second) ? slowStatus(key) : KeyStatus::Ok, was, found->second});
+            keys.push_back(
+                {key, slower(key, was, found->second) ? slowStatus(key) : KeyStatus::Ok, was, found->second});
         }
     }
     return keys;

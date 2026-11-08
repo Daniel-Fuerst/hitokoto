@@ -16,7 +16,8 @@ cache sizes in sysfs (`hitokoto-bench-gate --print-class`). How a run is judged
 (`hitokoto-bench-gate`, rules in `docs/stories/029-bench-runner-classes.md`):
 
 - **Class stage.** A class with 3 or more samples is established; its baseline is the median per
-  key of its newest 5 samples. A key fails when it is more than 25 % and more than 2 ms slower.
+  key of its newest 5 samples. A key fails when it is more than 25 % and more than 2 ms slower
+  (20 ms for the first screen of an opening, whose samples jump by one frame on one runner).
 - **Main stage.** If the class is not established, or a key fails the class stage, the job builds
   the base commit and measures base, pull request, pull request, base on the same runner. A key
   fails only if the mean of the pull request's rounds is more than 25 % and 2 ms above the base's
