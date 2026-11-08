@@ -232,6 +232,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
 void MainWindow::setOptions(const Options& options) {
     options_ = options;
     editor_->setFrontMatterAsProperties(options_.frontMatterAsProperties);
+    editor_->setSmoothScrolling(options_.smoothScrolling);
 }
 
 }  // namespace hitokoto::ui

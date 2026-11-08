@@ -12,10 +12,6 @@
 using namespace hitokoto;
 
 namespace {
-QColor qcolor(const core::Color& c) {
-    return {c.r, c.g, c.b, c.a};
-}
-
 QToolButton* toolbarButton(ui::EditorWidget* editor, const char* name) {
     return editor->floatingToolbar()->findChild<QToolButton*>(QString::fromLatin1(name));
 }
@@ -93,11 +89,12 @@ private slots:
         QCOMPARE(view->model()->rowCount(), 2);  // header + 1 body row
         QCOMPARE(view->currentIndex().row(), 0);
         QCOMPARE(view->currentIndex().column(), 0);
-        QVERIFY(focusedCell() != nullptr);
+        QPlainTextEdit* cell = focusedCell();
+        QVERIFY(cell != nullptr);
 
         // Typing goes straight into the first header cell.
-        test::keyClicks(focusedCell(), QStringLiteral("Col 1"));
-        test::keyClick(focusedCell(), Qt::Key_Tab);
+        test::keyClicks(cell, QStringLiteral("Col 1"));
+        test::keyClick(cell, Qt::Key_Tab);
         f.settle();
         QCOMPARE(view->model()->data(view->model()->index(0, 0)).toString(), QStringLiteral("Col 1"));
 
@@ -174,9 +171,12 @@ private slots:
 
     void themedToolbarUsesEveryToken() {
         test::Fixture f;
+        // Review S027 O10: each colour once, as the token and as the expected pixel.
+        constexpr core::Color background{0x22, 0x24, 0x2a, 0xff};
+        constexpr core::Color border{0x44, 0x48, 0x52, 0xff};
         auto theme = core::builtinTheme(core::ColorScheme::Dark);
-        theme.toolbar.background = core::Color{0x22, 0x24, 0x2a, 0xff};
-        theme.toolbar.border = core::Color{0x44, 0x48, 0x52, 0xff};
+        theme.toolbar.background = background;
+        theme.toolbar.border = border;
         theme.toolbar.borderWidth = 2;
         theme.toolbar.radius = 10;
         theme.toolbar.padding = 6;
@@ -197,6 +197,8 @@ private slots:
 
         QToolButton* tableBtn = toolbarButton(f.editor(), "createTableButton");
         QToolButton* codeBtn = toolbarButton(f.editor(), "createInlineCodeButton");
+        QVERIFY(tableBtn != nullptr);
+        QVERIFY(codeBtn != nullptr);
         QCOMPARE(tableBtn->size(), QSize(34, 34));
         QCOMPARE(codeBtn->size(), QSize(34, 34));
         QCOMPARE(bar->width(), 34 + 2 * 6);
@@ -204,8 +206,8 @@ private slots:
         QCOMPARE(codeBtn->y() - tableBtn->y() - tableBtn->height(), 8);
 
         const QImage img = bar->grab().toImage();
-        QCOMPARE(img.pixelColor(bar->width() / 2, 4), qcolor(*theme.toolbar.background));
-        QCOMPARE(img.pixelColor(bar->width() / 2, 0), qcolor(*theme.toolbar.border));
+        QCOMPARE(img.pixelColor(bar->width() / 2, 4), QColor(background.r, background.g, background.b, background.a));
+        QCOMPARE(img.pixelColor(bar->width() / 2, 0), QColor(border.r, border.g, border.b, border.a));
     }
 };
 

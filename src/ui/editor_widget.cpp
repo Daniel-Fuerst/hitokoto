@@ -4,6 +4,7 @@
 #include "floating_toolbar.hpp"
 #include "properties_embedder.hpp"
 #include "qt_bridge.hpp"
+#include "smooth_scroller.hpp"
 #include "table_embedder.hpp"
 
 #include <QApplication>
@@ -50,6 +51,9 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     doc->setDocumentLayout(layout_);
     setDocument(doc);
     setAcceptRichText(false);
+    // S027: smooth scrolling on mouse wheel events; created first, before anything that scrolls
+    // (applyPendingShift, resize, mouse and key events) can reach it (review O5).
+    verticalScroller_ = new SmoothScroller(verticalScrollBar(), this);
     styler_ = new BlockStyler(document(), registry, [this] { return visibleBlockRange(); }, this);
     tables_ = std::make_unique<TableEmbedder>(this, styler_, layout_);
     properties_ = std::make_unique<PropertiesEmbedder>(this, styler_, layout_);
@@ -92,6 +96,13 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
 }
 
 EditorWidget::~EditorWidget() = default;
+
+void EditorWidget::setSmoothScrolling(bool on) {
+    smoothScrolling_ = on;
+    if (!smoothScrolling_) {
+        verticalScroller_->stop();
+    }
+}
 
 QTableView* EditorWidget::tableViewAt(int blockNumber) const {
     return tables_->viewAt(blockNumber);
@@ -139,7 +150,7 @@ void EditorWidget::applyPendingShift() {
         applyingShift_ = true;
         QScrollBar* bar = verticalScrollBar();
         bar->setMaximum(std::max(bar->maximum(), bar->value() + shift));
-        bar->setValue(bar->value() + shift);
+        verticalScroller_->shift(shift);  // moves the bar, and a running wheel animation with it
         applyingShift_ = false;
     }
 }
@@ -240,9 +251,6 @@ void EditorWidget::updateMargins() {
 }
 
 void EditorWidget::positionToolbar() {
-    if (toolbar_ == nullptr) {
-        return;
-    }
     const QScrollBar* bar = verticalScrollBar();
     const bool barTakesSpace = verticalScrollBarPolicy() != Qt::ScrollBarAlwaysOff &&
                                style()->styleHint(QStyle::SH_ScrollBar_Transient, nullptr, bar) == 0;
@@ -255,6 +263,7 @@ void EditorWidget::positionToolbar() {
 }
 
 void EditorWidget::resizeEvent(QResizeEvent* event) {
+    verticalScroller_->stop();
     const ScrollAnchor anchor = captureAnchor();
     QTextEdit::resizeEvent(event);
     updateMargins();
@@ -304,6 +313,7 @@ void EditorWidget::mouseReleaseEvent(QMouseEvent* event) {
 }
 
 void EditorWidget::mousePressEvent(QMouseEvent* event) {
+    verticalScroller_->stop();
     const QTextCursor hit = cursorForPosition(event->position().toPoint());
     const QTextBlock block = hit.block();
     const bool wasConcealed = block.isValid() && !styler_->isRevealed(block.blockNumber());
@@ -364,6 +374,51 @@ void EditorWidget::mouseMoveEvent(QMouseEvent* event) {
     QTextEdit::mouseMoveEvent(event);
 }
 
+void EditorWidget::wheelEvent(QWheelEvent* event) {
+    if (!smoothScrolling_) {
+        QTextEdit::wheelEvent(event);
+        return;
+    }
+
+    if ((event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier)) != 0) {
+        verticalScroller_->stop();
+        QTextEdit::wheelEvent(event);
+        return;
+    }
+
+    // Review O4: pixel deltas (trackpads, high-resolution touchpads) scroll directly, as Qt's
+    // documentation of QWheelEvent::pixelDelta() asks; on X11 they are driver-specific and
+    // unreliable, so there the angle delta is used.
+    const QPoint pixels = event->pixelDelta();
+    if (pixels.y() != 0 && QGuiApplication::platformName() != QLatin1String("xcb")) {
+        verticalScroller_->stop();
+        verticalScroller_->shift(-static_cast<double>(pixels.y()));
+        event->accept();
+        return;
+    }
+
+    const int angleY = event->angleDelta().y();
+    double delta = 0.0;
+    if (angleY != 0) {
+        const int lineSpacing =
+            fontMetrics().lineSpacing() > 0 ? fontMetrics().lineSpacing() : verticalScrollBar()->singleStep();
+        const int lines = QApplication::wheelScrollLines() > 0 ? QApplication::wheelScrollLines() : 3;
+        // One notch scrolls 1.8 times the system's wheel lines (S027, Daniel 2026-11-08).
+        constexpr double kNotchFactor = 1.8;
+        const double distancePerNotch = kNotchFactor * lines * (lineSpacing > 0 ? lineSpacing : 20);
+        delta = -(static_cast<double>(angleY) / 120.0) * distancePerNotch;
+    }
+
+    if (std::abs(delta) > 0.001 && verticalScrollBar() != nullptr &&
+        verticalScrollBar()->maximum() > verticalScrollBar()->minimum()) {
+        verticalScroller_->scroll(delta);
+        event->accept();
+        return;
+    }
+
+    QTextEdit::wheelEvent(event);
+}
+
 void EditorWidget::leaveEvent(QEvent* event) {
     viewport()->setCursor(Qt::IBeamCursor);
     QTextEdit::leaveEvent(event);
@@ -420,6 +475,7 @@ QString EditorWidget::anchorAt(const QPoint& pos) const {
 }
 
 void EditorWidget::keyPressEvent(QKeyEvent* event) {
+    verticalScroller_->stop();
     if (tables_->handleEditorKey(event) || properties_->handleEditorKey(event)) {
         return;
     }

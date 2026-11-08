@@ -15,6 +15,7 @@ qt_add_library(hitokoto_ui STATIC
     properties_embedder.cpp properties_embedder.hpp
     properties_view.cpp properties_view.hpp
     qt_bridge.hpp
+    smooth_scroller.cpp smooth_scroller.hpp
     table_embedder.cpp table_embedder.hpp
     table_model.cpp table_model.hpp
     table_view.cpp table_view.hpp

@@ -39,6 +39,7 @@ foreach(t IN ITEMS
         tst_s023_thematic_breaks
         tst_s024_front_matter
         tst_s026_floating_toolbar
+        tst_s027_smooth_scrolling
         tst_s028_find_in_file)
     hitokoto_ui_test(${t})
 endforeach()

@@ -18,7 +18,7 @@ enum class IconKind { Table, InlineCode };
 
 class ToolbarButton final : public QToolButton {
 public:
-    ToolbarButton(IconKind kind, const core::ToolbarStyle* style, QWidget* parent)
+    ToolbarButton(IconKind kind, const core::ToolbarStyle& style, QWidget* parent)
         : QToolButton(parent), kind_(kind), style_(style) {
         setFocusPolicy(Qt::NoFocus);
         setCursor(Qt::PointingHandCursor);
@@ -37,9 +37,6 @@ protected:
     }
 
     void paintEvent(QPaintEvent* /*event*/) override {
-        if (style_ == nullptr) {
-            return;
-        }
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing);
 
@@ -47,12 +44,12 @@ protected:
         const bool hovered = underMouse();
         if (pressed || hovered) {
             painter.setPen(Qt::NoPen);
-            painter.setBrush(toQColor(pressed ? style_->activeBackground : style_->hoverBackground));
-            const qreal radius = std::clamp<qreal>(style_->buttonRadius, 0, std::min(width(), height()) / 2.0);
+            painter.setBrush(toQColor(pressed ? style_.activeBackground : style_.hoverBackground));
+            const qreal radius = std::clamp<qreal>(style_.buttonRadius, 0, std::min(width(), height()) / 2.0);
             painter.drawRoundedRect(QRectF(rect()), radius, radius);
         }
 
-        const QColor iconColor = toQColor(pressed ? style_->activeIcon : style_->icon);
+        const QColor iconColor = toQColor(pressed ? style_.activeIcon : style_.icon);
         const qreal extent = std::min(width(), height()) * 0.56;
         const QRectF box((width() - extent) / 2.0, (height() - extent) / 2.0, extent, extent);
         const qreal stroke = std::max<qreal>(1.25, extent / 10.0);
@@ -92,7 +89,7 @@ protected:
 
 private:
     IconKind kind_;
-    const core::ToolbarStyle* style_;
+    const core::ToolbarStyle& style_;
 };
 
 }  // namespace
@@ -101,13 +98,13 @@ FloatingToolbar::FloatingToolbar(QWidget* parent) : QWidget(parent) {
     setFocusPolicy(Qt::NoFocus);
     setAccessibleName(tr("Formatting toolbar"));
 
-    tableButton_ = new ToolbarButton(IconKind::Table, &style_, this);
+    tableButton_ = new ToolbarButton(IconKind::Table, style_, this);
     tableButton_->setObjectName(QStringLiteral("createTableButton"));
     tableButton_->setToolTip(tr("Create new table"));
     tableButton_->setAccessibleName(tr("Create new table"));
     connect(tableButton_, &QToolButton::clicked, this, &FloatingToolbar::createTableRequested);
 
-    inlineCodeButton_ = new ToolbarButton(IconKind::InlineCode, &style_, this);
+    inlineCodeButton_ = new ToolbarButton(IconKind::InlineCode, style_, this);
     inlineCodeButton_->setObjectName(QStringLiteral("createInlineCodeButton"));
     inlineCodeButton_->setToolTip(tr("Create inline code"));
     inlineCodeButton_->setAccessibleName(tr("Create inline code"));
