@@ -171,9 +171,12 @@ private slots:
 
     void themedToolbarUsesEveryToken() {
         test::Fixture f;
+        // Review S027 O10: each colour once, as the token and as the expected pixel.
+        constexpr core::Color background{0x22, 0x24, 0x2a, 0xff};
+        constexpr core::Color border{0x44, 0x48, 0x52, 0xff};
         auto theme = core::builtinTheme(core::ColorScheme::Dark);
-        theme.toolbar.background = core::Color{0x22, 0x24, 0x2a, 0xff};
-        theme.toolbar.border = core::Color{0x44, 0x48, 0x52, 0xff};
+        theme.toolbar.background = background;
+        theme.toolbar.border = border;
         theme.toolbar.borderWidth = 2;
         theme.toolbar.radius = 10;
         theme.toolbar.padding = 6;
@@ -203,8 +206,8 @@ private slots:
         QCOMPARE(codeBtn->y() - tableBtn->y() - tableBtn->height(), 8);
 
         const QImage img = bar->grab().toImage();
-        QCOMPARE(img.pixelColor(bar->width() / 2, 4), QColor(0x22, 0x24, 0x2a));
-        QCOMPARE(img.pixelColor(bar->width() / 2, 0), QColor(0x44, 0x48, 0x52));
+        QCOMPARE(img.pixelColor(bar->width() / 2, 4), QColor(background.r, background.g, background.b, background.a));
+        QCOMPARE(img.pixelColor(bar->width() / 2, 0), QColor(border.r, border.g, border.b, border.a));
     }
 };
 

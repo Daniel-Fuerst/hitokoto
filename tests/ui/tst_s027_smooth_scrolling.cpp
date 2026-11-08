@@ -4,6 +4,7 @@
 #include "table_view.hpp"
 #include "ui_test_support.hpp"
 
+#include <QAbstractAnimation>
 #include <QApplication>
 #include <QPoint>
 #include <QScrollBar>
@@ -32,6 +33,46 @@ void sendWheel(QWidget* target, int angleDeltaY, int angleDeltaX = 0, QPoint pix
     QApplication::sendEvent(target, &event);
 }
 
+/// Review O3: drives every animation by hand, so the tests do not depend on when the animation
+/// timer fires on a runner. Install it before the first animation starts; only step() moves the
+/// clock. Qt starts a driver and registers new animations on its own schedule within the steps, so
+/// the tests wait for states (stepUntil), never for an exact number of milliseconds.
+class ManualAnimationDriver final : public QAnimationDriver {
+public:
+    ManualAnimationDriver() { install(); }
+    ~ManualAnimationDriver() override { uninstall(); }
+    ManualAnimationDriver(const ManualAnimationDriver&) = delete;
+    ManualAnimationDriver& operator=(const ManualAnimationDriver&) = delete;
+
+    /// Lets queued animation starts register, then moves the clock by `ms` and runs one frame.
+    void step(int ms = 16) {
+        QCoreApplication::processEvents();
+        elapsed_ += ms;
+        advanceAnimation();
+    }
+
+    /// Runs frames of 16 ms until `done()` holds; false after `maxFrames` frames.
+    template <typename Done>
+    bool stepUntil(Done done, int maxFrames = 100) {
+        for (int i = 0; i < maxFrames && !done(); ++i) {
+            step();
+        }
+        return done();
+    }
+
+    void advance() override {}  // never driven by a timer
+    [[nodiscard]] qint64 elapsed() const override { return elapsed_; }
+
+protected:
+    void start() override {
+        elapsed_ = 0;  // elapsed() counts from the start of the driver, as Qt's own driver does
+        QAnimationDriver::start();
+    }
+
+private:
+    qint64 elapsed_ = 0;
+};
+
 }  // namespace
 
 class tst_s027_smooth_scrolling : public QObject {
@@ -39,6 +80,7 @@ class tst_s027_smooth_scrolling : public QObject {
 private slots:
     void wheelScrollAnimatesAcrossFramesToTarget() {
         test::Fixture f;
+        ManualAnimationDriver anim;
         QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), numberedLines(100).toUtf8())));
         f.settle();
 
@@ -60,7 +102,7 @@ private slots:
         QCOMPARE(scroller->target(), static_cast<double>(expectedStep));
 
         // Let the animation finish
-        QTRY_VERIFY_WITH_TIMEOUT(!scroller->isRunning(), 1000);
+        QVERIFY(anim.stepUntil([&] { return !scroller->isRunning(); }));
         QCOMPARE(bar->value(), expectedStep);
 
         // Smooth scrolling delivered intermediate frames, not a single instantaneous jump
@@ -70,6 +112,7 @@ private slots:
 
     void rapidSuccessiveWheelEventsAccumulateTarget() {
         test::Fixture f;
+        ManualAnimationDriver anim;
         QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), numberedLines(100).toUtf8())));
         f.settle();
 
@@ -79,7 +122,7 @@ private slots:
         const int expectedStep = QApplication::wheelScrollLines() * lineSpacing;
 
         sendWheel(editor->viewport(), -120);
-        QTest::qWait(30);
+        anim.step(30);
 
         sendWheel(editor->viewport(), -120);
 
@@ -88,12 +131,13 @@ private slots:
         QVERIFY(scroller->isRunning());
         QCOMPARE(scroller->target(), static_cast<double>(expectedStep * 2));
 
-        QTRY_VERIFY_WITH_TIMEOUT(!scroller->isRunning(), 1000);
+        QVERIFY(anim.stepUntil([&] { return !scroller->isRunning(); }));
         QCOMPARE(bar->value(), expectedStep * 2);
     }
 
     void reversingWheelDirectionRedirectsImmediately() {
         test::Fixture f;
+        ManualAnimationDriver anim;
         QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), numberedLines(100).toUtf8())));
         f.settle();
 
@@ -101,7 +145,7 @@ private slots:
         QScrollBar* bar = editor->verticalScrollBar();
 
         sendWheel(editor->viewport(), -120);
-        QTest::qWait(40);
+        QVERIFY(anim.stepUntil([&] { return bar->value() > 0; }));
 
         ui::SmoothScroller* scroller = editor->smoothScroller();
         QVERIFY(scroller != nullptr);
@@ -114,12 +158,13 @@ private slots:
 
         // Must redirect towards 0 immediately without waiting
         QCOMPARE(scroller->target(), 0.0);
-        QTRY_VERIFY_WITH_TIMEOUT(!scroller->isRunning(), 1000);
+        QVERIFY(anim.stepUntil([&] { return !scroller->isRunning(); }));
         QCOMPARE(bar->value(), 0);
     }
 
     void sliderPressStopsAnimation() {
         test::Fixture f;
+        ManualAnimationDriver anim;
         QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), numberedLines(100).toUtf8())));
         f.settle();
 
@@ -137,6 +182,7 @@ private slots:
 
     void keyPressStopsAnimation() {
         test::Fixture f;
+        ManualAnimationDriver anim;
         QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), numberedLines(100).toUtf8())));
         f.settle();
 
@@ -153,6 +199,7 @@ private slots:
 
     void mousePressStopsAnimation() {
         test::Fixture f;
+        ManualAnimationDriver anim;
         QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), numberedLines(100).toUtf8())));
         f.settle();
 
@@ -169,6 +216,7 @@ private slots:
 
     void clampingAtBounds() {
         test::Fixture f;
+        ManualAnimationDriver anim;
         QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), numberedLines(100).toUtf8())));
         f.settle();
 
@@ -185,12 +233,15 @@ private slots:
         // Huge scroll down beyond maximum
         sendWheel(editor->viewport(), -120000);
         QCOMPARE(scroller->target(), static_cast<double>(bar->maximum()));
-        QTRY_VERIFY_WITH_TIMEOUT(!scroller->isRunning(), 1000);
+        QVERIFY(anim.stepUntil([&] { return !scroller->isRunning(); }));
         QCOMPARE(bar->value(), bar->maximum());
     }
 
-    void touchpadPixelDeltaAnimatesSmoothly() {
+    void touchpadPixelDeltaScrollsDirectly() {
+        // Review O4: Qt says pixelDelta() "should be used directly to scroll content on screen";
+        // a trackpad event carries an angle delta too, which must not turn it into wheel notches.
         test::Fixture f;
+        ManualAnimationDriver anim;
         QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), numberedLines(100).toUtf8())));
         f.settle();
 
@@ -200,18 +251,39 @@ private slots:
         QVERIFY(scroller != nullptr);
 
         const int initial = bar->value();
-        // High-resolution trackpad event with pixelDelta only (angleDelta 0)
-        sendWheel(editor->viewport(), 0, 0, QPoint(0, -40));
+        sendWheel(editor->viewport(), -60, 0, QPoint(0, -40));
 
-        QVERIFY(scroller->isRunning());
-        QCOMPARE(scroller->target(), static_cast<double>(initial + 40));
-
-        QTRY_VERIFY_WITH_TIMEOUT(!scroller->isRunning(), 1000);
+        QVERIFY(!scroller->isRunning());
         QCOMPARE(bar->value(), initial + 40);
+        QCOMPARE(scroller->target(), static_cast<double>(initial + 40));
+    }
+
+    void touchpadDeltaDuringAnimationContinuesFromTheCurrentPosition() {
+        test::Fixture f;
+        ManualAnimationDriver anim;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), numberedLines(100).toUtf8())));
+        f.settle();
+
+        ui::EditorWidget* editor = f.editor();
+        QScrollBar* bar = editor->verticalScrollBar();
+        ui::SmoothScroller* scroller = editor->smoothScroller();
+        QVERIFY(scroller != nullptr);
+
+        sendWheel(editor->viewport(), -120);
+        QVERIFY(anim.stepUntil([&] { return bar->value() > 0; }));
+        QVERIFY(scroller->isRunning());
+        const int current = bar->value();
+
+        sendWheel(editor->viewport(), -60, 0, QPoint(0, -40));
+        QVERIFY(!scroller->isRunning());
+        QCOMPARE(bar->value(), current + 40);
+        QVERIFY(anim.stepUntil([&] { return !scroller->isRunning(); }));
+        QCOMPARE(bar->value(), current + 40);
     }
 
     void optionDisablesSmoothScrolling() {
         test::Fixture f;
+        ManualAnimationDriver anim;
         QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), numberedLines(100).toUtf8())));
         f.settle();
 
@@ -236,6 +308,7 @@ private slots:
 
     void wheelOverEmbeddedTableScrollsEditor() {
         test::Fixture f;
+        ManualAnimationDriver anim;
         QString text = numberedLines(20);
         text += QStringLiteral("| A | B |\n| --- | --- |\n| 1 | 2 |\n");
         text += numberedLines(60);
@@ -256,27 +329,61 @@ private slots:
         QVERIFY(scroller != nullptr);
         QVERIFY(scroller->isRunning());
 
-        QTRY_VERIFY_WITH_TIMEOUT(!scroller->isRunning(), 1000);
+        QVERIFY(anim.stepUntil([&] { return !scroller->isRunning(); }));
         QVERIFY(bar->value() > 0);
     }
 
-    void layoutShiftAdjustsActiveTarget() {
+    void layoutShiftMovesTheBarAndTheAnimation() {
+        // A layout shift above the viewport moves the content; the bar, the running animation and
+        // its target follow it, and the animation goes on.
         test::Fixture f;
+        ManualAnimationDriver anim;
         QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), numberedLines(100).toUtf8())));
         f.settle();
 
         ui::EditorWidget* editor = f.editor();
+        QScrollBar* bar = editor->verticalScrollBar();
         ui::SmoothScroller* scroller = editor->smoothScroller();
         QVERIFY(scroller != nullptr);
 
         sendWheel(editor->viewport(), -120);
+        QVERIFY(anim.stepUntil([&] { return bar->value() > 0; }));
         QVERIFY(scroller->isRunning());
         const double targetBefore = scroller->target();
+        const int valueBefore = bar->value();
 
         scroller->shift(40.0);
         QCOMPARE(scroller->target(), targetBefore + 40.0);
+        QCOMPARE(bar->value(), valueBefore + 40);
+        QVERIFY(scroller->isRunning());
 
-        scroller->stop();
+        QVERIFY(anim.stepUntil([&] { return !scroller->isRunning(); }));
+        QCOMPARE(bar->value(), static_cast<int>(targetBefore) + 40);
+    }
+
+    void programmaticScrollDuringAnimationStopsIt() {
+        // Review O1: a scroll by the program (find, scroll anchor, caret moves) wins over the wheel.
+        test::Fixture f;
+        ManualAnimationDriver anim;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), numberedLines(400).toUtf8())));
+        f.settle();
+
+        ui::EditorWidget* editor = f.editor();
+        QScrollBar* bar = editor->verticalScrollBar();
+        ui::SmoothScroller* scroller = editor->smoothScroller();
+        QVERIFY(scroller != nullptr);
+
+        sendWheel(editor->viewport(), -120);
+        QVERIFY(anim.stepUntil([&] { return bar->value() > 0; }));
+        QVERIFY(scroller->isRunning());
+
+        const int jump = bar->maximum() / 2;
+        bar->setValue(jump);
+        QVERIFY(!scroller->isRunning());
+        QCOMPARE(scroller->target(), static_cast<double>(jump));
+
+        QVERIFY(anim.stepUntil([&] { return !scroller->isRunning(); }));
+        QCOMPARE(bar->value(), jump);
     }
 };
 

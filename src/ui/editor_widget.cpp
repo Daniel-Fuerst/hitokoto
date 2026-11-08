@@ -51,6 +51,9 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     doc->setDocumentLayout(layout_);
     setDocument(doc);
     setAcceptRichText(false);
+    // S027: smooth scrolling on mouse wheel events; created first, before anything that scrolls
+    // (applyPendingShift, resize, mouse and key events) can reach it (review O5).
+    verticalScroller_ = new SmoothScroller(verticalScrollBar(), this);
     styler_ = new BlockStyler(document(), registry, [this] { return visibleBlockRange(); }, this);
     tables_ = std::make_unique<TableEmbedder>(this, styler_, layout_);
     properties_ = std::make_unique<PropertiesEmbedder>(this, styler_, layout_);
@@ -90,9 +93,6 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     connect(toolbar_, &FloatingToolbar::createTableRequested, this, &EditorWidget::insertTable);
     connect(toolbar_, &FloatingToolbar::createInlineCodeRequested, this, &EditorWidget::insertInlineCode);
     positionToolbar();
-
-    // S027: smooth scrolling on mouse wheel events.
-    verticalScroller_ = new SmoothScroller(verticalScrollBar(), this);
 }
 
 EditorWidget::~EditorWidget() = default;
@@ -150,9 +150,8 @@ void EditorWidget::applyPendingShift() {
         applyingShift_ = true;
         QScrollBar* bar = verticalScrollBar();
         bar->setMaximum(std::max(bar->maximum(), bar->value() + shift));
-        bar->setValue(bar->value() + shift);
+        verticalScroller_->shift(shift);  // moves the bar, and a running wheel animation with it
         applyingShift_ = false;
-        verticalScroller_->shift(shift);
     }
 }
 
@@ -387,6 +386,17 @@ void EditorWidget::wheelEvent(QWheelEvent* event) {
         return;
     }
 
+    // Review O4: pixel deltas (trackpads, high-resolution touchpads) scroll directly, as Qt's
+    // documentation of QWheelEvent::pixelDelta() asks; on X11 they are driver-specific and
+    // unreliable, so there the angle delta is used.
+    const QPoint pixels = event->pixelDelta();
+    if (pixels.y() != 0 && QGuiApplication::platformName() != QLatin1String("xcb")) {
+        verticalScroller_->stop();
+        verticalScroller_->shift(-static_cast<double>(pixels.y()));
+        event->accept();
+        return;
+    }
+
     const int angleY = event->angleDelta().y();
     double delta = 0.0;
     if (angleY != 0) {
@@ -395,8 +405,6 @@ void EditorWidget::wheelEvent(QWheelEvent* event) {
         const int lines = QApplication::wheelScrollLines() > 0 ? QApplication::wheelScrollLines() : 3;
         const double distancePerNotch = static_cast<double>(lines * (lineSpacing > 0 ? lineSpacing : 20));
         delta = -(static_cast<double>(angleY) / 120.0) * distancePerNotch;
-    } else if (!event->pixelDelta().isNull() && event->pixelDelta().y() != 0) {
-        delta = -static_cast<double>(event->pixelDelta().y());
     }
 
     if (std::abs(delta) > 0.001 && verticalScrollBar() != nullptr &&
@@ -415,10 +423,6 @@ void EditorWidget::leaveEvent(QEvent* event) {
 }
 
 bool EditorWidget::viewportEvent(QEvent* event) {
-    if (event->type() == QEvent::Wheel) {
-        wheelEvent(static_cast<QWheelEvent*>(event));
-        return event->isAccepted();
-    }
     if (event->type() == QEvent::ToolTip) {
         auto* help = static_cast<QHelpEvent*>(event);
         const QTextCharFormat fmt = formatAt(help->pos());
