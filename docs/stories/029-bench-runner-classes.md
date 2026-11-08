@@ -1,8 +1,9 @@
 # S029 — Benchmark baselines per runner class, recorded by CI
 
-- **Status:** Open (written 2026-11-08, waiting for confirmation after the spec review) ·
-  **Order:** 30 · **Size:** M · **Depends on:** S006, S007, S017 · **Decision:** ADR 0009
-  (Proposed)
+- **Status:** Confirmed (Armin, 2026-11-08, after review
+  `docs/reviews/029-bench-runner-classes-spec.md`; details are tuned from observation and, where
+  needed, follow-up stories) · **Order:** 30 · **Size:** M · **Depends on:** S006, S007, S017 ·
+  **Decision:** ADR 0009
 - **Basis:** the entry "Benchmark job on Linux red without a code change" in
   `unrefined.md` (seen since S017, refined here and removed there) and Armin's decisions of
   2026-11-08 in conversation. The brief asks for benchmarks in CI that "fail or flag the build on

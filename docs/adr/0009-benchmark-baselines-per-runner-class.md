@@ -1,6 +1,6 @@
 # ADR 0009: Benchmark baselines per runner class, recorded by CI, with main as the arbiter
 
-- **Status:** Proposed (with S029, 2026-11-08)
+- **Status:** Accepted (Armin, 2026-11-08, with the confirmation of S029; proposed with it)
 - **Date:** 2026-11-08
 - **Deciders:** project owner (Armin, Daniel)
 
