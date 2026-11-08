@@ -196,21 +196,23 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
 - **Open:** which of these to adopt, (6) preferred. Armin's goal: the job is red only for a real
   regression, and a new kind of runner is never overlooked.
 
-## Versioning, and packages and installers for every version
+## Packages and installers for every version
 
 - **Seen:** 2026-10-31 (Armin, after building main for daily use): every update means building
   locally, copying the exe and running `windeployqt` by hand.
-- **Now:** the version is `0.1.0` in `project()` in `CMakeLists.txt`, set by hand and unchanged
-  since S000; the app reports it through `QApplication::applicationVersion`. The repository has
-  no tags. `CMakeLists.txt` configures CPack for DEB and TGZ (pull request #15), but no CI job runs
-  it. S012 (distributable builds; Open in the backlog, Proposed in its file) asks for one artefact
-  per platform from a release workflow for a tagged release: a Windows installer or zip, a macOS
-  `.dmg` and a Linux AppImage, with the licences.
-- **Wanted (Armin):** a version, set automatically if possible, and for every new version packages
-  and installers built automatically.
-- **Open:** where the version comes from (a git tag read by CMake, a file, or derived from the
-  commit messages); what makes a new version (a tag on main, a GitHub release, every merge); the
-  formats per platform and whether this refines S012 or becomes a story of its own; signing
-  (Windows certificate, macOS notarisation); where the artefacts go (GitHub releases, now that the
-  repository is public). A release job changes `ci.yml` or adds a workflow, so it needs Armin's
-  approval.
+- **Refined so far:** the version itself is S030 (a version for every merge into main, ADR 0010,
+  proposed 2026-11-08).
+- **Now:** `CMakeLists.txt` configures CPack for DEB and TGZ (pull request #15), but no CI job runs
+  it; it installs only the binary (no `.desktop` file, icon or copyright file). S012 (distributable
+  builds; Open in the backlog, Proposed in its file) asks for one artefact per platform from a
+  release workflow for a tagged release: a Windows installer or zip, a macOS `.dmg` and a Linux
+  AppImage, with the licences.
+- **Wanted (Armin):** for every new version, packages and installers built automatically; on
+  2026-11-08 first of all a Debian package for trixie, built by CI on main against Debian's Qt
+  (6.8.2), once versions exist.
+- **Open:** the formats per platform and whether this refines S012 or becomes a story of its own
+  (S012 still says the `.deb` follows separate Debian packaging conventions; for Armin, a `.deb`
+  built by CI belongs to this project); signing (Windows certificate, macOS notarisation); where the
+  artefacts go (GitHub releases, now that the repository is public). Tags pushed by the S030 tag
+  job start no other workflow, so package builds run in the same workflow after it. A release job
+  changes `ci.yml` or adds a workflow, so it needs Armin's approval.
