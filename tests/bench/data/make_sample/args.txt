@@ -1,0 +1,7 @@
+--make-sample
+--results
+@DIR@/results.json
+--context
+@DIR@/context.json
+--output
+@OUT@/sample.json

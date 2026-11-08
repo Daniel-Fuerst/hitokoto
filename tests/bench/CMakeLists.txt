@@ -18,7 +18,10 @@ if(TARGET hitokoto-bench-gate)
             label_accepted
             hard_budget
             drift_main
-            drift_after_marker)
+            drift_after_marker
+            print_class
+            make_sample
+            make_sample_refused)
         add_test(NAME S029_GateCase_${c}
             COMMAND ${CMAKE_COMMAND} -DGATE=$<TARGET_FILE:hitokoto-bench-gate>
                     -DCASE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/data/${c}

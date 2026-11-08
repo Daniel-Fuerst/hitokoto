@@ -28,6 +28,9 @@ inline constexpr double kMinDeltaMs = 2.0;  ///< smaller differences are timer a
 /// as given there (e.g. "512K"). Without a non-empty model name the model part is "unknown".
 std::string runnerClass(std::string_view cpuinfo, int cpus, std::string_view l2, std::string_view l3);
 
+/// The first non-empty model name of /proc/cpuinfo as written there, for the report; empty if none.
+std::string modelName(std::string_view cpuinfo);
+
 /// True for a class whose model part is "unknown"; such a class never becomes established.
 bool isUnknownClass(std::string_view runnerClass);
 

@@ -124,6 +124,12 @@ TEST(S029_RunnerClasses, MissingOrEmptyModelNameGivesAnUnknownClass) {
     EXPECT_FALSE(isUnknownClass(kClass));
 }
 
+TEST(S029_RunnerClasses, ModelNameForTheReport) {
+    EXPECT_EQ(modelName(kCpuinfoEpyc), "AMD EPYC 7763 64-Core Processor");
+    EXPECT_EQ(modelName("processor\t: 0\nmodel name\t:   \n"), "");
+    EXPECT_EQ(modelName("processor\t: 0\n"), "");
+}
+
 // --- Established class, baseline, anchor ---------------------------------------------------------
 
 TEST(S029_RunnerClasses, AClassIsEstablishedAtThreeReadableSamples) {

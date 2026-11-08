@@ -1,0 +1,11 @@
+--print-class
+--cpuinfo
+@DIR@/cpuinfo.txt
+--cpus
+4
+--l2
+512K
+--l3
+32768K
+--output
+@OUT@/bench-class.json
