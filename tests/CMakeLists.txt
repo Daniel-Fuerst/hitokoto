@@ -36,6 +36,9 @@ add_test(NAME S000_KeyInputOnlyThroughTestHelpers
             -DALLOWED_FILE=${CMAKE_CURRENT_SOURCE_DIR}/ui/key_input.hpp
             -P ${CMAKE_CURRENT_SOURCE_DIR}/lint/no_direct_qtest_keys.cmake)
 
+# S029: the benchmark gate.
+add_subdirectory(bench)
+
 if(HITOKOTO_BUILD_UI)
     add_subdirectory(ui)
 endif()
