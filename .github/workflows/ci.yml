@@ -5,11 +5,25 @@ on:
   push:
     branches: [main]
   pull_request:
+  # S029: a nightly run of main adds a benchmark sample, so that rare runner classes fill up.
+  schedule:
+    - cron: "17 2 * * *"
   workflow_dispatch:
+    inputs:
+      bench_data_branch:
+        description: "Test only (S029): write samples to this branch (bench-data-test-...), not on main"
+        required: false
+        default: ""
+      accept_drift:
+        description: "On main: accept the current benchmark drift (writes an acceptance marker)"
+        type: boolean
+        required: false
+        default: false
 
+# S029: only pull request runs are cancelled by newer ones; runs of main finish and leave a sample.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Qt versions: 6.12 (ADR 0001) where possible. Windows uses 6.8.3, the oldest supported Qt, until
 # an aqtinstall release supports the Qt 6.11+ repository layout for Windows x64 (aqtinstall 3.3.0
@@ -113,30 +127,61 @@ jobs:
           run-clang-tidy-18 -p build/dev -quiet "$(pwd)/(src|tests|bench)/"
           run-clang-tidy-18 -p build/fuzz -quiet "$(pwd)/fuzz/"
 
+  # S029 / ADR 0009: the Linux benchmark gate compares with the baseline of the runner's class
+  # (samples of runs of main on the branch bench-data); if the class cannot decide, it measures the
+  # base commit on the same runner (main stage). hitokoto-bench-gate decides; this job orchestrates.
   bench:
     name: Benchmarks (${{ matrix.name }})
     needs: build-test
     runs-on: ${{ matrix.os }}
+    # Until the duration of the main stage is measured on the S029 pull request (then derived from it).
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Tolerance against the baseline: Windows and macOS runners vary in speed by 20-50 %
-          # between runs with the same code (observed 2026-10-26), Linux runners far less.
-          - { name: Linux, os: ubuntu-24.04, qt: "6.12.0", arch: linux_gcc_64, baseline: linux, tolerance: "0.25" }
+          - { name: Linux, os: ubuntu-24.04, qt: "6.12.0", arch: linux_gcc_64 }
           # Windows and macOS are off until further notice (user decision 2026-10-28): their runners
-          # swing by 20-100 % between runs with the same code, the comparison failed without a code
-          # change, and a comparison that only reports is read by nobody. Their baselines stay.
-          #- { name: Windows, os: windows-2022, qt: "6.8.3", arch: win64_msvc2022_64, baseline: windows, tolerance: "0.50" }
-          #- { name: macOS, os: macos-15, qt: "6.12.0", arch: clang_64, baseline: macos, tolerance: "0.50" }
+          # swing by 20-100 % between runs with the same code. S029 covers Linux; the same scheme can
+          # follow there later. Their old baselines stay in bench/baselines/.
+          #- { name: Windows, os: windows-2022, qt: "6.8.3", arch: win64_msvc2022_64 }
+          #- { name: macOS, os: macos-15, qt: "6.12.0", arch: clang_64 }
+    env:
+      GATE: build/bench/bench/gate/hitokoto-bench-gate
+      BENCH: build/bench/bench/hitokoto-bench
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the base commit (first parent of the merge commit, or the merge base)
+      - name: Kind of run and data branch
+        id: kind
+        shell: bash
+        env:
+          INPUT_BRANCH: ${{ inputs.bench_data_branch }}
+        run: |
+          branch="bench-data"
+          if [ -n "$INPUT_BRANCH" ]; then
+            case "$INPUT_BRANCH" in bench-data-test-*) ;; *)
+              echo "::error::bench_data_branch must start with bench-data-test-"; exit 1;; esac
+            if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+              echo "::error::bench_data_branch is refused on main"; exit 1
+            fi
+            branch="$INPUT_BRANCH"
+          fi
+          if [ "${{ github.event_name }}" != "pull_request" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            kind=main
+          else
+            kind=pr
+          fi
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+          echo "data_branch=$branch" >> "$GITHUB_OUTPUT"
       - name: Linux packages
-        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libegl1 libxkbcommon-x11-0 libxcb-cursor0
-      - name: MSVC environment
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -147,23 +192,190 @@ jobs:
         run: cmake --preset bench
       - name: Build
         run: cmake --build --preset bench --parallel
-      - name: Core benchmarks
+      - name: Runner class
+        id: class
         shell: bash
         run: |
-          exe=$(find build/bench -type f \( -name hitokoto_core_bench -o -name hitokoto_core_bench.exe \) | head -1)
-          "$exe" --benchmark_out=core-bench.json --benchmark_out_format=json
+          l2=$(cat /sys/devices/system/cpu/cpu0/cache/index2/size 2>/dev/null || echo none)
+          l3=$(cat /sys/devices/system/cpu/cpu0/cache/index3/size 2>/dev/null || echo none)
+          "$GATE" --print-class --cpus "$(nproc)" --l2 "$l2" --l3 "$l3" --output bench-class.json | tee class.txt
+          echo "class=$(head -1 class.txt)" >> "$GITHUB_OUTPUT"
+      - name: Core benchmarks
+        run: build/bench/bench/hitokoto_core_bench --benchmark_out=core-bench.json --benchmark_out_format=json
       - name: End-to-end benchmarks (S006, S007)
-        shell: bash
         env:
           QT_QPA_PLATFORM: offscreen
+        shell: bash
+        # Hard budgets and comparisons are decided by the gate below; a missed budget must not stop
+        # the job here, an incomplete result fails there.
         run: |
-          exe=$(find build/bench -type f \( -name hitokoto-bench -o -name hitokoto-bench.exe \) | head -1)
-          "$exe" --runs 10 --output e2e-bench.json --baseline bench/baselines/${{ matrix.baseline }}.json --tolerance ${{ matrix.tolerance }}
+          "$BENCH" --runs 10 --output e2e-bench.json || echo "hitokoto-bench exited with $?"
+      - name: bench-data
+        shell: bash
+        env:
+          DATA_BRANCH: ${{ steps.kind.outputs.data_branch }}
+        run: |
+          if git fetch --depth=1 origin "$DATA_BRANCH"; then
+            git worktree add --detach bench-data-checkout FETCH_HEAD
+          else
+            echo "::warning::$DATA_BRANCH not found: the class counts as not established"
+          fi
+      - name: Base commit, changed paths and label
+        id: base
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base=$(git rev-parse HEAD^1)  # first parent of the merge commit CI tests (S029, review O3)
+          elif [ "${{ steps.kind.outputs.kind }}" = "pr" ]; then
+            base=$(git merge-base origin/main HEAD)
+          else
+            base=""
+          fi
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          if [ -n "$base" ]; then git diff --name-only "$base" HEAD > changed-paths.txt; else : > changed-paths.txt; fi
+          accepted=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Read at run time, not from the event, so that a re-run after adding the label sees it.
+            if gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels" \
+                 --jq '.[].name' | grep -qx bench-accepted; then accepted="--accepted"; fi
+          fi
+          echo "accepted=$accepted" >> "$GITHUB_OUTPUT"
+      - name: Gate (class stage)
+        id: gate
+        shell: bash
+        run: |
+          set +e
+          "$GATE" --kind "${{ steps.kind.outputs.kind }}" --class "${{ steps.class.outputs.class }}" \
+            --results e2e-bench.json --data bench-data-checkout --changed-paths changed-paths.txt \
+            ${{ steps.base.outputs.accepted }} --report gate-report.md
+          code=$?
+          set -e
+          cat gate-report.md >> "$GITHUB_STEP_SUMMARY" || true
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" != 0 ] && [ "$code" != 3 ]; then exit "$code"; fi
+      - name: Build the base commit
+        if: steps.gate.outputs.code == '3'
+        shell: bash
+        run: |
+          echo "Main stage: base ${{ steps.base.outputs.base }}" | tee -a "$GITHUB_STEP_SUMMARY"
+          git worktree add --detach ../base "${{ steps.base.outputs.base }}"
+          cmake -S ../base --preset bench
+          cmake --build ../base/build/bench --parallel
+      - name: Main stage (base, pull request, pull request, base)
+        if: steps.gate.outputs.code == '3'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        shell: bash
+        run: |
+          base_bench=../base/build/bench/bench/hitokoto-bench
+          "$base_bench" --runs 10 --output base-1.json || echo "base round 1 exited with $?"
+          "$BENCH" --runs 10 --output pr-1.json || echo "pull request round 1 exited with $?"
+          "$BENCH" --runs 10 --output pr-2.json || echo "pull request round 2 exited with $?"
+          "$base_bench" --runs 10 --output base-2.json || echo "base round 2 exited with $?"
+          "$GATE" --kind pr --class "${{ steps.class.outputs.class }}" \
+            --results e2e-bench.json --data bench-data-checkout --changed-paths changed-paths.txt \
+            --base-rounds base-1.json,base-2.json --pr-rounds pr-1.json,pr-2.json \
+            ${{ steps.base.outputs.accepted }} --report gate-report-main.md && code=0 || code=$?
+          cat gate-report-main.md >> "$GITHUB_STEP_SUMMARY" || true
+          exit "$code"
+      - name: Sample for bench-data
+        if: >-
+          always() && steps.class.outcome == 'success' &&
+          (steps.kind.outputs.kind == 'main' || inputs.bench_data_branch != '')
+        shell: bash
+        run: |
+          started=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" --jq .run_started_at)
+          mhz=$(grep -m1 'cpu MHz' /proc/cpuinfo | awk -F: '{gsub(/ /, "", $2); print $2}')
+          jq --arg commit "$(git rev-parse --short=7 HEAD)" --arg run_id "${{ github.run_id }}" \
+             --arg attempt "${{ github.run_attempt }}" --arg event "${{ github.event_name }}" \
+             --arg start_time "$started" --arg clock_mhz "$mhz" \
+             '. + {commit: $commit, run_id: $run_id, attempt: $attempt, event: $event,
+                   start_time: $start_time, clock_mhz: $clock_mhz}' bench-class.json > context.json
+          name="$(echo "$started" | tr -d ':')-$(git rev-parse --short=7 HEAD)-${{ github.run_id }}-${{ github.run_attempt }}.json"
+          mkdir -p sample
+          "$GATE" --make-sample --results e2e-bench.json --context context.json --output "sample/$name"
+          echo "${{ steps.class.outputs.class }}" > sample/class.txt
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bench-${{ matrix.baseline }}
+          name: bench-${{ runner.os == 'Linux' && 'linux' || runner.os }}
+          if-no-files-found: ignore
           path: |
+            bench-class.json
             core-bench.json
             e2e-bench.json
+            base-*.json
+            pr-*.json
+            changed-paths.txt
+            gate-report*.md
+            context.json
+            sample/
+
+  # S029: adds the sample of a run of main to bench-data (and an acceptance marker for a merged pull
+  # request with bench-accepted, or for accept_drift). The only job with write access; it never runs
+  # for pull requests, except for the test input on another branch through workflow_dispatch.
+  bench-record:
+    name: Record benchmark sample
+    needs: bench
+    if: >-
+      always() && needs.bench.result != 'cancelled' &&
+      ((github.ref == 'refs/heads/main' && github.event_name != 'pull_request') ||
+       (github.event_name == 'workflow_dispatch' && inputs.bench_data_branch != '' && github.ref != 'refs/heads/main'))
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BRANCH: ${{ inputs.bench_data_branch != '' && inputs.bench_data_branch || 'bench-data' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the sample
+        uses: actions/download-artifact@v4
+        with:
+          name: bench-linux
+          path: artefact
+      - name: Acceptance marker
+        id: marker
+        shell: bash
+        run: |
+          marker=""
+          if [ "${{ github.event_name }}" = "push" ]; then
+            labels=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" --jq '.[0].labels[].name' || true)
+            if echo "$labels" | grep -qx bench-accepted; then marker="pull request merged with bench-accepted"; fi
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.accept_drift }}" = "true" ]; then
+            marker="drift accepted through workflow_dispatch by ${{ github.actor }}"
+          fi
+          echo "reason=$marker" >> "$GITHUB_OUTPUT"
+      - name: Push to ${{ env.BRANCH }}
+        shell: bash
+        env:
+          MARKER: ${{ steps.marker.outputs.reason }}
+        run: |
+          if [ ! -f artefact/sample/class.txt ]; then
+            echo "::warning::no sample in the artefact (the run had no complete results)"
+            [ -z "$MARKER" ] && exit 0
+          fi
+          started=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" --jq .run_started_at)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            if git fetch --depth=1 origin "$BRANCH"; then git switch -C "$BRANCH" FETCH_HEAD; else git switch --orphan "$BRANCH"; fi
+            if [ -f artefact/sample/class.txt ]; then
+              class=$(cat artefact/sample/class.txt)
+              mkdir -p "linux/$class"
+              cp artefact/sample/*-*.json "linux/$class/"
+            fi
+            if [ -n "$MARKER" ]; then
+              mkdir -p linux/accepted
+              jq -n --arg start_time "$started" --arg commit "${GITHUB_SHA::7}" --arg reason "$MARKER" \
+                 '{start_time: $start_time, commit: $commit, reason: $reason}' \
+                 > "linux/accepted/$(echo "$started" | tr -d ':')-${GITHUB_SHA::7}.json"
+            fi
+            git add linux
+            git commit -q -m "Benchmark sample of run ${{ github.run_id }} (${{ github.event_name }}, ${{ github.sha }})"
+            if git push origin "HEAD:$BRANCH"; then exit 0; fi
+            echo "push rejected, attempt $attempt"; sleep $((attempt * 5))
+          done
+          echo "::warning::could not add the sample to $BRANCH after three attempts"
