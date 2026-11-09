@@ -21,9 +21,6 @@ story ID (see "Conventions").
 | 8 | [S009](009-concealment-quality-gate.md) | Concealment quality gate: caret, IME, accessibility | S003 | M | Standing gate (outside the order) |
 | 9 | [S010](010-click-on-concealed-line.md) | Clicking a line with hidden markers puts the caret where clicked | S009 | S | Done |
 | 10 | [S005](005-theme-files.md) | A theme file changes the look; light and dark built in | S003 | L | Done |
-| 11 | [S007](007-large-files.md) | 10 MB files open within budget and type without lag | S006 | L | Partly done |
-| 12 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
-| 13 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |
 | 14 | [S013](013-inline-emphasis.md) | Inline bold, italic and strikethrough | S003 | M | Done |
 | 15 | [S014](014-fenced-code-blocks.md) | Fenced Markdown code blocks | S013 | M | Done |
 | 16 | [S015](015-inline-code.md) | Inline Markdown code spans | S014 | S | Done |
@@ -36,11 +33,14 @@ story ID (see "Conventions").
 | 23 | [S022](022-inline-links.md) | Inline Markdown links and titles | S013, S015, S020 | M | Done |
 | 24 | [S023](023-thematic-breaks.md) | Thematic breaks and setext headings | S002, S003, S014, S018, S019, S021 | L | Done |
 | 25 | [S024](024-front-matter.md) | Front matter shown as properties | S023 | L | Done |
-| 26 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | Open |
 | 27 | [S026](026-floating-toolbar.md) | Floating toolbar on the right-hand side | S015, S018 | S | In review |
 | 28 | [S027](027-smooth-scrolling.md) | Smooth scrolling in the editor view | S019 | S | In review |
 | 29 | [S028](028-find-in-file.md) | Find in the open file | S018, S022, S023, S024 | L | In review |
 | 31 | [S030](030-automatic-versions.md) | A defined version step for every merge into main | S000 | M | Open |
+| 32 | [S007](007-large-files.md) | 10 MB files open within budget and type without lag | S006 | L | Partly done |
+| 33 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
+| 34 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |
+| 35 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | Open |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 
