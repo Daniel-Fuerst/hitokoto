@@ -1,4 +1,4 @@
-# S030 — A version for every merge into main
+# S030 — A defined version step for every merge into main
 
 - **Status:** Open · **Order:** 31 · **Size:** M · **Depends on:** S000 ·
   **Decision:** ADR 0010 (proposed)
@@ -19,15 +19,17 @@ later can be told apart and updated.
 
 ## Decisions (proposed, to be confirmed by Armin and Daniel)
 
-1. **A version per pull request into main.** Merging a pull request whose base is `main` makes a new
-   version, unless it is labelled `version:none`. Pull requests into other branches (such as #30
-   into `feature/smooth_scrolling`) do not; their changes get a version when that branch's pull
+1. **A version step for every pull request into main.** Every pull request whose base is `main`
+   defines its version step with its label (decision 2); merging it makes a new version unless the
+   step is `version:none`. Pull requests into other branches (such as #30 into
+   `feature/smooth_scrolling`) define none; their changes get a version when that branch's pull
    request into main is merged.
 2. **The pull request says the level, with exactly one label:** `version:major`, `version:minor`,
    `version:patch` or `version:none`. A check on every pull request into main is red unless exactly
-   one of them is set. `version:none` means that nothing in the built program changes (stories,
-   notes, reviews, documentation, CI); such a merge gets no tag, and builds after it carry the
-   distance to the last version. What each level means is part of ADR 0010.
+   one of them is set. `version:none` means no functional change: only documentation or
+   infrastructure (definition in ADR 0010); anything that ships in the program is at least
+   `version:patch`. A merge with `version:none` gets no tag, and builds after it carry the distance
+   to the last version. What each level means is part of ADR 0010.
 3. **The tag is the only source of the version.** After the merge, a workflow puts an annotated tag
    `vMAJOR.MINOR.PATCH` on the merge commit. No file in the repository is edited for a version (no
    bump commit); `project()` in `CMakeLists.txt` no longer carries a hand-set `VERSION`.
@@ -128,6 +130,8 @@ later can be told apart and updated.
 - And they say that the label is part of the review before the merge and must fit the pull
   request's final content, not only what it was opened for
 - And they say that the version is that of the last configure
+- And they say that changes reach main only through pull requests, and that notes and status changes
+  take a pull request with `version:none`
 
 ## Requirements
 
@@ -159,8 +163,17 @@ later can be told apart and updated.
   jobs in `ci.yml` keep the shallow checkout and accept `0.0.0+unknown`.
 - **macOS bundle versions** carry only the numeric core, so builds between two tags look the same to
   Launch Services and installers. Harmless for builds by hand; S012 distributes tagged builds only.
-- **Repository settings** (Daniel as owner): the check "Version label" as a required status check
-  for main; only merge commits allowed (the project merges with a merge commit after green CI).
+- **Repository settings** (Daniel as owner, after the merge of this story, when the check exists):
+  one branch ruleset for the default branch (Settings › Rules › Rulesets), active, with an empty
+  bypass list, so that it applies to everyone including the owner:
+  - "Require a pull request before merging": no direct pushes to main; 0 required approvals, so
+    that everyone can merge their own pull requests; allowed merge method "merge" only (the project
+    merges with a merge commit after green CI).
+  - "Require status checks to pass before merging": the check "Version label".
+  - "Block force pushes" and "Restrict deletions".
+  - The ruleset targets the branch main only: the tags of the tag job and other branches (such as
+    S029's `bench-data`) are not affected. The scenario for commits pushed directly stays as a
+    safeguard for times the ruleset is off.
 - Changes under `.github/` need Armin's approval; Armin copies the workflow by hand.
 
 ## Not in this story
@@ -172,9 +185,9 @@ later can be told apart and updated.
 
 ## Open questions (for Daniel and Armin)
 
-1. Label names. (Whether every pull request makes a version is settled: not those labelled
-   `version:none`; Armin and Daniel, 2026-11-09, spec review O1.)
-2. Required status check and "merge commits only" as repository settings (Daniel).
+1. Settled (Armin, 2026-11-09): label names as proposed; every merge into main defines its version
+   step, and `version:none` makes no version (Armin and Daniel, spec review O1).
+2. Settled (Armin, 2026-11-09): a ruleset for main, see "Repository settings".
 3. The starting tag `v0.3.0` on 705c578, and what `v0.3.0-tulip` means: are release names such as
    "tulip" meant to continue?
 4. Where should the user see the version? A story of its own.

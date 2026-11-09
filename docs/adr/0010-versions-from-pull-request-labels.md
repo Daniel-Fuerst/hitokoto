@@ -39,10 +39,13 @@ sessions do not.
 Option 2.
 
 **Meaning of the levels**
-- `version:none`: nothing in the built program changes: stories, notes, reviews, documentation,
-  CI and workflows. The merge gets no tag; builds after it carry the distance to the last version.
-- `version:patch`: fixes and follow-up work, and build changes that change the built program;
-  nothing new for users.
+- `version:none`: no functional change; only documentation (stories, notes, reviews, README,
+  `docs/`) or infrastructure (CI, workflows, build scripts, tests, tooling), and the program behaves
+  the same. Anything that ships in the program (`src/`, resources such as themes and icons) is at
+  least `version:patch`, even without a visible change. The merge gets no tag; builds after it
+  carry the distance to the last version.
+- `version:patch`: fixes, follow-up work and refactoring of what ships, and build changes that
+  change the built program; nothing new for users.
 - `version:minor`: something new for users, typically a finished story, or changed behaviour that
   stays compatible.
 - `version:major`: incompatible for users, such as settings or theme files that no longer load or
@@ -75,6 +78,8 @@ Option 2.
 
 ## Consequences
 
+- Changes reach main only through pull requests (a ruleset for main, set by the owner); notes and
+  status changes that used to be pushed directly take a pull request with `version:none`.
 - Every merge into main makes a version unless labelled `version:none`, also small ones; version
   numbers rise quickly. A code change labelled `version:none` by mistake gets no version; the
   review before the merge has to catch it.
