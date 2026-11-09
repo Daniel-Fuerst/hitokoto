@@ -39,6 +39,9 @@ add_test(NAME S000_KeyInputOnlyThroughTestHelpers
 # S029: the benchmark gate.
 add_subdirectory(bench)
 
+# S030: versions.
+add_subdirectory(version)
+
 if(HITOKOTO_BUILD_UI)
     add_subdirectory(ui)
 endif()
