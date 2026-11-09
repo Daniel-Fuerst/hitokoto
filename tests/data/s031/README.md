@@ -24,7 +24,7 @@ mail.
 | T8 | header cells, a link, bold and italic text, an image without text |
 | T9 | two tables with text between |
 | T10, T11 | a table with one row, a table with one column |
-| T12 | a table inside a cell |
+| T12 | a table inside a cell (the paste stays plain text) |
 | T13 | quotes in Excel's plain text: at the start of a cell, inside it, with a line break |
 
 ## Samples

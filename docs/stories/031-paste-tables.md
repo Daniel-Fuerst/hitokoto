@@ -85,8 +85,9 @@ third cell becomes
   every cell's Markdown; the other cells show the text (review O2, accepted as documented).
 - **Merged cells.** A cell spanning several columns or rows keeps its text in its top-left cell;
   the other cells it covers are empty.
-- **Nested tables.** A table inside a cell contributes its text: its rows as lines, its cells in a
-  row joined by a space.
+- **Nested tables.** A paste with a table inside a cell of a table is not converted: the whole paste
+  arrives as plain text, as today (Armin, 2026-11-09: Markdown has no nested tables, and they come
+  mostly from layout HTML such as newsletters, where the outer table holds no data).
 - **Width.** Every row gets as many cells as the widest row; missing cells are empty. Columns or
   rows that are empty throughout stay (they were copied).
 - **Where it lands.** Each table is its own block: the paste replaces the selection, then, if the
@@ -175,8 +176,9 @@ third cell becomes
   `x<br>y` in the others (review O3)
 
 **Scenario: what stays plain text**
-- Given the clipboard holds HTML whose only table has one column or one row, or no HTML and plain
-  text with rows of different field counts, or tab-indented lines only
+- Given the clipboard holds HTML whose only table has one column or one row, or a table with a
+  table inside a cell, or no HTML and plain text with rows of different field counts, or
+  tab-indented lines only
 - When I paste it
 - Then the plain text is pasted as today
 - Given the caret in a fenced code block, in front matter or in a cell of a shown table
@@ -246,8 +248,9 @@ No new visible element: the pasted table is an S018 table with its tokens. No ne
 
 ## Tests
 
-- Core: `S031_PasteTables` for the Markdown, escaping, lines in cells, merged and nested cells,
-  width, text around tables, plain-text parsing (accepted and refused inputs) and placement.
+- Core: `S031_PasteTables` for the Markdown, escaping, lines in cells, merged cells, nested tables
+  (plain text), width, text around tables, plain-text parsing (accepted and refused inputs) and
+  placement.
 - UI: `tst_s031_paste_tables` for every scenario above, pasting through `QMimeData` with the
   samples from `tests/data/s031/`.
 - Fuzzing (review O6): a target `fuzz_paste` in `fuzz/` over the plain-text parser, the Markdown
