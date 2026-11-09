@@ -14,7 +14,7 @@ objections:
     severity: major
     title: "A failing main stage names only the means, not the values of every round"
     disposition: fixed
-    disposition_rationale: "The report of the comparison with main shows, for every key that is not ok, the four rounds in measuring order (base 1, pull request 1, pull request 2, base 2) and the means of both sides (Armin). Story scenario \"a real regression\". The minimum and maximum of the class window that Armin added belong to the class stage and are kept in ADR 0009, \"Deferred\"."
+    disposition_rationale: "The report of the comparison with main shows, for every key that is not ok, the four rounds in measuring order (base 1, pull request 1, pull request 2, base 2) and the means of both sides (Armin). Story scenario \"a real regression\"; gate test TheResultCarriesTheFourRoundsInMeasuringOrder, ctest case S029_GateCase_regression. The minimum and maximum of the class window that Armin added belong to the class stage and are kept in ADR 0009, \"Deferred\"."
   - id: O2
     category: failure
     severity: major
@@ -26,7 +26,7 @@ objections:
     severity: minor
     title: "Hard budgets missed by the base's rounds are not reported at all"
     disposition: fixed
-    disposition_rationale: "Hard budgets missed by the base rounds are reported as information with round, value and limit; the outcome does not change (Armin). Story scenario \"the base misses a hard budget\"."
+    disposition_rationale: "Hard budgets missed by the base rounds are reported as information with round, value and limit; the outcome does not change (Armin). Story scenario \"the base misses a hard budget\"; gate test HardBudgetsOfThePullRequestFailThoseOfTheBaseAreInformation, ctest case S029_GateCase_base_hard_budget."
   - id: O4
     category: failure
     severity: minor
@@ -74,7 +74,7 @@ objections:
     severity: minor
     title: "Failures of the main stage itself reach the log but not the job summary"
     disposition: fixed
-    disposition_rationale: "The gate writes a report with the reason when a round has no complete results, and the workflow writes \"the base commit <sha> does not build\" into the summary (Armin). Story scenario \"the base does not build, or a round is incomplete\"."
+    disposition_rationale: "The gate writes a report with the reason when a round has no complete results, and the workflow writes \"the base commit <sha> does not build\" into the summary (Armin). Story scenario \"the base does not build, or a round is incomplete\"; ctest case S029_GateCase_incomplete_round, ci.yml step \"Build the base commit\"."
   - id: O12
     category: operational
     severity: minor

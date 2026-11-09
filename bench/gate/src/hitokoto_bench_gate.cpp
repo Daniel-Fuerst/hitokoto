@@ -174,7 +174,7 @@ QString report(const Inputs& in, const Decision& d, const QString& runnerClass) 
                 << b.limit << " ms\n";
         }
     }
-    if (false) {  // S029 revision: red stub
+    if (!d.baseBudgetMisses.empty()) {
         out << "\n### Hard budgets missed by the base (information)\n\n";
         for (const auto& m : d.baseBudgetMisses) {
             out << "- `" << QString::fromStdString(m.budget.key) << "`: base round " << m.round << ", "
@@ -192,8 +192,7 @@ QString errorReport(const Inputs& in, const QString& runnerClass, const QString&
     QString text;
     QTextStream out(&text);
     writeHeader(out, in, runnerClass);
-    out << "Outcome: fails\n";  // S029 revision: red stub, the reason is missing
-    std::fprintf(stderr, "hitokoto-bench-gate: %s\n", qPrintable(error));
+    out << "Outcome: fails, " << error << "\n";
     return text;
 }
 

@@ -103,11 +103,11 @@ bool startsWith(std::string_view s, std::string_view prefix) {
     return s.substr(0, prefix.size()) == prefix;
 }
 
-[[maybe_unused]] bool endsWith(std::string_view s, std::string_view suffix) {
+bool endsWith(std::string_view s, std::string_view suffix) {
     return s.size() >= suffix.size() && s.substr(s.size() - suffix.size()) == suffix;
 }
 
-[[maybe_unused]] bool isToolchainFile(std::string_view p) {
+bool isToolchainFile(std::string_view p) {
     return p == "CMakePresets.json" || startsWith(p, "cmake/");
 }
 
@@ -219,17 +219,26 @@ std::vector<KeyResult> compareRounds(const std::array<Values, 2>& base, const st
         if (slower(key, was, now) && apart) {
             status = isReportOnly(key) ? KeyStatus::Info : KeyStatus::Slow;
         }
-        results.push_back({key, status, {}, was, now});  // S029 revision: red stub
+        results.push_back({key, status, {b0, p0, p1, b1}, was, now});
     }
     return results;
 }
 
-bool changesToolchainFiles(const std::vector<std::string>& /*changedPaths*/) {
-    return false;  // S029 revision: red stub
+bool changesToolchainFiles(const std::vector<std::string>& changedPaths) {
+    return std::any_of(changedPaths.begin(), changedPaths.end(),
+                       [](const std::string& p) { return isToolchainFile(p); });
 }
 
-std::vector<std::string> pathsBesideToolchain(const std::vector<std::string>& /*changedPaths*/) {
-    return {};  // S029 revision: red stub
+std::vector<std::string> pathsBesideToolchain(const std::vector<std::string>& changedPaths) {
+    std::vector<std::string> beside;
+    for (const auto& p : changedPaths) {
+        const bool allowed =
+            startsWith(p, "docs/") || endsWith(p, ".md") || isToolchainFile(p) || p == ".github/workflows/ci.yml";
+        if (!allowed) {
+            beside.push_back(p);
+        }
+    }
+    return beside;
 }
 
 bool changesHarness(const std::vector<std::string>& changedPaths) {
@@ -246,6 +255,18 @@ Decision decide(const Inputs& in) {
         return d;
     }
 
+    d.toolchainChange = in.qtVersionChanged || in.imageChanged || changesToolchainFiles(in.changedPaths);
+    if (d.toolchainChange) {
+        d.mixedPaths = pathsBesideToolchain(in.changedPaths);
+    }
+    if (in.qtVersionChanged) {
+        d.notices.emplace_back("the Qt version of the bench job changes: the base was built with its own Qt version");
+    }
+    if (in.imageChanged) {
+        d.notices.emplace_back(
+            "the runner image of the bench job changes: both sides ran on the pull request's image, so a slowdown "
+            "caused by the image is not visible");
+    }
     if (changesHarness(in.changedPaths)) {
         d.notices.emplace_back("the pull request changes the harness: the two sides are measured differently");
     }
@@ -259,13 +280,19 @@ Decision decide(const Inputs& in) {
     for (const auto& round : *in.pullRequestRounds) {
         addMisses(d.hardBudgetMisses, round);
     }
+    for (int i = 0; i < 2; ++i) {
+        const auto& round = (*in.baseRounds)[static_cast<std::size_t>(i)];
+        for (const auto& b : hardBudgetMisses(round)) {
+            d.baseBudgetMisses.push_back({b, i + 1, round.at(b.key)});
+        }
+    }
     bool comparisonFails =
         std::any_of(d.keys.begin(), d.keys.end(), [](const KeyResult& k) { return k.status == KeyStatus::Slow; });
     if (comparisonFails && in.accepted) {
         d.acceptedByLabel = true;
         comparisonFails = false;
     }
-    const bool fails = comparisonFails || !d.hardBudgetMisses.empty();
+    const bool fails = comparisonFails || !d.hardBudgetMisses.empty() || !d.mixedPaths.empty();
     d.outcome = fails ? Outcome::Fails : Outcome::Green;
     return d;
 }
