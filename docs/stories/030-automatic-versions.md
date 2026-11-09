@@ -1,7 +1,8 @@
 # S030 — A defined version step for every merge into main
 
-- **Status:** Open · **Order:** 31 · **Size:** M · **Depends on:** S000 ·
-  **Decision:** ADR 0010 (proposed)
+- **Status:** Confirmed (Armin, with Daniel's agreement, 2026-11-09, after the review
+  `docs/reviews/030-automatic-versions-spec.md`) · **Order:** 31 · **Size:** M · **Depends on:**
+  S000 · **Decision:** ADR 0010
 - **Basis:** `unrefined.md`, "Versioning, and packages and installers for every version" (Armin,
   2026-10-31), refined by Armin on 2026-11-08: versions are set automatically; every final pull
   request into main is a new version; what is open is how major, minor and patch are told apart.
@@ -17,7 +18,7 @@ As the maintainers (Daniel and Armin), we want every pull request merged into ma
 a new version number automatically, so that every build says which state it is, and packages built
 later can be told apart and updated.
 
-## Decisions (proposed, to be confirmed by Armin and Daniel)
+## Decisions (confirmed by Armin and Daniel, 2026-11-09)
 
 1. **A version step for every pull request into main.** Every pull request whose base is `main`
    defines its version step with its label (decision 2); merging it makes a new version unless the
@@ -174,9 +175,10 @@ later can be told apart and updated.
   jobs in `ci.yml` keep the shallow checkout and accept `0.0.0+unknown`.
 - **macOS bundle versions** carry only the numeric core, so builds between two tags look the same to
   Launch Services and installers. Harmless for builds by hand; S012 distributes tagged builds only.
-- **Repository settings** (Daniel as owner, after the merge of this story, when the check exists):
-  one branch ruleset for the default branch (Settings › Rules › Rulesets), active, with an empty
-  bypass list, so that it applies to everyone including the owner:
+- **Repository settings** (Daniel as owner): one branch ruleset for the default branch (Settings ›
+  Rules › Rulesets), active, with an empty bypass list, so that it applies to everyone including the
+  owner. Daniel creates it right away (agreed 2026-11-09) with all rules except the status check,
+  and adds the status check after the merge of this story, when the check exists:
   - "Require a pull request before merging": no direct pushes to main; 0 required approvals, so
     that everyone can merge their own pull requests; allowed merge method "merge" only (the project
     merges with a merge commit after green CI).

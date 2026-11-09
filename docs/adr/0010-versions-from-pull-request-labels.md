@@ -1,6 +1,7 @@
 # ADR 0010: Versions from pull request labels, tagged by CI
 
-- **Status:** Proposed (Claude, 2026-11-08, with S030)
+- **Status:** Accepted (Armin and Daniel, 2026-11-09, with the confirmation of S030); proposed by
+  Claude on 2026-11-08
 - **Date:** 2026-11-08
 - **Deciders:** project owner (Armin, Daniel)
 
