@@ -20,6 +20,14 @@ Read before any work: `docs/brief.md` (the full brief), `docs/adr/` (accepted de
 - Ask before decisions that are expensive to reverse or conflict with the brief; record them as
   ADRs in `docs/adr/`.
 - New dependencies need a justification against the brief, section 3.
+- Versions (S030, ADR 0010; README, "Versions"): changes reach main only through pull requests, also
+  notes and status changes. Every pull request into main carries exactly one label
+  `version:major`, `version:minor`, `version:patch` or `version:none` (meanings in ADR 0010; anything
+  that ships in the program is at least `version:patch`); the label is part of the review and must
+  fit the pull request's final content. The version comes only from the tag `vMAJOR.MINOR.PATCH`
+  that `version.yml` sets after the merge: no `VERSION` in `project()`, no `v*` tag by hand (apart
+  from the starting tag `v0.3.0`). Builds take it from `git describe` at configure time, so a build
+  keeps the version of its last configure.
 - UI tests and benchmarks simulate keys with `test::keyClick`/`test::keyClicks` from
   `tests/ui/key_input.hpp`, never with `QTest::key*` directly (the header says why); the lint test
   `S000_KeyInputOnlyThroughTestHelpers` enforces it.
