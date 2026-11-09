@@ -1,0 +1,13 @@
+--kind
+pr
+--class
+linux-amd-epyc-7763-64-core-processor-4cpu-l2-512k-l3-32768k
+--base-rounds
+@DIR@/base-1.json,@DIR@/base-2.json
+--pr-rounds
+@DIR@/pr-1.json,@DIR@/pr-2.json
+--report
+@OUT@/report.md
+--changed-paths
+@DIR@/changed-paths.txt
+--image-changed

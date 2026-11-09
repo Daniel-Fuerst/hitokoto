@@ -8,20 +8,19 @@ gtest_discover_tests(hitokoto_bench_gate_tests DISCOVERY_MODE PRE_TEST)
 
 if(TARGET hitokoto-bench-gate)
     foreach(c IN ITEMS
-            established_green
-            established_slow
-            main_stage_green
-            main_stage_regression
-            too_few_samples
-            unreadable_sample
-            toolchain_change
+            green
+            regression
+            two_level_opening
             label_accepted
             hard_budget
-            drift_main
-            drift_after_marker
-            print_class
-            make_sample
-            make_sample_refused)
+            base_hard_budget
+            incomplete_round
+            toolchain_alone
+            toolchain_mixed
+            image_change
+            main_run
+            main_hard_budget
+            print_class)
         add_test(NAME S029_GateCase_${c}
             COMMAND ${CMAKE_COMMAND} -DGATE=$<TARGET_FILE:hitokoto-bench-gate>
                     -DCASE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/data/${c}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S029: benchmark baselines per runner class (ADR 0009). The runner class from /proc/cpuinfo and the
-// cache sizes; established classes and their baselines; the class stage and the main stage; drift
-// from the anchor; the label; hard budgets; what the writer checks before it records a sample.
+// S029: benchmark compared with main on the same runner (ADR 0009). The runner class from
+// /proc/cpuinfo and the cache sizes (information); the comparison of the rounds; toolchain changes in
+// their own pull request; the label; hard budgets of both sides; runs of main.
 #include "hitokoto/bench_gate/gate.hpp"
 
 #include <gtest/gtest.h>
@@ -56,21 +56,6 @@ Values result(const Values& extra = {}) {
     return v;
 }
 
-Sample sample(const std::string& time, const Values& values) {
-    return Sample{"linux/" + std::string(kClass) + "/" + time + ".json", time, values, true};
-}
-
-/// `n` samples with the given value of `open_1mb_loaded_ms`, at 2026-11-0<day>T0<i>:00:00Z.
-std::vector<Sample> samples(int n, double value, int day = 1) {
-    std::vector<Sample> s;
-    s.reserve(static_cast<std::size_t>(n));
-    for (int i = 0; i < n; ++i) {
-        s.push_back(sample("2026-11-0" + std::to_string(day) + "T0" + std::to_string(i) + ":00:00Z",
-                           result({{"open_1mb_loaded_ms", value}})));
-    }
-    return s;
-}
-
 const KeyResult* find(const std::vector<KeyResult>& keys, const std::string& key) {
     const auto it = std::find_if(keys.begin(), keys.end(), [&](const KeyResult& k) { return k.key == key; });
     return it == keys.end() ? nullptr : &*it;
@@ -117,11 +102,8 @@ TEST(S029_RunnerClasses, TheFirstModelNameCounts) {
 TEST(S029_RunnerClasses, MissingOrEmptyModelNameGivesAnUnknownClass) {
     const std::string none = runnerClass("processor\t: 0\nvendor_id\t: ARM\n", 4, "1024K", "32768K");
     EXPECT_EQ(none, "linux-unknown-4cpu-l2-1024k-l3-32768k");
-    EXPECT_TRUE(isUnknownClass(none));
     const std::string empty = runnerClass("processor\t: 0\nmodel name\t:   \n", 4, "1024K", "32768K");
     EXPECT_EQ(empty, "linux-unknown-4cpu-l2-1024k-l3-32768k");
-    EXPECT_TRUE(isUnknownClass(empty));
-    EXPECT_FALSE(isUnknownClass(kClass));
 }
 
 TEST(S029_RunnerClasses, ModelNameForTheReport) {
@@ -130,94 +112,9 @@ TEST(S029_RunnerClasses, ModelNameForTheReport) {
     EXPECT_EQ(modelName("processor\t: 0\n"), "");
 }
 
-// --- Established class, baseline, anchor ---------------------------------------------------------
+// --- Comparison of the rounds ------------------------------------------------------------------
 
-TEST(S029_RunnerClasses, AClassIsEstablishedAtThreeReadableSamples) {
-    EXPECT_FALSE(isEstablished(kClass, samples(2, 100)));
-    EXPECT_TRUE(isEstablished(kClass, samples(3, 100)));
-    auto withUnreadable = samples(3, 100);
-    withUnreadable[1].readable = false;
-    withUnreadable[1].values.clear();
-    EXPECT_FALSE(isEstablished(kClass, withUnreadable));
-    EXPECT_FALSE(isEstablished("linux-unknown-4cpu-l2-1024k-l3-32768k", samples(5, 100)));
-}
-
-TEST(S029_RunnerClasses, BaselineIsTheMedianOfTheNewestFiveSamplesByStartTime) {
-    std::vector<Sample> s;
-    // Seven samples, not in time order: values 1..7 at hours 1..7; the newest five are 3..7.
-    for (int hour : {5, 1, 7, 3, 2, 6, 4}) {
-        s.push_back(sample("2026-11-01T0" + std::to_string(hour) + ":00:00Z",
-                           result({{"open_1mb_loaded_ms", static_cast<double>(hour)}})));
-    }
-    const Values b = classBaseline(s);
-    ASSERT_TRUE(b.count("open_1mb_loaded_ms"));
-    EXPECT_DOUBLE_EQ(b.at("open_1mb_loaded_ms"), 5.0);
-}
-
-TEST(S029_RunnerClasses, AKeyNeedsThreeSamplesForABaseline) {
-    auto s = samples(5, 100);
-    s[3].values["s030_new_key_ms"] = 10;  // in two samples only
-    s[4].values["s030_new_key_ms"] = 12;
-    s[0].values["s031_old_key_ms"] = 20;  // in the three oldest only
-    s[1].values["s031_old_key_ms"] = 22;
-    s[2].values["s031_old_key_ms"] = 21;
-    const Values b = classBaseline(s);
-    EXPECT_FALSE(b.count("s030_new_key_ms"));
-    ASSERT_TRUE(b.count("s031_old_key_ms"));
-    EXPECT_DOUBLE_EQ(b.at("s031_old_key_ms"), 21.0);
-}
-
-TEST(S029_RunnerClasses, UnreadableSamplesAreSkipped) {
-    auto s = samples(4, 100);
-    s[3].readable = false;
-    s[3].values = result({{"open_1mb_loaded_ms", 1000}});  // must not count even if values were left
-    const Values b = classBaseline(s);
-    ASSERT_TRUE(b.count("open_1mb_loaded_ms"));
-    EXPECT_DOUBLE_EQ(b.at("open_1mb_loaded_ms"), 100.0);
-}
-
-TEST(S029_RunnerClasses, AnchorIsTheMedianOfTheOldestThreeSamples) {
-    auto s = samples(3, 100);
-    const auto later = samples(2, 200, 2);
-    s.insert(s.end(), later.begin(), later.end());
-    const auto a = anchor(s, {});
-    ASSERT_TRUE(a.has_value());
-    EXPECT_DOUBLE_EQ(a.value_or(Values{}).at("open_1mb_loaded_ms"), 100.0);
-}
-
-TEST(S029_RunnerClasses, AnchorFormsAnewAfterTheNewestMarker) {
-    auto s = samples(3, 100, 1);
-    const auto after = samples(2, 130, 3);
-    s.insert(s.end(), after.begin(), after.end());
-    const std::vector<std::string> markers = {"2026-10-30T00:00:00Z", "2026-11-02T00:00:00Z"};
-    EXPECT_FALSE(anchor(s, markers).has_value());  // two samples after the newest marker
-    s.push_back(sample("2026-11-04T00:00:00Z", result({{"open_1mb_loaded_ms", 140}})));
-    const auto a = anchor(s, markers);
-    ASSERT_TRUE(a.has_value());
-    EXPECT_DOUBLE_EQ(a.value_or(Values{}).at("open_1mb_loaded_ms"), 130.0);
-}
-
-// --- Comparisons --------------------------------------------------------------------------------
-
-TEST(S029_RunnerClasses, ClassStageComparesWithToleranceAndTheTwoMillisecondRule) {
-    const Values baseline = {{"open_1mb_loaded_ms", 100}, {"typing_small_p99_ms", 4}, {"typing_small_max_ms", 2}};
-    const Values now = {
-        {"open_1mb_loaded_ms", 126}, {"typing_small_p99_ms", 5.9}, {"typing_small_max_ms", 30}, {"s030_new_key_ms", 7}};
-    const auto keys = compareWithBaseline(baseline, now);
-    ASSERT_NE(find(keys, "open_1mb_loaded_ms"), nullptr);
-    EXPECT_EQ(find(keys, "open_1mb_loaded_ms")->status, KeyStatus::Slow);
-    EXPECT_DOUBLE_EQ(find(keys, "open_1mb_loaded_ms")->was, 100.0);
-    EXPECT_DOUBLE_EQ(find(keys, "open_1mb_loaded_ms")->now, 126.0);
-    ASSERT_NE(find(keys, "typing_small_p99_ms"), nullptr);
-    EXPECT_EQ(find(keys, "typing_small_p99_ms")->status, KeyStatus::Ok);  // +47 %, but under 2 ms
-    ASSERT_NE(find(keys, "typing_small_max_ms"), nullptr);
-    EXPECT_EQ(find(keys, "typing_small_max_ms")->status, KeyStatus::Info);  // report-only
-    ASSERT_NE(find(keys, "s030_new_key_ms"), nullptr);
-    EXPECT_EQ(find(keys, "s030_new_key_ms")->status, KeyStatus::NoBaseline);
-    EXPECT_EQ(compareWithBaseline(baseline, {{"open_1mb_loaded_ms", 125}})[0].status, KeyStatus::Ok);
-}
-
-TEST(S029_RunnerClasses, MainStageFailsAKeyOnlyIfMeansDifferAndRoundsDoNotOverlap) {
+TEST(S029_RunnerClasses, AKeyFailsOnlyIfMeansDifferAndRoundsDoNotOverlap) {
     const std::array<Values, 2> base = {Values{{"open_1mb_loaded_ms", 100}, {"s024_open_10mb_properties_ms", 31}},
                                         Values{{"open_1mb_loaded_ms", 104}, {"s024_open_10mb_properties_ms", 56}}};
     const std::array<Values, 2> pr = {
@@ -257,19 +154,6 @@ TEST(S029_RunnerClasses, AFrameSlipOfTheFirstScreenDoesNotFailButARegressionDoes
     const std::array<Values, 2> slower = {Values{{"open_10mb_first_chunk_ms", 75.0}},
                                           Values{{"open_10mb_first_chunk_ms", 78.0}}};
     EXPECT_EQ(compareRounds(base, slower)[0].status, KeyStatus::Slow);
-    // The class stage and drift use the same rule.
-    EXPECT_EQ(compareWithBaseline({{"open_10mb_first_chunk_ms", 48}}, {{"open_10mb_first_chunk_ms", 65}})[0].status,
-              KeyStatus::Ok);
-    EXPECT_EQ(drift({{"open_10mb_first_chunk_ms", 48}}, {{"open_10mb_first_chunk_ms", 65}})[0].status, KeyStatus::Ok);
-}
-
-TEST(S029_RunnerClasses, DriftComparesTheBaselineWithItsAnchor) {
-    const auto keys = drift({{"open_1mb_loaded_ms", 100}, {"open_10mb_styled_ms", 2600}},
-                            {{"open_1mb_loaded_ms", 130}, {"open_10mb_styled_ms", 2700}});
-    ASSERT_NE(find(keys, "open_1mb_loaded_ms"), nullptr);
-    EXPECT_EQ(find(keys, "open_1mb_loaded_ms")->status, KeyStatus::Slow);
-    ASSERT_NE(find(keys, "open_10mb_styled_ms"), nullptr);
-    EXPECT_EQ(find(keys, "open_10mb_styled_ms")->status, KeyStatus::Ok);
 }
 
 TEST(S029_RunnerClasses, ReportOnlyKeysAndHardBudgetsMatchHitokotoBench) {
@@ -293,172 +177,149 @@ TEST(S029_RunnerClasses, ReportOnlyKeysAndHardBudgetsMatchHitokotoBench) {
     EXPECT_DOUBLE_EQ(misses[0].limit, 16.0);
 }
 
-TEST(S029_RunnerClasses, PathsThatChangeTheToolchainOrTheHarness) {
-    EXPECT_TRUE(changesToolchain({"src/ui/editor_widget.cpp", ".github/workflows/ci.yml"}));
-    EXPECT_TRUE(changesToolchain({"CMakePresets.json"}));
-    EXPECT_TRUE(changesToolchain({"cmake/HitokotoDependencies.cmake"}));
-    EXPECT_FALSE(changesToolchain({"src/core/markdown.cpp", "bench/hitokoto_bench.cpp", "docs/cmake.md"}));
-    EXPECT_TRUE(changesHarness({"bench/hitokoto_bench.cpp"}));
-    EXPECT_FALSE(changesHarness({"bench-data/x.json", "src/bench.cpp"}));
+TEST(S029_RunnerClasses, TheResultCarriesTheFourRoundsInMeasuringOrder) {
+    // Review O1: base 1, pull request 1, pull request 2, base 2, besides the means.
+    const std::array<Values, 2> base = {Values{{"open_1mb_loaded_ms", 100}}, Values{{"open_1mb_loaded_ms", 104}}};
+    const std::array<Values, 2> pr = {Values{{"open_1mb_loaded_ms", 130}}, Values{{"open_1mb_loaded_ms", 140}}};
+    const auto keys = compareRounds(base, pr);
+    ASSERT_EQ(keys.size(), 1U);
+    EXPECT_DOUBLE_EQ(keys[0].rounds[0], 100.0);
+    EXPECT_DOUBLE_EQ(keys[0].rounds[1], 130.0);
+    EXPECT_DOUBLE_EQ(keys[0].rounds[2], 140.0);
+    EXPECT_DOUBLE_EQ(keys[0].rounds[3], 104.0);
 }
 
-// --- What the writer checks ----------------------------------------------------------------------
-
-TEST(S029_RunnerClasses, OnlyCompleteResultsWithTheirContextAreRecorded) {
-    EXPECT_TRUE(isCompleteResult(result()));
-    Values partial = result();
-    partial.erase("save_10mb_total_ms");
-    EXPECT_FALSE(isCompleteResult(partial));
-    const std::map<std::string, std::string, std::less<>> context = {
-        {"class", kClass}, {"model_name", "AMD EPYC 7763 64-Core Processor"},
-        {"cpus", "4"},     {"commit", "705c578"},
-        {"run_id", "123"}, {"attempt", "1"},
-        {"event", "push"}, {"start_time", "2026-11-08T10:00:00Z"}};
-    EXPECT_TRUE(missingContextFields(context).empty());
-    auto incomplete = context;
-    incomplete.erase("commit");
-    incomplete["event"] = "";
-    const auto missing = missingContextFields(incomplete);
-    EXPECT_EQ(missing, (std::vector<std::string>{"commit", "event"}));
+TEST(S029_RunnerClasses, PathsOfTheToolchainAndPathsAllowedBesideIt) {
+    EXPECT_TRUE(changesToolchainFiles({"CMakePresets.json"}));
+    EXPECT_TRUE(changesToolchainFiles({"src/core/markdown.cpp", "cmake/HitokotoDependencies.cmake"}));
+    EXPECT_FALSE(changesToolchainFiles({".github/workflows/ci.yml", "docs/cmake.md", "bench/hitokoto_bench.cpp"}));
+    const auto beside = pathsBesideToolchain(
+        {".github/workflows/ci.yml", "CMakePresets.json", "cmake/HitokotoDependencies.cmake", "docs/performance.md",
+         "docs/adr/0011-qt-6-13.md", "README.md", "src/core/markdown.cpp", "tests/core/test_x.cpp"});
+    EXPECT_EQ(beside, (std::vector<std::string>{"src/core/markdown.cpp", "tests/core/test_x.cpp"}));
+    EXPECT_TRUE(changesHarness({"bench/hitokoto_bench.cpp"}));
+    EXPECT_FALSE(changesHarness({"bench/gate/src/gate.cpp", "bench/baselines/README.md", "src/bench.cpp"}));
 }
 
 // --- Decisions for pull requests ------------------------------------------------------------------
 
-TEST(S029_RunnerClasses, EstablishedClassWithinToleranceIsGreenAfterTheClassStage) {
-    Inputs in;
-    in.runnerClass = kClass;
-    in.samples = samples(3, 100);
-    in.results = result({{"open_1mb_loaded_ms", 110}});
-    const Decision d = decide(in);
-    EXPECT_EQ(d.outcome, Outcome::Green);
-    EXPECT_EQ(d.stage, Stage::Class);
-}
+namespace {
 
-TEST(S029_RunnerClasses, EstablishedClassSlowerThanItsBaselineNeedsTheMainStage) {
+/// A pull request run whose rounds are as fast as the base's.
+Inputs pullRequestRun() {
     Inputs in;
-    in.runnerClass = kClass;
-    in.samples = samples(3, 100);
-    in.results = result({{"open_1mb_loaded_ms", 140}});
-    const Decision d = decide(in);
-    EXPECT_EQ(d.outcome, Outcome::NeedMainStage);
-    ASSERT_NE(find(d.classKeys, "open_1mb_loaded_ms"), nullptr);
-    EXPECT_EQ(find(d.classKeys, "open_1mb_loaded_ms")->status, KeyStatus::Slow);
-}
-
-TEST(S029_RunnerClasses, SlowerThanTheClassBaselineButNotThanMainIsGreen) {
-    Inputs in;
-    in.runnerClass = kClass;
-    in.samples = samples(3, 100);
-    in.results = result({{"open_1mb_loaded_ms", 140}});
-    in.baseRounds = {result({{"open_1mb_loaded_ms", 138}}), result({{"open_1mb_loaded_ms", 142}})};
-    in.pullRequestRounds = {result({{"open_1mb_loaded_ms", 139}}), result({{"open_1mb_loaded_ms", 141}})};
-    const Decision d = decide(in);
-    EXPECT_EQ(d.outcome, Outcome::Green);
-    EXPECT_EQ(d.stage, Stage::Main);
-    ASSERT_NE(find(d.classKeys, "open_1mb_loaded_ms"), nullptr);
-    EXPECT_EQ(find(d.classKeys, "open_1mb_loaded_ms")->status, KeyStatus::Slow);
-}
-
-TEST(S029_RunnerClasses, ARealRegressionFailsInTheMainStage) {
-    Inputs in;
-    in.runnerClass = kClass;
-    in.samples = samples(1, 100);
-    in.results = result({{"open_1mb_loaded_ms", 140}});
     in.baseRounds = {result({{"open_1mb_loaded_ms", 100}}), result({{"open_1mb_loaded_ms", 104}})};
+    in.pullRequestRounds = {result({{"open_1mb_loaded_ms", 101}}), result({{"open_1mb_loaded_ms", 103}})};
+    return in;
+}
+
+}  // namespace
+
+TEST(S029_RunnerClasses, APullRequestAsFastAsMainIsGreen) {
+    const Decision d = decide(pullRequestRun());
+    EXPECT_EQ(d.outcome, Outcome::Green);
+    ASSERT_NE(find(d.keys, "open_1mb_loaded_ms"), nullptr);
+    EXPECT_EQ(find(d.keys, "open_1mb_loaded_ms")->status, KeyStatus::Ok);
+}
+
+TEST(S029_RunnerClasses, ARealRegressionFails) {
+    Inputs in = pullRequestRun();
     in.pullRequestRounds = {result({{"open_1mb_loaded_ms", 130}}), result({{"open_1mb_loaded_ms", 140}})};
     const Decision d = decide(in);
     EXPECT_EQ(d.outcome, Outcome::Fails);
-    EXPECT_EQ(d.stage, Stage::Main);
-    ASSERT_NE(find(d.mainKeys, "open_1mb_loaded_ms"), nullptr);
-    EXPECT_EQ(find(d.mainKeys, "open_1mb_loaded_ms")->status, KeyStatus::Slow);
+    ASSERT_NE(find(d.keys, "open_1mb_loaded_ms"), nullptr);
+    EXPECT_EQ(find(d.keys, "open_1mb_loaded_ms")->status, KeyStatus::Slow);
 }
 
-TEST(S029_RunnerClasses, AClassWithTooFewSamplesGoesToTheMainStage) {
+TEST(S029_RunnerClasses, APullRequestRunWithoutRoundsFails) {
     Inputs in;
-    in.runnerClass = kClass;
-    in.samples = samples(2, 100);
-    in.results = result({{"open_1mb_loaded_ms", 100}});
-    const Decision without = decide(in);
-    EXPECT_EQ(without.outcome, Outcome::NeedMainStage);
-    EXPECT_TRUE(without.classKeys.empty());
-    in.baseRounds = {result({{"open_1mb_loaded_ms", 100}}), result({{"open_1mb_loaded_ms", 101}})};
-    in.pullRequestRounds = {result({{"open_1mb_loaded_ms", 100}}), result({{"open_1mb_loaded_ms", 102}})};
-    const Decision with = decide(in);
-    EXPECT_EQ(with.outcome, Outcome::Green);
-    EXPECT_EQ(with.stage, Stage::Main);
-}
-
-TEST(S029_RunnerClasses, AnUnreadableSampleIsNamedInAWarning) {
-    Inputs in;
-    in.runnerClass = kClass;
-    in.samples = samples(3, 100);
-    Sample broken;
-    broken.file = "linux/" + std::string(kClass) + "/broken.json";
-    broken.startTime = "2026-11-01T09:00:00Z";
-    broken.readable = false;
-    in.samples.push_back(broken);
-    in.results = result({{"open_1mb_loaded_ms", 100}});
-    const Decision d = decide(in);
-    EXPECT_EQ(d.outcome, Outcome::Green);
-    EXPECT_TRUE(contains(d.warnings, "broken.json"));
+    in.baseRounds = {result(), result()};
+    EXPECT_EQ(decide(in).outcome, Outcome::Fails);
 }
 
 TEST(S029_RunnerClasses, TheLabelAcceptsComparisonsButNotHardBudgets) {
-    Inputs in;
-    in.runnerClass = kClass;
-    in.samples = samples(1, 100);
-    in.results = result({{"open_1mb_loaded_ms", 140}});
-    in.baseRounds = {result({{"open_1mb_loaded_ms", 100}}), result({{"open_1mb_loaded_ms", 104}})};
+    Inputs in = pullRequestRun();
     in.pullRequestRounds = {result({{"open_1mb_loaded_ms", 130}}), result({{"open_1mb_loaded_ms", 140}})};
     in.accepted = true;
     const Decision accepted = decide(in);
     EXPECT_EQ(accepted.outcome, Outcome::Green);
     EXPECT_TRUE(accepted.acceptedByLabel);
-    in.results["save_10mb_ui_blocked_ms"] = 20;
+    in.pullRequestRounds = {result({{"open_1mb_loaded_ms", 130}, {"save_10mb_ui_blocked_ms", 20}}),
+                            result({{"open_1mb_loaded_ms", 140}})};
     const Decision hard = decide(in);
     EXPECT_EQ(hard.outcome, Outcome::Fails);
     ASSERT_EQ(hard.hardBudgetMisses.size(), 1U);
     EXPECT_EQ(hard.hardBudgetMisses[0].key, "save_10mb_ui_blocked_ms");
 }
 
-TEST(S029_RunnerClasses, HardBudgetsOfThePullRequestsRoundsFailThoseOfTheBaseDoNot) {
-    Inputs in;
-    in.runnerClass = kClass;
-    in.samples = samples(1, 100);
-    in.results = result({{"open_1mb_loaded_ms", 100}});
-    in.baseRounds = {result({{"open_1mb_loaded_ms", 100}, {"typing_small_max_ms", 222}}),
-                     result({{"open_1mb_loaded_ms", 101}})};
-    in.pullRequestRounds = {result({{"open_1mb_loaded_ms", 100}}), result({{"open_1mb_loaded_ms", 101}})};
-    EXPECT_EQ(decide(in).outcome, Outcome::Green);
-    in.pullRequestRounds->at(1)["typing_small_max_ms"] = 54.2;
+TEST(S029_RunnerClasses, HardBudgetsOfThePullRequestFailThoseOfTheBaseAreInformation) {
+    // Review O3: a miss of the base is reported with round, value and limit; the outcome stays.
+    Inputs in = pullRequestRun();
+    in.baseRounds = {result({{"open_1mb_loaded_ms", 100}}),
+                     result({{"open_1mb_loaded_ms", 104}, {"typing_small_max_ms", 222}})};
+    const Decision base = decide(in);
+    EXPECT_EQ(base.outcome, Outcome::Green);
+    EXPECT_TRUE(base.hardBudgetMisses.empty());
+    ASSERT_EQ(base.baseBudgetMisses.size(), 1U);
+    EXPECT_EQ(base.baseBudgetMisses[0].budget.key, "typing_small_max_ms");
+    EXPECT_EQ(base.baseBudgetMisses[0].round, 2);
+    EXPECT_DOUBLE_EQ(base.baseBudgetMisses[0].value, 222.0);
+    EXPECT_DOUBLE_EQ(base.baseBudgetMisses[0].budget.limit, 50.0);
+    in.pullRequestRounds = {result({{"open_1mb_loaded_ms", 101}}),
+                            result({{"open_1mb_loaded_ms", 103}, {"typing_small_max_ms", 54.2}})};
     const Decision d = decide(in);
     EXPECT_EQ(d.outcome, Outcome::Fails);
     ASSERT_EQ(d.hardBudgetMisses.size(), 1U);
     EXPECT_EQ(d.hardBudgetMisses[0].key, "typing_small_max_ms");
 }
 
-TEST(S029_RunnerClasses, AToolchainChangeKeepsAClassStageFailureUnlessTheLabelIsSet) {
-    Inputs in;
-    in.runnerClass = kClass;
-    in.samples = samples(3, 100);
-    in.results = result({{"open_1mb_loaded_ms", 140}});
-    in.baseRounds = {result({{"open_1mb_loaded_ms", 139}}), result({{"open_1mb_loaded_ms", 141}})};
-    in.pullRequestRounds = {result({{"open_1mb_loaded_ms", 140}}), result({{"open_1mb_loaded_ms", 141}})};
-    in.changedPaths = {".github/workflows/ci.yml"};
+TEST(S029_RunnerClasses, AToolchainChangeAloneIsCompared) {
+    Inputs in = pullRequestRun();
+    in.changedPaths = {".github/workflows/ci.yml", "docs/performance.md"};
+    in.qtVersionChanged = true;
     const Decision d = decide(in);
-    EXPECT_EQ(d.outcome, Outcome::Fails);
-    EXPECT_TRUE(contains(d.notices, "toolchain"));
+    EXPECT_EQ(d.outcome, Outcome::Green);
+    EXPECT_TRUE(d.toolchainChange);
+    EXPECT_TRUE(d.mixedPaths.empty());
+    EXPECT_TRUE(contains(d.notices, "Qt version"));
+    in.pullRequestRounds = {result({{"open_1mb_loaded_ms", 130}}), result({{"open_1mb_loaded_ms", 140}})};
+    EXPECT_EQ(decide(in).outcome, Outcome::Fails);  // a slower Qt
     in.accepted = true;
     EXPECT_EQ(decide(in).outcome, Outcome::Green);
 }
 
+TEST(S029_RunnerClasses, AToolchainChangeMixedWithCodeFailsEvenWithTheLabel) {
+    Inputs in = pullRequestRun();
+    in.changedPaths = {"CMakePresets.json", "src/core/markdown.cpp", "README.md"};
+    const Decision d = decide(in);
+    EXPECT_EQ(d.outcome, Outcome::Fails);
+    EXPECT_TRUE(d.toolchainChange);
+    EXPECT_EQ(d.mixedPaths, (std::vector<std::string>{"src/core/markdown.cpp"}));
+    in.accepted = true;
+    EXPECT_EQ(decide(in).outcome, Outcome::Fails);
+    // Without a toolchain change, ci.yml and code may change together.
+    Inputs plain = pullRequestRun();
+    plain.changedPaths = {".github/workflows/ci.yml", "src/core/markdown.cpp"};
+    EXPECT_EQ(decide(plain).outcome, Outcome::Green);
+    EXPECT_FALSE(decide(plain).toolchainChange);
+    // A Qt update with code fails as well.
+    plain.qtVersionChanged = true;
+    EXPECT_EQ(decide(plain).outcome, Outcome::Fails);
+}
+
+TEST(S029_RunnerClasses, ANewRunnerImageIsNamedAsNotVisible) {
+    Inputs in = pullRequestRun();
+    in.changedPaths = {".github/workflows/ci.yml"};
+    in.imageChanged = true;
+    const Decision d = decide(in);
+    EXPECT_EQ(d.outcome, Outcome::Green);
+    EXPECT_TRUE(d.toolchainChange);
+    EXPECT_TRUE(contains(d.notices, "runner image"));
+    EXPECT_TRUE(contains(d.notices, "not visible"));
+}
+
 TEST(S029_RunnerClasses, AHarnessChangeIsNoticedButDoesNotFail) {
-    Inputs in;
-    in.runnerClass = kClass;
-    in.samples = samples(1, 100);
-    in.results = result({{"open_1mb_loaded_ms", 100}});
-    in.baseRounds = {result({{"open_1mb_loaded_ms", 100}}), result({{"open_1mb_loaded_ms", 101}})};
-    in.pullRequestRounds = {result({{"open_1mb_loaded_ms", 100}}), result({{"open_1mb_loaded_ms", 101}})};
+    Inputs in = pullRequestRun();
     in.changedPaths = {"bench/hitokoto_bench.cpp"};
     const Decision d = decide(in);
     EXPECT_EQ(d.outcome, Outcome::Green);
@@ -467,57 +328,16 @@ TEST(S029_RunnerClasses, AHarnessChangeIsNoticedButDoesNotFail) {
 
 // --- Decisions for runs of main -------------------------------------------------------------------
 
-TEST(S029_RunnerClasses, RunsOfMainReportTheClassStageWithoutFailingOnIt) {
+TEST(S029_RunnerClasses, RunsOfMainCheckTheHardBudgetsOnly) {
     Inputs in;
     in.kind = RunKind::Main;
-    in.runnerClass = kClass;
-    in.samples = samples(5, 100);
-    in.markers = {"2026-11-02T00:00:00Z"};  // no anchor yet: no drift check
-    in.results = result({{"open_1mb_loaded_ms", 200}});
-    const Decision d = decide(in);
-    EXPECT_EQ(d.outcome, Outcome::Green);
-    EXPECT_EQ(d.stage, Stage::Class);
-    ASSERT_NE(find(d.classKeys, "open_1mb_loaded_ms"), nullptr);
-    EXPECT_EQ(find(d.classKeys, "open_1mb_loaded_ms")->status, KeyStatus::Slow);
-}
-
-TEST(S029_RunnerClasses, DriftFailsARunOfMain) {
-    Inputs in;
-    in.kind = RunKind::Main;
-    in.runnerClass = kClass;
-    in.samples = samples(3, 100, 1);
-    const auto slower = samples(2, 130, 2);
-    in.samples.insert(in.samples.end(), slower.begin(), slower.end());
-    in.results = result({{"open_1mb_loaded_ms", 130}});  // with it, the newest five: 100 100 130 130 130
+    in.results = result({{"open_1mb_loaded_ms", 500}});
+    const Decision green = decide(in);
+    EXPECT_EQ(green.outcome, Outcome::Green);
+    EXPECT_TRUE(green.keys.empty());
+    in.results["save_10mb_ui_blocked_ms"] = 17;
     const Decision d = decide(in);
     EXPECT_EQ(d.outcome, Outcome::Fails);
-    ASSERT_NE(find(d.driftKeys, "open_1mb_loaded_ms"), nullptr);
-    EXPECT_DOUBLE_EQ(find(d.driftKeys, "open_1mb_loaded_ms")->was, 100.0);
-    EXPECT_DOUBLE_EQ(find(d.driftKeys, "open_1mb_loaded_ms")->now, 130.0);
-}
-
-TEST(S029_RunnerClasses, DriftIsInformationInAPullRequestRun) {
-    Inputs in;
-    in.runnerClass = kClass;
-    in.samples = samples(3, 100, 1);
-    const auto slower = samples(3, 130, 2);
-    in.samples.insert(in.samples.end(), slower.begin(), slower.end());
-    in.results = result({{"open_1mb_loaded_ms", 130}});
-    const Decision d = decide(in);
-    EXPECT_EQ(d.outcome, Outcome::Green);
-    EXPECT_NE(find(d.driftKeys, "open_1mb_loaded_ms"), nullptr);
-}
-
-TEST(S029_RunnerClasses, AnAcceptedSlowdownEndsTheDrift) {
-    Inputs in;
-    in.kind = RunKind::Main;
-    in.runnerClass = kClass;
-    in.samples = samples(3, 100, 1);
-    const auto slower = samples(3, 130, 3);
-    in.samples.insert(in.samples.end(), slower.begin(), slower.end());
-    in.markers = {"2026-11-02T00:00:00Z"};
-    in.results = result({{"open_1mb_loaded_ms", 130}});
-    const Decision d = decide(in);
-    EXPECT_EQ(d.outcome, Outcome::Green);
-    EXPECT_TRUE(d.driftKeys.empty());
+    ASSERT_EQ(d.hardBudgetMisses.size(), 1U);
+    EXPECT_EQ(d.hardBudgetMisses[0].key, "save_10mb_ui_blocked_ms");
 }

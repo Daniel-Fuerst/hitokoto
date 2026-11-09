@@ -10,8 +10,6 @@ namespace hitokoto::bench_gate {
 
 namespace {
 
-constexpr std::string_view kUnknownPrefix = "linux-unknown-";
-
 // Compared and reported but never failing: maxima of few samples, counts of samples over 16 ms,
 // settle times in idle slices, the time until the saved file is on disk and the p95 of 10 cold
 // starts (bench/baselines/README.md). Hard budgets cover the absolute limits instead.
@@ -52,9 +50,6 @@ constexpr std::string_view kReportOnly[] = {"save_10mb_total_ms",
                                             "s028_table_field_typing_max_ms",
                                             "s028_table_step_max_ms",
                                             "startup_p95_ms"};
-
-constexpr std::string_view kContextFields[] = {"class",  "model_name", "cpus",  "commit",
-                                               "run_id", "attempt",    "event", "start_time"};
 
 std::string_view trim(std::string_view s) {
     const auto first = s.find_first_not_of(" \t\r\n");
@@ -100,38 +95,20 @@ std::string firstModelName(std::string_view cpuinfo) {
     return {};
 }
 
-double median(std::vector<double> v) {
-    std::sort(v.begin(), v.end());
-    const std::size_t n = v.size();
-    return n % 2 == 1 ? v[n / 2] : (v[n / 2 - 1] + v[n / 2]) / 2;
-}
-
-/// Readable samples, oldest first.
-std::vector<const Sample*> readableByTime(const std::vector<Sample>& samples) {
-    std::vector<const Sample*> r;
-    for (const auto& s : samples) {
-        if (s.readable) {
-            r.push_back(&s);
-        }
-    }
-    std::stable_sort(r.begin(), r.end(), [](const Sample* a, const Sample* b) { return a->startTime < b->startTime; });
-    return r;
-}
-
 bool slower(std::string_view key, double was, double now) {
     return now > was * (1 + kTolerance) && now - was > minDeltaMs(key);
 }
 
-KeyStatus slowStatus(std::string_view key) {
-    return isReportOnly(key) ? KeyStatus::Info : KeyStatus::Slow;
-}
-
-bool anySlow(const std::vector<KeyResult>& keys) {
-    return std::any_of(keys.begin(), keys.end(), [](const KeyResult& k) { return k.status == KeyStatus::Slow; });
-}
-
 bool startsWith(std::string_view s, std::string_view prefix) {
     return s.substr(0, prefix.size()) == prefix;
+}
+
+[[maybe_unused]] bool endsWith(std::string_view s, std::string_view suffix) {
+    return s.size() >= suffix.size() && s.substr(s.size() - suffix.size()) == suffix;
+}
+
+[[maybe_unused]] bool isToolchainFile(std::string_view p) {
+    return p == "CMakePresets.json" || startsWith(p, "cmake/");
 }
 
 void addMisses(std::vector<Budget>& into, const Values& values) {
@@ -155,10 +132,6 @@ std::string runnerClass(std::string_view cpuinfo, int cpus, std::string_view l2,
 
 std::string modelName(std::string_view cpuinfo) {
     return firstModelName(cpuinfo);
-}
-
-bool isUnknownClass(std::string_view runnerClass) {
-    return startsWith(runnerClass, kUnknownPrefix);
 }
 
 double minDeltaMs(std::string_view key) {
@@ -217,91 +190,6 @@ bool isCompleteResult(const Values& values) {
     return std::all_of(budgets.begin(), budgets.end(), [&](const Budget& b) { return values.count(b.key) > 0; });
 }
 
-std::vector<std::string> missingContextFields(const std::map<std::string, std::string, std::less<>>& context) {
-    std::vector<std::string> missing;
-    for (const auto field : kContextFields) {
-        const auto it = context.find(field);
-        if (it == context.end() || trim(it->second).empty()) {
-            missing.emplace_back(field);
-        }
-    }
-    return missing;
-}
-
-bool isEstablished(std::string_view runnerClass, const std::vector<Sample>& samples) {
-    return !isUnknownClass(runnerClass) && readableByTime(samples).size() >= static_cast<std::size_t>(kMinSamples);
-}
-
-Values classBaseline(const std::vector<Sample>& samples) {
-    const auto byTime = readableByTime(samples);
-    std::set<std::string, std::less<>> keys;
-    for (const auto* s : byTime) {
-        for (const auto& [key, value] : s->values) {
-            keys.insert(key);
-        }
-    }
-    Values baseline;
-    for (const auto& key : keys) {
-        std::vector<double> newest;
-        for (auto it = byTime.rbegin(); it != byTime.rend() && newest.size() < static_cast<std::size_t>(kWindow);
-             ++it) {
-            const auto found = (*it)->values.find(key);
-            if (found != (*it)->values.end()) {
-                newest.push_back(found->second);
-            }
-        }
-        if (newest.size() >= static_cast<std::size_t>(kMinSamples)) {
-            baseline[key] = median(newest);
-        }
-    }
-    return baseline;
-}
-
-std::optional<Values> anchor(const std::vector<Sample>& samples, const std::vector<std::string>& markerTimes) {
-    std::string newestMarker;
-    for (const auto& m : markerTimes) {
-        newestMarker = std::max(newestMarker, m);
-    }
-    std::vector<const Sample*> after;
-    for (const auto* s : readableByTime(samples)) {
-        if (s->startTime > newestMarker) {
-            after.push_back(s);
-        }
-    }
-    if (after.size() < static_cast<std::size_t>(kMinSamples)) {
-        return std::nullopt;
-    }
-    after.resize(static_cast<std::size_t>(kMinSamples));
-    Values result;
-    for (const auto& [key, value] : after.front()->values) {
-        std::vector<double> values;
-        for (const auto* s : after) {
-            const auto found = s->values.find(key);
-            if (found != s->values.end()) {
-                values.push_back(found->second);
-            }
-        }
-        if (values.size() == after.size()) {
-            result[key] = median(values);
-        }
-    }
-    return result;
-}
-
-std::vector<KeyResult> compareWithBaseline(const Values& baseline, const Values& now) {
-    std::vector<KeyResult> keys;
-    for (const auto& [key, value] : now) {
-        const auto found = baseline.find(key);
-        if (found == baseline.end()) {
-            keys.push_back({key, KeyStatus::NoBaseline, 0, value});
-            continue;
-        }
-        keys.push_back(
-            {key, slower(key, found->second, value) ? slowStatus(key) : KeyStatus::Ok, found->second, value});
-    }
-    return keys;
-}
-
 std::vector<KeyResult> compareRounds(const std::array<Values, 2>& base, const std::array<Values, 2>& pullRequest) {
     std::set<std::string, std::less<>> keys;
     for (const auto* side : {&base, &pullRequest}) {
@@ -317,7 +205,7 @@ std::vector<KeyResult> compareRounds(const std::array<Values, 2>& base, const st
     std::vector<KeyResult> results;
     for (const auto& key : keys) {
         if (!both(base, key) || !both(pullRequest, key)) {
-            results.push_back({key, KeyStatus::OneSide, 0, 0});
+            results.push_back({key, KeyStatus::OneSide, {}, 0, 0});
             continue;
         }
         const double b0 = base[0].at(key);
@@ -327,27 +215,21 @@ std::vector<KeyResult> compareRounds(const std::array<Values, 2>& base, const st
         const double was = (b0 + b1) / 2;
         const double now = (p0 + p1) / 2;
         const bool apart = std::min(p0, p1) > std::max(b0, b1);
-        results.push_back({key, slower(key, was, now) && apart ? slowStatus(key) : KeyStatus::Ok, was, now});
+        KeyStatus status = KeyStatus::Ok;
+        if (slower(key, was, now) && apart) {
+            status = isReportOnly(key) ? KeyStatus::Info : KeyStatus::Slow;
+        }
+        results.push_back({key, status, {}, was, now});  // S029 revision: red stub
     }
     return results;
 }
 
-std::vector<KeyResult> drift(const Values& anchorValues, const Values& baseline) {
-    std::vector<KeyResult> keys;
-    for (const auto& [key, was] : anchorValues) {
-        const auto found = baseline.find(key);
-        if (found != baseline.end()) {
-            keys.push_back(
-                {key, slower(key, was, found->second) ? slowStatus(key) : KeyStatus::Ok, was, found->second});
-        }
-    }
-    return keys;
+bool changesToolchainFiles(const std::vector<std::string>& /*changedPaths*/) {
+    return false;  // S029 revision: red stub
 }
 
-bool changesToolchain(const std::vector<std::string>& changedPaths) {
-    return std::any_of(changedPaths.begin(), changedPaths.end(), [](const std::string& p) {
-        return p == ".github/workflows/ci.yml" || p == "CMakePresets.json" || startsWith(p, "cmake/");
-    });
+std::vector<std::string> pathsBesideToolchain(const std::vector<std::string>& /*changedPaths*/) {
+    return {};  // S029 revision: red stub
 }
 
 bool changesHarness(const std::vector<std::string>& changedPaths) {
@@ -358,69 +240,33 @@ bool changesHarness(const std::vector<std::string>& changedPaths) {
 
 Decision decide(const Inputs& in) {
     Decision d;
-    addMisses(d.hardBudgetMisses, in.results);
-    for (const auto& s : in.samples) {
-        if (!s.readable) {
-            d.warnings.push_back("unreadable sample skipped: " + s.file);
-        }
-    }
-    const bool toolchain = changesToolchain(in.changedPaths);
-    if (in.kind == RunKind::PullRequest) {
-        if (toolchain) {
-            d.notices.emplace_back(
-                "the pull request changes the toolchain: both sides of the main stage are built with it");
-        }
-        if (changesHarness(in.changedPaths)) {
-            d.notices.emplace_back("the pull request changes the harness: the two sides are measured differently");
-        }
-    }
-
-    // Drift: the class baseline with this run as its newest sample, against the anchor.
-    if (const auto anchorValues = anchor(in.samples, in.markers)) {
-        auto withRun = in.samples;
-        withRun.push_back({"(this run)", "9999-12-31T23:59:59Z", in.results, true});
-        for (auto& k : drift(*anchorValues, classBaseline(withRun))) {
-            if (k.status == KeyStatus::Slow) {
-                d.driftKeys.push_back(std::move(k));
-            }
-        }
-    }
-
-    const bool established = isEstablished(in.runnerClass, in.samples);
-    if (established) {
-        d.classKeys = compareWithBaseline(classBaseline(in.samples), in.results);
-        d.stage = Stage::Class;
-    }
-    const bool classSlow = anySlow(d.classKeys);
-
     if (in.kind == RunKind::Main) {
-        d.outcome = d.hardBudgetMisses.empty() && d.driftKeys.empty() ? Outcome::Green : Outcome::Fails;
-        return d;
-    }
-    if (established && !classSlow) {
+        addMisses(d.hardBudgetMisses, in.results);
         d.outcome = d.hardBudgetMisses.empty() ? Outcome::Green : Outcome::Fails;
         return d;
     }
-    if (!d.hardBudgetMisses.empty()) {
+
+    if (changesHarness(in.changedPaths)) {
+        d.notices.emplace_back("the pull request changes the harness: the two sides are measured differently");
+    }
+    if (!in.baseRounds || !in.pullRequestRounds) {
+        d.notices.emplace_back("the rounds of the base and the pull request are missing");
         d.outcome = Outcome::Fails;
         return d;
     }
-    if (!in.baseRounds || !in.pullRequestRounds) {
-        d.outcome = Outcome::NeedMainStage;
-        return d;
-    }
 
-    d.stage = Stage::Main;
-    d.mainKeys = compareRounds(*in.baseRounds, *in.pullRequestRounds);
+    d.keys = compareRounds(*in.baseRounds, *in.pullRequestRounds);
     for (const auto& round : *in.pullRequestRounds) {
         addMisses(d.hardBudgetMisses, round);
     }
-    bool comparisonFails = anySlow(d.mainKeys) || (classSlow && toolchain);
+    bool comparisonFails =
+        std::any_of(d.keys.begin(), d.keys.end(), [](const KeyResult& k) { return k.status == KeyStatus::Slow; });
     if (comparisonFails && in.accepted) {
         d.acceptedByLabel = true;
         comparisonFails = false;
     }
-    d.outcome = comparisonFails || !d.hardBudgetMisses.empty() ? Outcome::Fails : Outcome::Green;
+    const bool fails = comparisonFails || !d.hardBudgetMisses.empty();
+    d.outcome = fails ? Outcome::Fails : Outcome::Green;
     return d;
 }
 

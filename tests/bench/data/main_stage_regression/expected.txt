@@ -1,3 +1,0 @@
-1
-Stage: main
-open_1mb_loaded_ms
