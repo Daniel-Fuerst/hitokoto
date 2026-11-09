@@ -1,8 +1,8 @@
 # S030 — A defined version step for every merge into main
 
-- **Status:** Confirmed (Armin, with Daniel's agreement, 2026-11-09, after the review
-  `docs/reviews/030-automatic-versions-spec.md`) · **Order:** 31 · **Size:** M · **Depends on:**
-  S000 · **Decision:** ADR 0010
+- **Status:** In progress (since 2026-11-09); Confirmed (Armin, with Daniel's agreement,
+  2026-11-09, after the review `docs/reviews/030-automatic-versions-spec.md`) · **Order:** 31 ·
+  **Size:** M · **Depends on:** S000 · **Decision:** ADR 0010
 - **Basis:** `unrefined.md`, "Versioning, and packages and installers for every version" (Armin,
   2026-10-31), refined by Armin on 2026-11-08: versions are set automatically; every final pull
   request into main is a new version; what is open is how major, minor and patch are told apart.
