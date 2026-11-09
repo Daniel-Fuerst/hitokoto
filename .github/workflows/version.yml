@@ -1,0 +1,90 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# S030 (ADR 0010): every pull request into main carries exactly one version label; after the merge
+# the tag job puts the next version tag vMAJOR.MINOR.PATCH on the merge commit. The rules are in
+# scripts/version/NextVersion.cmake (tests: tests/version, S030_*).
+name: Version
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, edited, labeled, unlabeled, synchronize]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  label:
+    name: Version label
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    concurrency:
+      group: version-label-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check the version label
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          jq -r '.[]' <<< "$LABELS" > "$RUNNER_TEMP/labels.txt"
+          cmake -DMODE=labels -DLABELS_FILE="$RUNNER_TEMP/labels.txt" -P scripts/version/NextVersion.cmake
+
+  tag:
+    name: Tag
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write       # push the tags
+      pull-requests: read   # the pull request of a merge commit and its labels
+    # One run at a time, never cancelled while running. A run that GitHub cancels while pending is
+    # caught up by the next one: every run tags all untagged merges since the last version tag.
+    concurrency:
+      group: version-tag
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0  # the history and the tags
+      - name: Tag the merges into main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/version"
+          mkdir -p "$work"
+          script=scripts/version/NextVersion.cmake
+
+          # The last version tag (fails without one).
+          git tag --merged HEAD > "$work/tags.txt"
+          cmake -DMODE=base -DTAGS_FILE="$work/tags.txt" -DOUTPUT="$work/base.txt" -P "$script"
+          base=$(cat "$work/base.txt")
+
+          # Candidates: main's first-parent line after it, oldest first, each with the pull request
+          # into main that has it as its merge commit, and that pull request's labels.
+          : > "$work/candidates.txt"
+          for sha in $(git rev-list --first-parent --reverse "$base..HEAD"); do
+            echo "commit $sha" >> "$work/candidates.txt"
+            SHA="$sha" gh api --paginate "repos/$REPO/commits/$sha/pulls" --jq '
+              .[] | select(.base.ref == "main" and .merge_commit_sha == env.SHA and .merged_at != null)
+                  | "pr \(.number)", ("label " + .labels[].name)' >> "$work/candidates.txt"
+          done
+
+          # The plan: the tags in merge order, up to the first merge without exactly one version
+          # label (the script then fails after writing the tags before it).
+          status=0
+          cmake -DMODE=plan -DTAGS_FILE="$work/tags.txt" -DCANDIDATES_FILE="$work/candidates.txt" \
+                -DOUTPUT="$work/plan.txt" -P "$script" || status=$?
+          while read -r sha tag pr; do
+            git -c user.name="github-actions[bot]" \
+                -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+                tag -a "$tag" -m "hitokoto ${tag#v} (pull request #$pr)" "$sha"
+            git push origin "refs/tags/$tag"
+            echo "- $tag on $sha (pull request #$pr)" >> "$GITHUB_STEP_SUMMARY"
+          done < "$work/plan.txt"
+          exit "$status"
