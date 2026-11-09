@@ -218,15 +218,18 @@ No new visible element: the pasted table is an S018 table with its tokens. No ne
   with Qt's HTML import (`QTextDocumentFragment::fromHtml` or `QTextDocument::setHtml`, QtGui, no
   new module) and its `QTextTable` cells walked into the core model (ADR 0011). On Windows Qt
   delivers the clipboard's "HTML Format" as `text/html` without its header.
-- **Test data** (review O5, Armin, 2026-11-09): only tables made for the tests, with invented
-  content, from templates in the repository (`tests/data/s031/templates/`: a `.docx`, an `.xlsx`
-  and an `.html`). Their clipboard contents are taken from Word, from Outlook classic (the Word
-  table pasted into a new mail and copied again), from Excel and from Firefox on Windows. Nothing
-  from real mails or documents enters the repository, also nothing derived from it. Before a
-  sample is committed, its header is reduced: no `file:` links, `<link>` elements, generator or
-  author. The lint test `S031_SamplesCarryNoPersonalData` fails on `file:`, `C:\Users`, `/Users/`,
-  `/home/` or an e-mail address under `tests/data/s031/`. Benchmarks generate their large tables
-  from the markup pattern of these samples.
+- **Test data** (review O5, Armin, 2026-11-09; one template instead of three, Armin, 2026-11-09):
+  only tables made for the tests, with invented content, from one text template in the repository,
+  `tests/data/s031/templates/tables.html`. Firefox opens it directly, Word and Excel open the same
+  file; Outlook classic gets the table from Word, pasted into a new mail and copied again there. The
+  clipboard contents are taken on Windows. The template holds cells with `<br>` and with two `<p>`,
+  `colspan` and `rowspan`, and for Excel `<br style='mso-data-placement:same-cell'>` (a line break
+  Excel keeps inside the cell). The tests need only the clipboard samples; binary formats (`.docx`,
+  `.xlsx`) would add nothing. Nothing from real mails or documents enters the repository, also
+  nothing derived from it. Before a sample is committed, its header is reduced: no `file:` links,
+  `<link>` elements, generator or author. The lint test `S031_SamplesCarryNoPersonalData` fails on
+  `file:`, `C:\Users`, `/Users/`, `/home/` or an e-mail address under `tests/data/s031/`. Benchmarks
+  generate their large tables from the markup pattern of these samples.
 - **S018's cell helpers** (review O3): `core::tableCellToText` and `TableDelegate::prepare` treat a
   `<br>` preceded by an odd number of backslashes as text, not as a line break. Red tests first in
   `S018_Tables` and `tst_s018_tables`; this also fixes typing `\<br>` into a cell today.

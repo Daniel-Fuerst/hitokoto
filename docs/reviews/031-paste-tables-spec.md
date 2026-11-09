@@ -4,7 +4,7 @@ mode: spec
 spec: docs/stories/031-paste-tables.md
 date: 2026-11-09
 reviewer: Advocatus Diaboli (same session as the story, not an independent subagent)
-dispositioned: 2026-11-09 (Armin, one objection after the other; O1 after three Outlook samples, O4 and O11 after a timing spike)
+dispositioned: 2026-11-09 (Armin, one objection after the other; O1 after three Outlook samples, O4 and O11 after a timing spike; O5 changed to one HTML template the same day)
 objections:
   - id: O1
     category: premise
@@ -35,7 +35,7 @@ objections:
     severity: major
     title: "Anonymising the samples covers the visible text only; Office HTML carries user paths and metadata into a public repository"
     disposition: fixed
-    disposition_rationale: "Armin, 2026-11-09: the real data is confidential (a partner's business secrets); nothing of it, also nothing derived, enters the repository. The Outlook samples taken earlier confirmed the objection (file: links into the user profile, generator) and serve only as evidence for the findings; they are deleted afterwards. Story, requirement 'Test data': only test tables with invented content from templates in tests/data/s031/templates/ (.docx, .xlsx, .html), copied in Word, Outlook classic (via a new mail), Excel and Firefox; headers reduced before commit; lint test S031_SamplesCarryNoPersonalData; benchmarks generate large tables from the markup pattern of these samples. The story's example, which still carried the real table shortened, was replaced by an invented one before anything was pushed."
+    disposition_rationale: "Armin, 2026-11-09: the real data is confidential (a partner's business secrets); nothing of it, also nothing derived, enters the repository. The Outlook samples taken earlier confirmed the objection (file: links into the user profile, generator) and serve only as evidence for the findings; they are deleted afterwards. Story, requirement 'Test data': only test tables with invented content from one text template, tests/data/s031/templates/tables.html (changed by Armin, 2026-11-09, from a .docx, an .xlsx and an .html: the tests need only the clipboard samples, binary formats add nothing), opened in Firefox, Word and Excel, with Outlook classic getting the table from Word via a new mail; the template holds cells with `<br>` and with two `<p>`, colspan and rowspan, and for Excel `<br style='mso-data-placement:same-cell'>`; headers reduced before commit; lint test S031_SamplesCarryNoPersonalData; benchmarks generate large tables from the markup pattern of these samples. The story's example, which still carried the real table shortened, was replaced by an invented one before anything was pushed."
   - id: O6
     category: threat
     severity: minor
