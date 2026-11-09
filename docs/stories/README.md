@@ -41,7 +41,7 @@ story ID (see "Conventions").
 | 28 | [S027](027-smooth-scrolling.md) | Smooth scrolling in the editor view | S019 | S | In review |
 | 29 | [S028](028-find-in-file.md) | Find in the open file | S018, S022, S023, S024 | L | In review |
 | 30 | [S029](029-bench-runner-classes.md) | Benchmark compared with main on the same runner | S006, S007, S017 | M | Done |
-| 32 | [S031](031-paste-tables.md) | Pasting a table from Outlook, Excel or a web page as a Markdown table | S018, S019, S020 | M | Confirmed |
+| 32 | [S031](031-paste-tables.md) | Pasting a table from Outlook, Excel or a web page as a Markdown table | S018, S019, S020 | M | In progress |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 

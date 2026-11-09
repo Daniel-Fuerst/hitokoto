@@ -150,6 +150,20 @@ TEST(S018_Tables, CellTextForEditingAndBack) {
     EXPECT_EQ(tableCellFromText(tableCellToText(u"a \\| b<br>c")), u"a \\| b<br>c");
 }
 
+// S031 review O3: a `<br>` after an odd number of backslashes is text (CommonMark: the backslash
+// escapes `<`); after an even number the backslashes escape each other and it is a line break.
+TEST(S018_Tables, AnEscapedBreakStaysTextForEditing) {
+    EXPECT_EQ(tableCellToText(u"x\\<br>y"), u"x\\<br>y");
+    EXPECT_EQ(tableCellToText(u"x\\<BR/>y"), u"x\\<BR/>y");
+    EXPECT_EQ(tableCellToText(u"x\\\\\\<br />y"), u"x\\\\\\<br />y");
+    EXPECT_EQ(tableCellToText(u"x\\\\<br>y"), u"x\\\\\ny");
+    EXPECT_EQ(tableCellToText(u"\\<br>"), u"\\<br>");
+    EXPECT_EQ(tableCellToText(u"a<br>b\\<br>c"), u"a\nb\\<br>c");
+    // Typed back unchanged: editing the cell keeps the Markdown.
+    EXPECT_EQ(tableCellFromText(tableCellToText(u"x\\<br>y")), u"x\\<br>y");
+    EXPECT_EQ(tableCellFromText(tableCellToText(u"x\\\\<br>y")), u"x\\\\<br>y");
+}
+
 TEST(S018_Tables, ReplacingACellChangesNothingElse) {
     EXPECT_EQ(replaceTableCell(u"| a | b |", 1, u"x"), u"| a | x |");
     EXPECT_EQ(replaceTableCell(u"|a|bb|", 0, u"zz"), u"|zz|bb|");

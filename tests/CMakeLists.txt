@@ -17,6 +17,7 @@ add_executable(hitokoto_core_tests
     core/test_s024_front_matter.cpp
     core/test_s026_floating_toolbar.cpp
     core/test_s028_find_in_file.cpp
+    core/test_s031_paste_tables.cpp
     core/test_s004_save.cpp
     core/test_s005_theme.cpp
     core/test_s007_large_files.cpp
@@ -35,6 +36,17 @@ add_test(NAME S000_KeyInputOnlyThroughTestHelpers
     COMMAND ${CMAKE_COMMAND} "-DSCAN_DIRS=${CMAKE_CURRENT_SOURCE_DIR}/ui|${PROJECT_SOURCE_DIR}/bench"
             -DALLOWED_FILE=${CMAKE_CURRENT_SOURCE_DIR}/ui/key_input.hpp
             -P ${CMAKE_CURRENT_SOURCE_DIR}/lint/no_direct_qtest_keys.cmake)
+
+# S031 (review O5): no personal data in the clipboard samples; the second test shows that the lint
+# finds each kind of it.
+add_test(NAME S031_SamplesCarryNoPersonalData
+    COMMAND ${CMAKE_COMMAND} -DDATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/data/s031
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/lint/no_personal_data.cmake)
+add_test(NAME S031_PersonalDataLintFindsEachKind
+    COMMAND ${CMAKE_COMMAND} -DDATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/lint/data/s031_personal_data
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/lint/no_personal_data.cmake)
+set_tests_properties(S031_PersonalDataLintFindsEachKind PROPERTIES
+                     PASS_REGULAR_EXPRESSION "personal-data-lint: 5 findings")
 
 # S029: the benchmark gate.
 add_subdirectory(bench)

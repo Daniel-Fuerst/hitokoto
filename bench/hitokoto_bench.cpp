@@ -8,7 +8,8 @@
 // latency (typing, Enter, moving across headings), opening and typing in large tables (S018) and
 // saving (longest UI stall and total, median of --runs saves), moving, entering and typing in a
 // 10 MB code block (S021), and opening and typing in a document of thematic breaks, setext
-// headings and long hard-wrapped paragraphs (S023). Compares against a baseline (regression gate for CI) and
+// headings and long hard-wrapped paragraphs (S023), and pasting tables in Outlook's and Excel's
+// markup (S031). Compares against a baseline (regression gate for CI) and
 // reports the brief's budgets (section 4); hard budgets fail the run on any machine.
 #include "document_session.hpp"
 #include "editor_widget.hpp"
@@ -18,6 +19,7 @@
 #include "hitokoto/core/markdown.hpp"
 #include "key_input.hpp"
 #include "main_window.hpp"
+#include "paste_samples.hpp"
 #include "theme_applier.hpp"
 
 #include <QAction>
@@ -261,6 +263,7 @@ OpenTiming measureOpen(ui::MainWindow& w, const QString& path) {
 // open of 10 MB on shared runners swung by more than 25 % without a code change (first chunk 51
 // and 89 ms in two runs, decoding alone 12 and 24 ms; S018).
 constexpr int kOpenRuns = 5;
+constexpr int kPasteRuns = 5;  ///< S031: pastes per table size, median reported
 
 /// Prints every sample of a median, in measuring order, so a CI log shows how they spread.
 void printSamples(const char* name, const std::vector<double>& samples) {
@@ -745,6 +748,43 @@ std::vector<double> measureFindStepsIncomplete(ui::MainWindow& w, int runs, int 
     return samples;
 }
 
+/// S031: from Ctrl+V until the pasted table is shown, in an empty document; the clipboard holds
+/// `html` and `text`. If no table of `rows` rows shows within 2 s, the sample is the time waited,
+/// which misses every budget.
+double measurePaste(ui::MainWindow& w, const QString& html, const QString& text, int rows) {
+    w.session()->newDocument();
+    test::putOnClipboard(html, text);
+    QCoreApplication::processEvents();
+    ui::EditorWidget* e = w.editor();
+    const auto shown = [&] {
+        const QTableView* view = e->tableViewAt(0);
+        return view != nullptr && view->isVisible() && view->model()->rowCount() == rows;
+    };
+    QElapsedTimer t;
+    t.start();
+    test::keyClick(e, Qt::Key_V, Qt::ControlModifier);
+    while (!shown() && t.elapsed() < 2000) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents);
+    }
+    e->viewport()->repaint();
+    const double ms = static_cast<double>(t.nsecsElapsed()) / 1e6;
+    e->document()->setModified(false);
+    return ms;
+}
+
+/// Median of kPasteRuns pastes of a table of `rows` x `columns` cells in the markup of `sample`.
+double medianPaste(ui::MainWindow& w, const char* key, const QString& sample, int rows, int columns) {
+    const QString html = test::s031GeneratedHtml(test::s031Html(sample), rows, columns);
+    const QString text = test::s031GeneratedText(rows, columns);
+    std::vector<double> samples;
+    samples.reserve(kPasteRuns);
+    for (int i = 0; i < kPasteRuns; ++i) {
+        samples.push_back(measurePaste(w, html, text, rows));
+    }
+    printSamples(key, samples);
+    return stats(samples).median;
+}
+
 struct Budget {
     const char* key;
     double limit;
@@ -809,6 +849,12 @@ const Budget kBudgets[] = {
     {"s028_table_step_max_ms", 50, "no next match above 50 ms, 1000-row table, highlight all (hard)", true},
     {"s028_doc_typing_p95_ms", 16, "key to screen <= 16 ms (10 MB, highlight all)"},
     {"s028_doc_typing_max_ms", 50, "no key event above 50 ms, 10 MB with find open (hard)", true},
+    {"s031_paste_outlook_50x10_ms", 50, "paste 500 cells until shown <= 50 ms, Outlook (hard)", true},
+    {"s031_paste_excel_50x10_ms", 50, "paste 500 cells until shown <= 50 ms, Excel (hard)", true},
+    {"s031_paste_outlook_500x10_ms", 500, "paste 5,000 cells <= 500 ms, Outlook (hard)", true},
+    {"s031_paste_excel_500x10_ms", 500, "paste 5,000 cells <= 500 ms, Excel (hard)", true},
+    {"s031_paste_outlook_50x100_ms", 500, "paste 50 x 100 cells <= 500 ms, Outlook (hard)", true},
+    {"s031_paste_excel_50x100_ms", 500, "paste 50 x 100 cells <= 500 ms, Excel (hard)", true},
     {"save_10mb_ui_blocked_ms", 16, "saving never stalls the UI (hard)", true},
     {"save_10mb_total_ms", 1000, "10 MB on disk within 1 s (hard)", true},
 };
@@ -1065,6 +1111,18 @@ int main(int argc, char* argv[]) {
         w.findController()->close();
         w.editor()->document()->setModified(false);
     }
+
+    // S031: pasting tables in Outlook's and Excel's markup (story: 500 cells within 50 ms, above
+    // that at most 100 us per cell, until the table is shown).
+    for (const auto& [sample, name] :
+         {std::pair{"outlook-t1-example", "outlook"}, std::pair{"excel-t6-example", "excel"}}) {
+        for (const auto& [rows, columns] : {std::pair{50, 10}, std::pair{500, 10}, std::pair{50, 100}}) {
+            const std::string key =
+                "s031_paste_" + std::string(name) + "_" + std::to_string(rows) + "x" + std::to_string(columns) + "_ms";
+            r[key] = medianPaste(w, key.c_str(), QString::fromLatin1(sample), rows, columns);
+        }
+    }
+    w.session()->newDocument();
 
     QJsonObject json;
     for (const auto& [k, v] : r) {

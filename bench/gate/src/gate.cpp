@@ -168,6 +168,12 @@ const std::vector<Budget>& hardBudgets() {
          "no key in the find bar above 50 ms, 1000-row table, highlight all (hard)"},
         {"s028_table_step_max_ms", 50, "no next match above 50 ms, 1000-row table, highlight all (hard)"},
         {"s028_doc_typing_max_ms", 50, "no key event above 50 ms, 10 MB with find open (hard)"},
+        {"s031_paste_outlook_50x10_ms", 50, "paste 500 cells until shown <= 50 ms, Outlook (hard)"},
+        {"s031_paste_excel_50x10_ms", 50, "paste 500 cells until shown <= 50 ms, Excel (hard)"},
+        {"s031_paste_outlook_500x10_ms", 500, "paste 5,000 cells <= 500 ms, Outlook (hard)"},
+        {"s031_paste_excel_500x10_ms", 500, "paste 5,000 cells <= 500 ms, Excel (hard)"},
+        {"s031_paste_outlook_50x100_ms", 500, "paste 50 x 100 cells <= 500 ms, Outlook (hard)"},
+        {"s031_paste_excel_50x100_ms", 500, "paste 50 x 100 cells <= 500 ms, Excel (hard)"},
         {"save_10mb_ui_blocked_ms", 16, "saving never stalls the UI (hard)"},
         {"save_10mb_total_ms", 1000, "10 MB on disk within 1 s (hard)"},
     };

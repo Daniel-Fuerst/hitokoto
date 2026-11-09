@@ -1,6 +1,7 @@
 # S031 — Pasting a table from Outlook, Excel or a web page as a Markdown table
 
-- **Status:** Confirmed (Armin, 2026-11-09, after review `docs/reviews/031-paste-tables-spec.md`) ·
+- **Status:** In progress (red tests 2026-11-09); confirmed by Armin, 2026-11-09, after review
+  `docs/reviews/031-paste-tables-spec.md` ·
   **Order:** 32 · **Size:** M · **Depends on:** S018, S019, S020 · **Decision:** ADR 0011
 - **Basis:** Armin's feature request and decisions of 2026-11-09. A table copied in Outlook and
   pasted into Obsidian becomes a Markdown table; in hitokoto it arrives as tab-separated plain text,
@@ -243,7 +244,9 @@ No new visible element: the pasted table is an S018 table with its tokens. No ne
   generate their large tables from the markup pattern of these samples.
 - **S018's cell helpers** (review O3): `core::tableCellToText` and `TableDelegate::prepare` treat a
   `<br>` preceded by an odd number of backslashes as text, not as a line break. Red tests first in
-  `S018_Tables` and `tst_s018_tables`; this also fixes typing `\<br>` into a cell today.
+  `S018_Tables` and `tst_s018_tables`; this also fixes typing `\<br>` into a cell today. S028's
+  search reads cells by the same rule (`find.cpp`, red test in `S028_FindInFile`; Armin,
+  2026-11-09).
 - **S009** is unaffected: nothing new is concealed.
 
 ## Tests
@@ -262,3 +265,8 @@ No new visible element: the pasted table is an S018 table with its tokens. No ne
   (500 ms). Spike 2026-11-09 (Qt 6.12, cloud VM): Qt's HTML import about 40 µs per cell with
   Outlook's markup and 12 µs with Excel's, the Markdown about 1 µs; embedding estimated from S018
   at about 12 µs. If the budget fails with Outlook's markup, report the numbers before changing it.
+  The six keys are hard budgets of the benchmark gate (S029). Main does not measure them yet, so
+  the gate treats a hard key that neither base round holds, while the pull request's rounds do,
+  as new: the base rounds are complete without it, the pull request's rounds still need every hard
+  key and their values are checked against the budgets (Armin, 2026-11-09; gate cases
+  `new_hard_key`, `new_hard_key_missed`, `new_hard_key_one_base_round`).

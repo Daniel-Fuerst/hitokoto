@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S018: Markdown pipe tables shown as an embedded table view (ADR 0005, revised 2026-10-27).
 #include "table_model.hpp"
+#include "table_view.hpp"
 #include "ui_test_support.hpp"
 
 #include <QAbstractItemModel>
@@ -262,6 +263,41 @@ private slots:
         }
         f.settle();
         QCOMPARE(text(f), QString::fromUtf8(markdown));
+    }
+
+    // S031 review O3: a `<br>` after an odd number of backslashes is text, in the cell editor and
+    // in the shown cell; after an even number it stays a line break.
+    void anEscapedBreakInACellStaysText() {
+        constexpr auto markdown =
+            "| A | B | C |\n"
+            "| --- | --- | --- |\n"
+            "| x\\<br>y | x&lt;br&gt;y | p\\\\<br>q |\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("escaped-br.md"), markdown)));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QAbstractItemModel* model = view->model();
+        QCOMPARE(model->data(model->index(1, 0)).toString(), QStringLiteral("x\\<br>y"));
+        QCOMPARE(model->data(model->index(1, 2)).toString(), QStringLiteral("p\\\\\nq"));
+
+        // Shown: "x<br>y" on one line, as wide as the entity spelling of the same text.
+        auto* delegate = qobject_cast<ui::TableDelegate*>(view->itemDelegate());
+        QVERIFY(delegate != nullptr);
+        const QSizeF escaped = delegate->naturalSize(model->index(1, 0));
+        const QSizeF entity = delegate->naturalSize(model->index(1, 1));
+        QCOMPARE(escaped.width(), entity.width());
+        QCOMPARE(escaped.height(), entity.height());
+        QVERIFY(delegate->naturalSize(model->index(1, 2)).height() > entity.height());
+
+        // In the cell editor: the Markdown with the escape, no line break; leaving changes nothing.
+        QPlainTextEdit* cell = clickCell(view, 1, 0);
+        QVERIFY(cell != nullptr);
+        QCOMPARE(cell->toPlainText(), QStringLiteral("x\\<br>y"));
+        press(Qt::Key_Tab);
+        f.settle();
+        QCOMPARE(text(f), QString::fromUtf8(markdown));
+        QVERIFY(!f.editor()->document()->isModified());
     }
 
     void inputMethodCommitsIntoTheCell() {
