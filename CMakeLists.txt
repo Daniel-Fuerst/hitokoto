@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 cmake_minimum_required(VERSION 3.25)
 
+# S030 (ADR 0010): the version comes from the version tag (git describe), never from this file.
+include("${CMAKE_CURRENT_SOURCE_DIR}/scripts/version/HitokotoVersion.cmake")
+
 project(hitokoto
-    VERSION 0.3.0
+    VERSION ${HITOKOTO_VERSION_CORE}
     DESCRIPTION "A native, single-file hybrid Markdown editor"
     LANGUAGES CXX)
 
@@ -58,7 +61,7 @@ if(HITOKOTO_BUILD_FUZZERS)
 endif()
 
 set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
-set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_VERSION "${HITOKOTO_VERSION_FULL}")
 set(CPACK_PACKAGE_CONTACT "daniel@fuerst.priv.at")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
 

@@ -51,6 +51,9 @@ set_tests_properties(S031_PersonalDataLintFindsEachKind PROPERTIES
 # S029: the benchmark gate.
 add_subdirectory(bench)
 
+# S030: versions.
+add_subdirectory(version)
+
 if(HITOKOTO_BUILD_UI)
     add_subdirectory(ui)
 endif()
