@@ -1,6 +1,6 @@
 # ADR 0011: Tables from the clipboard's HTML, read with Qt's HTML import
 
-- **Status:** Proposed (with S031, 2026-11-09; Armin agreed to reading HTML on 2026-11-09)
+- **Status:** Accepted (Armin, 2026-11-09, with the confirmation of S031)
 - **Date:** 2026-11-09
 - **Deciders:** project owner (Armin, Daniel)
 

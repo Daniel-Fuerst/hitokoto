@@ -1,6 +1,6 @@
 # S031 — Pasting a table from Outlook, Excel or a web page as a Markdown table
 
-- **Status:** Open (written 2026-11-09, to be confirmed by Armin after the spec review) ·
+- **Status:** Confirmed (Armin, 2026-11-09, after review `docs/reviews/031-paste-tables-spec.md`) ·
   **Order:** 32 · **Size:** M · **Depends on:** S018, S019, S020 · **Decision:** ADR 0011
 - **Basis:** Armin's feature request and decisions of 2026-11-09. A table copied in Outlook and
   pasted into Obsidian becomes a Markdown table; in hitokoto it arrives as tab-separated plain text,
