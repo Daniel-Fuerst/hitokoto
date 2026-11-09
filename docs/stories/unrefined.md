@@ -166,3 +166,15 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   over many merges within the tolerance becomes a concern (the anchor of the class variant, or a
   comparison with the last release tag on the same runner). Window, minimum and tolerance would be
   tuned on recorded data.
+
+## Tables with more than 255 columns
+
+- **Seen:** 2026-11-09 (S031, while implementing). S018 recognises at most 255 columns
+  (`kMaxColumns` in `src/core/src/elements/table.cpp`; the column count lives in 8 bits of the
+  block state). A wider table, typed or pasted (S031 writes its Markdown without a size limit),
+  is shown as text.
+- **GFM:** no column limit; cmark-gfm (cmarkgfm 2025.10.22) and markdown-it-py 4.2.0 (tables on)
+  both render a 300-column table as a table.
+- **hitokoto:** up to 255 columns a table, above that every line is text.
+- **Open:** whether wider tables matter in practice; if so, more bits for the column count in the
+  block state (ADR 0006) and the cost of showing such a table (S018 budgets).
