@@ -31,6 +31,12 @@ local measurements.
 
 ## Measurements
 
+### 2026-11-09, CI runner, S029 revised (pull request #31, run #125)
+
+The bench job of the revised S029 (base build and four rounds in every pull request run) took
+7 min 58 s on an AMD EPYC 7763 runner (4 CPUs); the base was main 705c578, built with the same Qt.
+All 86 compared keys were ok; the report noted the changed harness (`bench/hitokoto_bench.cpp`).
+
 ### 2026-11-08, CI runner, S029 gate (pull request #31)
 
 The Linux benchmark job with the base build and four rounds (then the "main stage" of the first

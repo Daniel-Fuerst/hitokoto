@@ -1,8 +1,9 @@
 # S029 — Benchmark compared with main on the same runner
 
-- **Status:** Confirmed (Armin, 2026-11-08, after review
-  `docs/reviews/029-bench-runner-classes-spec.md`); revised 2026-11-09 after the code review
-  `docs/reviews/029-bench-runner-classes-code.md` and confirmed by Armin on 2026-11-09 (details are
+- **Status:** In review (since 2026-11-09, pull request #31, CI run #125 green on Linux, Windows
+  and macOS; confirmed by Armin on 2026-11-08 after review
+  `docs/reviews/029-bench-runner-classes-spec.md`, revised after the code review
+  `docs/reviews/029-bench-runner-classes-code.md` and confirmed again on 2026-11-09; details are
   tuned from practical experience) ·
   **Order:** 30 · **Size:** M · **Depends on:** S006, S007, S017 · **Decision:** ADR 0009
 - **Basis:** the entry "Benchmark job on Linux red without a code change" in
