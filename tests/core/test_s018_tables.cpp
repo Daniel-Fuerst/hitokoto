@@ -164,6 +164,43 @@ TEST(S018_Tables, AnEscapedBreakStaysTextForEditing) {
     EXPECT_EQ(tableCellFromText(tableCellToText(u"x\\\\<br>y")), u"x\\\\<br>y");
 }
 
+// S031 (sizing pasted tables): cells GFM shows as exactly their characters are laid out as plain
+// text. Expectations checked with cmark-gfm and markdown-it-py (tables on): each plain cell renders
+// as its text alone.
+TEST(S018_Tables, PlainCellsNeedNoMarkdown) {
+    for (const std::u16string_view plain :
+         {u"", u"r12c3", u"Green tea", u"12,50", u"Tea House North", u"5\" tin", u"say \"hi\"", u"a  b",
+          u"Open daily (9 to 18)", u"1.5 kg", u"x.y", u"50 % off; ok?", u"a-b", u"a+b=c", u"$5", u"Grüße, 一言",
+          u"no\u00a0break"}) {
+        EXPECT_TRUE(tableCellIsPlainText(plain)) << "plain cell of length " << plain.size();
+    }
+    for (const std::u16string_view syntax : {u"*x*",
+                                             u"_x_",
+                                             u"~x~",
+                                             u"`c`",
+                                             u"a\\|b",
+                                             u"C:\\Dev",
+                                             u"[l](u)",
+                                             u"![i](u)",
+                                             u"x<br>y",
+                                             u"&amp;",
+                                             u"R&D",
+                                             u"# h",
+                                             u"- item",
+                                             u"+ item",
+                                             u"1. one",
+                                             u"2) two",
+                                             u"> quote",
+                                             u"www.example.org",
+                                             u"https://example.org",
+                                             u"mail@example.org",
+                                             u"a\tb",
+                                             u"    code",
+                                             u"x\u2028y"}) {
+        EXPECT_FALSE(tableCellIsPlainText(syntax)) << "syntax cell of length " << syntax.size();
+    }
+}
+
 TEST(S018_Tables, ReplacingACellChangesNothingElse) {
     EXPECT_EQ(replaceTableCell(u"| a | b |", 1, u"x"), u"| a | x |");
     EXPECT_EQ(replaceTableCell(u"|a|bb|", 0, u"zz"), u"|zz|bb|");

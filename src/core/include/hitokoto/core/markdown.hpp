@@ -422,6 +422,12 @@ std::size_t separateTextAfterTables(DecodedText& decoded, const ElementRegistry&
 [[nodiscard]] bool escapedAt(std::u16string_view text, std::size_t pos) noexcept;
 /// Cell Markdown as text to edit: `\|` becomes `|`, `<br>` (any spelling, not escaped) a line break.
 [[nodiscard]] std::u16string tableCellToText(std::u16string_view markdown);
+/// Whether GFM shows the cell Markdown as exactly its characters in one plain paragraph: no
+/// character that could start syntax (escapes, emphasis, code, links, HTML, entities, autolinks)
+/// and no block marker at its start. The UI then lays the cell out as plain text, which is several
+/// times faster than Qt's Markdown import (S031: sizing pasted tables). Conservative: false
+/// does not mean the cell holds syntax.
+[[nodiscard]] bool tableCellIsPlainText(std::u16string_view markdown) noexcept;
 /// Edited text as cell Markdown: `|` becomes `\|`, a line break `<br>`.
 [[nodiscard]] std::u16string tableCellFromText(std::u16string_view text);
 /// `line` with the content of cell `column` replaced by `markdown`; the rest stays byte for byte.

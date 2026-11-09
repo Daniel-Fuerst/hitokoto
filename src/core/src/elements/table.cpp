@@ -249,6 +249,10 @@ std::optional<std::vector<TableAlign>> tableDelimiterAligns(std::u16string_view 
     return std::vector<TableAlign>(aligns.begin(), aligns.begin() + static_cast<std::ptrdiff_t>(columns));
 }
 
+bool tableCellIsPlainText(std::u16string_view /*markdown*/) noexcept {
+    return false;  // red test stub
+}
+
 std::u16string tableCellToText(std::u16string_view markdown) {
     std::u16string out;
     out.reserve(markdown.size());

@@ -14,7 +14,9 @@
 #include <QPlainTextEdit>
 #include <QScrollBar>
 #include <QTableView>
+#include <QTextBlockFormat>
 #include <QTextCursor>
+#include <QTextDocument>
 #include <QTimer>
 #include <QToolButton>
 
@@ -298,6 +300,58 @@ private slots:
         f.settle();
         QCOMPARE(text(f), QString::fromUtf8(markdown));
         QVERIFY(!f.editor()->document()->isModified());
+    }
+
+    // S031 (sizing pasted tables): a cell is as wide and as high as Qt's Markdown rendering of it,
+    // whether it holds syntax or only plain text, unwrapped and wrapped.
+    void cellSizesMatchTheMarkdownRendering() {
+        constexpr auto markdown =
+            "| **ref** | Green tea | Grüße, 一言 |\n"
+            "| --- | --- | --- |\n"
+            "| r12c3 | 12,50 | Open daily (9 to 18) and a longer text that wraps |\n"
+            "| *x* | say \"hi\" | 1.5 kg |\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("sizes.md"), markdown)));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QAbstractItemModel* model = view->model();
+        auto* delegate = qobject_cast<ui::TableDelegate*>(view->itemDelegate());
+        QVERIFY(delegate != nullptr);
+        // Qt's rendering of a cell's Markdown, laid out as TableDelegate lays it out.
+        const auto reference = [&](const QModelIndex& index, qreal width) {
+            auto document = std::make_unique<QTextDocument>();
+            document->setDocumentMargin(0);
+            document->setDefaultFont(model->data(index, Qt::FontRole).value<QFont>());
+            document->setMarkdown(model->data(index, ui::TableModel::MarkdownRole).toString(),
+                                  QTextDocument::MarkdownDialectGitHub);
+            QTextBlockFormat format;
+            format.setTopMargin(0);
+            format.setBottomMargin(0);
+            QTextCursor cursor(document.get());
+            cursor.select(QTextCursor::Document);
+            cursor.mergeBlockFormat(format);
+            document->setTextWidth(width);
+            return document;
+        };
+        // The padding, from a cell with syntax.
+        const QModelIndex ref = model->index(0, 0);
+        const qreal padding = (delegate->naturalSize(ref).width() - reference(ref, -1)->idealWidth()) / 2;
+        QVERIFY(padding >= 0);
+        for (int r = 0; r < model->rowCount(); ++r) {
+            for (int c = 0; c < model->columnCount(); ++c) {
+                const QModelIndex index = model->index(r, c);
+                const auto unwrapped = reference(index, -1);
+                const QSizeF natural = delegate->naturalSize(index);
+                QCOMPARE(natural.width(), unwrapped->idealWidth() + 2 * padding);
+                QCOMPARE(natural.height(), unwrapped->size().height() + 2 * padding);
+                for (const qreal width : {natural.width(), natural.width() + 10, qreal(60)}) {
+                    QCOMPARE(
+                        delegate->heightAt(index, width),
+                        reference(index, std::max<qreal>(1.0, width - 2 * padding))->size().height() + 2 * padding);
+                }
+            }
+        }
     }
 
     void inputMethodCommitsIntoTheCell() {
