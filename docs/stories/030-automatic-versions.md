@@ -148,10 +148,16 @@ later can be told apart and updated.
 ## Requirements
 
 - **No new language, no new dependency.** The logic lives in CMake scripts:
-  `cmake/HitokotoVersion.cmake` (configure time: `git describe` → full version, numeric core) and
-  `cmake/NextVersion.cmake` (`cmake -P`: list of tags, label → next tag, no tag for `version:none`,
-  or an error). Both are tested with ctest through `cmake -P` on fixed inputs, so the tests need no
-  git history and run on all three CI platforms. Test names carry the story ID (`S030_…`).
+  `scripts/version/HitokotoVersion.cmake` (configure time: `git describe` → full version, numeric
+  core) and `scripts/version/NextVersion.cmake` (`cmake -P`: list of tags, label → next tag, no tag
+  for `version:none`, or an error). Both are tested with ctest through `cmake -P` on fixed inputs,
+  so the tests need no git history and run on all three CI platforms. Test names carry the story ID
+  (`S030_…`).
+- **Why `scripts/version/` and not `cmake/`** (Armin, 2026-11-09, during the implementation): the
+  benchmark job of S029 counts every change under `cmake/` as a toolchain change, which must come in
+  a pull request of its own with nothing beside it but `docs/` and `*.md`. These scripts change
+  nothing the benchmark measures, and this story's pull request also changes `CMakeLists.txt`,
+  `src/app/` and `tests/`; under `cmake/` its benchmark job would fail.
 - **Workflow:** a new file `.github/workflows/version.yml`, separate from `ci.yml`. Job "Version
   label" on `pull_request` (opened, reopened, edited, labeled, unlabeled, synchronize) for base
   `main`, read-only token, never `pull_request_target`. Job "Tag" on push to main with
