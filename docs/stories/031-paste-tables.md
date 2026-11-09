@@ -19,8 +19,9 @@ table by hand.
 1. **The HTML flavour of the clipboard is read, to recognise tables only** (ADR 0011). Its text and
    structure are taken; nothing is shown or loaded as HTML.
 2. **Fallback: Excel's plain text.** Without an HTML flavour, tab-separated plain text in Excel's
-   form (a cell with a tab, a line break or a `"` in double quotes, `"` doubled) becomes a table
-   too, under the rules below.
+   form becomes a table too, under the rules below. Excel puts only a cell with a line break or a
+   tab in double quotes and doubles each `"` inside it; a `"` in any other cell stays as it is
+   (Excel samples, Armin, 2026-11-09).
 3. **Minimal Markdown:** `| a | b |`, delimiter row `| --- | --- |`, no padding to column widths,
    no alignment. A line break inside a cell is written as `<br>` (as `Shift+Enter` in S018), without
    the two spaces Obsidian puts before it.
@@ -57,10 +58,14 @@ third cell becomes
   escapes, as today's plain paste. Whitespace at the start and end of each line is dropped; a
   no-break space (U+00A0) counts as whitespace. Empty lines at the start and end of each text part
   are dropped; inside a text part they stay.
-- **What counts as a table, plain text** (only without an HTML flavour): split into rows at line
-  breaks outside quotes (a final line break ends the last row) and into fields at tabs outside
-  quotes; at least two rows, every row with the same number of fields, at least two; not every row
-  starting with a tab (indented text); every quote well formed. Otherwise plain text as today.
+- **What counts as a table, plain text** (only without an HTML flavour): a field is quoted only when
+  it starts with `"`, its closing `"` stands directly before a tab, a line break or the end of the
+  text, and the text between them holds a line break or a tab; inside it `""` is one `"`. Every
+  other `"` is text (`"Leaf" Co`, `say "hi"`, `""x`; revised after the Excel samples, Armin,
+  2026-11-09). The text is split into rows at line breaks outside quoted fields (a final line break
+  ends the last row) and into fields at tabs outside quoted fields; at least two rows, every row
+  with the same number of fields, at least two; not every row starting with a tab (indented text).
+  Otherwise plain text as today.
 - **Header.** The first row is the header row, whether the source marks it or not.
 - **Cell text.** Plain text without formatting: bold, italics, links, colours, images and
   footnotes of the source are dropped, their text stays (a link keeps its text, not its target). An
@@ -129,6 +134,10 @@ third cell becomes
 - When I paste it
 - Then the table holds the cells of the sample, the line break as `<br>`
 - And the same Markdown results when the clipboard holds only Excel's plain text
+- Given the clipboard holds only Excel's plain text of the quotes sample (cells `"Leaf" Co`,
+  `say "hi"`, `a "b"` with a line break, and `"a` and `b"` on two lines)
+- When I paste it
+- Then each cell holds its text as typed in Excel
 
 **Scenario: a table from a web page and from Word**
 - Given the clipboard holds the samples from the templates in Firefox (a table with `<th>`, a link
