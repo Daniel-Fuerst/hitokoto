@@ -14,6 +14,7 @@
 #include "editor_widget.hpp"
 #include "find_bar.hpp"
 #include "find_controller.hpp"
+#include "hitokoto/bench_gate/gate.hpp"
 #include "hitokoto/core/markdown.hpp"
 #include "key_input.hpp"
 #include "main_window.hpp"
@@ -760,43 +761,8 @@ struct Budget {
 // starts (31.6 -> 127.2 ms on a Windows runner, the median unchanged). Medians, and p95/p99 of
 // the 200 typing samples, are compared; extremes are reported, and where the brief names an
 // absolute limit they have a hard budget below. The counts of samples over 16 ms are information.
-constexpr std::string_view kReportOnly[] = {"save_10mb_total_ms",
-                                            "typing_small_max_ms",
-                                            "typing_10mb_max_ms",
-                                            "s018_table_typing_max_ms",
-                                            "s021_codeblock_caret_max_ms",
-                                            "s021_codeblock_enter_max_ms",
-                                            "s021_codeblock_typing_max_ms",
-                                            "typing_small_over_16ms",
-                                            "typing_10mb_over_16ms",
-                                            "s018_table_typing_over_16ms",
-                                            "s021_codeblock_caret_over_16ms",
-                                            "s021_codeblock_typing_over_16ms",
-                                            "s023_break_typing_max_ms",
-                                            "s023_break_typing_over_16ms",
-                                            "s023_bullet_typing_max_ms",
-                                            "s023_bullet_settled_ms",
-                                            "s023_underline_typing_max_ms",
-                                            "s023_underline_settled_ms",
-                                            "s024_typing_max_ms",
-                                            "s024_typing_over_16ms",
-                                            "s024_enter_leave_max_ms",
-                                            "s024_leave_5000_keys_max_ms",
-                                            "s024_leave_5000_nested_max_ms",
-                                            "s024_long_text_typing_max_ms",
-                                            "s024_long_text_typing_over_16ms",
-                                            "s024_leave_long_text_max_ms",
-                                            "s028_field_typing_max_ms",
-                                            "s028_field_typing_over_16ms",
-                                            "s028_full_count_ms",
-                                            "s028_step_max_ms",
-                                            "s028_doc_typing_max_ms",
-                                            "s028_doc_typing_over_16ms",
-                                            "s028_typing_settled_ms",
-                                            "s028_step_incomplete_max_ms",
-                                            "s028_table_field_typing_max_ms",
-                                            "s028_table_step_max_ms",
-                                            "startup_p95_ms"};
+// The list lives in the gate library (S029), which decides in CI; hitokoto-bench reports with it.
+using hitokoto::bench_gate::isReportOnly;
 
 // Brief, section 4. Most budgets are meaningful on reference hardware only (S011) and fail the run
 // with --fail-on-budget; the hard ones hold on any machine, CI runners included (S017): a save
@@ -1137,8 +1103,7 @@ int main(int argc, char* argv[]) {
                 const double now = found->second;
                 // Ignore differences below 2 ms: timer and scheduler noise.
                 const bool regressed = now > was * (1 + tol) && now - was > 2.0;
-                const bool reportOnly = std::find(std::begin(kReportOnly), std::end(kReportOnly),
-                                                  it.key().toStdString()) != std::end(kReportOnly);
+                const bool reportOnly = isReportOnly(it.key().toStdString());
                 const char* status = !regressed ? "ok" : reportOnly ? "info" : "SLOW";
                 std::printf("  %-4s %-28s %8.2f -> %8.2f\n", status, qPrintable(it.key()), was, now);
                 if (regressed && !reportOnly)

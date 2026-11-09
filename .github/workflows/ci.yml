@@ -22,7 +22,7 @@ jobs:
     name: Format (clang-format)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check formatting
         run: clang-format-18 --dry-run --Werror $(git ls-files '*.cpp' '*.hpp')
 
@@ -30,7 +30,7 @@ jobs:
     name: Core with ASan/UBSan, without Qt (layering check)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Configure
         run: cmake --preset core-sanitize
       - name: Build
@@ -42,7 +42,7 @@ jobs:
     name: Fuzz core (60 s per target)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Configure
         run: cmake --preset fuzz
       - name: Build
@@ -65,13 +65,10 @@ jobs:
           - { name: Windows, os: windows-2022, qt: "6.8.3", arch: win64_msvc2022_64, werror: "OFF" }
           - { name: macOS, os: macos-15, qt: "6.12.0", arch: clang_64, werror: "ON" }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Linux packages
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libegl1 libxkbcommon-x11-0 libxcb-cursor0 ninja-build
-      - name: MSVC environment
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -91,7 +88,7 @@ jobs:
     name: Lint (clang-tidy)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Linux packages
         run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libegl1 libxkbcommon-x11-0 clang-tidy-18
       - name: Install Qt
@@ -113,57 +110,169 @@ jobs:
           run-clang-tidy-18 -p build/dev -quiet "$(pwd)/(src|tests|bench)/"
           run-clang-tidy-18 -p build/fuzz -quiet "$(pwd)/fuzz/"
 
+  # S029 / ADR 0009: every pull request run builds the base commit and measures it alternating with
+  # the pull request on the same runner (base, pull request, pull request, base); hitokoto-bench-gate
+  # compares the rounds. A toolchain change comes in its own pull request; if the Qt version of this
+  # job differs from the base's, the base is built with its own Qt. Runs of main measure once and
+  # check the hard budgets. The runner class is reported for information.
   bench:
     name: Benchmarks (${{ matrix.name }})
     needs: build-test
     runs-on: ${{ matrix.os }}
+    # S029: with the base build and four rounds the job took 7 min 52 s on pull request #31
+    # (2026-11-08); about four times that leaves room for slower runners.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Tolerance against the baseline: Windows and macOS runners vary in speed by 20-50 %
-          # between runs with the same code (observed 2026-10-26), Linux runners far less.
-          - { name: Linux, os: ubuntu-24.04, qt: "6.12.0", arch: linux_gcc_64, baseline: linux, tolerance: "0.25" }
+          - { name: Linux, os: ubuntu-24.04, qt: "6.12.0", arch: linux_gcc_64 }
           # Windows and macOS are off until further notice (user decision 2026-10-28): their runners
-          # swing by 20-100 % between runs with the same code, the comparison failed without a code
-          # change, and a comparison that only reports is read by nobody. Their baselines stay.
-          #- { name: Windows, os: windows-2022, qt: "6.8.3", arch: win64_msvc2022_64, baseline: windows, tolerance: "0.50" }
-          #- { name: macOS, os: macos-15, qt: "6.12.0", arch: clang_64, baseline: macos, tolerance: "0.50" }
+          # swing by 20-100 % between runs with the same code. S029 covers Linux; the same scheme can
+          # follow there later. Their old baselines stay in bench/baselines/.
+          #- { name: Windows, os: windows-2022, qt: "6.8.3", arch: win64_msvc2022_64 }
+          #- { name: macOS, os: macos-15, qt: "6.12.0", arch: clang_64 }
+    env:
+      GATE: build/bench/bench/gate/hitokoto-bench-gate
+      BENCH: build/bench/bench/hitokoto-bench
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # the base commit (first parent of the merge commit, or the merge base)
+      - name: Kind of run and base commit
+        id: kind
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "kind=main" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "kind=pr" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base=$(git rev-parse HEAD^1)  # first parent of the merge commit CI tests (S029)
+          else
+            base=$(git merge-base origin/main HEAD)
+          fi
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          git diff --name-only "$base" HEAD > changed-paths.txt
+          # The toolchain of this job in the base's ci.yml: Qt version and runner image.
+          query='.jobs.bench.strategy.matrix.include[] | select(.name == "${{ matrix.name }}")'
+          base_qt=$(git show "$base:.github/workflows/ci.yml" | yq "$query | .qt" | tr -d '"' || true)
+          base_os=$(git show "$base:.github/workflows/ci.yml" | yq "$query | .os" | tr -d '"' || true)
+          echo "base_qt=$base_qt" >> "$GITHUB_OUTPUT"
+          flags=""
+          if [ -n "$base_qt" ] && [ "$base_qt" != "null" ] && [ "$base_qt" != "${{ matrix.qt }}" ]; then
+            flags="$flags --qt-changed"; echo "qt_changed=true" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "$base_os" ] && [ "$base_os" != "null" ] && [ "$base_os" != "${{ matrix.os }}" ]; then
+            flags="$flags --image-changed"
+          fi
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Read at run time, not from the event, so that a re-run after adding the label sees it.
+            if gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels" \
+                 --jq '.[].name' | grep -qx bench-accepted; then flags="$flags --accepted"; fi
+          fi
+          echo "flags=$flags" >> "$GITHUB_OUTPUT"
       - name: Linux packages
-        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libegl1 libxkbcommon-x11-0 libxcb-cursor0
-      - name: MSVC environment
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ matrix.qt }}
           arch: ${{ matrix.arch }}
           cache: true
+      - name: Install the base's Qt
+        if: steps.kind.outputs.qt_changed == 'true'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ steps.kind.outputs.base_qt }}
+          arch: ${{ matrix.arch }}
+          dir: ${{ runner.temp }}/qt-base
+          set-env: false
+          cache: true
       - name: Configure
         run: cmake --preset bench
       - name: Build
         run: cmake --build --preset bench --parallel
-      - name: Core benchmarks
+      - name: Runner class
+        id: class
         shell: bash
         run: |
-          exe=$(find build/bench -type f \( -name hitokoto_core_bench -o -name hitokoto_core_bench.exe \) | head -1)
-          "$exe" --benchmark_out=core-bench.json --benchmark_out_format=json
-      - name: End-to-end benchmarks (S006, S007)
-        shell: bash
+          l2=$(cat /sys/devices/system/cpu/cpu0/cache/index2/size 2>/dev/null || echo none)
+          l3=$(cat /sys/devices/system/cpu/cpu0/cache/index3/size 2>/dev/null || echo none)
+          "$GATE" --print-class --cpus "$(nproc)" --l2 "$l2" --l3 "$l3" --output bench-class.json | tee class.txt
+          mhz=$(grep -m1 'cpu MHz' /proc/cpuinfo | awk -F: '{gsub(/ /, "", $2); print $2}')
+          echo "Clock: $mhz MHz" | tee -a class.txt
+          echo "class=$(head -1 class.txt)" >> "$GITHUB_OUTPUT"
+      - name: Core benchmarks
+        run: build/bench/bench/hitokoto_core_bench --benchmark_out=core-bench.json --benchmark_out_format=json
+      - name: Run of main (S006, S007)
+        if: steps.kind.outputs.kind == 'main'
         env:
           QT_QPA_PLATFORM: offscreen
+        shell: bash
         run: |
-          exe=$(find build/bench -type f \( -name hitokoto-bench -o -name hitokoto-bench.exe \) | head -1)
-          "$exe" --runs 10 --output e2e-bench.json --baseline bench/baselines/${{ matrix.baseline }}.json --tolerance ${{ matrix.tolerance }}
+          "$BENCH" --runs 10 --output e2e-bench.json || echo "hitokoto-bench exited with $?"
+          "$GATE" --kind main --class "${{ steps.class.outputs.class }}" --results e2e-bench.json \
+            --report gate-report.md && code=0 || code=$?
+          cat gate-report.md >> "$GITHUB_STEP_SUMMARY" || true
+          exit "$code"
+      - name: Build the base commit
+        if: steps.kind.outputs.kind == 'pr'
+        shell: bash
+        run: |
+          base="${{ steps.kind.outputs.base }}"
+          echo "Base commit: $base" | tee -a "$GITHUB_STEP_SUMMARY"
+          git worktree add --detach ../base "$base"
+          args=()
+          if [ "${{ steps.kind.outputs.qt_changed }}" = "true" ]; then
+            qt=$(find "${{ runner.temp }}/qt-base/Qt" -mindepth 2 -maxdepth 2 -type d -name gcc_64 | head -1)
+            echo "The base is built with its own Qt: $qt" | tee -a "$GITHUB_STEP_SUMMARY"
+            args=(-DCMAKE_PREFIX_PATH="$qt" -DQt6_DIR="$qt/lib/cmake/Qt6")
+          fi
+          if ! cmake -S ../base --preset bench "${args[@]}" || ! cmake --build ../base/build/bench --parallel; then
+            echo "Outcome: fails, the base commit $base does not build" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+      - name: Rounds (base, pull request, pull request, base) and gate
+        if: steps.kind.outputs.kind == 'pr'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        shell: bash
+        run: |
+          base_bench=../base/build/bench/bench/hitokoto-bench
+          base_env=()
+          if [ "${{ steps.kind.outputs.qt_changed }}" = "true" ]; then
+            qt=$(find "${{ runner.temp }}/qt-base/Qt" -mindepth 2 -maxdepth 2 -type d -name gcc_64 | head -1)
+            base_env=(env QT_PLUGIN_PATH="$qt/plugins" LD_LIBRARY_PATH="$qt/lib")
+          fi
+          "${base_env[@]}" "$base_bench" --runs 10 --output base-1.json || echo "base round 1 exited with $?"
+          "$BENCH" --runs 10 --output pr-1.json || echo "pull request round 1 exited with $?"
+          "$BENCH" --runs 10 --output pr-2.json || echo "pull request round 2 exited with $?"
+          "${base_env[@]}" "$base_bench" --runs 10 --output base-2.json || echo "base round 2 exited with $?"
+          "$GATE" --kind pr --class "${{ steps.class.outputs.class }}" \
+            --base-rounds base-1.json,base-2.json --pr-rounds pr-1.json,pr-2.json \
+            --changed-paths changed-paths.txt ${{ steps.kind.outputs.flags }} \
+            --report gate-report.md && code=0 || code=$?
+          cat gate-report.md >> "$GITHUB_STEP_SUMMARY" || true
+          exit "$code"
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: bench-${{ matrix.baseline }}
+          name: bench-${{ runner.os == 'Linux' && 'linux' || runner.os }}
+          if-no-files-found: ignore
           path: |
+            bench-class.json
+            class.txt
             core-bench.json
             e2e-bench.json
+            base-*.json
+            pr-*.json
+            changed-paths.txt
+            gate-report.md
