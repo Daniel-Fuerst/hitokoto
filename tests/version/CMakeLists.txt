@@ -21,6 +21,7 @@ foreach(name IN ITEMS
         NoVersionTagFails
         FirstRunFromTheStartingTag
         OnlyMergesOfPullRequestsIntoMain
+        AnUnconfirmedMergeStops
         NoneThenPatch
         MergesInQuickSuccession
         MissingLabelStops
@@ -35,10 +36,12 @@ foreach(name IN ITEMS
         VersionFromTheOption
         InvalidOptionFails
         UnknownWithoutGit
-        GitRepository)
+        GitRepository
+        GitEnvironmentIsIgnored)
     s030_case(${name})
 endforeach()
-set_tests_properties(S030_GitRepository PROPERTIES SKIP_REGULAR_EXPRESSION "S030-SKIP")
+set_tests_properties(S030_GitRepository S030_GitEnvironmentIsIgnored PROPERTIES
+    SKIP_REGULAR_EXPRESSION "S030-SKIP")
 
 s030_case(TheConfiguredVersion "-DEXPECTED=${HITOKOTO_VERSION_FULL}")
 s030_case(CPackCarriesTheFullVersion "-DEXPECTED=${HITOKOTO_VERSION_FULL}"
@@ -47,10 +50,8 @@ s030_case(CPackCarriesTheFullVersion "-DEXPECTED=${HITOKOTO_VERSION_FULL}"
 if(TARGET hitokoto)
     s030_case(TheAppIsBuiltWithTheVersion "-DEXPECTED=${HITOKOTO_VERSION_FULL}"
         "-DHEADER=${PROJECT_BINARY_DIR}/src/app/hitokoto_version.hpp")
-    if(NOT WIN32)
-        s030_case(TheAppReportsTheVersion "-DEXPECTED=${HITOKOTO_VERSION_FULL}"
-            "-DAPP=$<TARGET_FILE:hitokoto>")
-    endif()
+    s030_case(TheAppReportsTheVersion "-DEXPECTED=${HITOKOTO_VERSION_FULL}"
+        "-DAPP=$<TARGET_FILE:hitokoto>")
     if(APPLE)
         s030_case(MacBundleCarriesTheCore "-DEXPECTED=${HITOKOTO_VERSION_CORE}"
             "-DPLIST=$<TARGET_BUNDLE_CONTENT_DIR:hitokoto>/Info.plist")

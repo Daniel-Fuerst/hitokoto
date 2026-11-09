@@ -15,6 +15,13 @@ endforeach()
 file(REMOVE_RECURSE "${WORK_DIR}")
 file(MAKE_DIRECTORY "${WORK_DIR}")
 
+# Code review O5: git commands of these cases never follow a repository named by the environment
+# (git hooks set GIT_DIR, for example); otherwise the throwaway repository below would be the
+# caller's repository.
+foreach(v IN ITEMS GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_CEILING_DIRECTORIES)
+    unset(ENV{${v}})
+endforeach()
+
 set(next_script "${SCRIPTS_DIR}/NextVersion.cmake")
 set(four_labels "version:major, version:minor, version:patch, version:none")
 
@@ -186,12 +193,36 @@ elseif("${CASE}" STREQUAL "OnlyMergesOfPullRequestsIntoMain")
     run_next(r MODE plan TAGS v0.3.0 CANDIDATES
 "commit ${c1}
 commit ${c2}
+merge
 pr 26
 label version:minor
 commit ${c3}
 ")
     expect_eq("${r_CODE}" "0" "exit code\n${r_LOG}")
     expect_eq("${r_OUTPUT}" "${c2} v0.4.0 26" "plan")
+
+elseif("${CASE}" STREQUAL "AnUnconfirmedMergeStops")
+    # Code review O1: a merge commit (two parents, marked "merge") that no pull request into main
+    # confirms is never skipped as if it were pushed directly: the job stops there, after tagging
+    # the merges before it, so that a re-run can tag it once GitHub finds its pull request.
+    run_next(r MODE plan TAGS v0.3.1 CANDIDATES
+"commit ${c1}
+merge
+pr 80
+label version:patch
+commit ${c2}
+commit ${c3}
+merge
+commit ${c4}
+merge
+pr 81
+label version:patch
+")
+    expect_eq("${r_CODE}" "1" "exit code")
+    expect_contains("${r_LOG}" "The merge commit ${c3}" "message names the merge commit")
+    expect_contains("${r_LOG}" "not confirmed as the merge of a pull request into main"
+        "message says why")
+    expect_eq("${r_OUTPUT}" "${c1} v0.3.2 80" "plan")
 
 elseif("${CASE}" STREQUAL "NoneThenPatch")
     # Scenario: merging makes the next version (version:none, then version:patch).
@@ -319,10 +350,11 @@ else()
     elseif("${CASE}" STREQUAL "VersionFromTheOption")
         # Scenario: builds without git (-DHITOKOTO_VERSION=0.4.0); the option also wins over git.
         hitokoto_determine_version(SOURCE_DIR "${WORK_DIR}" OPTION 0.4.0 NO_GIT
-            FULL full CORE core WARNING warning)
+            FULL full CORE core WARNING warning SOURCE source)
         expect_eq("${full}" "0.4.0" "full version")
         expect_eq("${core}" "0.4.0" "numeric core")
         expect_eq("${warning}" "" "warning")
+        expect_eq("${source}" "HITOKOTO_VERSION" "source")
         hitokoto_determine_version(SOURCE_DIR "${WORK_DIR}" OPTION 0.4.0+3.gabc1234 NO_GIT
             FULL full CORE core WARNING warning)
         expect_eq("${full}" "0.4.0+3.gabc1234" "full version with build metadata")
@@ -340,10 +372,12 @@ else()
 
     elseif("${CASE}" STREQUAL "UnknownWithoutGit")
         # Scenario: builds without git, without the option.
-        hitokoto_determine_version(SOURCE_DIR "${WORK_DIR}" NO_GIT FULL full CORE core WARNING warning)
+        hitokoto_determine_version(SOURCE_DIR "${WORK_DIR}" NO_GIT FULL full CORE core WARNING warning
+            SOURCE source)
         expect_eq("${full}" "0.0.0+unknown" "full version")
         expect_eq("${core}" "0.0.0" "numeric core")
         expect_contains("${warning}" "HITOKOTO_VERSION" "warning")
+        expect_eq("${source}" "none" "source")
 
     elseif("${CASE}" STREQUAL "GitRepository")
         # A throwaway repository: git describe with the real tags rules. Skipped without git.
@@ -368,9 +402,11 @@ else()
             set(${out} "${h}" PARENT_SCOPE)
         endfunction()
         function(expect_version expected what)
-            hitokoto_determine_version(SOURCE_DIR "${repo}" FULL full CORE core WARNING warning)
+            hitokoto_determine_version(SOURCE_DIR "${repo}" FULL full CORE core WARNING warning
+                SOURCE source)
             expect_eq("${full}" "${expected}" "${what}")
             expect_eq("${warning}" "" "warning (${what})")
+            expect_eq("${source}" "git describe" "source (${what})")
         endfunction()
 
         git_run(init -q)
@@ -404,12 +440,65 @@ else()
         file(WRITE "${repo}/a.txt" "d\n")
         expect_version("0.4.0+dirty" "uncommitted change on v0.4.0")
 
+        # Code review O4: the option wins over git, but in a checkout with a version tag it is
+        # reported, so that a value left in the cache is not taken for the version of the commit.
+        hitokoto_determine_version(SOURCE_DIR "${repo}" OPTION 0.9.0 FULL full CORE core
+            WARNING warning SOURCE source)
+        expect_eq("${full}" "0.9.0" "full version from the option in a checkout")
+        expect_eq("${source}" "HITOKOTO_VERSION" "source of the option in a checkout")
+        expect_contains("${warning}" "HITOKOTO_VERSION=0.9.0 overrides the version from git (0.4.0+dirty)"
+            "warning for the option in a checkout")
+        expect_contains("${warning}" "-DHITOKOTO_VERSION=" "warning says how to remove the option")
+
         # A source tree without .git inside another repository (an unpacked source archive) does
         # not take the version of the outer repository.
         file(MAKE_DIRECTORY "${repo}/archive")
         hitokoto_determine_version(SOURCE_DIR "${repo}/archive" FULL full CORE core WARNING warning)
         expect_eq("${full}" "0.0.0+unknown" "source archive inside a repository")
         expect_contains("${warning}" "HITOKOTO_VERSION" "warning for the source archive")
+        hitokoto_determine_version(SOURCE_DIR "${repo}/archive" OPTION 0.9.0 FULL full CORE core
+            WARNING warning)
+        expect_eq("${full}" "0.9.0" "source archive with the option")
+        expect_eq("${warning}" "" "no warning for the option in a source archive")
+
+    elseif("${CASE}" STREQUAL "GitEnvironmentIsIgnored")
+        # Code review O5: GIT_DIR and GIT_WORK_TREE of the caller (a git hook, an IDE) do not
+        # redirect the version to another repository. Skipped without git.
+        find_package(Git QUIET)
+        if(NOT GIT_FOUND)
+            message("S030-SKIP: git not found")
+            return()
+        endif()
+        foreach(name IN ITEMS repo decoy)
+            set(dir "${WORK_DIR}/${name}")
+            file(MAKE_DIRECTORY "${dir}")
+            set(git "${GIT_EXECUTABLE}" -C "${dir}" -c user.name=S030 -c user.email=s030@example.invalid
+                    -c commit.gpgsign=false -c tag.gpgsign=false -c core.autocrlf=false)
+            file(WRITE "${dir}/a.txt" "${name}\n")
+            foreach(step IN ITEMS "init;-q" "add;a.txt" "commit;-q;-m;a")
+                execute_process(COMMAND ${git} ${step} RESULT_VARIABLE code ERROR_VARIABLE err OUTPUT_QUIET)
+                if(NOT code EQUAL 0)
+                    message(FATAL_ERROR "git ${step} in ${name}: ${err}")
+                endif()
+            endforeach()
+        endforeach()
+        execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${WORK_DIR}/repo" -c tag.gpgsign=false
+            -c user.name=S030 -c user.email=s030@example.invalid tag -a v0.3.0 -m v0.3.0)
+        execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${WORK_DIR}/decoy" -c tag.gpgsign=false
+            -c user.name=S030 -c user.email=s030@example.invalid tag -a v9.0.0 -m v9.0.0)
+        execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${WORK_DIR}/decoy" rev-parse HEAD
+            OUTPUT_VARIABLE decoy_head OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+        set(ENV{GIT_DIR} "${WORK_DIR}/decoy/.git")
+        set(ENV{GIT_WORK_TREE} "${WORK_DIR}/decoy")
+        hitokoto_determine_version(SOURCE_DIR "${WORK_DIR}/repo" FULL full CORE core WARNING warning)
+        expect_eq("${full}" "0.3.0" "version with GIT_DIR naming another repository")
+        expect_eq("$ENV{GIT_DIR}" "${WORK_DIR}/decoy/.git" "GIT_DIR of the caller is kept")
+        unset(ENV{GIT_DIR})
+        unset(ENV{GIT_WORK_TREE})
+        execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${WORK_DIR}/decoy" rev-parse HEAD
+            OUTPUT_VARIABLE head OUTPUT_STRIP_TRAILING_WHITESPACE)
+        expect_eq("${head}" "${decoy_head}" "HEAD of the other repository")
 
     # --- the configured build -------------------------------------------------------------------
 
@@ -426,9 +515,11 @@ else()
         expect_contains("${text}" "\"${EXPECTED}\"" "generated header")
 
     elseif("${CASE}" STREQUAL "TheAppReportsTheVersion")
-        # QCommandLineParser::addVersionOption prints applicationVersion (not on Windows, where a
-        # GUI application shows it in a message box).
+        # QCommandLineParser::addVersionOption prints applicationVersion. On Windows a GUI program
+        # shows it in a message box unless its output is redirected (as here) or this variable is
+        # set (qcommandlineparser.cpp, displayMessageBox; code review O8).
         set(ENV{QT_QPA_PLATFORM} offscreen)
+        set(ENV{QT_COMMAND_LINE_PARSER_NO_GUI_MESSAGE_BOXES} 1)
         execute_process(COMMAND "${APP}" --version RESULT_VARIABLE code OUTPUT_VARIABLE out
             ERROR_VARIABLE err TIMEOUT 60)
         expect_eq("${code}" "0" "exit code of --version\n${out}\n${err}")
