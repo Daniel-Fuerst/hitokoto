@@ -83,6 +83,10 @@ public:
     void setSmoothScrolling(bool on);
     /// S027: the vertical smooth scroller.
     [[nodiscard]] SmoothScroller* smoothScroller() const noexcept { return verticalScroller_; }
+    /// S031: pastes the clipboard's plain text without converting tables (Paste as Plain Text).
+    void pasteAsPlainText();
+    /// S031: whether the clipboard holds plain text to paste.
+    [[nodiscard]] static bool canPastePlainText();
 
 signals:
     void painted();
@@ -99,6 +103,8 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
     void inputMethodEvent(QInputMethodEvent* event) override;
     void insertFromMimeData(const QMimeData* source) override;
+    void dropEvent(QDropEvent* event) override;
+    void contextMenuEvent(QContextMenuEvent* event) override;
     void scrollContentsBy(int dx, int dy) override;
 
 private:
@@ -133,6 +139,10 @@ private:
     bool handleBulletKey(QKeyEvent* event);
     bool handleBulletEnter(QTextCursor& cursor);
     bool handleBulletTab(QTextCursor& cursor, bool outdent);
+    /// S031: pastes the tables of `source` as Markdown tables, if the paste converts; returns
+    /// false if it stays plain text (no table that counts, or the caret is in a code block, front
+    /// matter or a table's lines).
+    bool pasteTables(const QMimeData* source);
 
     BlockLayout* layout_ = nullptr;
     qreal pendingShift_ = 0;  ///< height change above the viewport not yet scrolled away
@@ -147,6 +157,7 @@ private:
     double padding_ = 0;
     double maxWidth_ = 0;
     quint64 editCount_ = 0;
+    bool plainPaste_ = false;  ///< S031: inside a drop or Paste as Plain Text: no conversion
 };
 
 }  // namespace hitokoto::ui

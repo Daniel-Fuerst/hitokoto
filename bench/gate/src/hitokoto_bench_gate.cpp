@@ -60,7 +60,7 @@ std::optional<Values> readValues(const QString& path) {
     return toValues(*object);
 }
 
-/// Two rounds from "a.json,b.json"; an error text if a round has no complete results.
+/// Two rounds from "a.json,b.json"; an error text if a file is missing or no JSON object.
 std::optional<std::array<Values, 2>> readRounds(const QString& list, const char* side, QString& error) {
     const QStringList files = list.split(QLatin1Char(','), Qt::SkipEmptyParts);
     if (files.size() != 2) {
@@ -70,7 +70,7 @@ std::optional<std::array<Values, 2>> readRounds(const QString& list, const char*
     std::array<Values, 2> rounds;
     for (std::size_t i = 0; i < 2; ++i) {
         const auto v = readValues(files[static_cast<int>(i)]);
-        if (!v || !isCompleteResult(*v)) {
+        if (!v) {
             error = QStringLiteral("%1 round %2 has no complete results (%3)")
                         .arg(QLatin1String(side))
                         .arg(i + 1)
@@ -80,6 +80,22 @@ std::optional<std::array<Values, 2>> readRounds(const QString& list, const char*
         rounds[i] = *v;
     }
     return rounds;
+}
+
+/// An error text if a round lacks a hard-budget key other than `except`.
+bool checkComplete(const std::array<Values, 2>& rounds, const QString& list, const char* side,
+                   const std::set<std::string, std::less<>>& except, QString& error) {
+    const QStringList files = list.split(QLatin1Char(','), Qt::SkipEmptyParts);
+    for (std::size_t i = 0; i < 2; ++i) {
+        if (!isCompleteResult(rounds[i], except)) {
+            error = QStringLiteral("%1 round %2 has no complete results (%3)")
+                        .arg(QLatin1String(side))
+                        .arg(i + 1)
+                        .arg(files.value(static_cast<int>(i)));
+            return false;
+        }
+    }
+    return true;
 }
 
 std::vector<std::string> readLines(const QString& path) {
@@ -303,9 +319,22 @@ int main(int argc, char* argv[]) {
         in.results = *results;
     } else {
         QString error;
+        QString pullRequestError;
         in.baseRounds = readRounds(parser.value(baseOpt), "base", error);
-        if (in.baseRounds) {
-            in.pullRequestRounds = readRounds(parser.value(prOpt), "pull request", error);
+        in.pullRequestRounds = readRounds(parser.value(prOpt), "pull request", pullRequestError);
+        // S031: a hard key new in the pull request is not measured by the base yet.
+        const auto newKeys = in.baseRounds && in.pullRequestRounds ? newHardKeys(*in.baseRounds, *in.pullRequestRounds)
+                                                                   : std::set<std::string, std::less<>>{};
+        if (error.isEmpty() && in.baseRounds &&
+            !checkComplete(*in.baseRounds, parser.value(baseOpt), "base", newKeys, error)) {
+            in.baseRounds.reset();
+        }
+        if (error.isEmpty()) {
+            error = pullRequestError;
+        }
+        if (error.isEmpty() && in.pullRequestRounds &&
+            !checkComplete(*in.pullRequestRounds, parser.value(prOpt), "pull request", {}, error)) {
+            in.pullRequestRounds.reset();
         }
         if (!error.isEmpty()) {
             return finish(errorReport(in, runnerClass, error), reportPath, Outcome::Fails);

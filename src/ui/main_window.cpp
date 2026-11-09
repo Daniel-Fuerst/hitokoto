@@ -8,6 +8,8 @@
 #include "find_controller.hpp"
 
 #include <QAction>
+#include <QApplication>
+#include <QClipboard>
 #include <QCloseEvent>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -108,6 +110,13 @@ void MainWindow::createMenus() {
     edit->addAction(tr("Cu&t"), QKeySequence::Cut, editor_, &QTextEdit::cut);
     edit->addAction(tr("&Copy"), QKeySequence::Copy, editor_, &QTextEdit::copy);
     edit->addAction(tr("&Paste"), QKeySequence::Paste, editor_, &QTextEdit::paste);
+    // S031: paste the clipboard's plain text without converting tables (decision 5).
+    QAction* pastePlain = edit->addAction(tr("Paste as &Plain Text"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V),
+                                          editor_, &EditorWidget::pasteAsPlainText);
+    pastePlain->setObjectName(QStringLiteral("pasteAsPlainText"));
+    const auto updatePastePlain = [pastePlain] { pastePlain->setEnabled(EditorWidget::canPastePlainText()); };
+    connect(QApplication::clipboard(), &QClipboard::dataChanged, pastePlain, updatePastePlain);
+    updatePastePlain();
     edit->addAction(tr("Select &All"), QKeySequence::SelectAll, editor_, &QTextEdit::selectAll);
     // S028: find in the file (decision 7; review O10: the platform's find-next keys plus F3).
     edit->addSeparator();

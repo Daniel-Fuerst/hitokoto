@@ -417,7 +417,10 @@ std::size_t separateTextAfterTables(DecodedText& decoded, const ElementRegistry&
 [[nodiscard]] std::vector<TableCell> tableRowCells(std::u16string_view line);
 /// The column alignments of a delimiter row, or nothing if `line` is not one.
 [[nodiscard]] std::optional<std::vector<TableAlign>> tableDelimiterAligns(std::u16string_view line);
-/// Cell Markdown as text to edit: `\|` becomes `|`, `<br>` (any spelling) a line break.
+/// Whether the character at `pos` follows an odd number of backslashes, so that CommonMark
+/// reads it escaped (S031 review O3: an escaped `<br>` is text).
+[[nodiscard]] bool escapedAt(std::u16string_view text, std::size_t pos) noexcept;
+/// Cell Markdown as text to edit: `\|` becomes `|`, `<br>` (any spelling, not escaped) a line break.
 [[nodiscard]] std::u16string tableCellToText(std::u16string_view markdown);
 /// Edited text as cell Markdown: `|` becomes `\|`, a line break `<br>`.
 [[nodiscard]] std::u16string tableCellFromText(std::u16string_view text);

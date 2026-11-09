@@ -143,12 +143,24 @@ void TableDelegate::prepare(QTextDocument& document, const QModelIndex& index) c
     if (font.isValid()) {
         document.setDefaultFont(font.value<QFont>());
     }
-    QString markdown = index.data(TableModel::MarkdownRole).toString();
+    QString source = index.data(TableModel::MarkdownRole).toString();
     // GFM shows an escaped pipe as a pipe, also in code; Qt 6.12 drops everything after a <br>
-    // without slash, so every spelling becomes <br/> (ADR 0005).
-    markdown.replace(QStringLiteral("\\|"), QStringLiteral("|"));
+    // without slash, so every spelling becomes <br/> (ADR 0005). A <br> after an odd number of
+    // backslashes is text and stays as it is (S031 review O3).
+    source.replace(QStringLiteral("\\|"), QStringLiteral("|"));
     static const QRegularExpression br(QStringLiteral("<br\\s*/?>"), QRegularExpression::CaseInsensitiveOption);
-    markdown.replace(br, QStringLiteral("<br/>"));
+    QString markdown;
+    markdown.reserve(source.size());
+    qsizetype done = 0;
+    for (auto it = br.globalMatch(source); it.hasNext();) {
+        const QRegularExpressionMatch match = it.next();
+        const qsizetype at = match.capturedStart();
+        markdown += QStringView(source).mid(done, at - done);
+        markdown +=
+            core::escapedAt(view(source), static_cast<std::size_t>(at)) ? match.captured() : QStringLiteral("<br/>");
+        done = match.capturedEnd();
+    }
+    markdown += QStringView(source).mid(done);
     document.setMarkdown(markdown, QTextDocument::MarkdownDialectGitHub);
 
     QTextBlockFormat format;

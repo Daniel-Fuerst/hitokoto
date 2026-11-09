@@ -191,9 +191,23 @@ std::vector<Budget> hardBudgetMisses(const Values& values) {
     return misses;
 }
 
-bool isCompleteResult(const Values& values) {
+bool isCompleteResult(const Values& values, const std::set<std::string, std::less<>>& except) {
     const auto& budgets = hardBudgets();
-    return std::all_of(budgets.begin(), budgets.end(), [&](const Budget& b) { return values.count(b.key) > 0; });
+    return std::all_of(budgets.begin(), budgets.end(),
+                       [&](const Budget& b) { return values.count(b.key) > 0 || except.count(b.key) > 0; });
+}
+
+std::set<std::string, std::less<>> newHardKeys(const std::array<Values, 2>& base,
+                                               const std::array<Values, 2>& pullRequest) {
+    std::set<std::string, std::less<>> keys;
+    for (const auto& b : hardBudgets()) {
+        const bool inBase = base[0].count(b.key) > 0 || base[1].count(b.key) > 0;
+        const bool inPullRequest = pullRequest[0].count(b.key) > 0 || pullRequest[1].count(b.key) > 0;
+        if (!inBase && inPullRequest) {
+            keys.insert(b.key);
+        }
+    }
+    return keys;
 }
 
 std::vector<KeyResult> compareRounds(const std::array<Values, 2>& base, const std::array<Values, 2>& pullRequest) {

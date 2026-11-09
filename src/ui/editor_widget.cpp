@@ -6,17 +6,26 @@
 #include "qt_bridge.hpp"
 #include "smooth_scroller.hpp"
 #include "table_embedder.hpp"
+#include "table_paste.hpp"
 
+#include <QAction>
 #include <QApplication>
+#include <QClipboard>
+#include <QContextMenuEvent>
 #include <QDesktopServices>
+#include <QDropEvent>
 #include <QFontMetricsF>
+#include <QGuiApplication>
 #include <QHelpEvent>
 #include <QInputMethodEvent>
+#include <QMenu>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QResizeEvent>
+#include <QScopeGuard>
+#include <QScopedValueRollback>
 #include <QScrollBar>
 #include <QStyle>
 #include <QTableView>
@@ -500,9 +509,114 @@ void EditorWidget::inputMethodEvent(QInputMethodEvent* event) {
 }
 
 void EditorWidget::insertFromMimeData(const QMimeData* source) {
+    if (!plainPaste_ && pasteTables(source)) {
+        return;
+    }
     const TableEmbedder::Typing typing(tables_.get());
     tables_->beforeWritingBelow();
     QTextEdit::insertFromMimeData(source);
+}
+
+void EditorWidget::dropEvent(QDropEvent* event) {
+    // S031: drag and drop is not converted.
+    const QScopedValueRollback<bool> plain(plainPaste_, true);
+    QTextEdit::dropEvent(event);
+}
+
+bool EditorWidget::canPastePlainText() {
+    const QMimeData* data = QApplication::clipboard()->mimeData();
+    return data != nullptr && data->hasText() && !data->text().isEmpty();
+}
+
+void EditorWidget::pasteAsPlainText() {
+    if (isReadOnly() || !canPastePlainText()) {
+        return;
+    }
+    QMimeData plain;
+    plain.setText(QApplication::clipboard()->mimeData()->text());
+    {
+        const QScopedValueRollback<bool> noConversion(plainPaste_, true);
+        insertFromMimeData(&plain);
+    }
+    ensureCursorVisible();
+}
+
+void EditorWidget::contextMenuEvent(QContextMenuEvent* event) {
+    std::unique_ptr<QMenu> menu(createStandardContextMenu(event->pos()));
+    // S031: Paste as Plain Text after Paste.
+    auto* plain = new QAction(tr("Paste as Plain Text"), menu.get());
+    plain->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V));
+    plain->setEnabled(!isReadOnly() && canPastePlainText());
+    connect(plain, &QAction::triggered, this, &EditorWidget::pasteAsPlainText);
+    const QList<QAction*> actions = menu->actions();
+    const auto paste = std::find_if(actions.begin(), actions.end(),
+                                    [](const QAction* a) { return a->objectName() == QStringLiteral("edit-paste"); });
+    if (paste != actions.end() && std::next(paste) != actions.end()) {
+        menu->insertAction(*std::next(paste), plain);
+    } else {
+        menu->addAction(plain);
+    }
+    menu->exec(event->globalPos());
+}
+
+bool EditorWidget::pasteTables(const QMimeData* source) {
+    if (source == nullptr || isReadOnly()) {
+        return false;
+    }
+    QTextCursor cursor = textCursor();
+    // Only in the editor text: not in a code block, front matter or a table's lines (S031).
+    for (const int position : {cursor.selectionStart(), cursor.selectionEnd()}) {
+        const core::LineRender render = styler_->renderFor(document()->findBlock(position));
+        if (render.codeBlock || render.frontMatter || render.table) {
+            return false;
+        }
+    }
+    if (!source->hasHtml() && !source->hasText()) {
+        return false;
+    }
+
+    // The wait cursor while the paste converts (S031, ADR 0011).
+    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    const auto restore = qScopeGuard([] { QGuiApplication::restoreOverrideCursor(); });
+    std::optional<std::vector<core::PasteBlock>> blocks;
+    if (source->hasHtml()) {
+        blocks = core::pastedTablesToMarkdown(readPastedHtml(source->html()));
+    } else if (auto table = core::parseExcelPlainText(view(source->text()))) {
+        std::vector<core::PastedPart> parts(1);
+        parts.front().table = std::move(*table);
+        blocks = core::pastedTablesToMarkdown(parts);
+    }
+    if (!blocks) {
+        return false;
+    }
+
+    // One step, undone at once: the text replaces the selection; the tables land as their own
+    // blocks around the line split at the caret.
+    const int start = cursor.selectionStart();
+    const QTextBlock first = document()->findBlock(start);
+    const QTextBlock last = document()->findBlock(cursor.selectionEnd());
+    const QString firstText = first.text();
+    const QString lastText = last.text();
+    const std::u16string head(view(firstText.left(start - first.position())));
+    const std::u16string tail(view(lastText.mid(cursor.selectionEnd() - last.position())));
+    const QString above = first.previous().isValid() ? first.previous().text() : QString();
+    const QString below = last.next().isValid() ? last.next().text() : QString();
+    core::PastePlace place;
+    place.head = head;
+    place.tail = tail;
+    if (first.previous().isValid()) {
+        place.lineAbove = view(above);
+    }
+    if (last.next().isValid()) {
+        place.lineBelow = view(below);
+    }
+    const core::PasteInsertion insertion = core::placePastedBlocks(*blocks, place);
+    const TableEmbedder::NotTyping notTyping(tables_.get());
+    cursor.insertText(toQString(insertion.text));
+    cursor.setPosition(start + static_cast<int>(insertion.caret));
+    setTextCursor(cursor);
+    ensureCursorVisible();
+    return true;
 }
 
 void EditorWidget::paintCodeBlockPanels() {

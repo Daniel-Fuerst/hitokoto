@@ -72,6 +72,16 @@ cell).
 - The conversion depends on Qt's HTML parser, which may change between Qt 6.8 and 6.12; the UI
   tests run with both.
 
+## Implementation (S031, 2026-11-09)
+
+- `ui::readPastedHtml` (`src/ui/table_paste.cpp`) imports into a `QTextDocument` whose
+  `loadResource` returns nothing: a stylesheet `<link>` or an image is never read, also not from a
+  local file. The document is never laid out or shown.
+- The core (`hitokoto/core/paste.hpp`) decides and writes; the UI inserts the Markdown with one
+  `QTextCursor::insertText`, so one undo step, and shows the wait cursor meanwhile.
+- Measured on the development VM (`docs/performance.md`): 500 cells with Outlook's markup 44 ms until
+  the table shows, of which the import 20 ms.
+
 ## Reconsider if
 
 - Large pastes are common enough that the blocking disturbs; then the import moves off the UI

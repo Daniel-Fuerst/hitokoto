@@ -27,6 +27,18 @@ bool escapedPipe(std::u16string_view line, std::size_t pos) noexcept {
     return pos > 0 && line[pos - 1] == u'\\';
 }
 
+}  // namespace
+
+bool escapedAt(std::u16string_view text, std::size_t pos) noexcept {
+    std::size_t backslashes = 0;
+    while (backslashes < pos && text[pos - 1 - backslashes] == u'\\') {
+        ++backslashes;
+    }
+    return backslashes % 2 == 1;
+}
+
+namespace {
+
 /// Index after the last non-blank character.
 std::size_t trimmedEnd(std::u16string_view line) noexcept {
     std::size_t end = line.size();
@@ -248,8 +260,8 @@ std::u16string tableCellToText(std::u16string_view markdown) {
             continue;
         }
         if (c == u'<' && i + 3 < markdown.size() && (markdown[i + 1] == u'b' || markdown[i + 1] == u'B') &&
-            (markdown[i + 2] == u'r' || markdown[i + 2] == u'R')) {
-            // <br>, <br/>, <br />
+            (markdown[i + 2] == u'r' || markdown[i + 2] == u'R') && !escapedAt(markdown, i)) {
+            // <br>, <br/>, <br />; after an odd number of backslashes the `<` is escaped (S031 O3)
             std::size_t j = i + 3;
             while (j < markdown.size() && markdown[j] == u' ') {
                 ++j;

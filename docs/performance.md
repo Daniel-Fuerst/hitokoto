@@ -31,6 +31,23 @@ local measurements.
 
 ## Measurements
 
+### 2026-11-09, development VM, S031 (release build, offscreen, Qt 6.12.0)
+
+`s031_paste_*`: Ctrl+V in an empty document until the table view shows all rows, median of five
+pastes. The clipboard holds a table generated from the markup of a sample (`outlook-t1-example`,
+`excel-t6-example`; `tests/ui/paste_samples.hpp`) and its plain text. Story S031: 500 cells within
+50 ms, above that at most 100 µs per cell; hard budgets of the gate.
+
+| Table | Outlook markup | Excel markup | Budget (hard) |
+|---|---|---|---|
+| 50 × 10 (500 cells) | 44 ms | 31 ms | 50 ms |
+| 500 × 10 (5,000 cells) | 344 ms | 206 ms | 500 ms |
+| 50 × 100 (5,000 cells) | 356 ms | 233 ms | 500 ms |
+
+Of the 44 ms for 50 × 10 with Outlook's markup, Qt's HTML import takes 20 ms (198 KB), the core and
+the insertion 1.5 ms; the rest is styling and showing the table (S018). With Excel's markup (44 KB)
+the import takes 5 ms.
+
 ### 2026-11-09, CI runner, S029 revised (pull request #31, run #125)
 
 The bench job of the revised S029 (base build and four rounds in every pull request run) took

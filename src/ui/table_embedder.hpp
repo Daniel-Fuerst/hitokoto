@@ -70,6 +70,21 @@ public:
     private:
         TableEmbedder* embedder_;
     };
+    /// S031: a pasted table is shown at once, also when the paste key arrived while typing; while
+    /// it exists, changes are not typing.
+    class NotTyping {
+    public:
+        explicit NotTyping(TableEmbedder* embedder) : embedder_(embedder), depth_(embedder->typingDepth_) {
+            embedder_->typingDepth_ = 0;
+        }
+        ~NotTyping() { embedder_->typingDepth_ = depth_; }
+        NotTyping(const NotTyping&) = delete;
+        NotTyping& operator=(const NotTyping&) = delete;
+
+    private:
+        TableEmbedder* embedder_;
+        int depth_;
+    };
     /// Moves the widgets to their lines (after scrolling or layout changes).
     void reposition();
     /// Up/Down from the lines next to a table enter it; Ctrl+Shift+M on a table line in the source
