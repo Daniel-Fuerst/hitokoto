@@ -152,3 +152,17 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   (Windows certificate, macOS notarisation); where the artefacts go (GitHub releases, now that the
   repository is public). A release job changes `ci.yml` or adds a workflow, so it needs Armin's
   approval.
+
+## Benchmark baselines per runner class (deferred)
+
+- **Seen:** 2026-11-09 (Armin, code review of S029). The first version of S029 compared the Linux
+  benchmark job with a baseline per runner class, recorded by CI on a branch `bench-data`, and was
+  implemented and verified in CI; it was replaced before the merge by measuring main on the same
+  runner in every pull request run (ADR 0009, revision of 2026-11-09).
+- **Now:** every pull request run builds the base and measures four rounds; the runner class is
+  only reported. The full design of the class variant, with the dispositions of the code review
+  that apply to it, is in ADR 0009, "Deferred".
+- **Open:** whether it is needed. Candidates: the bench job's duration becomes a burden, or drift
+  over many merges within the tolerance becomes a concern (the anchor of the class variant, or a
+  comparison with the last release tag on the same runner). Window, minimum and tolerance would be
+  tuned on recorded data.
