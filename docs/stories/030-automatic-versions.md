@@ -36,7 +36,8 @@ later can be told apart and updated.
    bump commit); `project()` in `CMakeLists.txt` no longer carries a hand-set `VERSION`.
 4. **Builds between tags say how far they are from the last version.** CMake derives the version
    at configure time from `git describe`: on a tagged commit `0.4.0`, three commits later
-   `0.4.0+3.gabc1234`, with uncommitted changes `.dirty` appended (SemVer build metadata).
+   `0.4.0+3.gabc1234`, with uncommitted changes `.dirty` appended (`0.4.0+3.gabc1234.dirty`; on
+   the tagged commit itself `0.4.0+dirty`; SemVer build metadata).
    Commits pushed to main directly (such as 083b03e and 6e0eb29, stories and notes) make no new
    version; builds of them carry the distance. The version is that of the last configure: an
    incremental build that does not reconfigure (Visual Studio in folder mode, `cmake --build`
@@ -124,7 +125,8 @@ later can be told apart and updated.
 - Given a working copy configured on the commit tagged `v0.4.0`
 - Then `QApplication::applicationVersion()` is `0.4.0`
 - And configured three commits later it is `0.4.0+3.g` followed by the abbreviated hash, with
-  uncommitted changes `.dirty` at the end
+  uncommitted changes `.dirty` at the end, and on the tagged commit with uncommitted changes
+  `0.4.0+dirty`
 - And macOS `CFBundleShortVersionString` and `CFBundleVersion` are `0.4.0` (numbers only)
 - And `CPACK_PACKAGE_VERSION` carries the full version
 
@@ -169,6 +171,12 @@ later can be told apart and updated.
     `merge_commit_sha` (looked up through the GitHub API for the commit's pull requests); other
     candidates, such as commits pushed directly, are skipped. Commits reached only through a second
     parent are never candidates, whatever pull request merged them elsewhere.
+  - A merge commit (two parents) on that line is never skipped silently (code review O1, Armin,
+    2026-11-09): if the lookup finds no pull request, the job reads the number from the commit
+    message ("Merge pull request #N …" or "… (#N)") and checks that pull request directly; if
+    neither confirms it as the merge of a pull request into main, the job stops there and is red,
+    like a merge without a label, and a re-run tags it. Only commits with one parent count as pushed
+    directly.
   - For each such merge in order it reads the pull request's labels, computes the next version
     with `NextVersion.cmake` and tags the merge commit; a merge labelled `version:none` is passed
     over without a tag. At the first merge without exactly one version label it stops, is red and

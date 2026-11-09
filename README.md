@@ -18,7 +18,7 @@ you type, with raw syntax revealed only on the active line.
 hitokoto notes.md                 # open a file
 hitokoto                          # start with an empty document
 hitokoto --theme my-theme.toml    # use a custom theme (see docs/theming.md)
-hitokoto --version                # show the version (a message box on Windows)
+hitokoto --version                # show the version (on Windows a message box, unless redirected)
 ```
 
 ## Building
@@ -64,11 +64,14 @@ Every pull request merged into main gives hitokoto its version step (story S030,
   carries no `VERSION`, and nobody sets a `v*` tag by hand (apart from the starting tag `v0.3.0`):
   a tag set by hand would become the base of every later version.
 - **Builds** take the version from `git describe` when CMake configures: `0.4.0` on the tagged
-  commit, `0.4.0+3.gabc1234` three commits later, `.dirty` appended for uncommitted changes. The
+  commit, `0.4.0+3.gabc1234` three commits later; uncommitted changes add `.dirty`
+  (`0.4.0+3.gabc1234.dirty`, on the tagged commit itself `0.4.0+dirty`). The
   version is that of the last configure; a build that does not reconfigure (Visual Studio in folder
   mode, `cmake --build` after a pull) keeps the old one. Without git (a source archive), or in a
   checkout without tags, configure with `-DHITOKOTO_VERSION=0.4.0`; otherwise the version is
-  `0.0.0+unknown` and CMake warns.
+  `0.0.0+unknown` and CMake warns. Configure prints the version and where it came from. The option
+  stays in the cache of the build directory and wins over git; in a checkout with a version tag
+  CMake warns about it. Remove it with `-DHITOKOTO_VERSION=` (or configure with `--fresh`).
 - **Changes reach main only through pull requests**, also notes and status changes (with
   `version:none`).
 

@@ -12,50 +12,50 @@ objections:
     category: failure
     severity: major
     title: "An empty pull request lookup counts as a commit pushed directly: the merge stays without a version and the job is green"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "A merge commit (two parents) on main's first-parent line is never skipped silently: if the lookup of the commit's pull requests finds none, the tag job reads the number from the commit message ('Merge pull request #N ...' or '... (#N)') and checks that pull request directly (pulls/N: base main, merge_commit_sha, merged); if neither confirms it, the job stops there and is red, and a re-run tags it. Only commits with one parent count as pushed directly (Armin, 2026-11-09: not perfect, but a merge can no longer stay without a version while the job is green). Story requirement amended; ctest case S030_AnUnconfirmedMergeStops; local run with a stand-in for gh whose lookup answers empty."
   - id: O2
     category: failure
     severity: minor
     title: "The GitHub side of the tag job runs for the first time on the merge of this pull request"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "A one-time check after the merge of pull request 32 (Armin, 2026-11-09): the first run of the job Tag sets exactly one new tag, v0.3.1 on the merge commit of pull request 32, and none on 0cf5e28 (pull request 31) and 0286646 (pull request 33); checked with git ls-remote --tags. A failure is repairable (red job, no tag, re-run); since O1 every merge is checked against its pull request, which narrows the risk of a tag on the wrong commit."
   - id: O3
     category: threat
     severity: minor
     title: "The check Version label runs the pull request's own copy of NextVersion.cmake"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "Risk accepted for now (Armin, 2026-11-09): the tag job runs the script from main and stops after the merge at a pull request without exactly one version label. Follow-up work once S030 is on main: the check takes the script from main instead of the pull request; before the merge main has no script. It guards against an accidental change of the script; a deliberate change of the check through version.yml stays possible on purpose, so that the versioning can be changed later (Armin). Entry in unrefined.md, 'The check Version label with the script from main'."
   - id: O4
     category: operational
     severity: minor
     title: "HITOKOTO_VERSION stays in the cache and silently wins over git in every later configure"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "The option still wins (its purpose: builds without git), but in a git checkout with a version tag CMake warns at every configure that HITOKOTO_VERSION overrides the version from git, names that version and says how to remove the option (-DHITOKOTO_VERSION=); in a source archive there is no warning. The status line names the source of the version (from HITOKOTO_VERSION, from git describe, from none). README, 'Versions', says that the option stays in the cache (Armin, 2026-11-09, variant A; rejected: an option that applies to one configure only, because an automatic reconfigure of a source archive would fall back to 0.0.0+unknown). ctest cases S030_VersionFromTheOption, S030_UnknownWithoutGit, S030_GitRepository."
   - id: O5
     category: failure
     severity: minor
     title: "Git environment variables redirect the version and the throwaway repository of the test to another repository"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "Configure runs git describe without GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE and GIT_CEILING_DIRECTORIES (cmake -E env --unset); the test cases clear them before any git command (Armin, 2026-11-09). ctest case S030_GitEnvironmentIsIgnored: with GIT_DIR naming a decoy repository the version comes from the source tree and the decoy stays unchanged."
   - id: O6
     category: failure
     severity: minor
     title: "CPACK_PACKAGE_VERSION with build metadata does not fit the Windows installer generators of S012"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "Nothing builds a Windows installer yet; S030 keeps the full version in CPACK_PACKAGE_VERSION as the story asks. unrefined.md, 'Packages and installers for every version', says that Windows installers and version resources take HITOKOTO_VERSION_CORE (Armin, 2026-11-09)."
   - id: O7
     category: operational
     severity: minor
     title: "Documentation says .dirty is appended; on a tagged commit the version is 0.4.0+dirty"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "README ('Versions') and the story (decision 4, scenario 'the build reports the version') name both forms: 0.4.0+3.gabc1234.dirty, and 0.4.0+dirty on the tagged commit itself (Armin, 2026-11-09). The code is unchanged; S030_DescribeDirty and S030_GitRepository test both."
   - id: O8
     category: failure
     severity: minor
     title: "On Windows no test reads the version the running program reports"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "S030_TheAppReportsTheVersion runs on Windows too: Qt shows the message box only when the program has neither a console nor redirected handles (qcommandlineparser.cpp, displayMessageBox, Qt 6.8.3), and the test also sets QT_COMMAND_LINE_PARSER_NO_GUI_MESSAGE_BOXES (Armin, 2026-11-09). No red test in the cloud (Linux was already covered); the Windows CI job shows it. README: on Windows a message box, unless redirected."
 ---
 
 # Objection record: S030 a defined version step for every merge into main (code)
