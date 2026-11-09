@@ -4,15 +4,15 @@ mode: spec
 spec: docs/stories/030-automatic-versions.md
 also_read: docs/adr/0010-versions-from-pull-request-labels.md, .github/workflows/ci.yml, CMakeLists.txt, src/app/CMakeLists.txt, docs/stories/unrefined.md
 date: 2026-11-08
-dispositioned: 2026-11-08 (Armin; O1 open until Armin and Daniel decide, O6 documented by Armin's choice, the others as proposed by Claude, before confirmation of the story)
+dispositioned: 2026-11-08 (Armin; O6 documented by Armin's choice, the others as proposed by Claude, before confirmation of the story); O1 on 2026-11-09 (Armin and Daniel)
 reviewer: Advocatus Diaboli (same session as the author; no independent subagent available in this chat)
 objections:
   - id: O1
     category: premise
     severity: minor
     title: "Every pull request into main makes a version, also those that change nothing users get"
-    disposition: pending
-    disposition_rationale: "Open until Armin and Daniel decide whether every pull request into main makes a version or a fourth label version:none exists (story, open question 1)."
+    disposition: fixed
+    disposition_rationale: "Armin and Daniel, 2026-11-09: a fourth label version:none under the same check, for pull requests that change nothing in the built program (stories, notes, reviews, documentation, CI). Story decisions 1 and 2, scenarios 'a pull request into main needs exactly one version label' (four labels) and 'merging makes the next version' (no tag for version:none), requirement 'Workflow'; ADR 0010, levels, mechanics and consequences; patch no longer covers documentation and CI."
   - id: O2
     category: design
     severity: major

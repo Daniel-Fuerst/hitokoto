@@ -5,10 +5,11 @@
 - **Basis:** `unrefined.md`, "Versioning, and packages and installers for every version" (Armin,
   2026-10-31), refined by Armin on 2026-11-08: versions are set automatically; every final pull
   request into main is a new version; what is open is how major, minor and patch are told apart.
-  Proposal (Claude, 2026-11-08): one label per pull request. This story refines the version part
-  only. Packages and installers for every version stay in `unrefined.md` and S012; they need the
-  version this story gives them (Armin waits with an automatic Debian package for trixie until
-  versions exist).
+  Proposal (Claude, 2026-11-08): one label per pull request. On 2026-11-09 Armin and Daniel added
+  `version:none` for pull requests that change nothing in the built program. This story refines the
+  version part only. Packages and installers for every version stay in `unrefined.md` and S012; they
+  need the version this story gives them (Armin waits with an automatic Debian package for trixie
+  until versions exist).
 
 ## Story
 
@@ -18,12 +19,15 @@ later can be told apart and updated.
 
 ## Decisions (proposed, to be confirmed by Armin and Daniel)
 
-1. **A version per pull request into main.** Merging a pull request whose base is `main` makes a
-   new version. Pull requests into other branches (such as #30 into `feature/smooth_scrolling`) do
-   not; their changes get a version when that branch's pull request into main is merged.
-2. **The pull request says the level, with exactly one label:** `version:major`, `version:minor`
-   or `version:patch`. A check on every pull request into main is red unless exactly one of them is
-   set. What each level means is part of ADR 0010.
+1. **A version per pull request into main.** Merging a pull request whose base is `main` makes a new
+   version, unless it is labelled `version:none`. Pull requests into other branches (such as #30
+   into `feature/smooth_scrolling`) do not; their changes get a version when that branch's pull
+   request into main is merged.
+2. **The pull request says the level, with exactly one label:** `version:major`, `version:minor`,
+   `version:patch` or `version:none`. A check on every pull request into main is red unless exactly
+   one of them is set. `version:none` means that nothing in the built program changes (stories,
+   notes, reviews, documentation, CI); such a merge gets no tag, and builds after it carry the
+   distance to the last version. What each level means is part of ADR 0010.
 3. **The tag is the only source of the version.** After the merge, a workflow puts an annotated tag
    `vMAJOR.MINOR.PATCH` on the merge commit. No file in the repository is edited for a version (no
    bump commit); `project()` in `CMakeLists.txt` no longer carries a hand-set `VERSION`.
@@ -45,7 +49,7 @@ later can be told apart and updated.
 
 **Scenario: a pull request into main needs exactly one version label**
 - Given a pull request into main without a version label, or with two of them
-- Then the check "Version label" is red and names the three labels
+- Then the check "Version label" is red and names the four labels
 - And with exactly one of them it is green
 - And for a pull request into another branch the check does not apply
 
@@ -53,6 +57,7 @@ later can be told apart and updated.
 - Given the highest version tag reachable from main is `v0.3.1`
 - When a pull request labelled `version:patch` is merged, the merge commit gets `v0.3.2`
 - And with `version:minor` it gets `v0.4.0`, with `version:major` it gets `v1.0.0`
+- And with `version:none` it gets no tag, and the next merge with `version:patch` gets `v0.3.2`
 
 **Scenario: only exact version tags reachable from the merge count**
 - Given the tags `v0.3.0`, `v0.3.0-tulip`, `v0.10.0-rc1`, `release-2` and a `v9.0.0` on a commit
@@ -128,9 +133,9 @@ later can be told apart and updated.
 
 - **No new language, no new dependency.** The logic lives in CMake scripts:
   `cmake/HitokotoVersion.cmake` (configure time: `git describe` → full version, numeric core) and
-  `cmake/NextVersion.cmake` (`cmake -P`: list of tags, label → next tag, or an error). Both are
-  tested with ctest through `cmake -P` on fixed inputs, so the tests need no git history and run on
-  all three CI platforms. Test names carry the story ID (`S030_…`).
+  `cmake/NextVersion.cmake` (`cmake -P`: list of tags, label → next tag, no tag for `version:none`,
+  or an error). Both are tested with ctest through `cmake -P` on fixed inputs, so the tests need no
+  git history and run on all three CI platforms. Test names carry the story ID (`S030_…`).
 - **Workflow:** a new file `.github/workflows/version.yml`, separate from `ci.yml`. Job "Version
   label" on `pull_request` (opened, reopened, edited, labeled, unlabeled, synchronize) for base
   `main`, read-only token, never `pull_request_target`. Job "Tag" on push to main with
@@ -140,9 +145,10 @@ later can be told apart and updated.
     `merge_commit_sha` (looked up through the GitHub API for the commit's pull requests); other
     candidates, such as commits pushed directly, are skipped. Commits reached only through a second
     parent are never candidates, whatever pull request merged them elsewhere.
-  - For each version in order it reads the pull request's labels, computes the next version with
-    `NextVersion.cmake` and tags the merge commit. At the first version without exactly one
-    version label it stops, is red and names that pull request; nothing after it is tagged.
+  - For each such merge in order it reads the pull request's labels, computes the next version
+    with `NextVersion.cmake` and tags the merge commit; a merge labelled `version:none` is passed
+    over without a tag. At the first merge without exactly one version label it stops, is red and
+    names that pull request; nothing after it is tagged.
   - Tags are pushed with `GITHUB_TOKEN`. Its concurrency group never cancels a running run.
 - **Tags pushed with `GITHUB_TOKEN` start no other workflow** (GitHub's protection against loops).
   Builds that should run for a new version (packages, S012) must run in the same workflow after the
@@ -166,9 +172,8 @@ later can be told apart and updated.
 
 ## Open questions (for Daniel and Armin)
 
-1. Label names, and whether pull requests that change only stories, notes or CI also make a version
-   (Armin: every pull request into main is a version; if not, a fourth label `version:none` under
-   the same check; spec review O1, open until Armin and Daniel decide).
+1. Label names. (Whether every pull request makes a version is settled: not those labelled
+   `version:none`; Armin and Daniel, 2026-11-09, spec review O1.)
 2. Required status check and "merge commits only" as repository settings (Daniel).
 3. The starting tag `v0.3.0` on 705c578, and what `v0.3.0-tulip` means: are release names such as
    "tulip" meant to continue?

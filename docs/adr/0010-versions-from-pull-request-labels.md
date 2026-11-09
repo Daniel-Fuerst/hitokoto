@@ -7,21 +7,23 @@
 ## Context
 
 Until now the version is set by hand in `project()` in `CMakeLists.txt` (0.1.0 since S000, 0.3.0
-since debe80e) and was tagged once by hand (`v0.3.0-tulip`, a lightweight tag on a commit that
-still says 0.1.0). Armin wants versions set automatically, every pull request merged into main
-being a new version, so that builds and later packages can be told apart and updated (S030,
-`unrefined.md`). The project merges every pull request into main with a merge commit after green
-CI; Daniel and Armin open and merge pull requests, Claude sessions work on `agents/…` branches.
-Commits on the branches follow no common message format: Daniel uses Conventional Commit prefixes
-(`feat:`, `refactor:`), Armin and the Claude sessions do not.
+since debe80e) and was tagged once by hand (`v0.3.0-tulip`, a lightweight tag on a commit that still
+says 0.1.0). Armin wants versions set automatically, every pull request merged into main being a new
+version unless it changes nothing in the built program (2026-11-09, with Daniel), so that builds and
+later packages can be told apart and updated (S030, `unrefined.md`). The project merges every pull
+request into main with a merge commit after green CI; Daniel and Armin open and merge pull requests,
+Claude sessions work on `agents/…` branches. Commits on the branches follow no common message
+format: Daniel uses Conventional Commit prefixes (`feat:`, `refactor:`), Armin and the Claude
+sessions do not.
 
 ## Options
 
 1. **A tag by hand.** A maintainer tags main when a version is due; CMake reads the tag. Simple, no
    tooling, but not automatic and easily forgotten.
-2. **One label per pull request** (`version:major`, `version:minor`, `version:patch`), enforced by
-   a check; after the merge a workflow tags the merge commit. Automatic; the level is decided
-   consciously when the pull request is opened or reviewed; commit messages stay free.
+2. **One label per pull request** (`version:major`, `version:minor`, `version:patch`,
+   `version:none`), enforced by a check; after the merge a workflow tags the merge commit.
+   Automatic; the level is decided consciously when the pull request is opened or reviewed; commit
+   messages stay free.
 3. **The pull request title in Conventional Commit form** (`feat: …`, `fix: …`, `feat!: …`). As
    explicit as a label, but the title carries format and content at once and needs a format check.
 4. **All commits in Conventional Commit form, with release-please or semantic-release.** Widely
@@ -37,7 +39,10 @@ Commits on the branches follow no common message format: Daniel uses Conventiona
 Option 2.
 
 **Meaning of the levels**
-- `version:patch`: fixes and follow-up work, documentation, build and CI; nothing new for users.
+- `version:none`: nothing in the built program changes: stories, notes, reviews, documentation,
+  CI and workflows. The merge gets no tag; builds after it carry the distance to the last version.
+- `version:patch`: fixes and follow-up work, and build changes that change the built program;
+  nothing new for users.
 - `version:minor`: something new for users, typically a finished story, or changed behaviour that
   stays compatible.
 - `version:major`: incompatible for users, such as settings or theme files that no longer load or
@@ -58,10 +63,11 @@ Option 2.
 - A workflow `version.yml`, separate from `ci.yml`: a label check on pull requests into main and a
   tag job on push to main. The tag job walks main's first-parent line since the last version tag,
   oldest first, and tags each commit that is the `merge_commit_sha` of a pull request with base
-  `main`; commits pushed directly and merges into other branches (reached through a second parent)
-  get no version. A run that GitHub cancels while pending is caught up by the next. Versions follow
-  merge order: at the first merge without exactly one version label the job stops and is red, and
-  tags nothing after it until the label is set and the job re-run.
+  `main`, unless that pull request is labelled `version:none`; commits pushed directly and merges
+  into other branches (reached through a second parent) get no version. A run that GitHub cancels
+  while pending is caught up by the next. Versions follow merge order: at the first merge without
+  exactly one version label the job stops and is red, and tags nothing after it until the label is
+  set and the job re-run.
 - The tag job checks out the full history with tags; without a reachable version tag it fails
   instead of starting over. It pushes with `GITHUB_TOKEN`; such a push starts no other workflow, so
   builds for a new version run in the same workflow after the tag job or through
@@ -69,7 +75,9 @@ Option 2.
 
 ## Consequences
 
-- Every merge into main makes a version, also small ones; version numbers rise quickly.
+- Every merge into main makes a version unless labelled `version:none`, also small ones; version
+  numbers rise quickly. A code change labelled `version:none` by mistake gets no version; the
+  review before the merge has to catch it.
 - A forgotten or wrong label shows as a red check before the merge (if required) or a red tag job
   after it; a wrong level cannot be undone once tagged (a tag is never moved), only the next pull
   request can correct the course.
