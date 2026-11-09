@@ -17,8 +17,10 @@
 #     vMAJOR.MINOR.PATCH count; the highest by numeric comparison is the base.
 #   LABELS_FILE: the names of a pull request's labels.
 #   CANDIDATES_FILE: the commits on main's first-parent line after the base tag, oldest first, as
-#     "commit <sha>", followed by "pr <number>" if a pull request with base main has the commit as
-#     its merge commit, and one "label <name>" line per label of that pull request.
+#     "commit <sha>", followed by "merge" if the commit has two parents, "pr <number>" if a pull
+#     request with base main has the commit as its merge commit, and one "label <name>" line per
+#     label of that pull request. A commit with one parent and no pull request was pushed directly
+#     and gets no version; a merge without a pull request stops the plan (code review O1).
 cmake_minimum_required(VERSION 3.25)
 
 set(version_labels version:major version:minor version:patch version:none)
@@ -155,8 +157,12 @@ elseif("${MODE}" STREQUAL "plan")
     set(sha "")
     macro(decide_candidate)
         if(NOT "${sha}" STREQUAL "" AND "${stop}" STREQUAL "")
-            if("${pr}" STREQUAL "")
-                message(STATUS "${sha}: no merge of a pull request into main, no version")
+            if("${pr}" STREQUAL "" AND is_merge)
+                string(CONCAT stop "The merge commit ${sha} is not confirmed as the merge of a pull "
+                    "request into main (no pull request with base main has it as its merge commit). "
+                    "Re-run this job; if it stays red, the commit was merged outside a pull request.")
+            elseif("${pr}" STREQUAL "")
+                message(STATUS "${sha}: pushed directly (no merge of a pull request), no version")
             else()
                 version_label("${labels}" label error)
                 if(NOT "${error}" STREQUAL "")
@@ -180,10 +186,13 @@ elseif("${MODE}" STREQUAL "plan")
             set(next_sha "${CMAKE_MATCH_1}")
             decide_candidate()
             set(sha "${next_sha}")
+            set(is_merge FALSE)
             set(pr "")
             set(labels "")
         elseif("${sha}" STREQUAL "")
             message(FATAL_ERROR "${CANDIDATES_FILE} must start with a line 'commit <sha>': '${line}'")
+        elseif("${line}" STREQUAL "merge")
+            set(is_merge TRUE)
         elseif(line MATCHES "^pr ([0-9]+)$")
             set(pr "${CMAKE_MATCH_1}")
         elseif(line MATCHES "^label (.+)$")

@@ -65,14 +65,32 @@ jobs:
           cmake -DMODE=base -DTAGS_FILE="$work/tags.txt" -DOUTPUT="$work/base.txt" -P "$script"
           base=$(cat "$work/base.txt")
 
-          # Candidates: main's first-parent line after it, oldest first, each with the pull request
-          # into main that has it as its merge commit, and that pull request's labels.
+          # Candidates: main's first-parent line after it, oldest first, each marked "merge" if it
+          # has two parents, with the pull request into main that has it as its merge commit and
+          # that pull request's labels. The pull request comes from the commit's pull requests; for
+          # a merge without an answer (GitHub may not have linked it yet), from the number in the
+          # commit message, checked directly. A merge that neither confirms stops the plan.
+          confirm='select(.base.ref == "main" and .merge_commit_sha == env.SHA and .merged_at != null)
+                   | "pr \(.number)", ("label " + .labels[].name)'
           : > "$work/candidates.txt"
           for sha in $(git rev-list --first-parent --reverse "$base..HEAD"); do
             echo "commit $sha" >> "$work/candidates.txt"
-            SHA="$sha" gh api --paginate "repos/$REPO/commits/$sha/pulls" --jq '
-              .[] | select(.base.ref == "main" and .merge_commit_sha == env.SHA and .merged_at != null)
-                  | "pr \(.number)", ("label " + .labels[].name)' >> "$work/candidates.txt"
+            parents=$(git rev-list --parents -n 1 "$sha" | wc -w)
+            if [ "$parents" -gt 2 ]; then
+              echo "merge" >> "$work/candidates.txt"
+            fi
+            found=$(SHA="$sha" gh api --paginate "repos/$REPO/commits/$sha/pulls" --jq ".[] | $confirm")
+            if [ -z "$found" ] && [ "$parents" -gt 2 ]; then
+              number=$(git log -1 --format=%s "$sha" \
+                | sed -n -e 's/^Merge pull request #\([0-9][0-9]*\) .*/\1/p' -e 's/.*(#\([0-9][0-9]*\))$/\1/p' \
+                | head -n 1)
+              if [ -n "$number" ]; then
+                found=$(SHA="$sha" gh api "repos/$REPO/pulls/$number" --jq "$confirm" || true)
+              fi
+            fi
+            if [ -n "$found" ]; then
+              echo "$found" >> "$work/candidates.txt"
+            fi
           done
 
           # The plan: the tags in merge order, up to the first merge without exactly one version
