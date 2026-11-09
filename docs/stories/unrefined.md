@@ -200,8 +200,8 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
 
 - **Seen:** 2026-10-31 (Armin, after building main for daily use): every update means building
   locally, copying the exe and running `windeployqt` by hand.
-- **Refined so far:** the version itself is S030 (a version for every merge into main, ADR 0010,
-  proposed 2026-11-08).
+- **Refined so far:** the version itself is S030 (a defined version step for every merge into
+  main, ADR 0010, proposed 2026-11-08).
 - **Now:** `CMakeLists.txt` configures CPack for DEB and TGZ (pull request #15), but no CI job runs
   it; it installs only the binary (no `.desktop` file, icon or copyright file). S012 (distributable
   builds; Open in the backlog, Proposed in its file) asks for one artefact per platform from a
@@ -215,4 +215,17 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   built by CI belongs to this project); signing (Windows certificate, macOS notarisation); where the
   artefacts go (GitHub releases, now that the repository is public). Tags pushed by the S030 tag
   job start no other workflow, so package builds run in the same workflow after it. A release job
-  changes `ci.yml` or adds a workflow, so it needs Armin's approval.
+  changes `ci.yml` or adds a workflow, so it needs Armin's approval. GitHub Releases with generated
+  notes come with the packages, not with S030 (Armin, 2026-11-09), so that a release carries
+  something to download.
+
+## Showing the version to the user
+
+- **Seen:** 2026-11-09 (Armin, while refining S030): S030 gives every build a version, but the user
+  sees it nowhere.
+- **Now:** the version goes to `QApplication::applicationVersion()` (S030); there is no About
+  dialog, no command-line option and no version in the title bar.
+- **Open:** where it is shown: a dialog Help › About (with the licence and the Qt version), the
+  command line (`hitokoto --version`), the title bar, or several of these; theme tokens for a
+  dialog (brief, section 8); whether builds between tags show the full version
+  (`0.4.0+3.gabc1234`) or the numeric core.

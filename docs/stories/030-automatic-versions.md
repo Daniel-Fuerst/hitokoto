@@ -40,10 +40,14 @@ later can be told apart and updated.
    version; builds of them carry the distance. The version is that of the last configure: an
    incremental build that does not reconfigure (Visual Studio in folder mode, `cmake --build`
    after a pull) keeps the old string. CI builds and package builds always configure afresh.
-5. **Starting point.** Before the workflow first runs, `v0.3.0` is set by hand on main 705c578, the
-   state Daniel named 0.3.0 in debe80e. Only tags of the exact form `vMAJOR.MINOR.PATCH` count; the
-   existing tag `v0.3.0-tulip` stays and is ignored. Apart from this starting tag, nobody sets a
-   version tag by hand: such a tag would become the base of every later version.
+5. **Starting point.** Before the workflow first runs, `v0.3.0` is set by hand as an annotated tag
+   on main 705c578, the state Daniel named 0.3.0 in debe80e. Only tags of the exact form
+   `vMAJOR.MINOR.PATCH` count; the existing tag `v0.3.0-tulip` stays and is ignored (release names
+   are not part of this story). Apart from this starting tag, nobody sets a version tag by hand:
+   such a tag would become the base of every later version. The four labels exist in the
+   repository since 2026-11-09 (created by hand), and every pull request merged into main after
+   705c578 gets its label by hand before this story is merged: #31 (S029) and #33 (CI) carry
+   `version:none`, set by Armin on 2026-11-09; later ones are labelled when they are merged.
 6. **Builds without git** (a source archive) take the version from `-DHITOKOTO_VERSION=…`;
    without it they get `0.0.0+unknown` and a CMake warning.
 
@@ -60,6 +64,13 @@ later can be told apart and updated.
 - When a pull request labelled `version:patch` is merged, the merge commit gets `v0.3.2`
 - And with `version:minor` it gets `v0.4.0`, with `version:major` it gets `v1.0.0`
 - And with `version:none` it gets no tag, and the next merge with `version:patch` gets `v0.3.2`
+
+**Scenario: the first run starts from the starting tag**
+- Given `v0.3.0` on 705c578, and after it on main the merges of #31 and #33, both labelled
+  `version:none`
+- When the merge of this story's pull request, labelled `version:minor`, runs the tag job for the
+  first time
+- Then the merges of #31 and #33 get no tag and the merge of this story gets `v0.4.0`
 
 **Scenario: only exact version tags reachable from the merge count**
 - Given the tags `v0.3.0`, `v0.3.0-tulip`, `v0.10.0-rc1`, `release-2` and a `v9.0.0` on a commit
@@ -179,16 +190,20 @@ later can be told apart and updated.
 ## Not in this story
 
 - Packages, installers and their upload (S012, `unrefined.md`).
-- GitHub Releases with release notes; a `CHANGELOG.md`.
-- A place in the UI where the user sees the version (Help › About, `--version`); see open questions.
+- GitHub Releases with release notes: later, together with packages, so that a release carries
+  something to download (Armin, 2026-11-09; `unrefined.md`, "Packages and installers for every
+  version"). Until then the versions are listed under the repository's tags. A `CHANGELOG.md`.
+- A place where the user sees the version (Help › About, `--version`, the title bar):
+  `unrefined.md`, "Showing the version to the user" (Armin, 2026-11-09).
 - Signing.
 
-## Open questions (for Daniel and Armin)
+## Questions (all settled)
 
 1. Settled (Armin, 2026-11-09): label names as proposed; every merge into main defines its version
    step, and `version:none` makes no version (Armin and Daniel, spec review O1).
 2. Settled (Armin, 2026-11-09): a ruleset for main, see "Repository settings".
-3. The starting tag `v0.3.0` on 705c578, and what `v0.3.0-tulip` means: are release names such as
-   "tulip" meant to continue?
-4. Where should the user see the version? A story of its own.
-5. A GitHub Release with generated notes for every version now, or later together with packages?
+3. Settled (Armin, 2026-11-09): the starting tag `v0.3.0` stays on 705c578; the pull requests
+   merged into main after it are labelled by hand (decision 5). `v0.3.0-tulip` stays and is
+   ignored; whether release names continue is not part of this story.
+4. Settled (Armin, 2026-11-09): not in this story; an entry in `unrefined.md`.
+5. Settled (Armin, 2026-11-09): GitHub Releases later, together with packages.
