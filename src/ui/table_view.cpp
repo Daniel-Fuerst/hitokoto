@@ -131,19 +131,29 @@ void TableDelegate::setPadding(qreal padding) {
     heightCache_.clear();
 }
 
-QString TableDelegate::cacheKey(const QModelIndex& index) {
+QString TableDelegate::cacheKey(const QModelIndex& index, const QString& markdown) {
     // Header and body cells differ in font; the font comes from the theme, which clears the
     // caches through setPadding().
-    return index.data(TableModel::MarkdownRole).toString() + QChar(index.row() == 0 ? u'h' : u'b');
+    return markdown + QChar(index.row() == 0 ? u'h' : u'b');
 }
 
 void TableDelegate::prepare(QTextDocument& document, const QModelIndex& index) const {
+    prepare(document, index, index.data(TableModel::MarkdownRole).toString());
+}
+
+void TableDelegate::prepare(QTextDocument& document, const QModelIndex& index, QString source) const {
     document.setDocumentMargin(0);
     const QVariant font = index.data(Qt::FontRole);
     if (font.isValid()) {
         document.setDefaultFont(font.value<QFont>());
     }
-    QString source = index.data(TableModel::MarkdownRole).toString();
+    if (core::tableCellIsPlainText(view(source))) {
+        // Qt's Markdown import would show exactly these characters; plain text is several times
+        // faster to lay out (S031: sizing pasted tables).
+        document.setPlainText(source);
+        formatBlocks(document, index);
+        return;
+    }
     // GFM shows an escaped pipe as a pipe, also in code; Qt 6.12 drops everything after a <br>
     // without slash, so every spelling becomes <br/> (ADR 0005). A <br> after an odd number of
     // backslashes is text and stays as it is (S031 review O3).
@@ -162,7 +172,10 @@ void TableDelegate::prepare(QTextDocument& document, const QModelIndex& index) c
     }
     markdown += QStringView(source).mid(done);
     document.setMarkdown(markdown, QTextDocument::MarkdownDialectGitHub);
+    formatBlocks(document, index);
+}
 
+void TableDelegate::formatBlocks(QTextDocument& document, const QModelIndex& index) {
     QTextBlockFormat format;
     format.setTopMargin(0);
     format.setBottomMargin(0);
@@ -175,12 +188,16 @@ void TableDelegate::prepare(QTextDocument& document, const QModelIndex& index) c
 }
 
 QSizeF TableDelegate::naturalSize(const QModelIndex& index) const {
-    const QString key = cacheKey(index);
+    return naturalSize(index, index.data(TableModel::MarkdownRole).toString());
+}
+
+QSizeF TableDelegate::naturalSize(const QModelIndex& index, const QString& markdown) const {
+    const QString key = cacheKey(index, markdown);
     if (const auto it = naturalCache_.constFind(key); it != naturalCache_.constEnd()) {
         return *it;
     }
     QTextDocument document;
-    prepare(document, index);
+    prepare(document, index, markdown);
     document.setTextWidth(-1);
     const QSizeF size(document.idealWidth() + 2 * padding_, document.size().height() + 2 * padding_);
     naturalCache_.insert(key, size);
@@ -188,13 +205,19 @@ QSizeF TableDelegate::naturalSize(const QModelIndex& index) const {
 }
 
 qreal TableDelegate::heightAt(const QModelIndex& index, qreal width) const {
+    const QString markdown = index.data(TableModel::MarkdownRole).toString();
+    // As wide as its unwrapped text or wider: no line wraps, the height is the natural one.
+    const QSizeF natural = naturalSize(index, markdown);
+    if (width >= natural.width()) {
+        return natural.height();
+    }
     // Cached: fitting the table after each keystroke lays out only the cell that changed.
-    const QString key = cacheKey(index) + QChar(u'@') + QString::number(width);
+    const QString key = cacheKey(index, markdown) + QChar(u'@') + QString::number(width);
     if (const auto it = heightCache_.constFind(key); it != heightCache_.constEnd()) {
         return *it;
     }
     QTextDocument document;
-    prepare(document, index);
+    prepare(document, index, markdown);
     document.setTextWidth(std::max<qreal>(1.0, width - 2 * padding_));
     const qreal height = document.size().height() + 2 * padding_;
     if (heightCache_.size() > 20000) {
@@ -356,10 +379,15 @@ void TableView::fit(int width) {
     ensurePolished();  // the theme's border (style sheet) sets the frame width
     const int frame = 2 * frameWidth();
     std::vector<qreal> widths(static_cast<std::size_t>(columns), 24.0);
+    // Each cell's natural size once: the heights below need no second look at unwrapped cells.
+    std::vector<QSizeF> natural(static_cast<std::size_t>(rows) * static_cast<std::size_t>(columns));
     for (int r = 0; r < rows; ++r) {
         for (int c = 0; c < columns; ++c) {
+            const QSizeF size = delegate_->naturalSize(m->index(r, c));
+            natural[static_cast<std::size_t>(r) * static_cast<std::size_t>(columns) + static_cast<std::size_t>(c)] =
+                size;
             auto& w = widths[static_cast<std::size_t>(c)];
-            w = std::max(w, delegate_->naturalSize(m->index(r, c)).width());
+            w = std::max(w, size.width());
         }
     }
     // Wider than the text column: cap the widest columns (water filling), they wrap.
@@ -392,7 +420,10 @@ void TableView::fit(int width) {
     for (int r = 0; r < rows; ++r) {
         qreal h = 0;
         for (int c = 0; c < columns; ++c) {
-            h = std::max(h, delegate_->heightAt(m->index(r, c), columnWidth(c) - grid));
+            const QSizeF& size =
+                natural[static_cast<std::size_t>(r) * static_cast<std::size_t>(columns) + static_cast<std::size_t>(c)];
+            const qreal cellWidth = columnWidth(c) - grid;
+            h = std::max(h, cellWidth >= size.width() ? size.height() : delegate_->heightAt(m->index(r, c), cellWidth));
         }
         setRowHeight(r, static_cast<int>(std::ceil(h)) + grid);
         viewHeight += rowHeight(r);

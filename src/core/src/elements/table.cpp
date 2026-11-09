@@ -249,8 +249,43 @@ std::optional<std::vector<TableAlign>> tableDelimiterAligns(std::u16string_view 
     return std::vector<TableAlign>(aligns.begin(), aligns.begin() + static_cast<std::ptrdiff_t>(columns));
 }
 
-bool tableCellIsPlainText(std::u16string_view /*markdown*/) noexcept {
-    return false;  // red test stub
+bool tableCellIsPlainText(std::u16string_view markdown) noexcept {
+    // Characters that can never start syntax inside a paragraph; everything else is refused.
+    const auto plainCharacter = [](char16_t c) {
+        if (c >= 0x80) {
+            return c != u'\u2028' && c != u'\u2029' && c != u'\ufffc';  // line breaks, objects
+        }
+        if ((c >= u'a' && c <= u'z') || (c >= u'A' && c <= u'Z') || (c >= u'0' && c <= u'9')) {
+            return true;
+        }
+        return std::u16string_view(u" ,.;?%/()'\"-+=$").find(c) != std::u16string_view::npos;
+    };
+    if (!std::all_of(markdown.begin(), markdown.end(), plainCharacter)) {
+        return false;
+    }
+    if (markdown.empty()) {
+        return true;
+    }
+    // Block markers at the start: a bullet, an ordered list item, indented code.
+    if (markdown.front() == u'-' || markdown.front() == u'+' || markdown.starts_with(u"    ")) {
+        return false;
+    }
+    std::size_t digits = 0;
+    while (digits < markdown.size() && markdown[digits] >= u'0' && markdown[digits] <= u'9') {
+        ++digits;
+    }
+    if (digits > 0 && digits < markdown.size() && (markdown[digits] == u'.' || markdown[digits] == u')') &&
+        (digits + 1 == markdown.size() || markdown[digits + 1] == u' ')) {
+        return false;
+    }
+    // GFM's extended autolinks: www. and a scheme (the colon is refused above).
+    for (std::size_t i = 0; i + 4 <= markdown.size(); ++i) {
+        if ((markdown[i] == u'w' || markdown[i] == u'W') && (markdown[i + 1] == u'w' || markdown[i + 1] == u'W') &&
+            (markdown[i + 2] == u'w' || markdown[i + 2] == u'W') && markdown[i + 3] == u'.') {
+            return false;
+        }
+    }
+    return true;
 }
 
 std::u16string tableCellToText(std::u16string_view markdown) {

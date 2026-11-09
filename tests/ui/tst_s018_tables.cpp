@@ -309,7 +309,8 @@ private slots:
             "| **ref** | Green tea | Grüße, 一言 |\n"
             "| --- | --- | --- |\n"
             "| r12c3 | 12,50 | Open daily (9 to 18) and a longer text that wraps |\n"
-            "| *x* | say \"hi\" | 1.5 kg |\n";
+            "| *x* | say \"hi\" | 1.5 kg |\n"
+            "|  | a  b | $5 |\n";
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("sizes.md"), markdown)));
         f.settle();

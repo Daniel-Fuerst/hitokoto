@@ -48,6 +48,23 @@ Of the 44 ms for 50 × 10 with Outlook's markup, Qt's HTML import takes 20 ms (1
 the insertion 1.5 ms; the rest is styling and showing the table (S018). With Excel's markup (44 KB)
 the import takes 5 ms.
 
+On the CI runner (AMD EPYC 7763, dispatch on 7a742f6) the same pastes took 72 / 59 ms, 515 / 370 ms
+and 539 / 396 ms (Outlook / Excel): four hard budgets missed. Most of the time for Excel's markup
+went into sizing the cells (`TableView::fit`: a `QTextDocument` with `setMarkdown` per cell, for the
+width and again for the height). Since then a cell that GFM shows as exactly its characters
+(`core::tableCellIsPlainText`) is laid out as plain text, an unwrapped cell takes its natural height
+without a second layout, and each cell's Markdown is read once. Development VM afterwards (median of
+five):
+
+| Table | Outlook markup | Excel markup | Before |
+|---|---|---|---|
+| 50 × 10 | 35 ms | 23 ms | 44 / 31 ms |
+| 500 × 10 | 311 ms | 176 ms | 344 / 206 ms |
+| 50 × 100 | 331 ms | 193 ms | 356 / 233 ms |
+
+`s018_table_open_ms` (a 1,000-row table) went from 96 to 61 ms. Qt's HTML import of Outlook's
+markup stays: about 18 ms for 500 cells and 200 ms for 5,000 on the VM.
+
 ### 2026-11-09, CI runner, S029 revised (pull request #31, run #125)
 
 The bench job of the revised S029 (base build and four rounds in every pull request run) took

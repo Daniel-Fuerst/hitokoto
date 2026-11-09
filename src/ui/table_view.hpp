@@ -67,7 +67,11 @@ protected:
 
 private:
     void prepare(QTextDocument& document, const QModelIndex& index) const;
-    [[nodiscard]] static QString cacheKey(const QModelIndex& index);
+    void prepare(QTextDocument& document, const QModelIndex& index, QString source) const;
+    [[nodiscard]] QSizeF naturalSize(const QModelIndex& index, const QString& markdown) const;
+    /// No block margins, the column's alignment.
+    static void formatBlocks(QTextDocument& document, const QModelIndex& index);
+    [[nodiscard]] static QString cacheKey(const QModelIndex& index, const QString& markdown);
 
     qreal padding_ = 4;
     mutable QHash<QString, QSizeF> naturalCache_;
