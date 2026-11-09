@@ -174,10 +174,10 @@ label version:none
 label bench-accepted
 commit ${c3}
 pr 32
-label version:minor
+label version:patch
 ")
     expect_eq("${r_CODE}" "0" "exit code\n${r_LOG}")
-    expect_eq("${r_OUTPUT}" "${c3} v0.4.0 32" "plan")
+    expect_eq("${r_OUTPUT}" "${c3} v0.3.1 32" "plan")
 
 elseif("${CASE}" STREQUAL "OnlyMergesOfPullRequestsIntoMain")
     # Scenario: only merges of pull requests into main make versions. Commits without a pull request

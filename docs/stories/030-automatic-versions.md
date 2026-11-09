@@ -69,9 +69,11 @@ later can be told apart and updated.
 **Scenario: the first run starts from the starting tag**
 - Given `v0.3.0` on 705c578, and after it on main the merges of #31 and #33, both labelled
   `version:none`
-- When the merge of this story's pull request, labelled `version:minor`, runs the tag job for the
+- When the merge of this story's pull request, labelled `version:patch`, runs the tag job for the
   first time
-- Then the merges of #31 and #33 get no tag and the merge of this story gets `v0.4.0`
+- Then the merges of #31 and #33 get no tag and the merge of this story gets `v0.3.1`
+- (`version:patch`, not `version:none`: the pull request changes `src/app/` and the version the
+  built program reports; nothing new for users, so not `version:minor`. Armin, 2026-11-09.)
 
 **Scenario: only exact version tags reachable from the merge count**
 - Given the tags `v0.3.0`, `v0.3.0-tulip`, `v0.10.0-rc1`, `release-2` and a `v9.0.0` on a commit
