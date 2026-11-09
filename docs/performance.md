@@ -14,15 +14,38 @@ QT_QPA_PLATFORM=offscreen build/bench/bench/hitokoto-bench --runs 10 --output re
 build/bench/bench/hitokoto-bench --fail-on-budget   # on a reference machine, with a real display
 ```
 
-CI runs both on Linux, Windows and macOS and compares with `bench/baselines/<os>.json`
-(tolerance 25 % on Linux, 50 % on Windows and macOS whose runners vary that much; differences
-under 2 ms ignored). Hard budgets fail the run on any machine:
-saving 10 MB stalls the UI for at most 16 ms, the file is on disk within 1 s, and no key event
-takes longer than 50 ms. Maxima of many samples (`typing_*_max_ms`, `save_10mb_total_ms`) are
-compared with the baseline for information only; p99 of the key-to-paint samples is the compared
-value. See `bench/baselines/README.md`.
+CI runs both on Linux (Windows and macOS are off since 2026-10-28). Since S029 (ADR 0009) every
+pull request run builds the base commit and measures it alternating with the pull request on the
+same runner (four rounds: base, pull request, pull request, base); `hitokoto-bench-gate` compares
+the rounds. A key fails when the mean of the pull request's rounds is more than 25 % and more than
+2 ms above the base's (20 ms for the first screen of an opening) and the rounds of the two sides do
+not overlap. Hard budgets fail the run on any machine: saving 10 MB stalls the UI for at most
+16 ms, the file is on disk within 1 s, and no key event takes longer than 50 ms. Maxima of many
+samples (`typing_*_max_ms`, `save_10mb_total_ms`) are compared for information only; p99 of the
+key-to-paint samples is the compared value. Runs of `main` measure once and check the hard budgets.
+A toolchain change (Qt version or runner image of the bench job, `CMakePresets.json`, `cmake/`)
+comes in its own pull request. See `bench/baselines/README.md`.
+
+`hitokoto-bench --baseline file.json --tolerance 0.25` still compares two runs on one machine, for
+local measurements.
 
 ## Measurements
+
+### 2026-11-09, CI runner, S029 revised (pull request #31, run #125)
+
+The bench job of the revised S029 (base build and four rounds in every pull request run) took
+7 min 58 s on an AMD EPYC 7763 runner (4 CPUs); the base was main 705c578, built with the same Qt.
+All 86 compared keys were ok; the report noted the changed harness (`bench/hitokoto_bench.cpp`).
+
+### 2026-11-08, CI runner, S029 gate (pull request #31)
+
+The Linux benchmark job with the base build and four rounds (then the "main stage" of the first
+version of S029, which also kept baselines per runner class) took 7 min 52 s, of which the build of
+the pull request 57 s and the core benchmarks 9 s. The job's `timeout-minutes` is 30. The first run
+(AMD EPYC 9V45, 4 CPUs) failed on `open_10mb_first_chunk_ms` alone: the round medians were 48.1 and
+47.9 ms for the base and 64.6 and 64.6 ms for the pull request, and every round had single opens at
+both levels, one frame apart. Since then a first-screen key needs 20 ms of difference (story S029,
+rule "First screen of an opening").
 
 ### 2026-10-25, CI runners (run #18, pull request #5)
 
@@ -70,7 +93,8 @@ On the Linux CI runner (pull request #27, 2026-11-07, an ordinary runner: core d
 match max 4.2 ms, before the count is complete max 9.9 ms, the 1,000-row table with "Highlight
 all" 7.5 / 22.7 ms per key (median / max) and 4.9 ms max per step, typing in the document
 1.0 / 1.3 / 8.7 ms. The full count took 1.5 s, above the informational target of 1 s. The
-`s028_*` values in `bench/baselines/linux.json` come from that run, added like `s023_*`.
+`s028_*` values in `bench/baselines/linux.json` (removed with S029) came from that run, added like
+`s023_*`.
 
 ### 2026-11-07, development VM, S028 (release build, offscreen, Qt 6.12.0)
 
@@ -148,15 +172,15 @@ resize, not on a key.
 Reading the YAML is not sliced (code review O3): the key that leaves the block, or one idle slice
 while the closing line is still being confirmed, copies and parses all of it. After editing a key
 and leaving (separate probe, 3 rounds each): 5,000 keys 10 ms on the key and 8 ms in the longest
-idle pass; 10,000 keys 14 and 13 ms; 20,000 keys 9 and 30 ms; 30,000 keys 20 and 64 ms; 50,000
-keys 37 and 132 ms. From about 25,000 keys (some 500 KB of front matter) one pass takes more than
-50 ms. The `s024_*` values in `bench/baselines/linux.json` come from the four CI runs of pull
-request #24 (2026-10-31), the slowest value of each key, added like `s023_*`. The first run alone
-was on a fast runner (core decoding 12 ms at 3.7 GHz against 20 ms at 3.25 GHz in the other three;
-the older keys 10–45 % below their baseline), and the three runs after it failed
+idle pass; 10,000 keys 14 and 13 ms; 20,000 keys 9 and 30 ms; 30,000 keys 20 and 64 ms; 50,000 keys
+37 and 132 ms. From about 25,000 keys (some 500 KB of front matter) one pass takes more than 50 ms.
+The `s024_*` values in `bench/baselines/linux.json` (removed with S029) came from the four CI runs
+of pull request #24 (2026-10-31), the slowest value of each key, added like `s023_*`. The first run
+alone was on a fast runner (core decoding 12 ms at 3.7 GHz against 20 ms at 3.25 GHz in the other
+three; the older keys 10–45 % below their baseline), and the three runs after it failed
 `s024_leave_5000_keys_built_ms` (63 → 83–84 ms) and `s024_leave_long_text_built_ms` (37 → 55 ms).
-The three ordinary runs agree within a few per cent, except `s024_open_10mb_properties_ms`
-(31, 55 and 61 ms; 49 ms in the first run).
+The three ordinary runs agree within a few per cent, except `s024_open_10mb_properties_ms` (31, 55
+and 61 ms; 49 ms in the first run).
 
 ### 2026-10-30, development VM, S023 (release build, offscreen, Qt 6.12.0)
 
@@ -179,20 +203,20 @@ the same VM.
 | `- ` before the paragraph, keys median / max; restyled after | – | 4.0–4.4 / 4.9–14.6 ms; 47–51 ms | 50 ms max (hard) |
 | Underline below the paragraph, keys median / max; restyled after | – | 2.6–3.0 / 4.2–4.7 ms; 134–140 ms | 50 ms max (hard) |
 
-Styling all of a 10 MB file takes about 10 % longer than on main: every line is classified once
-more for its paragraph link, and each paragraph is walked to its end once to find its setext
-level. Key-to-paint in the 10 MB file stays in the range of main; in the 10 KB file p95 and p99 are
-up to 1 and 3 ms higher (the gate ignores differences under 2 ms). A first version drew the line of
-a break in a pass of its own that rendered every visible line once more; drawn in the decorations
-pass, typing in a separate probe of 1,000 keys per run was as fast as on main. A walk over a
-paragraph costs about 0.3 µs per line; it runs for at most 2 ms on a key and goes on in idle
-slices, and a changed level is passed up at most 2,048 lines on a key (the rest in idle slices).
-Before that bound (code review O2), typing `-` under a paragraph of 150,000 lines took 37–44 ms per
-key on this VM, and over 50 ms from about 230,000 lines. The `s023_*` values in
-`bench/baselines/linux.json` come from the CI run of pull request #22 (2026-10-30), added like
-`s021_codeblock_*`. In that run `open_10mb_styled_ms` was 3.06 s against 2.60 s in the baseline
-(+18 %, inside the 25 % tolerance) and `typing_small_p95_ms` 1.43 ms against 0.93 ms (under the
-2 ms the comparison ignores).
+Styling all of a 10 MB file takes about 10 % longer than on main: every line is classified once more
+for its paragraph link, and each paragraph is walked to its end once to find its setext level.
+Key-to-paint in the 10 MB file stays in the range of main; in the 10 KB file p95 and p99 are up to 1
+and 3 ms higher (the gate ignores differences under 2 ms). A first version drew the line of a break
+in a pass of its own that rendered every visible line once more; drawn in the decorations pass,
+typing in a separate probe of 1,000 keys per run was as fast as on main. A walk over a paragraph
+costs about 0.3 µs per line; it runs for at most 2 ms on a key and goes on in idle slices, and a
+changed level is passed up at most 2,048 lines on a key (the rest in idle slices). Before that bound
+(code review O2), typing `-` under a paragraph of 150,000 lines took 37–44 ms per key on this VM,
+and over 50 ms from about 230,000 lines. The `s023_*` values in `bench/baselines/linux.json`
+(removed with S029) came from the CI run of pull request #22 (2026-10-30), added like
+`s021_codeblock_*`. In that run `open_10mb_styled_ms` was 3.06 s against 2.60 s in the baseline (+18
+%, inside the 25 % tolerance) and `typing_small_p95_ms` 1.43 ms against 0.93 ms (under the 2 ms the
+comparison ignores).
 
 ### 2026-10-28, development VM, S021 (release build, offscreen, Qt 6.12.0)
 

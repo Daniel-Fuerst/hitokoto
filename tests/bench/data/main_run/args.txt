@@ -1,0 +1,8 @@
+--kind
+main
+--class
+linux-amd-epyc-7763-64-core-processor-4cpu-l2-512k-l3-32768k
+--results
+@DIR@/results.json
+--report
+@OUT@/report.md

@@ -1,0 +1,6 @@
+--kind
+main
+--results
+@DIR@/results.json
+--report
+@OUT@/report.md

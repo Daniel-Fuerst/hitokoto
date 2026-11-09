@@ -1,0 +1,3 @@
+CMakePresets.json
+src/core/markdown.cpp
+README.md

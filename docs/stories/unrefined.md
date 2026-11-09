@@ -134,68 +134,6 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   makes the entries go away, or a Qt or Visual Studio bug report; until then the Error List filter
   "Build Only" hides them. Armin's goal: no entries in the Error List.
 
-## Benchmark job on Linux red without a code change
-
-- **Seen:** repeatedly since S017, most recently on pull request #24 (2026-10-31): the Linux job
-  fails the 25 % comparison and a restart is green. The first run of #24 had a fast runner (the
-  older keys 10–45 % below their baseline); the `s024_*` values taken from it failed on the next,
-  ordinary runner (`s024_leave_5000_keys_built_ms` 63 → 84 ms, `s024_leave_long_text_built_ms`
-  37 → 55 ms), while the older keys lay about on their baseline again. Armin restarted the job
-  three times; the artefacts show the same runner type each time (core decoding 20 ms at
-  3.25 GHz, against 12 ms at 3.7 GHz in the first run), and the three runs agree within a few per
-  cent, except `s024_open_10mb_properties_ms` (31, 55, 61 ms) and single maxima
-  (`typing_small_max_ms` 6.8 ms once). `open_10mb_styled_ms` lies 19–20 % above its baseline in
-  all three (3.08–3.12 s against 2.60 s) but only 2 % above it on the fast runner, so it depends
-  on more than CPU speed (idle slices, timers); it is 5 % from failing.
-- **How the gate works:** `bench/baselines/linux.json` holds the values of one CI run per key; new
-  keys come from the first run of the pull request that adds them. A key fails when it is 25 %
-  and 2 ms above its baseline; medians and p95/p99 are compared, maxima and counts only reported.
-  Runner speed varies from run to run, and not by one factor for all kinds of work (2026-10-28:
-  decoding ×2.0, rendering ×1.04, typing ×1.8), so Armin declined normalising by runner speed.
-- **Options (open):** (1) a baseline per key from several runs (the slowest, or a high
-  percentile), and new keys only reported until they have it; (2) main and the branch measured
-  in turn in the same job on the same runner, the branch compared with main (as done locally;
-  about twice the job time and a change to `ci.yml`); (3) completion times in idle slices only
-  reported, as `s023_bullet_settled_ms` and `s023_underline_settled_ms`, with the hard 50 ms
-  budgets of the keys kept; (4) the first sample of an opening measurement dropped as warm-up
-  (`s024_open_10mb_properties_ms`: 49 ms, then 31 ms); (5) the runner's core decoding time,
-  already in the artefact, printed beside the comparison, so that a red run on a fast or slow
-  runner is recognised at once; (6) **preferred for now (Armin, 2026-10-31):** a baseline per class
-  of runner. The job records the runner's CPU (model name from `/proc/cpuinfo`, clock; the core
-  decoding time as a cross-check) and compares against the baseline of that class, for example
-  `bench/baselines/linux-<cpu>.json`; no factor converts between classes. A runner of a class
-  without a baseline fails the job with the message that a new class has to be recorded, and
-  leaves its values as an artefact to start that baseline. Within a class the spread is small (a
-  few per cent in the three runs above), so the tolerance could be tighter than 25 %. First step:
-  record the CPU in the artefact and collect a few runs to learn the classes (so far four, see
-  below, and once core decoding of 24 ms on 7e9e7d4).
-- **Classes of runner seen on pull request #24 (2026-10-31):** seven runs, all `ubuntu-24.04` with
-  4 vCPU and the host name `runnervm48cm3` (the host name does not tell the classes apart). Classes
-  by `context.mhz_per_cpu` in `core-bench.json`; core decoding and rendering are
-  `S007_Decode10MB` and `S007_RenderAllLines10MB`, the other columns are keys of
-  `e2e-bench.json`:
-
-  | Class | Clock | Runs | Decoding | Rendering | `open_10mb_styled` | `s023_open_10mb_styled` | `typing_10mb_median` |
-  |---|---|---|---|---|---|---|---|
-  | A | 3694 MHz | 1st, 7th | 12.2–12.4 ms | 44.6–44.7 ms | 2.63–2.64 s | 2.26 s | 0.71 ms |
-  | B | 3244–3265 MHz | 2nd–4th | 19.7–20.4 ms | 60.5–60.7 ms | 3.08–3.12 s | 2.72–2.76 s | 0.91–0.94 ms |
-  | C | 2800 MHz | 5th | 23.1 ms | 49.3 ms | 3.34 s | 2.90 s | 1.29 ms |
-  | D | 4540 MHz | 6th | 7.7 ms | 30.7 ms | 1.89 s | 1.60 s | 0.53 ms |
-
-  Within a class the runs agree within a few per cent; between classes there is no common factor
-  (C against B: decoding ×1.17, rendering ×0.81, typing ×1.4). The baseline in use
-  (`open_10mb_styled_ms` 2.60 s, `typing_10mb_median_ms` 0.90 ms) matches no class completely.
-  Class C failed `open_10mb_styled_ms` (+28 %), while the same commit lay within the noise of main
-  locally (+2 %). Class D passed every comparison but failed the hard budget: one of 200 keys in
-  `typing_small` took 54.2 ms (`typing_small_max_ms`; p99 0.63 ms). `typing_small` is the first
-  typing measurement after the window opens; pull request #20 showed the same once (222 ms, a
-  restart was green), so it is taken as a hiccup of the runner, not a property of the class. The
-  artefact does not yet name the CPU model, and it shows a maximum without the key that caused it;
-  with (6), print samples above 50 ms with their position. Armin keeps the artefacts
-  (`bench-linux-PR24.zip` and `-1` to `-6`) outside the repository.
-- **Open:** which of these to adopt, (6) preferred. Armin's goal: the job is red only for a real
-  regression, and a new kind of runner is never overlooked.
-
 ## Versioning, and packages and installers for every version
 
 - **Seen:** 2026-10-31 (Armin, after building main for daily use): every update means building
@@ -214,3 +152,17 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   (Windows certificate, macOS notarisation); where the artefacts go (GitHub releases, now that the
   repository is public). A release job changes `ci.yml` or adds a workflow, so it needs Armin's
   approval.
+
+## Benchmark baselines per runner class (deferred)
+
+- **Seen:** 2026-11-09 (Armin, code review of S029). The first version of S029 compared the Linux
+  benchmark job with a baseline per runner class, recorded by CI on a branch `bench-data`, and was
+  implemented and verified in CI; it was replaced before the merge by measuring main on the same
+  runner in every pull request run (ADR 0009, revision of 2026-11-09).
+- **Now:** every pull request run builds the base and measures four rounds; the runner class is
+  only reported. The full design of the class variant, with the dispositions of the code review
+  that apply to it, is in ADR 0009, "Deferred".
+- **Open:** whether it is needed. Candidates: the bench job's duration becomes a burden, or drift
+  over many merges within the tolerance becomes a concern (the anchor of the class variant, or a
+  comparison with the last release tag on the same runner). Window, minimum and tolerance would be
+  tuned on recorded data.

@@ -38,6 +38,12 @@ if(HITOKOTO_BUILD_UI)
     add_subdirectory(src/app)
 endif()
 
+# S029: the benchmark gate is built with the tests (its own tests, also without Qt) and with the
+# benchmarks (the CI job uses hitokoto-bench-gate from the bench preset).
+if(HITOKOTO_BUILD_TESTS OR HITOKOTO_BUILD_BENCHMARKS)
+    add_subdirectory(bench/gate)
+endif()
+
 if(HITOKOTO_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
