@@ -19,7 +19,7 @@ objections:
     severity: minor
     title: "The GitHub side of the tag job runs for the first time on the merge of this pull request"
     disposition: documented
-    disposition_rationale: "A one-time check after the merge of pull request 32 (Armin, 2026-11-09): the first run of the job Tag sets exactly one new tag, v0.3.1 on the merge commit of pull request 32, and none on 0cf5e28 (pull request 31) and 0286646 (pull request 33); checked with git ls-remote --tags. A failure is repairable (red job, no tag, re-run); since O1 every merge is checked against its pull request, which narrows the risk of a tag on the wrong commit."
+    disposition_rationale: "A one-time check after the merge of pull request 32 (Armin, 2026-11-09): the first run of the job Tag sets exactly one new tag, v0.3.1 on the merge commit of pull request 32, and none on 0cf5e28 (pull request 31) and 0286646 (pull request 33); checked with git ls-remote --tags. A failure is repairable (red job, no tag, re-run); since O1 every merge is checked against its pull request, which narrows the risk of a tag on the wrong commit. Checked after the merge (2026-11-09): v0.3.1 by github-actions[bot] on 6fd7b54, the merge of pull request 32; no tags on 0cf5e28 and 0286646."
   - id: O3
     category: threat
     severity: minor
