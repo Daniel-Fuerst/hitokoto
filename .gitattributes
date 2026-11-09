@@ -3,3 +3,5 @@
 *.png binary
 # Test fixtures must stay byte-exact (CRLF, BOM, invalid UTF-8 on purpose).
 tests/fixtures/** -text
+# S031: clipboard samples stay byte-exact as Qt delivers them.
+tests/data/s031/samples/** -text
