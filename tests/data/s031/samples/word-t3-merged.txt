@@ -1,0 +1,4 @@
+Region	Spring	Summer	Autumn
+North	Closed	40
+South	25	Holiday break
+	30	

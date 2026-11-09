@@ -1,0 +1,6 @@
+Product	Note	Price per kg
+Green tea	"first line
+second line"	12,50
+Black tea	5" tin	9,80
+Oolong	loose leaf	15,00
+Rooibos		7,25

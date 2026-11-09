@@ -7,7 +7,7 @@ from it (S031, requirement "Test data"; review O5). The lint test
 
 ## Template
 
-`templates/tables.html` holds the tables T1 to T12. Firefox opens it directly, Word and Excel open
+`templates/tables.html` holds the tables T1 to T13. Firefox opens it directly, Word and Excel open
 the same file; close Word and Excel without saving. For Outlook classic, open the template in Word,
 copy the table there, paste it into a new mail, select it in the mail and copy it again; discard the
 mail.
@@ -25,6 +25,7 @@ mail.
 | T9 | two tables with text between |
 | T10, T11 | a table with one row, a table with one column |
 | T12 | a table inside a cell |
+| T13 | quotes in Excel's plain text: at the start of a cell, inside it, with a line break |
 
 ## Samples
 
@@ -40,16 +41,22 @@ UTF-8 with line feeds (Qt replaces CR LF by LF). Git does not normalise these fi
 | `word-t3-merged` | T3 | Word | the table |
 | `outlook-t1-example` | T1 | Outlook classic | the table |
 | `outlook-t2-text-around` | T2 | Outlook classic | the line before, the table, the line after |
+| `outlook-t2-text-around-break` | T2 | Outlook classic | as above, see below |
 | `outlook-t4-escapes` | T4 | Outlook classic | the table |
 | `outlook-t5-lines` | T5 | Outlook classic | the table |
 | `excel-t6-example` | T6 | Excel | the table's cells |
 | `excel-t7-empty` | T7 | Excel | the table's cells, the empty column and row included |
+| `excel-quotes` | T13 | Excel | the table's cells |
 | `firefox-t4-escapes` | T4 | Firefox | the table |
 | `firefox-t8-web` | T8 | Firefox | the table |
 | `firefox-t9-two-tables` | T9 | Firefox | both tables and the text between |
 | `firefox-t10-one-row` | T10 | Firefox | the table |
 | `firefox-t11-one-column` | T11 | Firefox | the table |
 | `firefox-t12-nested` | T12 | Firefox | the outer table |
+
+For `outlook-t2-text-around-break`, the line after the table and the next line are joined in the
+mail with `Shift+Enter` before copying; Outlook then writes the line after as a `<span>` without a
+paragraph of its own.
 
 ## Before a sample is committed
 
