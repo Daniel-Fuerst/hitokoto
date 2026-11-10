@@ -74,8 +74,11 @@ Every pull request merged into main gives hitokoto its version step (story S030,
   `0.0.0+unknown` and CMake warns. Configure prints the version and where it came from. The option
   stays in the cache of the build directory and wins over git; in a checkout with a version tag
   CMake warns about it. Remove it with `-DHITOKOTO_VERSION=` (or configure with `--fresh`).
-- **Changes reach main only through pull requests**, also notes and status changes (with
-  `version:none`).
+- **Changes reach main only through pull requests**, also notes and status changes. A story's
+  status Done is normally the last commit of its own pull request: the story is accepted on the
+  branch, and the merge brings it to main as done. A status change that comes after the merge
+  rides with the next pull request into main; a pull request of its own with `version:none` only
+  when nothing else is due. The label follows the whole content of the pull request.
 
 ## Documentation
 
