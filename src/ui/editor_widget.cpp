@@ -10,6 +10,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QBuffer>
 #include <QClipboard>
 #include <QContextMenuEvent>
 #include <QDesktopServices>
@@ -31,11 +32,15 @@
 #include <QTableView>
 #include <QTextBlock>
 #include <QTextCursor>
+#include <QTextDocumentFragment>
+#include <QTextDocumentWriter>
 #include <QTextLayout>
 #include <QToolTip>
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
+#include <utility>
 
 namespace hitokoto::ui {
 
@@ -524,7 +529,72 @@ void EditorWidget::dropEvent(QDropEvent* event) {
 }
 
 QString EditorWidget::ownCopyFormat() {
-    return {};  // stub (S031 review (code) O9)
+    return QStringLiteral("application/x-hitokoto-copy");
+}
+
+namespace {
+
+/// A copy made in hitokoto (S031 review (code) O9): the formats Qt's own data offers for a
+/// selection (plain text, HTML, Markdown, ODF; QTextEditMimeData), each made from the selection
+/// only when asked for, plus the marker of EditorWidget::ownCopyFormat. Qt's data makes all of
+/// them at the first request, so that pasting even the plain text paid for the HTML and the ODF.
+class OwnCopy : public QMimeData {
+public:
+    explicit OwnCopy(const QTextDocumentFragment& selection) : selection_(selection) {}
+
+    [[nodiscard]] QStringList formats() const override {
+        if (selection_.isEmpty()) {
+            return QMimeData::formats();
+        }
+        QStringList all = {QStringLiteral("text/plain"), QStringLiteral("text/html")};
+#if QT_CONFIG(textmarkdownwriter)
+        all << QStringLiteral("text/markdown");
+#endif
+#if QT_CONFIG(textodfwriter)
+        all << QStringLiteral("application/vnd.oasis.opendocument.text");
+#endif
+        all << EditorWidget::ownCopyFormat();
+        return all;
+    }
+
+protected:
+    [[nodiscard]] QVariant retrieveData(const QString& mimeType, QMetaType type) const override {
+        if (selection_.isEmpty()) {
+            return QMimeData::retrieveData(mimeType, type);
+        }
+        if (mimeType == EditorWidget::ownCopyFormat()) {
+            return QByteArrayLiteral("1");  // not empty: some platforms drop empty formats
+        }
+        if (mimeType == QStringLiteral("text/plain")) {
+            return selection_.toPlainText();
+        }
+        if (mimeType == QStringLiteral("text/html")) {
+            return selection_.toHtml();
+        }
+#if QT_CONFIG(textmarkdownwriter)
+        if (mimeType == QStringLiteral("text/markdown")) {
+            return selection_.toMarkdown().toUtf8();
+        }
+#endif
+#if QT_CONFIG(textodfwriter)
+        if (mimeType == QStringLiteral("application/vnd.oasis.opendocument.text")) {
+            QBuffer buffer;
+            QTextDocumentWriter writer(&buffer, "ODF");
+            writer.write(selection_);
+            return buffer.data();
+        }
+#endif
+        return {};
+    }
+
+private:
+    QTextDocumentFragment selection_;
+};
+
+}  // namespace
+
+QMimeData* EditorWidget::createMimeDataFromSelection() const {
+    return new OwnCopy(QTextDocumentFragment(textCursor()));
 }
 
 bool EditorWidget::canPastePlainText() {
@@ -571,6 +641,11 @@ void EditorWidget::contextMenuEvent(QContextMenuEvent* event) {
 
 bool EditorWidget::pasteTables(const QMimeData* source) {
     if (source == nullptr || isReadOnly()) {
+        return false;
+    }
+    // A copy made in hitokoto holds Markdown source, never a table: its HTML is not even asked
+    // for, Qt would first generate it from the selection (S031 review (code) O9).
+    if (source->hasFormat(ownCopyFormat())) {
         return false;
     }
     QTextCursor cursor = textCursor();

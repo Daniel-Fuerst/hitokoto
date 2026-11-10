@@ -105,6 +105,7 @@ protected:
     void wheelEvent(QWheelEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void inputMethodEvent(QInputMethodEvent* event) override;
+    [[nodiscard]] QMimeData* createMimeDataFromSelection() const override;
     void insertFromMimeData(const QMimeData* source) override;
     void dropEvent(QDropEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;

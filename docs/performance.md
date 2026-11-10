@@ -107,6 +107,16 @@ for; a probe with the review fixes (lines of text with emphasis, code and a link
 | 5,000 lines | 41.8 ms | 1.0 ms | 76.7 ms | 37.4 ms |
 | 50,000 lines | 447.5 ms | 14.1 ms | 818.2 ms | 285.8 ms |
 
+Qt's data for a selection (`QTextEditMimeData`) makes HTML, Markdown, ODF and plain text all at the
+first request, also when only the plain text is asked for; a marker alone, which skips the HTML,
+gave 71.4 and 668.2 ms. hitokoto's own copy (`OwnCopy` in `editor_widget.cpp`, review (code) O9)
+makes each format only when asked for and carries the marker; the same probe then measured:
+
+| Copied in hitokoto | Generating `html()` | Scan | `Ctrl+V` of the copy | `Ctrl+V` of the same plain text |
+|---|---|---|---|---|
+| 5,000 lines | 11.4 ms | 0.7 ms | 32.2 ms | 32.4 ms |
+| 50,000 lines | 125.9 ms | 9.0 ms | 255.2 ms | 255.8 ms |
+
 ### 2026-11-09, CI runner, S029 revised (pull request #31, run #125)
 
 The bench job of the revised S029 (base build and four rounds in every pull request run) took
