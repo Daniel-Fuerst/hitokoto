@@ -1,8 +1,11 @@
 # S030 — A defined version step for every merge into main
 
-- **Status:** In review (since 2026-11-09: CI green on Linux, Windows and macOS on ff2aab1, after
-  the code review `docs/reviews/030-automatic-versions-code.md`); Confirmed (Armin, with Daniel's
-  agreement, 2026-11-09, after the review `docs/reviews/030-automatic-versions-spec.md`) ·
+- **Status:** Done (accepted by Armin, 2026-11-09, after the merge of pull request 32; the first
+  run of the tag job set `v0.3.1` on its merge commit 6fd7b54; `version:major` and `version:minor`
+  are so far only covered by the `ctest` cases, not yet by a merge); In review since 2026-11-09
+  (CI green on Linux, Windows and macOS on ff2aab1, after the code review
+  `docs/reviews/030-automatic-versions-code.md`); Confirmed (Armin, with Daniel's agreement,
+  2026-11-09, after the review `docs/reviews/030-automatic-versions-spec.md`) ·
   **Order:** 31 · **Size:** M · **Depends on:** S000 · **Decision:** ADR 0010
 - **Basis:** `unrefined.md`, "Versioning, and packages and installers for every version" (Armin,
   2026-10-31), refined by Armin on 2026-11-08: versions are set automatically; every final pull
