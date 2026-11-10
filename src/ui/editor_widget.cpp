@@ -6,27 +6,41 @@
 #include "qt_bridge.hpp"
 #include "smooth_scroller.hpp"
 #include "table_embedder.hpp"
+#include "table_paste.hpp"
 
+#include <QAction>
 #include <QApplication>
+#include <QBuffer>
+#include <QClipboard>
+#include <QContextMenuEvent>
 #include <QDesktopServices>
+#include <QDropEvent>
 #include <QFontMetricsF>
+#include <QGuiApplication>
 #include <QHelpEvent>
 #include <QInputMethodEvent>
+#include <QMenu>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QResizeEvent>
+#include <QScopeGuard>
+#include <QScopedValueRollback>
 #include <QScrollBar>
 #include <QStyle>
 #include <QTableView>
 #include <QTextBlock>
 #include <QTextCursor>
+#include <QTextDocumentFragment>
+#include <QTextDocumentWriter>
 #include <QTextLayout>
 #include <QToolTip>
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
+#include <utility>
 
 namespace hitokoto::ui {
 
@@ -500,9 +514,225 @@ void EditorWidget::inputMethodEvent(QInputMethodEvent* event) {
 }
 
 void EditorWidget::insertFromMimeData(const QMimeData* source) {
+    if (!plainPaste_ && pasteTables(source)) {
+        return;
+    }
     const TableEmbedder::Typing typing(tables_.get());
     tables_->beforeWritingBelow();
     QTextEdit::insertFromMimeData(source);
+}
+
+void EditorWidget::dropEvent(QDropEvent* event) {
+    // S031: drag and drop is not converted.
+    const QScopedValueRollback<bool> plain(plainPaste_, true);
+    QTextEdit::dropEvent(event);
+}
+
+QString EditorWidget::ownCopyFormat() {
+    return QStringLiteral("application/x-hitokoto-copy");
+}
+
+namespace {
+
+/// A copy made in hitokoto (S031 review (code) O9): the formats Qt's own data offers for a
+/// selection (plain text, HTML, Markdown, ODF; QTextEditMimeData), each made from the selection
+/// only when asked for, plus the marker of EditorWidget::ownCopyFormat. Qt's data makes all of
+/// them at the first request, so that pasting even the plain text paid for the HTML and the ODF.
+class OwnCopy : public QMimeData {
+public:
+    explicit OwnCopy(const QTextDocumentFragment& selection) : selection_(selection) {}
+
+    [[nodiscard]] QStringList formats() const override {
+        if (selection_.isEmpty()) {
+            return QMimeData::formats();
+        }
+        QStringList all = {QStringLiteral("text/plain"), QStringLiteral("text/html")};
+#if QT_CONFIG(textmarkdownwriter)
+        all << QStringLiteral("text/markdown");
+#endif
+#if QT_CONFIG(textodfwriter)
+        all << QStringLiteral("application/vnd.oasis.opendocument.text");
+#endif
+        all << EditorWidget::ownCopyFormat();
+        return all;
+    }
+
+protected:
+    [[nodiscard]] QVariant retrieveData(const QString& mimeType, QMetaType type) const override {
+        if (selection_.isEmpty()) {
+            return QMimeData::retrieveData(mimeType, type);
+        }
+        if (mimeType == EditorWidget::ownCopyFormat()) {
+            return QByteArrayLiteral("1");  // not empty: some platforms drop empty formats
+        }
+        if (mimeType == QStringLiteral("text/plain")) {
+            return selection_.toPlainText();
+        }
+        if (mimeType == QStringLiteral("text/html")) {
+            return selection_.toHtml();
+        }
+#if QT_CONFIG(textmarkdownwriter)
+        if (mimeType == QStringLiteral("text/markdown")) {
+            return selection_.toMarkdown().toUtf8();
+        }
+#endif
+#if QT_CONFIG(textodfwriter)
+        if (mimeType == QStringLiteral("application/vnd.oasis.opendocument.text")) {
+            QBuffer buffer;
+            QTextDocumentWriter writer(&buffer, "ODF");
+            writer.write(selection_);
+            return buffer.data();
+        }
+#endif
+        return {};
+    }
+
+private:
+    QTextDocumentFragment selection_;
+};
+
+}  // namespace
+
+QMimeData* EditorWidget::createMimeDataFromSelection() const {
+    return new OwnCopy(QTextDocumentFragment(textCursor()));
+}
+
+bool EditorWidget::canPastePlainText() {
+    // The formats only: fetching the text on every clipboard change would make the program that
+    // copied render it, Excel a whole column (S031 review O7).
+    const QMimeData* data = QApplication::clipboard()->mimeData();
+    return data != nullptr && data->hasText();
+}
+
+void EditorWidget::pasteAsPlainText() {
+    if (isReadOnly() || !canPastePlainText()) {
+        return;
+    }
+    const QString text = QApplication::clipboard()->mimeData()->text();
+    if (text.isEmpty()) {
+        return;
+    }
+    QMimeData plain;
+    plain.setText(text);
+    {
+        const QScopedValueRollback<bool> noConversion(plainPaste_, true);
+        insertFromMimeData(&plain);
+    }
+    ensureCursorVisible();
+}
+
+void EditorWidget::contextMenuEvent(QContextMenuEvent* event) {
+    std::unique_ptr<QMenu> menu(createStandardContextMenu(event->pos()));
+    // S031: Paste as Plain Text after Paste.
+    auto* plain = new QAction(tr("Paste as Plain Text"), menu.get());
+    plain->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V));
+    plain->setEnabled(!isReadOnly() && canPastePlainText());
+    connect(plain, &QAction::triggered, this, &EditorWidget::pasteAsPlainText);
+    const QList<QAction*> actions = menu->actions();
+    const auto paste = std::find_if(actions.begin(), actions.end(),
+                                    [](const QAction* a) { return a->objectName() == QStringLiteral("edit-paste"); });
+    if (paste != actions.end() && std::next(paste) != actions.end()) {
+        menu->insertAction(*std::next(paste), plain);
+    } else {
+        menu->addAction(plain);
+    }
+    menu->exec(event->globalPos());
+}
+
+bool EditorWidget::pasteTables(const QMimeData* source) {
+    if (source == nullptr || isReadOnly()) {
+        return false;
+    }
+    // A copy made in hitokoto holds Markdown source, never a table: its HTML is not even asked
+    // for, Qt would first generate it from the selection (S031 review (code) O9).
+    if (source->hasFormat(ownCopyFormat())) {
+        return false;
+    }
+    QTextCursor cursor = textCursor();
+    // Only in the editor text: not in a code block, front matter or a table's lines (S031), and
+    // not in a block quote or list item, which a table would split (S031 review O4).
+    for (const int position : {cursor.selectionStart(), cursor.selectionEnd()}) {
+        const QTextBlock block = document()->findBlock(position);
+        const core::LineRender render = styler_->renderFor(block);
+        if (render.codeBlock || render.frontMatter || render.table) {
+            return false;
+        }
+        const auto above = [block](std::size_t i) -> std::optional<std::u16string> {
+            QTextBlock b = block.previous();
+            for (std::size_t n = 0; n < i && b.isValid(); ++n) {
+                b = b.previous();
+            }
+            if (!b.isValid()) {
+                return std::nullopt;
+            }
+            const QString line = b.text();
+            return std::u16string(view(line));
+        };
+        if (core::pasteLineInContainer(view(block.text()), above)) {
+            return false;
+        }
+    }
+    if (!source->hasHtml() && !source->hasText()) {
+        return false;
+    }
+
+    // HTML: one scan first, so that HTML without a table or with nested tables is never imported
+    // (S031 review O1, O9). Excel's plain text only without HTML.
+    QString html;
+    if (source->hasHtml()) {
+        html = source->html();
+        if (core::scanHtmlTables(view(html)) != core::HtmlTables::Flat) {
+            return false;
+        }
+    }
+
+    // The wait cursor while the paste converts (S031, ADR 0011), on success until the pasted table
+    // is shown (review O6): the embedder shows it in its refresh, queued by the insertion below,
+    // and the cursor is restored by a call queued after it.
+    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    auto restore = qScopeGuard([] { QGuiApplication::restoreOverrideCursor(); });
+    std::optional<std::vector<core::PasteBlock>> blocks;
+    if (!html.isEmpty()) {
+        blocks = core::pastedTablesToMarkdown(readPastedHtml(html));
+    } else if (auto table = core::parseExcelPlainText(view(source->text()))) {
+        std::vector<core::PastedPart> parts(1);
+        parts.front().table = std::move(*table);
+        blocks = core::pastedTablesToMarkdown(parts);
+    }
+    if (!blocks) {
+        return false;
+    }
+
+    // One step, undone at once: the text replaces the selection; the tables land as their own
+    // blocks around the line split at the caret.
+    const int start = cursor.selectionStart();
+    const QTextBlock first = document()->findBlock(start);
+    const QTextBlock last = document()->findBlock(cursor.selectionEnd());
+    const QString firstText = first.text();
+    const QString lastText = last.text();
+    const std::u16string head(view(firstText.left(start - first.position())));
+    const std::u16string tail(view(lastText.mid(cursor.selectionEnd() - last.position())));
+    const QString above = first.previous().isValid() ? first.previous().text() : QString();
+    const QString below = last.next().isValid() ? last.next().text() : QString();
+    core::PastePlace place;
+    place.head = head;
+    place.tail = tail;
+    if (first.previous().isValid()) {
+        place.lineAbove = view(above);
+    }
+    if (last.next().isValid()) {
+        place.lineBelow = view(below);
+    }
+    const core::PasteInsertion insertion = core::placePastedBlocks(*blocks, place);
+    const TableEmbedder::NotTyping notTyping(tables_.get());
+    cursor.insertText(toQString(insertion.text));
+    cursor.setPosition(start + static_cast<int>(insertion.caret));
+    setTextCursor(cursor);
+    ensureCursorVisible();
+    tables_->scheduleRefresh();  // queued already by the insertion; makes the order explicit
+    restore.dismiss();
+    QMetaObject::invokeMethod(qApp, [] { QGuiApplication::restoreOverrideCursor(); }, Qt::QueuedConnection);
+    return true;
 }
 
 void EditorWidget::paintCodeBlockPanels() {

@@ -49,7 +49,7 @@ jobs:
         run: cmake --build --preset fuzz --parallel
       - name: Run fuzzers
         run: |
-          for f in fuzz_codec fuzz_render fuzz_theme; do
+          for f in fuzz_codec fuzz_render fuzz_theme fuzz_paste; do
             ./build/fuzz/fuzz/$f -max_total_time=60 -print_final_stats=1
           done
 

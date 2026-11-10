@@ -168,6 +168,12 @@ const std::vector<Budget>& hardBudgets() {
          "no key in the find bar above 50 ms, 1000-row table, highlight all (hard)"},
         {"s028_table_step_max_ms", 50, "no next match above 50 ms, 1000-row table, highlight all (hard)"},
         {"s028_doc_typing_max_ms", 50, "no key event above 50 ms, 10 MB with find open (hard)"},
+        {"s031_paste_outlook_40x10_ms", 50, "paste 400 cells until shown <= 50 ms, Outlook (hard)"},
+        {"s031_paste_excel_40x10_ms", 50, "paste 400 cells until shown <= 50 ms, Excel (hard)"},
+        {"s031_paste_outlook_400x10_ms", 500, "paste 4,000 cells <= 500 ms, Outlook (hard)"},
+        {"s031_paste_excel_400x10_ms", 500, "paste 4,000 cells <= 500 ms, Excel (hard)"},
+        {"s031_paste_outlook_40x100_ms", 500, "paste 40 x 100 cells <= 500 ms, Outlook (hard)"},
+        {"s031_paste_excel_40x100_ms", 500, "paste 40 x 100 cells <= 500 ms, Excel (hard)"},
         {"save_10mb_ui_blocked_ms", 16, "saving never stalls the UI (hard)"},
         {"save_10mb_total_ms", 1000, "10 MB on disk within 1 s (hard)"},
     };
@@ -185,9 +191,23 @@ std::vector<Budget> hardBudgetMisses(const Values& values) {
     return misses;
 }
 
-bool isCompleteResult(const Values& values) {
+bool isCompleteResult(const Values& values, const std::set<std::string, std::less<>>& except) {
     const auto& budgets = hardBudgets();
-    return std::all_of(budgets.begin(), budgets.end(), [&](const Budget& b) { return values.count(b.key) > 0; });
+    return std::all_of(budgets.begin(), budgets.end(),
+                       [&](const Budget& b) { return values.count(b.key) > 0 || except.count(b.key) > 0; });
+}
+
+std::set<std::string, std::less<>> newHardKeys(const std::array<Values, 2>& base,
+                                               const std::array<Values, 2>& pullRequest) {
+    std::set<std::string, std::less<>> keys;
+    for (const auto& b : hardBudgets()) {
+        const bool inBase = base[0].count(b.key) > 0 || base[1].count(b.key) > 0;
+        const bool inPullRequest = pullRequest[0].count(b.key) > 0 || pullRequest[1].count(b.key) > 0;
+        if (!inBase && inPullRequest) {
+            keys.insert(b.key);
+        }
+    }
+    return keys;
 }
 
 std::vector<KeyResult> compareRounds(const std::array<Values, 2>& base, const std::array<Values, 2>& pullRequest) {

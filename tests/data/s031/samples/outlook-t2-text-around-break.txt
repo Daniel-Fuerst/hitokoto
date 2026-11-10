@@ -1,0 +1,5 @@
+The spring order is below.
+Product	Boxes
+Oolong	4
+Rooibos	2
+Please confirm by Friday.

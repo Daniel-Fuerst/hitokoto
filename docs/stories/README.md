@@ -38,10 +38,11 @@ story ID (see "Conventions").
 | 29 | [S028](028-find-in-file.md) | Find in the open file | S018, S022, S023, S024 | L | In review |
 | 30 | [S029](029-bench-runner-classes.md) | Benchmark compared with main on the same runner | S006, S007, S017 | M | Done |
 | 31 | [S030](030-automatic-versions.md) | A defined version step for every merge into main | S000 | M | Done |
-| 32 | [S007](007-large-files.md) | 10 MB files open within budget and type without lag | S006 | L | Partly done |
-| 33 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
-| 34 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |
-| 35 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | Open |
+| 32 | [S031](031-paste-tables.md) | Pasting a table from Outlook, Excel or a web page as a Markdown table | S018, S019, S020 | M | In review |
+| 33 | [S007](007-large-files.md) | 10 MB files open within budget and type without lag | S006 | L | Partly done |
+| 34 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
+| 35 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |
+| 36 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | Open |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 

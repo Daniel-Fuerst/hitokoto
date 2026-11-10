@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>S031 test tables</title>
+<style>
+  body { font-family: sans-serif; margin: 2em; }
+  table { border-collapse: collapse; margin: 0.5em 0 1.5em; }
+  th, td { border: 1px solid #888; padding: 0.3em 0.6em; vertical-align: top; }
+  th { background: #eee; }
+  td p { margin: 0; }
+  .note { font-style: italic; color: #555; }
+</style>
+</head>
+<body>
+<h1>S031 test tables</h1>
+<p>Invented content for hitokoto's tests (S031). Open this file in Firefox, Word or Excel and copy
+each table as tests/data/s031/README.md describes; close Word and Excel without saving. Nothing on
+this page is loaded from elsewhere.</p>
+
+<h2>T1 - Example</h2>
+<p class="note">Two paragraphs in one cell, a line break in another, prices as text.</p>
+<table>
+  <tr><td>Product</td><td>Supplier</td><td>Price per kg</td></tr>
+  <tr>
+    <td>Green tea</td>
+    <td><p>Tea House North</p><p>Tea House South</p></td>
+    <td style='text-align: right; mso-number-format:"\@"'>12,50<br style="mso-data-placement:same-cell">13,20</td>
+  </tr>
+  <tr>
+    <td>Black tea</td>
+    <td>Tea House West</td>
+    <td style='text-align: right; mso-number-format:"\@"'>9,80</td>
+  </tr>
+</table>
+
+<h2>T2 - Text before and after</h2>
+<p class="note">Copy from the start of the line before the table to the end of the line after it.</p>
+<p>The spring order is below.</p>
+<table>
+  <tr><td>Product</td><td>Boxes</td></tr>
+  <tr><td>Oolong</td><td style="text-align: right">4</td></tr>
+  <tr><td>Rooibos</td><td style="text-align: right">2</td></tr>
+</table>
+<p>Please confirm by Friday.</p>
+<p>This line is not copied.</p>
+
+<h2>T3 - Merged cells</h2>
+<p class="note">colspan, rowspan, and both in one cell.</p>
+<table>
+  <tr><td>Region</td><td>Spring</td><td>Summer</td><td>Autumn</td></tr>
+  <tr><td>North</td><td colspan="2">Closed</td><td>40</td></tr>
+  <tr><td rowspan="2">South</td><td>25</td><td colspan="2" rowspan="2">Holiday break</td></tr>
+  <tr><td>30</td></tr>
+</table>
+
+<h2>T4 - Characters to escape</h2>
+<table>
+  <tr><td>Text 1</td><td>Text 2</td><td>Text 3</td><td>Text 4</td></tr>
+  <tr><td>a|b</td><td>*x*</td><td>C:\Dev</td><td>`c`</td></tr>
+  <tr><td>R&amp;D</td><td>&amp;amp;</td><td>[l](u)</td><td>x&lt;br&gt;y</td></tr>
+  <tr><td>A &amp; B</td><td>&amp;#38;</td><td>&amp;foo;</td><td>~t~ _u_</td></tr>
+</table>
+
+<h2>T5 - Lines and spaces in cells</h2>
+<table>
+  <tr><td>Case</td><td>Cell</td></tr>
+  <tr><td>spaces around</td><td>&nbsp;&nbsp;padded&nbsp;&nbsp;</td></tr>
+  <tr><td>empty line inside</td><td>first<br><br>third</td></tr>
+  <tr><td>empty paragraph inside</td><td><p>first</p><p>&nbsp;</p><p>third</p></td></tr>
+  <tr><td>empty lines around</td><td><br>middle<br><br></td></tr>
+  <tr><td>empty cell</td><td></td></tr>
+  <tr><td>no-break spaces</td><td>no&nbsp;break</td></tr>
+</table>
+
+<h2>T6 - Example for Excel</h2>
+<p class="note">A line break Excel keeps in its cell, a double quote, an empty cell, prices as text.</p>
+<table>
+  <tr><td>Product</td><td>Note</td><td>Price per kg</td></tr>
+  <tr><td>Green tea</td><td>first line<br style="mso-data-placement:same-cell">second line</td><td style='mso-number-format:"\@"'>12,50</td></tr>
+  <tr><td>Black tea</td><td>5" tin</td><td style='mso-number-format:"\@"'>9,80</td></tr>
+  <tr><td>Oolong</td><td>loose leaf</td><td style='mso-number-format:"\@"'>15,00</td></tr>
+  <tr><td>Rooibos</td><td></td><td style='mso-number-format:"\@"'>7,25</td></tr>
+</table>
+
+<h2>T7 - Empty column and row</h2>
+<table>
+  <tr><td>Product</td><td>Origin</td><td></td><td>Stock</td></tr>
+  <tr><td>Green tea</td><td>Japan</td><td></td><td>12</td></tr>
+  <tr><td></td><td></td><td></td><td></td></tr>
+  <tr><td>Black tea</td><td>India</td><td></td><td>7</td></tr>
+</table>
+
+<h2>T8 - Header cells, link, bold, image</h2>
+<table>
+  <thead>
+    <tr><th>Tea</th><th>Shop</th><th>Rating</th><th>Picture</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><b>Sencha</b></td>
+      <td><a href="https://example.org/leaf-and-cup">Leaf and Cup</a></td>
+      <td><em>good</em>, <strong>fresh</strong></td>
+      <td><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR4nGPQ6w7HihiGlgQAiA5EAZSjA9sAAAAASUVORK5CYII=" alt="" width="16" height="16"></td>
+    </tr>
+    <tr>
+      <td>Assam</td>
+      <td>Open daily<br>9 to 18</td>
+      <td><span style="color: #a00">strong</span></td>
+      <td>none</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>T9 - Two tables with text between</h2>
+<p class="note">Copy from the first cell of the first table to the last cell of the second.</p>
+<table>
+  <tr><th>Tea</th><th>Cups</th></tr>
+  <tr><td>Sencha</td><td>3</td></tr>
+</table>
+<p>Text between the tables.</p>
+<table>
+  <tr><th>Shop</th><th>Town</th></tr>
+  <tr><td>Leaf and Cup</td><td>Riverside</td></tr>
+</table>
+
+<h2>T10 - One row only</h2>
+<table>
+  <tr><td>Sencha</td><td>Assam</td><td>Oolong</td></tr>
+</table>
+
+<h2>T11 - One column only</h2>
+<table>
+  <tr><td>Sencha</td></tr>
+  <tr><td>Assam</td></tr>
+  <tr><td>Oolong</td></tr>
+</table>
+
+<h2>T12 - Table inside a cell</h2>
+<p class="note">Copy the outer table.</p>
+<table>
+  <tr><th>Tea</th><th>Blend</th></tr>
+  <tr>
+    <td>House blend</td>
+    <td>
+      <table>
+        <tr><td>Sencha</td><td>60 %</td></tr>
+        <tr><td>Assam</td><td>40 %</td></tr>
+      </table>
+    </td>
+  </tr>
+</table>
+<h2>T13 - Quotes for Excel's plain text</h2>
+<p class="note">For Excel: when Excel puts a cell in double quotes in its plain text.</p>
+<table>
+  <tr><td>Case</td><td>Text</td></tr>
+  <tr><td>start</td><td>"Leaf" Co</td></tr>
+  <tr><td>inside</td><td>say "hi"</td></tr>
+  <tr><td>break</td><td>a "b"<br style="mso-data-placement:same-cell">c</td></tr>
+  <tr><td>"a<br style="mso-data-placement:same-cell">b"</td><td></td></tr>
+</table>
+</body>
+</html>

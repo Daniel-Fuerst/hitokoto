@@ -1,0 +1,7 @@
+Case	Text
+start	"Leaf" Co
+inside	say "hi"
+break	"a ""b""
+c"
+"""a
+b"""	

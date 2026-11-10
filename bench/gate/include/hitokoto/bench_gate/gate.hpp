@@ -8,8 +8,10 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -51,8 +53,15 @@ const std::vector<Budget>& hardBudgets();
 /// Hard budgets the values miss (a key that is missing does not count as a miss).
 std::vector<Budget> hardBudgetMisses(const Values& values);
 
-/// True if the values hold every key of the hard budgets: the run finished and wrote its results.
-bool isCompleteResult(const Values& values);
+/// True if the values hold every key of the hard budgets except `except`: the run finished and
+/// wrote its results.
+bool isCompleteResult(const Values& values, const std::set<std::string, std::less<>>& except = {});
+
+/// Hard-budget keys that neither base round holds while a pull request round does: new in the pull
+/// request, so the base's harness does not measure them yet (S031). The base rounds are complete
+/// without them; the pull request's rounds still need every hard key.
+std::set<std::string, std::less<>> newHardKeys(const std::array<Values, 2>& base,
+                                               const std::array<Values, 2>& pullRequest);
 
 enum class KeyStatus {
     Ok,       ///< within tolerance, or the two sides overlap
