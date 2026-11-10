@@ -5,7 +5,7 @@ spec: docs/stories/031-paste-tables.md
 commits: 0a224dc..2178d93
 date: 2026-11-09
 reviewer: Advocatus Diaboli (independent subagent)
-dispositioned: 2026-11-09 (Armin, one objection after the other; O5 after a look at middle-click pastes in Qt and LibreOffice, O8 after the runner/VM ratios before and after the S018 sizing fix)
+dispositioned: 2026-11-09 (Armin, one objection after the other; O5 after a look at middle-click pastes in Qt and LibreOffice, O8 after the runner/VM ratios before and after the S018 sizing fix; the mechanism of O9 and steps 2 and 3 of O10 on 2026-11-10 after measurements)
 objections:
   - id: O1
     category: threat
@@ -60,13 +60,14 @@ objections:
     severity: major
     title: "Every paste with an HTML flavour now runs Qt's HTML import on the UI thread, also without any table and for copies from hitokoto itself"
     disposition: fixed
-    disposition_rationale: "Armin, 2026-11-09. The scan of O1 runs before the wait cursor: HTML without a table start tag is not imported, the paste is plain text at once and shows no wait cursor. Red test first: no import for HTML without a table. A benchmark key for a large paste without a table (code with a span per token) is compared with main, without a hard budget. hitokoto's own copies: the paste recognises that the data comes from hitokoto itself and pastes plain text without asking for the HTML (preferred over copies without HTML, which would change what other programs receive); the mechanism is settled after measuring the cost of html() for an own copy in the red phase."
+    disposition_rationale: "Armin, 2026-11-09. The scan of O1 runs before the wait cursor: HTML without a table start tag is not imported, the paste is plain text at once and shows no wait cursor. Red test first: no import for HTML without a table. A benchmark key for a large paste without a table (code with a span per token) is compared with main, without a hard budget. hitokoto's own copies: the paste recognises that the data comes from hitokoto itself and pastes plain text without asking for the HTML (preferred over copies without HTML, which would change what other programs receive); the mechanism is settled after measuring the cost of html() for an own copy in the red phase. Mechanism (Armin, 2026-11-10, after the measurement): a marker alone gained little, because Qt's data for a selection makes HTML, Markdown, ODF and plain text at the first request (Ctrl+V of 50,000 copied lines 818 to 668 ms); the editor's copy (OwnCopy) offers the same formats, each made only when asked for, plus the marker application/x-hitokoto-copy, and a paste with the marker skips the HTML (255 ms, as the plain text alone)."
   - id: O10
     category: cost
     severity: major
     title: "The benchmark tables hold one-word cells that all take the new plain-text fast path; two-line cells, the case S031 was written for, miss the budgets"
     disposition: fixed
-    disposition_rationale: "Armin, 2026-11-09. Three steps. 1: the benchmark cells are generated like the samples' cells (one word, two lines via two <p> for Outlook and <br> for Excel, text with &, : or _) for all six keys; the numbers go to Armin before code or budgets change. 2: a cell whose Markdown holds nothing but <br> and backslash escapes is laid out as plain text too (tableCellToText, line break as U+2028 in one block); red test in S018_Tables first, the guard cellSizesMatchTheMarkdownRendering gains such cells, the leading-marker escapes of O3 included. 3: measure again; if a budget still trips, Armin and Claude decide it together. Narrowing the exceptions for :, & and @ is left out for now."
+    disposition_rationale: "Armin, 2026-11-09. Three steps. 1: the benchmark cells are generated like the samples' cells (one word, two lines via two <p> for Outlook and <br> for Excel, text with &, : or _) for all six keys; the numbers go to Armin before code or budgets change. 2: a cell whose Markdown holds nothing but <br> and backslash escapes is laid out as plain text too (tableCellToText, line break as U+2028 in one block); red test in S018_Tables first, the guard cellSizesMatchTheMarkdownRendering gains such cells, the leading-marker escapes of O3 included. 3: measure again; if a budget still trips, Armin and Claude decide it together. Narrowing the exceptions for :, & and @ is left out for now. Armin, 2026-11-10, after the numbers of step 1: the cell mix stays; step 2 as planned (core::tableCellPlainLayout); step 3: a colon not followed by // and an ampersand that starts no entity are text too (tableCellIsPlainText), links with ://, e-mail addresses and entities keep the Markdown layout, and the risk of a link form that this misses is accepted (a follow-up story if practice needs it). Numbers in docs/performance.md."
+---
 
 # S031 — Advocatus Diaboli, mode code
 
