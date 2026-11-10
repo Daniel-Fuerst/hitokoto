@@ -198,3 +198,20 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
 - **hitokoto:** up to 255 columns a table, above that every line is text.
 - **Open:** whether wider tables matter in practice; if so, more bits for the column count in the
   block state (ADR 0006) and the cost of showing such a table (S018 budgets).
+
+## CI: fail fast on cheap checks
+
+- **Seen:** 2026-11-10 (Armin, verification of S032 in pull request 36): a commit that breaks
+  `scripts/version/NextVersion.cmake` turns the jobs "Build and test" red only at their last step.
+  The `ctest` cases `S030_*` that run the script with `cmake -P` need no build, but they run in
+  `ctest --preset ci` after "Install Qt", "Configure" and the full "Build", on all four platforms
+  (`fail-fast: false`). The same holds for a formatting error: the job "Format" is red after a
+  minute, while the expensive jobs build to the end.
+- **Now:** accepted; a broken version script is rare (this one was made on purpose for the
+  verification).
+- **Possible:** a quick job without Qt for the cheap checks (`S030_*` cases without the build,
+  `clang-format`), which "Build and test", "Lint (clang-tidy)", "Fuzz core" and "Core with
+  ASan/UBSan" wait for (`needs:`): red after about a minute, at the cost of about a minute more for
+  every green run. Or the `S030_*` cases without the build right after "Configure" in "Build and
+  test" (needs a label for the cases that need the build). Either changes `ci.yml` and is follow-up
+  work of its own.
