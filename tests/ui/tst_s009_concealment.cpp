@@ -169,6 +169,16 @@ private slots:
         for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
             concealedGeometry.push_back(editor->blockLayout()->blockBoundingRect(b));
         }
+        // S032: the two-line setext heading at 9-10 flows while the caret is outside 9..11 and
+        // expands to its two source lines while the caret is on 9..11.
+        f.placeCaret(9);
+        f.settle();
+        std::vector<QRectF> revealedHeadingGeometry;
+        for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+            revealedHeadingGeometry.push_back(editor->blockLayout()->blockBoundingRect(b));
+        }
+        f.placeCaret(12);
+        f.settle();
 
         constexpr std::array kKeys = {Qt::Key_Up,   Qt::Key_Down, Qt::Key_Left,   Qt::Key_Right,
                                       Qt::Key_Home, Qt::Key_End,  Qt::Key_PageUp, Qt::Key_PageDown};
@@ -177,6 +187,8 @@ private slots:
             test::keyClick(editor, kKeys.at(rng.bounded(static_cast<quint32>(kKeys.size()))));
             f.settle();
             const int caretLine = editor->textCursor().blockNumber();
+            const auto& expectedGeometry =
+                (caretLine >= 9 && caretLine <= 11) ? revealedHeadingGeometry : concealedGeometry;
             for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
                 const int n = b.blockNumber();
                 const auto render = styler.renderFor(b);
@@ -195,7 +207,7 @@ private slots:
                     QVERIFY2(render.empty(), qPrintable(where + QStringLiteral(": plain")));
                 }
                 QVERIFY2(
-                    editor->blockLayout()->blockBoundingRect(b) == concealedGeometry.at(static_cast<std::size_t>(n)),
+                    editor->blockLayout()->blockBoundingRect(b) == expectedGeometry.at(static_cast<std::size_t>(n)),
                     qPrintable(where + QStringLiteral(": moved")));
             }
         }
@@ -369,6 +381,74 @@ private slots:
             }
             QWidget* target = QApplication::focusWidget() != nullptr ? QApplication::focusWidget() : editor;
             test::keyClick(target, kKeys.at(rng.bounded(static_cast<quint32>(kKeys.size()))));
+        }
+    }
+
+    // S032: soft and hard line breaks in flowing paragraphs and bullet continuations; the caret is
+    // never in a concealed range (leading continuation spaces, trailing hard-break markers, inline
+    // markers), and the paragraph holding the caret reveals all its source lines onto separate lines.
+    void flowingParagraphsWhileWalking() {
+        constexpr auto document =
+            "# Title\n"                                     // 0
+            "   First line with *emphasis*  \n"             // 1
+            "   second line with \\*escape\\*\n"            // 2
+            "   third line\\\n"                             // 3
+            "   fourth line [link](https://example.com)\n"  // 4
+            "\n"                                            // 5
+            "- bullet item one\n"                           // 6
+            "  continued with **bold** text\n"              // 7
+            "\n"                                            // 8
+            "End line\n";                                   // 9
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("flow.md"), document)));
+        f.placeCaret(0);
+        f.settle();
+        auto* editor = f.editor();
+        auto& styler = editor->styler();
+        const auto* doc = editor->document();
+        std::vector<QRectF> concealedGeometry;
+        for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+            concealedGeometry.push_back(editor->blockLayout()->blockBoundingRect(b));
+        }
+
+        constexpr std::array kKeys = {Qt::Key_Up,   Qt::Key_Down, Qt::Key_Left,   Qt::Key_Right,
+                                      Qt::Key_Home, Qt::Key_End,  Qt::Key_PageUp, Qt::Key_PageDown};
+        QRandomGenerator rng(20261109);
+        for (int step = 0; step < 250; ++step) {
+            test::keyClick(editor, kKeys.at(rng.bounded(static_cast<quint32>(kKeys.size()))));
+            f.settle();
+            const QTextCursor c = editor->textCursor();
+            const QTextBlock block = c.block();
+            const int caretLine = block.blockNumber();
+            const auto column = static_cast<std::uint32_t>(c.positionInBlock());
+            for (const auto& h : styler.renderFor(block).hidden) {
+                QVERIFY2(column < h.span.start || column >= h.span.end() || h.span.length == 0,
+                         qPrintable(QStringLiteral("step %1: caret in hidden text, line %2 column %3")
+                                        .arg(step)
+                                        .arg(caretLine)
+                                        .arg(column)));
+            }
+            if (caretLine >= 1 && caretLine <= 4) {
+                for (int n = 1; n <= 4; ++n) {
+                    const QTextBlock b = doc->findBlockByNumber(n);
+                    const auto r = styler.renderFor(b);
+                    QVERIFY(!r.flowsToNext);
+                    QVERIFY(!r.hardBreak);
+                    QVERIFY(!editor->blockLayout()->sharesLineWithPrevious(b));
+                }
+            } else if (caretLine >= 6 && caretLine <= 7) {
+                for (int n = 6; n <= 7; ++n) {
+                    const QTextBlock b = doc->findBlockByNumber(n);
+                    const auto r = styler.renderFor(b);
+                    QVERIFY(!r.flowsToNext);
+                    QVERIFY(!editor->blockLayout()->sharesLineWithPrevious(b));
+                }
+            } else {
+                for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+                    QCOMPARE(editor->blockLayout()->blockBoundingRect(b),
+                             concealedGeometry.at(static_cast<std::size_t>(b.blockNumber())));
+                }
+            }
         }
     }
 };

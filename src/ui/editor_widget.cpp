@@ -131,7 +131,8 @@ void EditorWidget::keepContentStill(qreal top, qreal oldHeight, qreal newHeight)
     // are what the reader sees. Inside a layout batch the scroll range is not updated yet; the
     // shift is applied when the batch ends.
     const QScrollBar* bar = verticalScrollBar();
-    if (bar->value() <= 0 || top + oldHeight > bar->value() + 0.5) {
+    const qreal visualBottom = oldHeight > 0 ? top + oldHeight : top + newHeight;
+    if (bar->value() <= 0 || visualBottom > bar->value() + 0.5) {
         return;
     }
     pendingShift_ += newHeight - oldHeight;
@@ -225,10 +226,9 @@ std::pair<int, int> EditorWidget::visibleBlockRange() const {
     const int first = block.blockNumber();
     int last = first;
     const qreal bottom = viewport()->height();
-    qreal top = blockBoundingGeometry(block).translated(contentOffset()).top();
-    while (block.isValid() && top <= bottom) {
+    const QPointF offset = contentOffset();
+    while (block.isValid() && blockBoundingGeometry(block).translated(offset).top() <= bottom) {
         last = block.blockNumber();
-        top += blockBoundingGeometry(block).height();
         block = block.next();
     }
     return {first, last};
@@ -439,31 +439,39 @@ bool EditorWidget::viewportEvent(QEvent* event) {
 
 QTextCharFormat EditorWidget::formatAt(const QPoint& pos) const {
     const QPointF docPos(pos.x() + horizontalScrollBar()->value(), pos.y() + verticalScrollBar()->value());
-    const QTextBlock block = layout_->blockAt(docPos.y());
-    if (!block.isValid() || layout_->reservedHeight(block) > 0) {
+    const QTextBlock first = layout_->blockAt(docPos.y());
+    if (!first.isValid()) {
         return {};
     }
-    layout_->ensureBlockLayout(block);
-    const QRectF rect = layout_->blockBoundingRect(block);
-    const QPointF local = docPos - rect.topLeft();
-    const QTextLayout* layout = block.layout();
-    for (int i = 0; i < layout->lineCount(); ++i) {
-        const QTextLine line = layout->lineAt(i);
-        if (local.y() >= line.y() && local.y() < line.y() + line.height()) {
-            if (local.x() < line.x() || local.x() >= line.x() + line.naturalTextWidth()) {
-                return {};
-            }
-            const int col = line.xToCursor(local.x(), QTextLine::CursorOnCharacter);
-            if (col < 0 || col >= block.length()) {
-                return {};
-            }
-            QTextCharFormat merged;
-            for (const auto& range : layout->formats()) {
-                if (col >= range.start && col < range.start + range.length) {
-                    merged.merge(range.format);
+    for (QTextBlock b = first; b.isValid(); b = b.next()) {
+        if (b != first && !layout_->sharesLineWithPrevious(b)) {
+            break;
+        }
+        if (layout_->reservedHeight(b) > 0) {
+            continue;
+        }
+        layout_->ensureBlockLayout(b);
+        const QRectF rect = layout_->blockBoundingRect(b);
+        const QPointF local = docPos - rect.topLeft();
+        const QTextLayout* layout = b.layout();
+        for (int i = 0; i < layout->lineCount(); ++i) {
+            const QTextLine line = layout->lineAt(i);
+            if (local.y() >= line.y() && local.y() < line.y() + line.height()) {
+                if (local.x() < line.x() || local.x() >= line.x() + line.naturalTextWidth()) {
+                    continue;
                 }
+                const int col = line.xToCursor(local.x(), QTextLine::CursorOnCharacter);
+                if (col < 0 || col >= b.length()) {
+                    continue;
+                }
+                QTextCharFormat merged;
+                for (const auto& range : layout->formats()) {
+                    if (col >= range.start && col < range.start + range.length) {
+                        merged.merge(range.format);
+                    }
+                }
+                return merged;
             }
-            return merged;
         }
     }
     return {};

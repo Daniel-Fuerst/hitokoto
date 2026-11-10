@@ -101,6 +101,26 @@ and the walk over block states must stay cheap (S021).
   budget and then in idle slices, again when an edit touches the first line, the lines up to the
   closing one or, while it is open, a line that could close it.
 - `renderDocument()` also reveals the fences of the code block the range is in (S021).
+- **Flowing paragraphs and hard line breaks (S032, 2026-11-09):** A paragraph is a maximal run of
+  lines whose `BlockState` has `underlinable() == true` connected by `BlockLink::continues` (plus
+  any setext underline on the line immediately after the run). While `revealed` does not overlap
+  that run (or its underline), the paragraph flows:
+  - Leading spaces/tabs on paragraph lines (and continuation lines of bullet list items) are
+    concealed with `HideMode::Collapse`, and bullet continuation lines inherit `wrapIndent` from the
+    bullet item's first line.
+  - Each line before the last line of the paragraph either ends with a CommonMark 6.7 hard line
+    break (`2+` trailing spaces or an unescaped trailing `\` outside `opaqueSpans`, setting
+    `LineRender::hardBreak = true` and concealing the trailing spaces or `\`) or a CommonMark 6.8
+    soft line break (`LineRender::flowsToNext = true`, concealing any trailing spaces or tabs). An
+    unescaped trailing `\` before a continuation line always receives `Role::EscapeMarker`, whether
+    flowing or revealed.
+  - When `revealed` overlaps any line of the paragraph (or its setext underline), all lines of the
+    paragraph reveal their raw source lines (`flowsToNext = false`, `hardBreak = false`, leading
+    and trailing spaces and trailing `\` un-concealed), while inline markers (`**`, `` ` ``, links,
+    inline escapes) on each line still reveal only when `revealed.contains(i)`.
+  - In the UI (`BlockStyler`), entering or leaving a paragraph restyles the lines of that paragraph
+    within the 4 ms synchronous budget and continues in idle slices for long paragraphs (20,000
+    lines), just as for setext headings above.
 
 ## Alternatives considered
 

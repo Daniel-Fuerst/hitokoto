@@ -40,7 +40,8 @@ foreach(t IN ITEMS
         tst_s024_front_matter
         tst_s026_floating_toolbar
         tst_s027_smooth_scrolling
-        tst_s028_find_in_file)
+        tst_s028_find_in_file
+        tst_s032_soft_line_breaks)
     hitokoto_ui_test(${t})
 endforeach()
 

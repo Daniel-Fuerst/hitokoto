@@ -22,6 +22,17 @@ const BlockData* dataOf(const QTextBlock& block) {
     return dynamic_cast<const BlockData*>(block.userData());
 }
 
+void setSharesPrevLine(const QTextBlock& block, bool shares) {
+    if (!block.isValid()) {
+        return;
+    }
+    const int state = block.userState() < 0 ? 0 : block.userState();
+    const int updated = shares ? (state | kSharesPrevLineBit) : (state & ~kSharesPrevLineBit);
+    if (updated != state) {
+        const_cast<QTextBlock&>(block).setUserState(updated);
+    }
+}
+
 }  // namespace
 
 BlockLayout::BlockLayout(QTextDocument* document) : QAbstractTextDocumentLayout(document) {
@@ -127,13 +138,13 @@ void BlockLayout::setWrapIndent(const QTextBlock& block, int columns) {
     }
     const int state = block.userState() < 0 ? 0 : block.userState();
     const int prevBits = (state & kWrapIndentMask) >> kWrapIndentShift;
-    const int stateIndent = std::min(columns, 31);
-    const int updated = (state & ~kWrapIndentMask) | ((stateIndent & 0x1F) << kWrapIndentShift);
+    const int stateIndent = std::min(columns, kWrapIndentMax);
+    const int updated = (state & ~kWrapIndentMask) | ((stateIndent & kWrapIndentMax) << kWrapIndentShift);
     const_cast<QTextBlock&>(block).setUserState(updated);
 
-    if (columns >= 31 || prevBits >= 31) {
+    if (columns >= kWrapIndentMax || prevBits >= kWrapIndentMax) {
         auto* data = dynamic_cast<BlockData*>(block.userData());
-        if (columns > 31) {
+        if (columns >= kWrapIndentMax) {
             if (data == nullptr) {
                 data = new BlockData;
                 const_cast<QTextBlock&>(block).setUserData(data);
@@ -150,17 +161,13 @@ void BlockLayout::setWrapIndent(const QTextBlock& block, int columns) {
     if (block.layout()->lineCount() <= 0 || reservedHeight(block) > 0) {
         return;
     }
-    layoutBlock(block);
-    if (!inSync()) {
-        deferred_.push_back(block);
+    if (batch_ > 0) {
+        dirtyBlocks_.push_back(block.blockNumber());
+        batchNeedsRepaint_ = true;
         return;
     }
-    setHeight(block.blockNumber(), heightOf(block), true);
-    if (batch_ > 0) {
-        batchNeedsRepaint_ = true;
-    } else {
-        emit update();
-    }
+    layoutParagraphChain(block, true);
+    emit update();
 }
 
 int BlockLayout::wrapIndent(const QTextBlock& block) const {
@@ -169,7 +176,7 @@ int BlockLayout::wrapIndent(const QTextBlock& block) const {
     }
     const int state = block.userState();
     const int bits = state < 0 ? 0 : (state & kWrapIndentMask) >> kWrapIndentShift;
-    if (bits < 31) {
+    if (bits < kWrapIndentMax) {
         return bits;
     }
     const BlockData* data = dataOf(block);
@@ -178,6 +185,62 @@ int BlockLayout::wrapIndent(const QTextBlock& block) const {
 
 qreal BlockLayout::bulletIndent() const {
     return std::round(averageCharWidth_ * 2.0);
+}
+
+void BlockLayout::setParagraphFlow(const QTextBlock& block, bool flowsToNext, bool hardBreak) {
+    if (!block.isValid()) {
+        return;
+    }
+    const int state = block.userState() < 0 ? 0 : block.userState();
+    const bool oldFlows = (state & kFlowsToNextBit) != 0;
+    const bool oldHard = (state & kHardBreakBit) != 0;
+    int updated = state & ~(kFlowsToNextBit | kHardBreakBit);
+    if (flowsToNext) {
+        updated |= kFlowsToNextBit;
+    }
+    if (hardBreak) {
+        updated |= kHardBreakBit;
+    }
+    if (updated != state) {
+        const_cast<QTextBlock&>(block).setUserState(updated);
+    }
+    const bool flowChanged = (oldFlows != flowsToNext) || (oldHard != hardBreak);
+    const bool inChain =
+        flowsToNext || hardBreak || sharesLineWithPrevious(block) || continuesFlowFrom(block.previous(), block);
+    if (!flowChanged && !(block.layout()->lineCount() > 0 && inChain)) {
+        return;
+    }
+    const bool anyLaidOut =
+        block.layout()->lineCount() > 0 || sharesLineWithPrevious(block) ||
+        (block.previous().isValid() && block.previous().layout()->lineCount() > 0) ||
+        (block.next().isValid() && (block.next().layout()->lineCount() > 0 || sharesLineWithPrevious(block.next())));
+    if (!anyLaidOut) {
+        return;
+    }
+    dirtyBlocks_.push_back(block.blockNumber());
+    if (flowChanged && block.next().isValid()) {
+        dirtyBlocks_.push_back(block.next().blockNumber());
+    }
+    if (batch_ == 0) {
+        flushDirtyChains(true);
+    }
+}
+
+bool BlockLayout::flowsToNext(const QTextBlock& block) const {
+    return block.isValid() && block.userState() >= 0 && (block.userState() & kFlowsToNextBit) != 0;
+}
+
+bool BlockLayout::hardBreak(const QTextBlock& block) const {
+    return block.isValid() && block.userState() >= 0 && (block.userState() & kHardBreakBit) != 0;
+}
+
+bool BlockLayout::sharesLineWithPrevious(const QTextBlock& block) const {
+    return block.isValid() && block.userState() >= 0 && (block.userState() & kSharesPrevLineBit) != 0;
+}
+
+bool BlockLayout::continuesFlowFrom(const QTextBlock& prev, const QTextBlock& cur) const {
+    return prev.isValid() && cur.isValid() && prev.isVisible() && cur.isVisible() && reservedHeight(prev) <= 0 &&
+           reservedHeight(cur) <= 0 && (flowsToNext(prev) || hardBreak(prev));
 }
 
 BlockLayout::Batch::Batch(BlockLayout* layout) : layout_(layout) {
@@ -190,6 +253,7 @@ BlockLayout::Batch::~Batch() {
     if (layout_ == nullptr || --layout_->batch_ > 0) {
         return;
     }
+    layout_->flushDirtyChains(false);
     if (layout_->batchChanged_) {
         // Blocks report their own repaints (updateBlock); only the size is still owed.
         layout_->batchChanged_ = false;
@@ -222,6 +286,7 @@ void BlockLayout::refreshMetrics() {
     const QFontMetricsF metrics(document()->defaultFont());
     lineSpacing_ = metrics.lineSpacing();
     averageCharWidth_ = metrics.averageCharWidth();
+    spaceWidth_ = metrics.horizontalAdvance(QLatin1Char(' '));
 }
 
 qreal BlockLayout::estimatedHeight(const QTextBlock& block) const {
@@ -237,6 +302,13 @@ qreal BlockLayout::estimatedHeight(const QTextBlock& block) const {
 }
 
 qreal BlockLayout::layoutBlock(const QTextBlock& block) const {
+    qreal subLeft = 0;
+    qreal subWidth = 0;
+    return layoutSingleBlock(block, subLeft, subWidth);
+}
+
+qreal BlockLayout::layoutSingleBlock(const QTextBlock& block, qreal& subLeft, qreal& subWidth) const {
+    setSharesPrevLine(block, false);
     QTextLayout* layout = block.layout();
     layout->setTextOption(document()->defaultTextOption());
     layout->beginLayout();
@@ -253,6 +325,8 @@ qreal BlockLayout::layoutBlock(const QTextBlock& block) const {
     if (!line0.isValid()) {
         layout->endLayout();
         layout->setPosition(QPointF(0, 0));
+        subLeft = left;
+        subWidth = width;
         return height + spaceBelow(block);
     }
     line0.setLeadingIncluded(true);
@@ -264,8 +338,8 @@ qreal BlockLayout::layoutBlock(const QTextBlock& block) const {
     if (wrapCols > 0 && wrapCols <= line0.textLength()) {
         indent = std::max<qreal>(0, line0.cursorToX(wrapCols) - left);
     }
-    const qreal subWidth = (indent > 0 && width > indent + 20) ? width - indent : width;
-    const qreal subLeft = (subWidth < width) ? left + indent : left;
+    subWidth = (indent > 0 && width > indent + 20) ? width - indent : width;
+    subLeft = (subWidth < width) ? left + indent : left;
 
     while (true) {
         QTextLine line = layout->createLine();
@@ -280,6 +354,211 @@ qreal BlockLayout::layoutBlock(const QTextBlock& block) const {
     layout->endLayout();
     layout->setPosition(QPointF(0, 0));
     return height + spaceBelow(block);
+}
+
+void BlockLayout::layoutContinuationBlock(const QTextBlock& prev, const QTextBlock& cur, qreal subLeft,
+                                          qreal subWidth) const {
+    QTextLayout* layout = cur.layout();
+    const QTextLayout* prevLayout = prev.layout();
+    bool placedOnPrev = false;
+    if (flowsToNext(prev) && prevLayout->lineCount() > 0) {
+        const QTextLine prevLast = prevLayout->lineAt(prevLayout->lineCount() - 1);
+        const qreal gap = lineSpacing_ > 0 ? spaceWidth_ * (prevLast.height() / lineSpacing_) : spaceWidth_;
+        const qreal nextX = prevLast.x() + prevLast.naturalTextWidth() + gap;
+        const qreal remWidth = (subLeft + subWidth) - nextX;
+        const QString text = cur.text();
+        int firstNonSpace = 0;
+        while (firstNonSpace < text.size() &&
+               (text[firstNonSpace] == QLatin1Char(' ') || text[firstNonSpace] == QLatin1Char('\t'))) {
+            ++firstNonSpace;
+        }
+        if (remWidth > 1.0 && firstNonSpace < text.size()) {
+            QTextOption wordWrap = document()->defaultTextOption();
+            wordWrap.setWrapMode(QTextOption::WordWrap);
+            layout->setTextOption(wordWrap);
+            layout->beginLayout();
+            QTextLine line0 = layout->createLine();
+            if (line0.isValid()) {
+                line0.setLeadingIncluded(true);
+                line0.setLineWidth(remWidth);
+                if (line0.textStart() + line0.textLength() > firstNonSpace &&
+                    line0.naturalTextWidth() <= remWidth + 0.5) {
+                    const qreal y0 = spaceAbove(cur);
+                    line0.setPosition(QPointF(nextX, y0));
+                    qreal y = y0 + std::max(line0.height(), prevLast.height());
+                    layout->setTextOption(document()->defaultTextOption());
+                    while (true) {
+                        QTextLine line = layout->createLine();
+                        if (!line.isValid()) {
+                            break;
+                        }
+                        line.setLeadingIncluded(true);
+                        line.setLineWidth(subWidth);
+                        line.setPosition(QPointF(subLeft, y));
+                        y += line.height();
+                    }
+                    layout->endLayout();
+                    layout->setPosition(QPointF(0, 0));
+                    setSharesPrevLine(cur, true);
+                    placedOnPrev = true;
+                } else {
+                    layout->endLayout();
+                }
+            } else {
+                layout->endLayout();
+            }
+        }
+    }
+    if (!placedOnPrev) {
+        setSharesPrevLine(cur, false);
+        layout->setTextOption(document()->defaultTextOption());
+        layout->beginLayout();
+        qreal y = spaceAbove(cur);
+        while (true) {
+            QTextLine line = layout->createLine();
+            if (!line.isValid()) {
+                break;
+            }
+            line.setLeadingIncluded(true);
+            line.setLineWidth(subWidth);
+            line.setPosition(QPointF(subLeft, y));
+            y += line.height();
+        }
+        layout->endLayout();
+        layout->setPosition(QPointF(0, 0));
+    }
+}
+
+int BlockLayout::layoutParagraphChain(const QTextBlock& target, bool emitNow) const {
+    if (!target.isValid()) {
+        return -1;
+    }
+    if (!target.isVisible() || reservedHeight(target) > 0) {
+        setSharesPrevLine(target, false);
+        if (!inSync()) {
+            deferred_.push_back(target);
+        } else {
+            setHeight(target.blockNumber(), advanceOf(target), emitNow);
+        }
+        return target.blockNumber();
+    }
+
+    constexpr int kMaxLookback = 64;
+    QTextBlock start = target;
+    int stepsBack = 0;
+    while (stepsBack < kMaxLookback && continuesFlowFrom(start.previous(), start) && !hardBreak(start.previous())) {
+        start = start.previous();
+        ++stepsBack;
+    }
+
+    const qreal width = availableWidth();
+    const qreal left = margin();
+    qreal subLeft = left;
+    qreal subWidth = width;
+    const int wrapCols = wrapIndent(start);
+    if (wrapCols > 0) {
+        QTextBlock head = start;
+        int headSteps = 0;
+        while (headSteps < kMaxLookback && continuesFlowFrom(head.previous(), head)) {
+            head = head.previous();
+            ++headSteps;
+        }
+        if (head != start) {
+            if (head.layout()->lineCount() == 0) {
+                layoutSingleBlock(head, subLeft, subWidth);
+                if (!inSync()) {
+                    deferred_.push_back(head);
+                } else {
+                    setHeight(head.blockNumber(), advanceOf(head), emitNow);
+                }
+            } else {
+                const QTextLine l0 = head.layout()->lineAt(0);
+                const qreal indent =
+                    wrapCols <= l0.textLength() ? std::max<qreal>(0, l0.cursorToX(wrapCols) - left) : 0;
+                subWidth = (indent > 0 && width > indent + 20) ? width - indent : width;
+                subLeft = (subWidth < width) ? left + indent : left;
+            }
+        }
+    }
+
+    std::vector<QTextBlock> laidOut;
+    if (start.previous().isValid() && start.previous().layout()->lineCount() > 0) {
+        laidOut.push_back(start.previous());
+    }
+    if (!continuesFlowFrom(start.previous(), start)) {
+        layoutSingleBlock(start, subLeft, subWidth);
+    } else {
+        layoutContinuationBlock(start.previous(), start, subLeft, subWidth);
+    }
+    laidOut.push_back(start);
+
+    const int targetNum = target.blockNumber();
+    QTextBlock prev = start;
+    while (true) {
+        QTextBlock cur = prev.next();
+        if (!cur.isValid()) {
+            break;
+        }
+        const bool continues = continuesFlowFrom(prev, cur);
+        const bool wasSharing = sharesLineWithPrevious(cur);
+        if (!continues) {
+            if (wasSharing) {
+                setSharesPrevLine(cur, false);
+                if (cur.layout()->lineCount() > 0) {
+                    qreal sl = 0;
+                    qreal sw = 0;
+                    layoutSingleBlock(cur, sl, sw);
+                    laidOut.push_back(cur);
+                }
+            }
+            break;
+        }
+        const bool curHadLayout = cur.layout()->lineCount() > 0;
+        layoutContinuationBlock(prev, cur, subLeft, subWidth);
+        laidOut.push_back(cur);
+        prev = cur;
+        if (cur.blockNumber() > targetNum && !curHadLayout &&
+            (!sharesLineWithPrevious(cur) || cur.layout()->lineCount() > 1)) {
+            break;
+        }
+    }
+
+    for (const QTextBlock& b : laidOut) {
+        if (!inSync()) {
+            deferred_.push_back(b);
+        } else {
+            setHeight(b.blockNumber(), advanceOf(b), emitNow);
+        }
+    }
+    return prev.blockNumber();
+}
+
+void BlockLayout::flushDirtyChains(bool emitNow) const {
+    if (dirtyBlocks_.empty() || flushingDirty_) {
+        return;
+    }
+    flushingDirty_ = true;
+    std::vector<int> blocks;
+    blocks.swap(dirtyBlocks_);
+    std::sort(blocks.begin(), blocks.end());
+    blocks.erase(std::unique(blocks.begin(), blocks.end()), blocks.end());
+    int lastLaidOut = -1;
+    for (const int num : blocks) {
+        const QTextBlock b = document()->findBlockByNumber(num);
+        if (!b.isValid() || !b.isVisible() || reservedHeight(b) > 0) {
+            continue;
+        }
+        if (num <= lastLaidOut && continuesFlowFrom(b.previous(), b)) {
+            continue;
+        }
+        lastLaidOut = std::max(lastLaidOut, layoutParagraphChain(b, emitNow));
+    }
+    flushingDirty_ = false;
+    if (batch_ > 0) {
+        const_cast<BlockLayout*>(this)->batchNeedsRepaint_ = true;
+    } else if (emitNow) {
+        emit const_cast<BlockLayout*>(this)->update();
+    }
 }
 
 qreal BlockLayout::heightOf(const QTextBlock& block) const {
@@ -303,6 +582,25 @@ qreal BlockLayout::heightOf(const QTextBlock& block) const {
     return bottom + spaceBelow(block);
 }
 
+qreal BlockLayout::advanceOf(const QTextBlock& block) const {
+    if (!block.isVisible()) {
+        return 0;
+    }
+    if (const qreal reserved = reservedHeight(block); reserved > 0) {
+        return reserved;
+    }
+    const QTextLayout* layout = block.layout();
+    if (layout->lineCount() == 0) {
+        return estimatedHeight(block);
+    }
+    const QTextBlock next = block.next();
+    if (next.isValid() && sharesLineWithPrevious(next)) {
+        const QTextLine lastLine = layout->lineAt(layout->lineCount() - 1);
+        return lastLine.y();
+    }
+    return heightOf(block);
+}
+
 bool BlockLayout::inSync() const {
     // Qt emits QTextDocument::contentsChange before it calls documentChanged; slots that query the
     // layout in between see the new blocks while heights_ still has the old numbering.
@@ -310,15 +608,16 @@ bool BlockLayout::inSync() const {
 }
 
 void BlockLayout::ensureBlockLayout(const QTextBlock& block) const {
-    if (!block.isValid() || block.layout()->lineCount() > 0) {
+    if (!block.isValid()) {
         return;
     }
-    layoutBlock(block);
-    if (!inSync()) {
-        deferred_.push_back(block);  // stored once documentChanged has renumbered
+    if (!dirtyBlocks_.empty()) {
+        flushDirtyChains(batch_ == 0);
+    }
+    if (block.layout()->lineCount() > 0) {
         return;
     }
-    setHeight(block.blockNumber(), heightOf(block), false);
+    layoutParagraphChain(block, false);
 }
 
 void BlockLayout::blockLayoutChanged(const QTextBlock& block) {
@@ -329,7 +628,7 @@ void BlockLayout::blockLayoutChanged(const QTextBlock& block) {
         deferred_.push_back(block);
         return;
     }
-    setHeight(block.blockNumber(), heightOf(block), true);
+    setHeight(block.blockNumber(), advanceOf(block), true);
     emit update();
 }
 
@@ -338,7 +637,7 @@ void BlockLayout::storeDeferredHeights() {
     blocks.swap(deferred_);
     for (const QTextBlock& block : blocks) {
         if (block.isValid()) {
-            setHeight(block.blockNumber(), heightOf(block), batch_ == 0);
+            setHeight(block.blockNumber(), advanceOf(block), batch_ == 0);
         }
     }
 }
@@ -393,7 +692,14 @@ void BlockLayout::estimateAll() {
 
 QTextBlock BlockLayout::blockAt(qreal y) const {
     const std::size_t index = heights_.indexAt(y - margin());
-    return index < heights_.size() ? document()->findBlockByNumber(static_cast<int>(index)) : QTextBlock{};
+    if (index >= heights_.size()) {
+        return {};
+    }
+    QTextBlock b = document()->findBlockByNumber(static_cast<int>(index));
+    while (b.isValid() && sharesLineWithPrevious(b) && b.previous().isValid()) {
+        b = b.previous();
+    }
+    return b;
 }
 
 QRectF BlockLayout::blockBoundingRect(const QTextBlock& block) const {
@@ -405,8 +711,7 @@ QRectF BlockLayout::blockBoundingRect(const QTextBlock& block) const {
     }
     const qreal top = margin() + heights_.sumBefore(static_cast<std::size_t>(block.blockNumber()));
     const qreal width = document()->textWidth() > 0 ? document()->textWidth() : availableWidth() + 2 * margin();
-    const auto number = static_cast<std::size_t>(block.blockNumber());
-    const qreal height = inSync() && number < heights_.size() ? heights_.height(number) : heightOf(block);
+    const qreal height = heightOf(block);
     return {0, top, width, height};
 }
 
@@ -427,49 +732,73 @@ int BlockLayout::pageCount() const {
 }
 
 int BlockLayout::hitTest(const QPointF& point, Qt::HitTestAccuracy accuracy) const {
-    QTextBlock block = blockAt(point.y());
-    if (!block.isValid()) {
+    QTextBlock first = blockAt(point.y());
+    if (!first.isValid()) {
         if (accuracy == Qt::ExactHit) {
             return -1;
         }
-        block = document()->lastBlock();
+        QTextBlock block = document()->lastBlock();
         while (block.isValid() && !block.isVisible()) {
             block = block.previous();
         }
         return block.isValid() ? block.position() + block.length() - 1 : 0;
     }
-    const QRectF rect = blockBoundingRect(block);
-    if (reservedHeight(block) > 0) {
-        return block.position();
+    if (reservedHeight(first) > 0) {
+        return first.position();
     }
-    const QTextLayout* layout = block.layout();
-    const QPointF local = point - rect.topLeft();
-    // Lines may sit side by side (table cells): prefer the line whose box holds the point, then
-    // the line at that height, then the nearest line above or below.
-    int best = -1;
-    for (int i = 0; i < layout->lineCount(); ++i) {
-        const QTextLine line = layout->lineAt(i);
-        if (local.y() >= line.y() && local.y() < line.y() + line.height()) {
-            const bool inside = local.x() >= line.x() && local.x() < line.x() + line.width();
-            if (inside || best < 0) {
-                best = i;
-            }
-            if (inside) {
-                break;
+    struct Candidate {
+        QTextBlock block;
+        QTextLine line;
+        QPointF local;
+    };
+    std::vector<Candidate> row;
+    for (QTextBlock b = first; b.isValid(); b = b.next()) {
+        if (b != first && !sharesLineWithPrevious(b)) {
+            break;
+        }
+        if (!b.isVisible() || reservedHeight(b) > 0) {
+            continue;
+        }
+        const QRectF rect = blockBoundingRect(b);
+        const QPointF local = point - rect.topLeft();
+        const QTextLayout* layout = b.layout();
+        for (int i = 0; i < layout->lineCount(); ++i) {
+            const QTextLine line = layout->lineAt(i);
+            if (local.y() >= line.y() && local.y() < line.y() + line.height()) {
+                row.push_back({b, line, local});
             }
         }
     }
-    if (best < 0 && layout->lineCount() > 0) {
-        best = local.y() < layout->lineAt(0).y() ? 0 : layout->lineCount() - 1;
+    if (!row.empty()) {
+        if (accuracy == Qt::ExactHit) {
+            for (const auto& c : row) {
+                if (c.local.x() >= c.line.x() && c.local.x() <= c.line.x() + c.line.naturalTextWidth()) {
+                    return c.block.position() + c.line.xToCursor(c.local.x());
+                }
+            }
+            return -1;
+        }
+        std::size_t chosen = 0;
+        for (std::size_t i = 0; i < row.size(); ++i) {
+            if (row[i].local.x() >= row[i].line.x()) {
+                chosen = i;
+            }
+        }
+        const auto& c = row[chosen];
+        return c.block.position() + c.line.xToCursor(c.local.x());
     }
-    if (best < 0) {
-        return block.position();
+    const QRectF rect = blockBoundingRect(first);
+    const QTextLayout* layout = first.layout();
+    const QPointF local = point - rect.topLeft();
+    if (layout->lineCount() == 0) {
+        return first.position();
     }
+    const int best = local.y() < layout->lineAt(0).y() ? 0 : layout->lineCount() - 1;
     const QTextLine line = layout->lineAt(best);
     if (accuracy == Qt::ExactHit && (local.x() < line.x() || local.x() > line.x() + line.naturalTextWidth())) {
         return -1;
     }
-    return block.position() + line.xToCursor(local.x());
+    return first.position() + line.xToCursor(local.x());
 }
 
 // --- painting ---------------------------------------------------------------------------------
@@ -548,7 +877,9 @@ void BlockLayout::applyChange(int position, int charsRemoved, int charsAdded) {
     if (std::abs(available - laidOutWidth_) > 0.5 || oldCount == 0 || (wholeDocument && charsRemoved == 0)) {
         // Everything wraps anew: estimate all blocks, lay them out lazily.
         laidOutWidth_ = available;
+        dirtyBlocks_.clear();
         for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+            setSharesPrevLine(b, false);
             b.layout()->clearLayout();
         }
         estimateAll();
@@ -573,17 +904,16 @@ void BlockLayout::applyChange(int position, int charsRemoved, int charsAdded) {
     const int delta = newCount - oldCount;
 
     if (delta == 0 && first == last) {
+        const qreal before = heights_.height(static_cast<std::size_t>(firstNumber));
         first.layout()->clearLayout();
         if (first.isVisible() && reservedHeight(first) <= 0) {
-            layoutBlock(first);
+            layoutParagraphChain(first, true);
         }
-        const qreal before = heights_.height(static_cast<std::size_t>(firstNumber));
-        const qreal after = heightOf(first);
+        const qreal after = heights_.height(static_cast<std::size_t>(firstNumber));
         if (std::abs(after - before) < 1e-6) {
             emit updateBlock(first);
             return;
         }
-        setHeight(firstNumber, after, true);
         if (batch_ == 0) {
             const qreal top = margin() + heights_.sumBefore(static_cast<std::size_t>(firstNumber));
             emit update(QRectF(0, top, documentSize().width(), documentSize().height() - top));
@@ -619,6 +949,10 @@ void BlockLayout::applyChange(int position, int charsRemoved, int charsAdded) {
     // Keep the heights of blocks whose layouts are dropped: they are right unless the text
     // changed, and laying the block out again corrects them.
     for (QTextBlock b = first; b.isValid(); b = b.next()) {
+        if (b.layout()->lineCount() > 0 &&
+            (flowsToNext(b) || hardBreak(b) || sharesLineWithPrevious(b) || continuesFlowFrom(b.previous(), b))) {
+            dirtyBlocks_.push_back(b.blockNumber());
+        }
         b.layout()->clearLayout();
         if (b == last) {
             break;

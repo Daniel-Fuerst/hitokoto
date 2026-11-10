@@ -58,6 +58,13 @@ public:
     /// Default indent applied to the start of a bullet list item (S003).
     [[nodiscard]] qreal bulletIndent() const;
 
+    /// S032: whether `block` flows into `block.next()` (soft break) or starts `block.next()` on a
+    /// new line of the same flowing paragraph (hard break).
+    void setParagraphFlow(const QTextBlock& block, bool flowsToNext, bool hardBreak);
+    [[nodiscard]] bool flowsToNext(const QTextBlock& block) const;
+    [[nodiscard]] bool hardBreak(const QTextBlock& block) const;
+    [[nodiscard]] bool sharesLineWithPrevious(const QTextBlock& block) const;
+
     /// The visible block at document y, or an invalid block below the last one.
     [[nodiscard]] QTextBlock blockAt(qreal y) const;
     /// Lays out `block` now unless it already has lines.
@@ -115,7 +122,13 @@ private:
     [[nodiscard]] qreal estimatedHeight(const QTextBlock& block) const;
     /// Lays out the lines of `block` (wrapping at the available width) and returns its height.
     qreal layoutBlock(const QTextBlock& block) const;
+    qreal layoutSingleBlock(const QTextBlock& block, qreal& subLeft, qreal& subWidth) const;
+    void layoutContinuationBlock(const QTextBlock& prev, const QTextBlock& cur, qreal subLeft, qreal subWidth) const;
+    int layoutParagraphChain(const QTextBlock& target, bool emitNow) const;
+    void flushDirtyChains(bool emitNow) const;
+    [[nodiscard]] bool continuesFlowFrom(const QTextBlock& prev, const QTextBlock& cur) const;
     [[nodiscard]] qreal heightOf(const QTextBlock& block) const;
+    [[nodiscard]] qreal advanceOf(const QTextBlock& block) const;
     /// Stores `height` for block `number`; emits the size and height signals when it changed.
     void setHeight(int number, qreal height, bool emitNow) const;
     /// Estimated heights for every block (loading, a new width).
@@ -129,9 +142,12 @@ private:
     mutable core::HeightIndex heights_;
     mutable bool sizeChangePending_ = false;
     mutable std::vector<QTextBlock> deferred_;  ///< laid out while heights_ was stale
+    mutable std::vector<int> dirtyBlocks_;      ///< flowing chains to relayout at batch end
+    mutable bool flushingDirty_ = false;
     qreal laidOutWidth_ = -1;
     qreal lineSpacing_ = 0;       ///< of the default font, for estimates
     qreal averageCharWidth_ = 0;  ///< of the default font, for estimates
+    qreal spaceWidth_ = 0;        ///< width of a space in the default font (S032)
     int cursorWidth_ = 1;
     int batch_ = 0;
     mutable bool batchChanged_ = false;
