@@ -98,6 +98,27 @@ Cells with `R&D` or `09:30` still take Qt's Markdown layout. Median of five:
 | Excel 500 × 10 | 306 ms | 267 ms | 500 ms |
 | Excel 50 × 100 | 339 ms | 316 ms | 500 ms |
 
+Step 3 (Armin, 2026-11-10): a colon not followed by `//` and an ampersand that starts no entity
+are text, so `R&D` and `09:30` cells are laid out as plain text too (`core::tableCellIsPlainText`;
+links with `://`, e-mail addresses and entities still take the Markdown layout; a link form that
+GFM does not recognise is an accepted risk, a follow-up story if practice needs it). The same rule
+as a spike on the same VM: Outlook 42 / 386 / 453 ms, Excel 27 / 220 / 265 ms (50 × 10, 500 × 10,
+50 × 100), every budget held. The implementation was measured after the session moved to a VM about
+1.3 times slower (`s018_table_open_ms` about 80–95 instead of 62 ms, the paste without a table 33
+instead of 25 ms), step 2 and step 3 in turn:
+
+| Table | Step 2 | Step 3 | Budget (hard) |
+|---|---|---|---|
+| Outlook 50 × 10 | 68 ms | 57–59 ms | 50 ms |
+| Outlook 500 × 10 | 541 ms | 487–523 ms | 500 ms |
+| Outlook 50 × 100 | 598 ms | 532–536 ms | 500 ms |
+| Excel 50 × 10 | 44 ms | 36–37 ms | 50 ms |
+| Excel 500 × 10 | 344 ms | 278–283 ms | 500 ms |
+| Excel 50 × 100 | 402 ms | 337–347 ms | 500 ms |
+
+Step 3 takes 15–20 % off step 2. Whether the Outlook budgets hold on the CI runner shows its run;
+on the earlier VM they held with a margin of about 1.2 (Outlook 50 × 10).
+
 Margin of the hard budgets (review O8): Outlook 50 × 10 with one-word cells took 35 ms on the VM
 (factor 1.4 to the budget) and 32 ms on the CI runner for 2178d93 (factor 1.55). Runner and VM
 compared on the same code before and after the S018 sizing fix: `s018_table_open_ms` 158–160 / 96

@@ -260,7 +260,27 @@ bool tableCellIsPlainText(std::u16string_view markdown) noexcept {
         }
         return std::u16string_view(u" ,.;?%/()'\"-+=$").find(c) != std::u16string_view::npos;
     };
-    if (!std::all_of(markdown.begin(), markdown.end(), plainCharacter)) {
+    // A colon starts syntax only in a link scheme (`https://`, GFM's and Qt's autolinks), an
+    // ampersand only in an entity (a name or `#` and digits, then `;`); otherwise both are text
+    // (S031 review (code) O10, step 3). `@` (e-mail autolinks) stays refused.
+    const auto startsEntity = [markdown](std::size_t at) {
+        std::size_t j = at + 1;
+        if (j < markdown.size() && markdown[j] == u'#') {
+            ++j;
+        }
+        const std::size_t name = j;
+        while (j < markdown.size() &&
+               ((markdown[j] >= u'a' && markdown[j] <= u'z') || (markdown[j] >= u'A' && markdown[j] <= u'Z') ||
+                (markdown[j] >= u'0' && markdown[j] <= u'9'))) {
+            ++j;
+        }
+        return j > name && j < markdown.size() && markdown[j] == u';';
+    };
+    for (std::size_t i = 0; i < markdown.size(); ++i) {
+        const char16_t c = markdown[i];
+        if (plainCharacter(c) || (c == u':' && markdown.substr(i + 1, 2) != u"//") || (c == u'&' && !startsEntity(i))) {
+            continue;
+        }
         return false;
     }
     if (markdown.empty()) {

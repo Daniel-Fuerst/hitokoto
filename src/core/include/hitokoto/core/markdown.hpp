@@ -423,10 +423,10 @@ std::size_t separateTextAfterTables(DecodedText& decoded, const ElementRegistry&
 /// Cell Markdown as text to edit: `\|` becomes `|`, `<br>` (any spelling, not escaped) a line break.
 [[nodiscard]] std::u16string tableCellToText(std::u16string_view markdown);
 /// Whether GFM shows the cell Markdown as exactly its characters in one plain paragraph: no
-/// character that could start syntax (escapes, emphasis, code, links, HTML, entities, autolinks)
-/// and no block marker at its start. The UI then lays the cell out as plain text, which is several
-/// times faster than Qt's Markdown import (S031: sizing pasted tables). Conservative: false
-/// does not mean the cell holds syntax.
+/// character that could start syntax (escapes, emphasis, code, links, HTML, entities, autolinks;
+/// a colon only before `//`, an ampersand only before an entity) and no block marker at its start. The UI then lays the
+/// cell out as plain text, which is several times faster than Qt's Markdown import (S031: sizing pasted tables).
+/// Conservative: false does not mean the cell holds syntax.
 [[nodiscard]] bool tableCellIsPlainText(std::u16string_view markdown) noexcept;
 /// Cell Markdown with a block marker at its start escaped, for laying the cell out as a Markdown
 /// document of its own: GFM reads a cell as inline text, so `# 12`, `> 5 kg`, `- 5 %`, `1. Jänner`,
