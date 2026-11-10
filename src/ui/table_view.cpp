@@ -154,6 +154,9 @@ void TableDelegate::prepare(QTextDocument& document, const QModelIndex& index, Q
         formatBlocks(document, index);
         return;
     }
+    // GFM reads a cell as inline text: a block marker at its start shows as its characters there,
+    // so it is escaped for this document of its own; the file keeps it (S031 review O3).
+    source = toQString(core::escapeTableCellBlockStart(view(source)));
     // GFM shows an escaped pipe as a pipe, also in code; Qt 6.12 drops everything after a <br>
     // without slash, so every spelling becomes <br/> (ADR 0005). A <br> after an odd number of
     // backslashes is text and stays as it is (S031 review O3).

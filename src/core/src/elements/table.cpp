@@ -289,7 +289,60 @@ bool tableCellIsPlainText(std::u16string_view markdown) noexcept {
 }
 
 std::u16string escapeTableCellBlockStart(std::u16string_view markdown) {
-    return std::u16string(markdown);  // stub (S031 review O3)
+    std::u16string out(markdown);
+    if (markdown.empty()) {
+        return out;
+    }
+    const auto blankOrEnd = [markdown](std::size_t at) {
+        return at == markdown.size() || blocks::isBlank(markdown[at]);
+    };
+    const char16_t c = markdown.front();
+    bool marker = false;
+    switch (c) {
+        case u'#':
+            marker = blocks::isAtxHeadingFrom(markdown, 0);
+            break;
+        case u'>':
+            marker = true;
+            break;
+        case u'-':
+        case u'+':
+        case u'*':
+            marker = blankOrEnd(1) || blocks::isThematicBreak(markdown);
+            break;
+        case u'_':
+            marker = blocks::isThematicBreak(markdown);
+            break;
+        case u'~':
+            marker = blocks::isFenceFrom(markdown, 0);
+            break;
+        case u'`': {
+            // A backtick fence has no backtick in its info string; otherwise it is a code span.
+            const std::size_t run = markdown.find_first_not_of(u'`');
+            marker = blocks::isFenceFrom(markdown, 0) &&
+                     (run == std::u16string_view::npos || markdown.find(u'`', run) == std::u16string_view::npos);
+            break;
+        }
+        case u'[':
+            marker = blocks::otherBlockStart(markdown, blocks::After::Block) == blocks::OtherBlock::Opaque;
+            break;
+        default:
+            break;
+    }
+    if (marker) {
+        out.insert(out.begin(), u'\\');
+        return out;
+    }
+    // An ordered list item: one to nine digits, `.` or `)`, then a blank or the end.
+    std::size_t digits = 0;
+    while (digits < markdown.size() && markdown[digits] >= u'0' && markdown[digits] <= u'9') {
+        ++digits;
+    }
+    if (digits >= 1 && digits <= 9 && digits < markdown.size() &&
+        (markdown[digits] == u'.' || markdown[digits] == u')') && blankOrEnd(digits + 1)) {
+        out.insert(out.begin() + static_cast<std::ptrdiff_t>(digits), u'\\');
+    }
+    return out;
 }
 
 std::u16string tableCellToText(std::u16string_view markdown) {

@@ -31,7 +31,8 @@ table by hand.
    arrives as today's plain paste would give it.
 5. **Paste as Plain Text** (review O10): `Ctrl+Shift+V` (`Cmd+Shift+V` on macOS), also in the Edit
    menu and the editor's context menu, always pastes the plain text without conversion, as
-   Obsidian does.
+   Obsidian does. The key acts where the focus is (review (code) O2): in a cell editor or a text
+   field such as the find field it pastes into it as `Ctrl+V` does there.
 
 Example (invented): a table with three columns whose second row has two lines in its second and
 third cell becomes
@@ -49,8 +50,11 @@ third cell becomes
   context menu) in the editor text, with the caret outside a fenced code block, front matter and a
   table's cells. In a code block or front matter, in a cell of a shown table (S018) and on the
   Markdown lines of a table (source view `Ctrl+Shift+M`, or a row being typed), the plain text is
-  pasted as today (review O7). Drag and drop is not converted. `Paste as Plain Text` never
-  converts (decision 5).
+  pasted as today (review O7). The same in a block quote or list item, which a table would split
+  (review (code) O4; carrying the container's prefix onto the table goes to `unrefined.md` if
+  practice needs tables in lists). Drag and drop is not converted. A middle-click paste of the
+  primary selection (Linux) converts like `Ctrl+V`: it is a paste from the second buffer, as in Qt
+  and LibreOffice (review (code) O5). `Paste as Plain Text` never converts (decision 5).
 - **What counts as a table, HTML.** A table of the HTML flavour with at least two rows and two
   columns. A smaller table counts as text: its cells' lines, row by row, one line each. Without
   any table that counts, the whole paste is plain text as today.
@@ -81,7 +85,8 @@ third cell becomes
   and digits and then `;` (`&amp;`, `&#38;`, `&foo;`; review O9: also names that are no
   character reference, which is harmless; `R&D` and `A & B` stay). A literal `<br>` in the source
   thus stays text. Other characters stay as they are (block syntax such as `#` or `>` has no
-  effect in a cell).
+  effect in a cell; S018's display escapes a block marker at a cell's start for its own rendering,
+  so `1. Jänner` or `> 5 kg` show as copied, review (code) O3).
   The cell with the caret shows its Markdown with the backslashes, as S018's cell editor shows
   every cell's Markdown; the other cells show the text (review O2, accepted as documented).
 - **Merged cells.** A cell spanning several columns or rows keeps its text in its top-left cell;
@@ -182,7 +187,8 @@ third cell becomes
   tab-indented lines only
 - When I paste it
 - Then the plain text is pasted as today
-- Given the caret in a fenced code block, in front matter or in a cell of a shown table
+- Given the caret in a fenced code block, in front matter, in a cell of a shown table, or in a
+  block quote or list item
 - When I paste a table
 - Then the plain text is pasted as today (in a cell, as S018 writes pasted text)
 
@@ -191,6 +197,8 @@ third cell becomes
 - When I press `Ctrl+Shift+V` (`Cmd+Shift+V` on macOS) or choose Edit › Paste as Plain Text or the
   same entry in the editor's context menu
 - Then the plain text is pasted as today, without conversion
+- And with the focus in a cell editor or in the find field, the key pastes there as `Ctrl+V` does,
+  and the document changes only as far as the cell asks (review (code) O2)
 - And the entry is disabled when the clipboard holds no text
 
 **Scenario: one undo step**
@@ -206,7 +214,8 @@ third cell becomes
 - When I paste each
 - Then 50 × 10 is shown within 50 ms, 500 × 10 and 50 × 100 within 500 ms
 - And each is converted by the same rules as the small samples (no size limit)
-- And the wait cursor shows while the paste converts and is gone afterwards
+- And the wait cursor shows while the paste converts, until the table is shown, and is gone
+  afterwards (review (code) O6)
 
 ## Theming
 
@@ -270,3 +279,8 @@ No new visible element: the pasted table is an S018 table with its tokens. No ne
   as new: the base rounds are complete without it, the pull request's rounds still need every hard
   key and their values are checked against the budgets (Armin, 2026-11-09; gate cases
   `new_hard_key`, `new_hard_key_missed`, `new_hard_key_one_base_round`).
+- Review (code) `docs/reviews/031-paste-tables-code.md`: the generated tables hold cells like the
+  samples' (one word, two lines, `R&D`, `09:30` and `a_b`; O10), so that the budgets measure the
+  content S031 is for, not only the fast path for plain cells. `s031_paste_no_table_5000_lines_ms`
+  measures a paste of 5,000 lines of code with a span per token, which has HTML but no table (O9);
+  it is compared with main and has no budget of its own.

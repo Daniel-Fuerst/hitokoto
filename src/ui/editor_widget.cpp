@@ -524,16 +524,22 @@ void EditorWidget::dropEvent(QDropEvent* event) {
 }
 
 bool EditorWidget::canPastePlainText() {
+    // The formats only: fetching the text on every clipboard change would make the program that
+    // copied render it, Excel a whole column (S031 review O7).
     const QMimeData* data = QApplication::clipboard()->mimeData();
-    return data != nullptr && data->hasText() && !data->text().isEmpty();
+    return data != nullptr && data->hasText();
 }
 
 void EditorWidget::pasteAsPlainText() {
     if (isReadOnly() || !canPastePlainText()) {
         return;
     }
+    const QString text = QApplication::clipboard()->mimeData()->text();
+    if (text.isEmpty()) {
+        return;
+    }
     QMimeData plain;
-    plain.setText(QApplication::clipboard()->mimeData()->text());
+    plain.setText(text);
     {
         const QScopedValueRollback<bool> noConversion(plainPaste_, true);
         insertFromMimeData(&plain);
@@ -564,10 +570,26 @@ bool EditorWidget::pasteTables(const QMimeData* source) {
         return false;
     }
     QTextCursor cursor = textCursor();
-    // Only in the editor text: not in a code block, front matter or a table's lines (S031).
+    // Only in the editor text: not in a code block, front matter or a table's lines (S031), and
+    // not in a block quote or list item, which a table would split (S031 review O4).
     for (const int position : {cursor.selectionStart(), cursor.selectionEnd()}) {
-        const core::LineRender render = styler_->renderFor(document()->findBlock(position));
+        const QTextBlock block = document()->findBlock(position);
+        const core::LineRender render = styler_->renderFor(block);
         if (render.codeBlock || render.frontMatter || render.table) {
+            return false;
+        }
+        const auto above = [block](std::size_t i) -> std::optional<std::u16string> {
+            QTextBlock b = block.previous();
+            for (std::size_t n = 0; n < i && b.isValid(); ++n) {
+                b = b.previous();
+            }
+            if (!b.isValid()) {
+                return std::nullopt;
+            }
+            const QString line = b.text();
+            return std::u16string(view(line));
+        };
+        if (core::pasteLineInContainer(view(block.text()), above)) {
             return false;
         }
     }
@@ -575,12 +597,24 @@ bool EditorWidget::pasteTables(const QMimeData* source) {
         return false;
     }
 
-    // The wait cursor while the paste converts (S031, ADR 0011).
-    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
-    const auto restore = qScopeGuard([] { QGuiApplication::restoreOverrideCursor(); });
-    std::optional<std::vector<core::PasteBlock>> blocks;
+    // HTML: one scan first, so that HTML without a table or with nested tables is never imported
+    // (S031 review O1, O9). Excel's plain text only without HTML.
+    QString html;
     if (source->hasHtml()) {
-        blocks = core::pastedTablesToMarkdown(readPastedHtml(source->html()));
+        html = source->html();
+        if (core::scanHtmlTables(view(html)) != core::HtmlTables::Flat) {
+            return false;
+        }
+    }
+
+    // The wait cursor while the paste converts (S031, ADR 0011), on success until the pasted table
+    // is shown (review O6): the embedder shows it in its refresh, queued by the insertion below,
+    // and the cursor is restored by a call queued after it.
+    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    auto restore = qScopeGuard([] { QGuiApplication::restoreOverrideCursor(); });
+    std::optional<std::vector<core::PasteBlock>> blocks;
+    if (!html.isEmpty()) {
+        blocks = core::pastedTablesToMarkdown(readPastedHtml(html));
     } else if (auto table = core::parseExcelPlainText(view(source->text()))) {
         std::vector<core::PastedPart> parts(1);
         parts.front().table = std::move(*table);
@@ -616,6 +650,9 @@ bool EditorWidget::pasteTables(const QMimeData* source) {
     cursor.setPosition(start + static_cast<int>(insertion.caret));
     setTextCursor(cursor);
     ensureCursorVisible();
+    tables_->scheduleRefresh();  // queued already by the insertion; makes the order explicit
+    restore.dismiss();
+    QMetaObject::invokeMethod(qApp, [] { QGuiApplication::restoreOverrideCursor(); }, Qt::QueuedConnection);
     return true;
 }
 

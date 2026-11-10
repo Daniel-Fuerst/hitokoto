@@ -202,13 +202,128 @@ std::u16string textBlock(const std::vector<std::u16string>& lines) {
 
 }  // namespace
 
-HtmlTables scanHtmlTables(std::u16string_view /*html*/) noexcept {
-    return HtmlTables::Flat;  // stub (S031 review O1, O9)
+HtmlTables scanHtmlTables(std::u16string_view html) noexcept {
+    // `<table` or `</table` (`closing`) at `at`, the name ending in a blank, `>` or `/`.
+    const auto tagAt = [html](std::size_t at, bool closing) {
+        constexpr std::u16string_view kName = u"table";
+        std::size_t i = at + (closing ? 2 : 1);
+        if (i + kName.size() > html.size()) {
+            return false;
+        }
+        for (const char16_t c : kName) {
+            const char16_t h = html[i++];
+            if (h != c && h != c - (u'a' - u'A')) {
+                return false;
+            }
+        }
+        if (i == html.size()) {
+            return true;
+        }
+        const char16_t next = html[i];
+        return next == u' ' || next == u'\t' || next == u'\n' || next == u'\r' || next == u'\f' || next == u'>' ||
+               next == u'/';
+    };
+    bool seen = false;
+    int depth = 0;
+    for (std::size_t at = html.find(u'<'); at != std::u16string_view::npos; at = html.find(u'<', at + 1)) {
+        if (html.substr(at, 4) == u"<!--") {
+            const std::size_t end = html.find(u"-->", at + 4);
+            if (end == std::u16string_view::npos) {
+                break;
+            }
+            at = end + 2;
+            continue;
+        }
+        if (at + 1 < html.size() && html[at + 1] == u'/') {
+            if (depth > 0 && tagAt(at, true)) {
+                --depth;
+            }
+        } else if (tagAt(at, false)) {
+            seen = true;
+            if (++depth > 1) {
+                return HtmlTables::Nested;
+            }
+        }
+    }
+    return seen ? HtmlTables::Flat : HtmlTables::None;
 }
 
-bool pasteLineInContainer(std::u16string_view /*line*/,
-                          const std::function<std::optional<std::u16string>(std::size_t)>& /*above*/) {
-    return false;  // stub (S031 review O4)
+namespace {
+
+/// Whether `line` starts a block quote or a list item (CommonMark 5.1, 5.2), at any indentation.
+bool startsContainer(std::u16string_view line) noexcept {
+    std::size_t i = 0;
+    while (i < line.size() && (line[i] == u' ' || line[i] == u'\t')) {
+        ++i;
+    }
+    if (i == line.size()) {
+        return false;
+    }
+    const auto blankOrEnd = [line](std::size_t at) {
+        return at == line.size() || line[at] == u' ' || line[at] == u'\t';
+    };
+    const char16_t c = line[i];
+    if (c == u'>') {
+        return true;
+    }
+    if (c == u'-' || c == u'+' || c == u'*') {
+        // A thematic break (`- - -`, `* * *`) is no item.
+        const std::u16string_view rest = line.substr(i);
+        std::size_t marks = 0;
+        const bool onlyMarks = std::all_of(rest.begin(), rest.end(), [&](char16_t r) {
+            marks += r == c ? 1 : 0;
+            return r == c || r == u' ' || r == u'\t';
+        });
+        if ((c == u'-' || c == u'*') && onlyMarks && marks >= 3) {
+            return false;
+        }
+        return blankOrEnd(i + 1);
+    }
+    std::size_t digits = 0;
+    while (i + digits < line.size() && line[i + digits] >= u'0' && line[i + digits] <= u'9') {
+        ++digits;
+    }
+    return digits >= 1 && digits <= 9 && i + digits < line.size() &&
+           (line[i + digits] == u'.' || line[i + digits] == u')') && blankOrEnd(i + digits + 1);
+}
+
+bool indented(std::u16string_view line) noexcept {
+    return !line.empty() && (line.front() == u' ' || line.front() == u'\t');
+}
+
+}  // namespace
+
+bool pasteLineInContainer(std::u16string_view line,
+                          const std::function<std::optional<std::u16string>(std::size_t)>& above) {
+    if (startsContainer(line)) {
+        return true;
+    }
+    if (isBlank(line)) {
+        return false;
+    }
+    // Up through the paragraph the line belongs to; an indented line also through blank lines and
+    // indented lines, to the item it may be a further paragraph of.
+    const bool lineIndented = indented(line);
+    bool afterBlank = false;
+    for (std::size_t i = 0;; ++i) {
+        const std::optional<std::u16string> l = above(i);
+        if (!l) {
+            return false;
+        }
+        if (isBlank(*l)) {
+            if (!lineIndented) {
+                return false;
+            }
+            afterBlank = true;
+            continue;
+        }
+        if (startsContainer(*l)) {
+            return true;
+        }
+        if (afterBlank && !indented(*l)) {
+            return false;
+        }
+    }
 }
 
 bool countsAsTable(const PastedTable& table) {

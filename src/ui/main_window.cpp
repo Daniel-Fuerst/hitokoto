@@ -14,8 +14,10 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QLineEdit>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QScreen>
 #include <QVBoxLayout>
 
@@ -111,8 +113,20 @@ void MainWindow::createMenus() {
     edit->addAction(tr("&Copy"), QKeySequence::Copy, editor_, &QTextEdit::copy);
     edit->addAction(tr("&Paste"), QKeySequence::Paste, editor_, &QTextEdit::paste);
     // S031: paste the clipboard's plain text without converting tables (decision 5).
-    QAction* pastePlain = edit->addAction(tr("Paste as &Plain Text"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V),
-                                          editor_, &EditorWidget::pasteAsPlainText);
+    // The key reaches the window from every widget: it acts where the focus is (review O2), in a
+    // cell editor or a text field as Ctrl+V there (both take plain text only), in the editor
+    // without converting tables, elsewhere not at all.
+    QAction* pastePlain =
+        edit->addAction(tr("Paste as &Plain Text"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V), this, [this] {
+            QWidget* focus = QApplication::focusWidget();
+            if (focus == nullptr || focus == editor_ || focus == editor_->viewport()) {
+                editor_->pasteAsPlainText();
+            } else if (auto* line = qobject_cast<QLineEdit*>(focus)) {
+                line->paste();
+            } else if (auto* text = qobject_cast<QPlainTextEdit*>(focus)) {
+                text->paste();
+            }
+        });
     pastePlain->setObjectName(QStringLiteral("pasteAsPlainText"));
     const auto updatePastePlain = [pastePlain] { pastePlain->setEnabled(EditorWidget::canPastePlainText()); };
     connect(QApplication::clipboard(), &QClipboard::dataChanged, pastePlain, updatePastePlain);

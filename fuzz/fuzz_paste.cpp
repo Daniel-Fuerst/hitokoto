@@ -3,8 +3,9 @@
 // goes to Excel's plain-text parser, is escaped as cell text, and builds a random cell model (spans
 // that overlap or reach past the table included). Nothing may crash; escaped text reads back as
 // the input; every table's Markdown has a delimiter row and rows of equal width; the placement
-// keeps every block, in order, and puts the caret after the last one. Qt's HTML import is not
-// fuzzed (Qt's code; it would need Qt in the fuzz build).
+// keeps every block, in order, and puts the caret after the last one. Review (code) O1, O3, O4: the
+// HTML scan, the container check and the display escape of a cell's block marker take the input
+// too. Qt's HTML import is not fuzzed (Qt's code; it would need Qt in the fuzz build).
 #include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/paste.hpp"
 
@@ -122,6 +123,33 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         const std::u16string escaped = hitokoto::core::escapeTableCellText(line);
         check(unescape(escaped) == line);
         check(hitokoto::core::tableRowCells(u"| " + escaped + u" |").size() == 1);
+    }
+
+    // The scan before Qt's import (review (code) O1, O9): any input, linear, one of three answers.
+    const auto tables = hitokoto::core::scanHtmlTables(text);
+    check(tables == hitokoto::core::HtmlTables::None || tables == hitokoto::core::HtmlTables::Flat ||
+          tables == hitokoto::core::HtmlTables::Nested);
+    if (tables == hitokoto::core::HtmlTables::None) {
+        check(hitokoto::core::scanHtmlTables(text + u"<table>") != hitokoto::core::HtmlTables::None ||
+              text.find(u"<!--") != std::u16string::npos);
+    }
+
+    // The container check walks up the input's lines (review (code) O4).
+    {
+        const auto all = split(text, u'\n');
+        const std::u16string_view last = all.back();
+        (void)hitokoto::core::pasteLineInContainer(last, [&all](std::size_t i) -> std::optional<std::u16string> {
+            if (i + 1 >= all.size()) {
+                return std::nullopt;
+            }
+            return std::u16string(all[all.size() - 2 - i]);
+        });
+    }
+
+    // A cell's block marker escaped for display adds at most one backslash (review (code) O3).
+    {
+        const std::u16string escaped = hitokoto::core::escapeTableCellBlockStart(text);
+        check(escaped == text || escaped.size() == text.size() + 1);
     }
 
     // Excel's plain text.

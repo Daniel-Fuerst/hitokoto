@@ -77,8 +77,13 @@ cell).
 - `ui::readPastedHtml` (`src/ui/table_paste.cpp`) imports into a `QTextDocument` whose
   `loadResource` returns nothing: a stylesheet `<link>` or an image is never read, also not from a
   local file. The document is never laid out or shown.
+- Before the import, `core::scanHtmlTables` scans the HTML once for table tags (comments
+  skipped): HTML without a table, or with a table inside a table, is never imported and stays plain
+  text (review (code) O1: Qt's import of deep nesting is far from linear, 64 s at depth 10,000;
+  O9: most copies carry HTML without a table).
 - The core (`hitokoto/core/paste.hpp`) decides and writes; the UI inserts the Markdown with one
-  `QTextCursor::insertText`, so one undo step, and shows the wait cursor meanwhile.
+  `QTextCursor::insertText`, so one undo step, and shows the wait cursor meanwhile, until the
+  table embedder has shown the pasted table (review (code) O6).
 - Measured on the development VM (`docs/performance.md`): 500 cells with Outlook's markup 44 ms until
   the table shows, of which the import 20 ms.
 
