@@ -715,6 +715,44 @@ private slots:
         QCOMPARE(text(f), inserted(markdown, at, test::s031Text(QStringLiteral("outlook-t1-example"))));
     }
 
+    // Review (code) O9: a copy made in hitokoto carries a marker besides its usual formats, so that
+    // other programs get what they got before and hitokoto's own paste skips the HTML, which Qt
+    // would first generate from the selection.
+    void aCopyFromHitokotoIsMarked() {
+        const QString markdown = QStringLiteral("Para **one**.\n\nPara two.\n");
+        test::Fixture f;
+        QVERIFY(openText(f, markdown));
+        f.editor()->selectAll();
+        pressStandardKey(f.editor(), QKeySequence::Copy);
+        const QMimeData* copy = QApplication::clipboard()->mimeData();
+        QVERIFY(copy != nullptr);
+        QVERIFY(!ui::EditorWidget::ownCopyFormat().isEmpty());
+        QVERIFY(copy->hasFormat(ui::EditorWidget::ownCopyFormat()));
+        QVERIFY(copy->hasText());
+        QVERIFY(copy->hasHtml());
+        QCOMPARE(copy->text(), text(f));  // everything selected
+        QVERIFY(copy->html().contains(QStringLiteral("Para two.")));
+    }
+
+    void aCopyFromHitokotoIsPastedAsPlainText() {
+        const QString markdown = QStringLiteral("Para one.\n\nPara two.\n");
+        test::Fixture f;
+        QVERIFY(openText(f, markdown));
+        f.placeCaret(1);
+        auto* data = new QMimeData;
+        data->setHtml(test::s031Html(QStringLiteral("outlook-t1-example")));
+        data->setText(test::s031Text(QStringLiteral("outlook-t1-example")));
+        data->setData(ui::EditorWidget::ownCopyFormat().isEmpty() ? QStringLiteral("application/x-unset")
+                                                                  : ui::EditorWidget::ownCopyFormat(),
+                      QByteArrayLiteral("1"));
+        QApplication::clipboard()->setMimeData(data);
+        const std::uint64_t imports = ui::pastedHtmlImports();
+        pressPaste(f.editor());
+        f.settle();
+        QCOMPARE(text(f), inserted(markdown, 10, test::s031Text(QStringLiteral("outlook-t1-example"))));
+        QCOMPARE(ui::pastedHtmlImports(), imports);
+    }
+
     void aDropIsNotConverted() {
         const QString markdown = QStringLiteral("Para one.\n\nPara two.\n");
         test::Fixture f;

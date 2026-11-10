@@ -87,6 +87,9 @@ public:
     void pasteAsPlainText();
     /// S031: whether the clipboard holds plain text to paste.
     [[nodiscard]] static bool canPastePlainText();
+    /// S031 review (code) O9: the format that marks a copy made in hitokoto, whose paste skips the
+    /// HTML (it holds Markdown source, never a table).
+    [[nodiscard]] static QString ownCopyFormat();
 
 signals:
     void painted();

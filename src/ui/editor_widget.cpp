@@ -523,6 +523,10 @@ void EditorWidget::dropEvent(QDropEvent* event) {
     QTextEdit::dropEvent(event);
 }
 
+QString EditorWidget::ownCopyFormat() {
+    return {};  // stub (S031 review (code) O9)
+}
+
 bool EditorWidget::canPastePlainText() {
     // The formats only: fetching the text on every clipboard change would make the program that
     // copied render it, Excel a whole column (S031 review O7).
