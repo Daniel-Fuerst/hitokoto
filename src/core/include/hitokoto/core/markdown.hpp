@@ -434,6 +434,12 @@ std::size_t separateTextAfterTables(DecodedText& decoded, const ElementRegistry&
 /// heading, quote, list, rule or code block (S031 review O3). Display only; the file keeps its
 /// Markdown.
 [[nodiscard]] std::u16string escapeTableCellBlockStart(std::u16string_view markdown);
+/// The characters to lay a cell out as plain text, if GFM shows the cell Markdown as exactly them:
+/// plain characters as for tableCellIsPlainText, backslash escapes of ASCII punctuation resolved,
+/// and each `<br>` (any spelling, not escaped, no blank beside it, not at the start or end) as
+/// U+2028, a line break inside one block (S031 review (code) O10: two-line cells laid out several
+/// times faster than with Qt's Markdown import). Nothing if the cell may hold other syntax.
+[[nodiscard]] std::optional<std::u16string> tableCellPlainLayout(std::u16string_view markdown);
 /// Edited text as cell Markdown: `|` becomes `\|`, a line break `<br>`.
 [[nodiscard]] std::u16string tableCellFromText(std::u16string_view text);
 /// `line` with the content of cell `column` replaced by `markdown`; the rest stays byte for byte.

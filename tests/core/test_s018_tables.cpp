@@ -358,3 +358,32 @@ TEST(S018_Tables, BlockMarkersAtACellStartAreEscapedForDisplay) {
         EXPECT_EQ(escapeTableCellBlockStart(unchanged), unchanged);
     }
 }
+
+// S031 review (code) O10: a cell whose Markdown holds nothing but plain characters, backslash
+// escapes and `<br>` is laid out as plain text with U+2028 between its lines. Checked with
+// cmark-gfm (cmarkgfm 2025.10.22): each cell below renders as exactly these characters and breaks.
+TEST(S018_Tables, TwoLineCellsNeedNoMarkdown) {
+    const std::vector<std::pair<std::u16string_view, std::u16string_view>> plain = {
+        {u"Green tea", u"Green tea"},
+        {u"r0c1<br>second line", u"r0c1\u2028second line"},
+        {u"Tea House North<br>Tea House South", u"Tea House North\u2028Tea House South"},
+        {u"12,50<br/>13,20", u"12,50\u202813,20"},
+        {u"x<br />y", u"x\u2028y"},
+        {u"x<BR>y", u"x\u2028y"},
+        {u"first<br><br>third", u"first\u2028\u2028third"},
+        {u"a\\_b", u"a_b"},
+        {u"Tea\\|Pot", u"Tea|Pot"},
+        {u"\\*x\\* and \\[l\\](u)", u"*x* and [l](u)"},
+        {u"a\\\\b", u"a\\b"},
+        {u"5\" tin<br>say \"hi\"", u"5\" tin\u2028say \"hi\""},
+    };
+    for (const auto& [cell, expected] : plain) {
+        EXPECT_EQ(tableCellPlainLayout(cell).value_or(u"(not plain)"), expected);
+    }
+    for (const std::u16string_view syntax :
+         {u"r0c2 R&D", u"r0c3 09:30<br>a\\_b", u"*x*", u"x<br>*y*", u"<br>x", u"x<br>", u"x <br>y", u"x<br> y",
+          u"x\\<br>y", u"C:\\Dev", u"\\a", u"- item<br>two", u"1. one<br>two", u"www.example.org<br>x",
+          u"x<br>www.y.org", u"x<b>y", u"x<brr>y", u"x\u2028y", u"a\tb"}) {
+        EXPECT_FALSE(tableCellPlainLayout(syntax).has_value()) << "syntax cell of length " << syntax.size();
+    }
+}

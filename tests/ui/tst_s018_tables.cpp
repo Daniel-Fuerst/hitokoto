@@ -12,6 +12,7 @@
 #include <QInputMethodEvent>
 #include <QMenu>
 #include <QPlainTextEdit>
+#include <QRegularExpression>
 #include <QScrollBar>
 #include <QTableView>
 #include <QTextBlock>
@@ -352,7 +353,11 @@ private slots:
             "| --- | --- | --- |\n"
             "| r12c3 | 12,50 | Open daily (9 to 18) and a longer text that wraps |\n"
             "| *x* | say \"hi\" | 1.5 kg |\n"
-            "|  | a  b | $5 |\n";
+            "|  | a  b | $5 |\n"
+            // Review (code) O10: lines and escapes, laid out as plain text too.
+            "| Tea House North<br>Tea House South | 12,50<br/>13,20 | a\\_b<br>a second line that is longer and wraps "
+            "|\n"
+            "| \\*x\\* | first<br><br>third | x<br />y |\n";
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("sizes.md"), markdown)));
         f.settle();
@@ -366,8 +371,11 @@ private slots:
             auto document = std::make_unique<QTextDocument>();
             document->setDocumentMargin(0);
             document->setDefaultFont(model->data(index, Qt::FontRole).value<QFont>());
-            document->setMarkdown(model->data(index, ui::TableModel::MarkdownRole).toString(),
-                                  QTextDocument::MarkdownDialectGitHub);
+            // Qt 6.12 drops what follows a <br> without slash; the delegate writes <br/> (ADR 0005).
+            static const QRegularExpression br(QStringLiteral("<br\\s*/?>"), QRegularExpression::CaseInsensitiveOption);
+            document->setMarkdown(
+                model->data(index, ui::TableModel::MarkdownRole).toString().replace(br, QStringLiteral("<br/>")),
+                QTextDocument::MarkdownDialectGitHub);
             QTextBlockFormat format;
             format.setTopMargin(0);
             format.setBottomMargin(0);
