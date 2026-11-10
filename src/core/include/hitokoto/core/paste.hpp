@@ -56,6 +56,13 @@ enum class HtmlTables : std::uint8_t { None, Flat, Nested };
 /// Scans `html` for table start and end tags and tracks their depth (S031 review O1, O9).
 [[nodiscard]] HtmlTables scanHtmlTables(std::u16string_view html) noexcept;
 
+/// `html` without the style attributes of its tags, before Qt's import: Outlook writes about 1 KB
+/// of markup per cell, most of it inline CSS that Qt parses for every element and that a pasted
+/// table does not need (S031 review (code) O10, Armin, 2026-11-10). Qt 6.12's import ignores
+/// `display: none` anyway, so no text appears or disappears. Only tags change: text, comments and
+/// other attributes stay byte for byte. Linear in the input.
+[[nodiscard]] std::u16string htmlWithoutStyles(std::u16string_view html);
+
 /// Whether a paste at `line` lands in a block quote or a list item, so that it stays plain text
 /// (S031 review O4): `line` starts one, continues the paragraph of one (also lazily), or is indented
 /// under a list item after blank lines. `above(i)` is the i-th line above `line` (0 = the line

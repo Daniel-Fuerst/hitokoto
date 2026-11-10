@@ -12,6 +12,7 @@
 #include <initializer_list>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace hitokoto::core;
@@ -621,4 +622,40 @@ TEST(S031_PasteTables, ParagraphLinesOfAContainerAreInIt) {
     EXPECT_FALSE(pasteLineInContainer(u"  indented", linesAbove({u"Para one.", u""})));
     EXPECT_FALSE(pasteLineInContainer(u"Para two.", linesAbove({u"Para one."})));
     EXPECT_FALSE(pasteLineInContainer(u"Para", linesAbove({})));
+}
+
+// Review (code) O10, Armin 2026-11-10: style attributes leave the HTML before Qt's import, which
+// halves the import of Outlook's markup (Qt 6.12 ignores display: none, so no text changes).
+// Everything else is kept as it is.
+TEST(S031_PasteTables, StyleAttributesLeaveTheHtmlBeforeTheImport) {
+    const std::vector<std::pair<std::u16string_view, std::u16string_view>> cases = {
+        {u"<td style='border:solid #888888 1.0pt' rowspan=2>a</td>", u"<td rowspan=2>a</td>"},
+        {u"<p class=MsoNormal style=\"margin:0\"><span lang=EN-US style='font-size:11.0pt'>x</span></p>",
+         u"<p class=MsoNormal><span lang=EN-US>x</span></p>"},
+        {u"<TD STYLE='a:b'>x</TD>", u"<TD>x</TD>"},
+        {u"<td style=width:20px>x</td>", u"<td>x</td>"},
+        {u"<td\nstyle='a:b'\n colspan=3>x</td>", u"<td\n colspan=3>x</td>"},
+        {u"<img alt='a > b' style='x' src=y>", u"<img alt='a > b' src=y>"},
+        {u"<br style='mso-data-placement:same-cell'>", u"<br>"},
+        {u"<span style='mso-hide:all;display:none'>hidden</span>", u"<span>hidden</span>"},
+        // Kept: other attributes, text, comments.
+        {u"<td data-style='x' xstyle='y'>z</td>", u"<td data-style='x' xstyle='y'>z</td>"},
+        {u"<p>a style='x' b</p>", u"<p>a style='x' b</p>"},
+        {u"<!-- <td style='x'> --><td style='y'>z</td>", u"<!-- <td style='x'> --><td>z</td>"},
+        {u"a < b style='x'", u"a < b style='x'"},
+        {u"<td style='unclosed", u"<td style='unclosed"},
+    };
+    for (const auto& [html, expected] : cases) {
+        EXPECT_EQ(htmlWithoutStyles(html), expected);
+    }
+}
+
+TEST(S031_PasteTables, StyleAttributesLeaveInLinearTime) {
+    std::u16string html;
+    std::u16string expected;
+    for (int i = 0; i < 100000; ++i) {
+        html += u"<td style='border:solid #888888 1.0pt'><p class=MsoNormal style='margin:0'>x</p></td>";
+        expected += u"<td><p class=MsoNormal>x</p></td>";
+    }
+    EXPECT_EQ(htmlWithoutStyles(html), expected);
 }

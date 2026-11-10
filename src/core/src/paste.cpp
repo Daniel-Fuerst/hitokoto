@@ -248,6 +248,10 @@ HtmlTables scanHtmlTables(std::u16string_view html) noexcept {
     return seen ? HtmlTables::Flat : HtmlTables::None;
 }
 
+std::u16string htmlWithoutStyles(std::u16string_view html) {
+    return std::u16string(html);  // stub (S031 review (code) O10)
+}
+
 namespace {
 
 /// Whether `line` starts a block quote or a list item (CommonMark 5.1, 5.2), at any indentation.
