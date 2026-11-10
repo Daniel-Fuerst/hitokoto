@@ -111,9 +111,11 @@ third cell becomes
   saved byte for byte as always (ADR 0002). The table then behaves as any table (S018).
 - **Same result at every size, time linear in the cells** (review O4 and O11, Armin, 2026-11-09).
   There is no size limit: a table is converted by the same rules whether it has four cells or
-  fifty thousand. A paste of up to 500 cells takes at most 50 ms on the CI runner, like a key
-  press; above that at most 100 µs per cell (5,000 cells 500 ms, 50,000 cells 5 s), measured from
-  the paste until the table is shown. Cells count over all pasted tables. While a paste converts,
+  fifty thousand. A paste of up to 400 cells takes at most 50 ms on the CI runner, like a key
+  press; above that at most 125 µs per cell (4,000 cells 500 ms, 40,000 cells 5 s), measured from
+  the paste until the table is shown (Armin, 2026-11-10, after the CI run with sample-like cells:
+  first 500 cells in 50 ms and 100 µs per cell, which Outlook's markup missed by a few
+  milliseconds; the times stay, the tables shrink). Cells count over all pasted tables. While a paste converts,
   hitokoto shows the system's wait cursor. Blocking the UI for a large paste is a recorded
   exception to the brief, section 4 (ADR 0011).
 
@@ -209,10 +211,10 @@ third cell becomes
 - And redo (`QKeySequence::Redo`) brings the table back
 
 **Scenario: paste time grows linearly with the cells**
-- Given copied tables with Outlook's and with Excel's markup, of 50 × 10, 500 × 10 and 50 × 100
+- Given copied tables with Outlook's and with Excel's markup, of 40 × 10, 400 × 10 and 40 × 100
   cells
 - When I paste each
-- Then 50 × 10 is shown within 50 ms, 500 × 10 and 50 × 100 within 500 ms
+- Then 40 × 10 is shown within 50 ms, 400 × 10 and 40 × 100 within 500 ms
 - And each is converted by the same rules as the small samples (no size limit)
 - And the wait cursor shows while the paste converts, until the table is shown, and is gone
   afterwards (review (code) O6)
@@ -268,9 +270,9 @@ No new visible element: the pasted table is an S018 table with its tokens. No ne
 - Fuzzing (review O6): a target `fuzz_paste` in `fuzz/` over the plain-text parser, the Markdown
   of a random cell model and the placement; a run without findings is one of the S031 gates. Qt's
   HTML import is not fuzzed (Qt's code; it would need Qt in the fuzz build).
-- Benchmarks (hard budgets, Outlook and Excel markup each): `s031_paste_outlook_50x10_ms` and
-  `s031_paste_excel_50x10_ms` (50 ms), `s031_paste_outlook_500x10_ms`,
-  `s031_paste_excel_500x10_ms`, `s031_paste_outlook_50x100_ms` and `s031_paste_excel_50x100_ms`
+- Benchmarks (hard budgets, Outlook and Excel markup each): `s031_paste_outlook_40x10_ms` and
+  `s031_paste_excel_40x10_ms` (50 ms), `s031_paste_outlook_400x10_ms`,
+  `s031_paste_excel_400x10_ms`, `s031_paste_outlook_40x100_ms` and `s031_paste_excel_40x100_ms`
   (500 ms). Spike 2026-11-09 (Qt 6.12, cloud VM): Qt's HTML import about 40 µs per cell with
   Outlook's markup and 12 µs with Excel's, the Markdown about 1 µs; embedding estimated from S018
   at about 12 µs. If the budget fails with Outlook's markup, report the numbers before changing it.

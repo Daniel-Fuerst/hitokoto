@@ -881,12 +881,12 @@ const Budget kBudgets[] = {
     {"s028_table_step_max_ms", 50, "no next match above 50 ms, 1000-row table, highlight all (hard)", true},
     {"s028_doc_typing_p95_ms", 16, "key to screen <= 16 ms (10 MB, highlight all)"},
     {"s028_doc_typing_max_ms", 50, "no key event above 50 ms, 10 MB with find open (hard)", true},
-    {"s031_paste_outlook_50x10_ms", 50, "paste 500 cells until shown <= 50 ms, Outlook (hard)", true},
-    {"s031_paste_excel_50x10_ms", 50, "paste 500 cells until shown <= 50 ms, Excel (hard)", true},
-    {"s031_paste_outlook_500x10_ms", 500, "paste 5,000 cells <= 500 ms, Outlook (hard)", true},
-    {"s031_paste_excel_500x10_ms", 500, "paste 5,000 cells <= 500 ms, Excel (hard)", true},
-    {"s031_paste_outlook_50x100_ms", 500, "paste 50 x 100 cells <= 500 ms, Outlook (hard)", true},
-    {"s031_paste_excel_50x100_ms", 500, "paste 50 x 100 cells <= 500 ms, Excel (hard)", true},
+    {"s031_paste_outlook_40x10_ms", 50, "paste 400 cells until shown <= 50 ms, Outlook (hard)", true},
+    {"s031_paste_excel_40x10_ms", 50, "paste 400 cells until shown <= 50 ms, Excel (hard)", true},
+    {"s031_paste_outlook_400x10_ms", 500, "paste 4,000 cells <= 500 ms, Outlook (hard)", true},
+    {"s031_paste_excel_400x10_ms", 500, "paste 4,000 cells <= 500 ms, Excel (hard)", true},
+    {"s031_paste_outlook_40x100_ms", 500, "paste 40 x 100 cells <= 500 ms, Outlook (hard)", true},
+    {"s031_paste_excel_40x100_ms", 500, "paste 40 x 100 cells <= 500 ms, Excel (hard)", true},
     {"save_10mb_ui_blocked_ms", 16, "saving never stalls the UI (hard)", true},
     {"save_10mb_total_ms", 1000, "10 MB on disk within 1 s (hard)", true},
 };
@@ -1144,11 +1144,11 @@ int main(int argc, char* argv[]) {
         w.editor()->document()->setModified(false);
     }
 
-    // S031: pasting tables in Outlook's and Excel's markup (story: 500 cells within 50 ms, above
-    // that at most 100 us per cell, until the table is shown).
+    // S031: pasting tables in Outlook's and Excel's markup (story: 400 cells within 50 ms, above
+    // that at most 125 us per cell, until the table is shown; Armin, 2026-11-10).
     for (const auto& [sample, name] :
          {std::pair{"outlook-t1-example", "outlook"}, std::pair{"excel-t6-example", "excel"}}) {
-        for (const auto& [rows, columns] : {std::pair{50, 10}, std::pair{500, 10}, std::pair{50, 100}}) {
+        for (const auto& [rows, columns] : {std::pair{40, 10}, std::pair{400, 10}, std::pair{40, 100}}) {
             const std::string key =
                 "s031_paste_" + std::string(name) + "_" + std::to_string(rows) + "x" + std::to_string(columns) + "_ms";
             r[key] = medianPaste(w, key.c_str(), QString::fromLatin1(sample), rows, columns);

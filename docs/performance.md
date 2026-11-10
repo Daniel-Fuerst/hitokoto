@@ -150,6 +150,28 @@ makes each format only when asked for and carries the marker; the same probe the
 | 5,000 lines | 11.4 ms | 0.7 ms | 32.2 ms | 32.4 ms |
 | 50,000 lines | 125.9 ms | 9.0 ms | 255.2 ms | 255.8 ms |
 
+### 2026-11-10, CI runner, S031 after the review (dispatch on 5a1e4d0)
+
+Runner class `linux-intel-r-xeon-r-platinum-8573c-4cpu`, the two rounds of the pull request with
+the old table sizes and sample-like cells:
+
+| Table | Outlook markup | Excel markup | Budget (hard) |
+|---|---|---|---|
+| 50 × 10 | 49.3 / 48.0 ms | 34.2 / 34.2 ms | 50 ms |
+| 500 × 10 | 441.7 / 450.2 ms | 259.2 / 267.1 ms | 500 ms |
+| 50 × 100 | 502.1 / 492.2 ms | 308.1 / 316.9 ms | 500 ms |
+
+Outlook 50 × 100 missed its budget in the first round, the Outlook keys kept only 1–4 % margin.
+`s031_paste_no_table_5000_lines_ms` 29.3 / 28.2 ms; `s018_table_open_ms` 72 / 68 ms against
+111 / 108 ms of main on the same runner (the plain-text layout of steps 2 and 3 of review O10).
+
+Armin, 2026-11-10: the times stay, the tables shrink to 40 × 10 (400 cells, 50 ms), 400 × 10 and
+40 × 100 (4,000 cells, 500 ms); the story's rule is now 400 cells in 50 ms, then at most 125 µs
+per cell. From the run above (about 4 ms plus 88 µs per cell for Outlook 500 × 10, about 100 µs
+per cell for 50 × 100) the runner should take about 39, 356 and 400 ms with Outlook's markup, a
+margin of about 1.25. On the slower development VM of 2026-11-10 (median of five): Outlook
+46.9 / 430.7 / 434.2 ms, Excel 33.3 / 227.0 / 276.0 ms (40 × 10, 400 × 10, 40 × 100).
+
 ### 2026-11-09, CI runner, S029 revised (pull request #31, run #125)
 
 The bench job of the revised S029 (base build and four rounds in every pull request run) took

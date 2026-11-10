@@ -44,8 +44,9 @@ C++ standard library only; the brief (section 3) asks to minimise dependencies.
 Option 2. The HTML flavour of the clipboard is read only on paste and only to find tables; nothing
 is rendered, no resource (image, stylesheet, script, link) is loaded or followed, and the Markdown
 text stays the only document (brief, section 1). There is no size limit: the result is the same
-for every size, and the time grows linearly (S031: 500 cells in 50 ms, then at most 100 µs per
-cell).
+for every size, and the time grows linearly (S031: 400 cells in 50 ms, then at most 125 µs per
+cell; first 500 cells and 100 µs, changed by Armin on 2026-11-10 after the CI run with
+sample-like cells).
 
 - UI: `EditorWidget::insertFromMimeData` asks the core whether to convert; it builds the core model
   from the `QTextTable`s of the imported fragment and from the text outside them (kept as plain
@@ -85,7 +86,9 @@ cell).
   `QTextCursor::insertText`, so one undo step, and shows the wait cursor meanwhile, until the
   table embedder has shown the pasted table (review (code) O6).
 - Measured on the development VM (`docs/performance.md`): 500 cells with Outlook's markup 44 ms until
-  the table shows, of which the import 20 ms.
+  the table shows, of which the import 20 ms. On the CI runner, with cells like the samples' and
+  after the review fixes, 500 cells with Outlook's markup took 48–49 ms and 5,000 cells (50 × 100)
+  492–502 ms; the benchmark tables are now 40 × 10, 400 × 10 and 40 × 100 (Armin, 2026-11-10).
 
 ## Reconsider if
 
