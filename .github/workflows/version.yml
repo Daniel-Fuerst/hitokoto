@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # S030 (ADR 0010): every pull request into main carries exactly one version label; after the merge
 # the tag job puts the next version tag vMAJOR.MINOR.PATCH on the merge commit. The rules are in
-# scripts/version/NextVersion.cmake (tests: tests/version, S030_*).
+# scripts/version/NextVersion.cmake (tests: tests/version, S030_*); both jobs run it from main's tip,
+# never from a pull request (S032).
 name: Version
 
 on:
@@ -25,12 +26,22 @@ jobs:
       group: version-label-${{ github.event.pull_request.number }}
       cancel-in-progress: true
     steps:
+      # S032: the rules come from main's tip, not from the pull request, so that a pull request that
+      # changes NextVersion.cmake by mistake cannot pass its own check; it is checked with main's
+      # rules, and its own apply from the next pull request on. Only scripts/version is checked out,
+      # without a stored token; no code of the pull request runs. The labels come from the event.
       - uses: actions/checkout@v7
+        with:
+          ref: main
+          sparse-checkout: /scripts/version/
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Check the version label
         env:
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
           jq -r '.[]' <<< "$LABELS" > "$RUNNER_TEMP/labels.txt"
+          git log -1 --format='Rules from main at %H'
           cmake -DMODE=labels -DLABELS_FILE="$RUNNER_TEMP/labels.txt" -P scripts/version/NextVersion.cmake
 
   tag:
