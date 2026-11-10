@@ -1,7 +1,7 @@
 # S025 — Editing properties in the properties block
 
 - **Status:** Open (recorded 2026-10-30 from Armin's decision on S024, not yet refined) ·
-  **Order:** 36 · **Depends on:** S024
+  **Order:** 37 · **Depends on:** S024
 - **Basis:** Obsidian edits properties in the block itself: a row per property with a name and a
   value field, "Add property" below the rows, a type menu behind the icon, checkboxes that tick
   (Obsidian help, "Properties"). S024 shows properties and leaves editing to the YAML text.

@@ -173,28 +173,6 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   title bar, or both; theme tokens for a dialog (brief, section 8); whether builds between tags show
   the full version (`0.4.0+3.gabc1234`) or the numeric core.
 
-## The check "Version label" with the script from main
-
-- **Seen:** 2026-11-09 (code review of S030, O3): the job "Version label" in `version.yml` runs
-  `scripts/version/NextVersion.cmake` from the pull request's own merge ref. A pull request that
-  changes the script changes its own required check; a script that always succeeds would let a
-  pull request without a version label through.
-- **Now:** accepted for the time being (Armin, 2026-11-09). The tag job runs the script from main
-  and stops after the merge at a pull request without exactly one version label (red, names the
-  pull request).
-- **Wanted (Armin):** follow-up work once S030 is on main: the check takes the script from main
-  (the base of the pull request), not from the pull request. Before the merge of S030 main has no
-  script, so it cannot be done in S030 itself.
-- **Purpose (Armin, 2026-11-09):** a guard against an accidental change of the script, not
-  against a deliberate one. GitHub runs `version.yml` for a pull request from the pull request
-  itself, so a pull request can still change or remove the check there; that must stay possible,
-  for example to move to another way of versioning (removing the check also takes it out of the
-  required checks of the ruleset). Closing that too would need `pull_request_target`, which S030
-  rules out.
-- **Open:** whether the check checks out the base commit or main's tip, and how a pull request that
-  changes the script itself is checked (with main's script, so that a change to the rules applies
-  from the next pull request on).
-
 ## Benchmark baselines per runner class (deferred)
 
 - **Seen:** 2026-11-09 (Armin, code review of S029). The first version of S029 compared the Linux
