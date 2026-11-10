@@ -199,7 +199,11 @@ same VM (median of five, before → after):
 | 400 × 10 | 430.7 → 320.1 ms | 227.0 → 206.0 ms | 500 ms |
 | 40 × 100 | 434.2 → 327.1 ms | 276.0 → 247.1 ms | 500 ms |
 
-The EPYC runner took 1.0–1.2 times the VM's time in the run above; the CI run shows the margin.
+The CI run on 1096c0b landed on the slower runner class, AMD EPYC 7763 (pull request rounds 1 / 2):
+Outlook 43.5 / 43.8 ms (40 × 10), 332.8 / 327.6 ms (400 × 10), 376.7 / 377.8 ms (40 × 100); Excel
+38.4 / 38.7, 264.1 / 264.1, 312.4 / 314.0 ms; the paste without a table 28.5 / 28.8 ms. Against
+the run on 712f652 on the same class (56.4, 437.5, 483.3 ms Outlook) that is 22–25 % less; the
+smallest margin is now Outlook 40 × 10 with about 1.14.
 The budgets follow one system when they change (Armin, 2026-11-10): the tables grow by a factor of
 ten (400, 4,000 and 40,000 cells) and the times with them (50, 500 and 5,000 ms).
 
