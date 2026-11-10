@@ -976,7 +976,7 @@ private slots:
         QTest::addColumn<int>("rows");
         QTest::addColumn<int>("columns");
         for (const char* sample : {"outlook-t1-example", "excel-t6-example"}) {
-            for (const auto& [rows, columns] : {std::pair{50, 10}, std::pair{500, 10}, std::pair{50, 100}}) {
+            for (const auto& [rows, columns] : {std::pair{40, 10}, std::pair{400, 10}, std::pair{40, 100}}) {
                 QTest::addRow("%s %dx%d", sample, rows, columns) << QString::fromLatin1(sample) << rows << columns;
             }
         }

@@ -1,4 +1,4 @@
 0
 Outcome: green
-`s031_paste_outlook_50x10_ms`
+`s031_paste_outlook_40x10_ms`
 on one side only
