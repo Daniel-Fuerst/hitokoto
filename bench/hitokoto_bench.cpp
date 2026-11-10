@@ -785,6 +785,38 @@ double medianPaste(ui::MainWindow& w, const char* key, const QString& sample, in
     return stats(samples).median;
 }
 
+/// S031 review O9: Ctrl+V of `lines` lines of code with a span per token (as code editors and web
+/// pages copy it) and their plain text, in an empty document. No table: the paste stays plain text.
+double medianPasteWithoutTable(ui::MainWindow& w, const char* key, int lines) {
+    QString html = QStringLiteral("<pre>");
+    QString text;
+    for (int i = 0; i < lines; ++i) {
+        html += QStringLiteral(
+                    "<span style=\"color:#0000ff\">int</span> <span style=\"color:#001080\">value%1</span> "
+                    "= <span style=\"color:#098658\">%1</span>;\n")
+                    .arg(i);
+        text += QStringLiteral("int value%1 = %1;\n").arg(i);
+    }
+    html += QStringLiteral("</pre>");
+    std::vector<double> samples;
+    samples.reserve(kPasteRuns);
+    for (int i = 0; i < kPasteRuns; ++i) {
+        w.session()->newDocument();
+        test::putOnClipboard(html, text);
+        QCoreApplication::processEvents();
+        ui::EditorWidget* e = w.editor();
+        QElapsedTimer t;
+        t.start();
+        test::keyClick(e, Qt::Key_V, Qt::ControlModifier);
+        QCoreApplication::processEvents();
+        e->viewport()->repaint();
+        samples.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
+        e->document()->setModified(false);
+    }
+    printSamples(key, samples);
+    return stats(samples).median;
+}
+
 struct Budget {
     const char* key;
     double limit;
@@ -1122,6 +1154,8 @@ int main(int argc, char* argv[]) {
             r[key] = medianPaste(w, key.c_str(), QString::fromLatin1(sample), rows, columns);
         }
     }
+    // Review O9: a large paste without a table (compared with main, no budget of its own).
+    r["s031_paste_no_table_5000_lines_ms"] = medianPasteWithoutTable(w, "s031_paste_no_table_5000_lines_ms", 5000);
     w.session()->newDocument();
 
     QJsonObject json;

@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace hitokoto::core;
@@ -319,4 +320,41 @@ TEST(S018_Tables, TextDirectlyBelowATableGetsABlankLineWhenOpened) {
     EXPECT_EQ(mixed.text, u"| a |\n| --- |\n\nText\nend");
     EXPECT_EQ(mixed.perBreak,
               (std::vector<LineEnding>{LineEnding::CRLF, LineEnding::LF, LineEnding::CRLF, LineEnding::CRLF}));
+}
+
+// S031 review O3: GFM reads a cell as inline text, so a block marker at its start shows as its
+// characters (checked with cmark-gfm, cmarkgfm 2025.10.22: each cell below renders as exactly its
+// text). Laid out as a Markdown document of its own, the cell needs the marker escaped; inline
+// syntax stays as it is.
+TEST(S018_Tables, BlockMarkersAtACellStartAreEscapedForDisplay) {
+    const std::vector<std::pair<std::u16string_view, std::u16string_view>> escaped = {
+        {u"1. Jänner 2026", u"1\\. Jänner 2026"},
+        {u"12. März", u"12\\. März"},
+        {u"2) zwei", u"2\\) zwei"},
+        {u"3.", u"3\\."},
+        {u"- 5 %", u"\\- 5 %"},
+        {u"-", u"\\-"},
+        {u"+ 2 Stk.", u"\\+ 2 Stk."},
+        {u"* x", u"\\* x"},
+        {u"# 12", u"\\# 12"},
+        {u"###### six", u"\\###### six"},
+        {u"#", u"\\#"},
+        {u"> 5 kg", u"\\> 5 kg"},
+        {u">", u"\\>"},
+        {u"---", u"\\---"},
+        {u"***", u"\\***"},
+        {u"___", u"\\___"},
+        {u"- - -", u"\\- - -"},
+        {u"```", u"\\```"},
+        {u"~~~ x", u"\\~~~ x"},
+        {u"[a]: b", u"\\[a]: b"},
+    };
+    for (const auto& [cell, expected] : escaped) {
+        EXPECT_EQ(escapeTableCellBlockStart(cell), expected);
+    }
+    for (const std::u16string_view unchanged : {u"", u"Green tea", u"1.5 kg", u"1234567890. ten digits", u"-5 %", u"+1",
+                                                u"*emph*", u"**bold**", u"####### seven", u"#tag", u"a > b", u"``x``",
+                                                u"```x```", u"__init__", u"[l](u)", u"\\- escaped", u"x<br>- y"}) {
+        EXPECT_EQ(escapeTableCellBlockStart(unchanged), unchanged);
+    }
 }

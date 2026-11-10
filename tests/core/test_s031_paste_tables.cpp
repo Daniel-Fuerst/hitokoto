@@ -8,7 +8,9 @@
 
 #include <gtest/gtest.h>
 
+#include <functional>
 #include <initializer_list>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -545,4 +547,78 @@ TEST(S031_PasteTables, TextBetweenTablesHasABlankLineOnEachSide) {
     const std::vector<PasteBlock> blocks = {tableBlock(kSmall), textBlock(u"between\nsecond line"), tableBlock(kSmall)};
     const auto p = placePastedBlocks(blocks, {u"", u"", std::nullopt, std::nullopt});
     EXPECT_EQ(p.text, std::u16string(kSmall) + u"\n\nbetween\nsecond line\n\n" + std::u16string(kSmall));
+}
+
+// Review O1 and O9: one linear scan of the HTML decides before Qt's import whether there is a
+// table at all and whether a table holds a table.
+TEST(S031_PasteTables, ScanFindsNoTableFlatTablesOrNestedTables) {
+    EXPECT_EQ(scanHtmlTables(u""), HtmlTables::None);
+    EXPECT_EQ(scanHtmlTables(u"<p>a</p><pre><span>int</span> x;</pre>"), HtmlTables::None);
+    EXPECT_EQ(scanHtmlTables(u"<p>a &lt;table&gt; b</p><tablex>"), HtmlTables::None);
+    EXPECT_EQ(scanHtmlTables(u"<table><tr><td>a</td></tr></table>"), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(u"<TABLE class=MsoNormalTable>x</TABLE>\n<Table\nborder=1>y</tAbLe >"), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(u"<table/>"), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(u"<table><tr><td><table><tr><td>x</td></tr></table></td></tr></table>"),
+              HtmlTables::Nested);
+    EXPECT_EQ(scanHtmlTables(u"<table><tr><td><TABLE\tborder=0>"), HtmlTables::Nested);
+    // Comments are skipped, also Office's conditional comments.
+    EXPECT_EQ(scanHtmlTables(u"<!-- <table> --><p>a</p>"), HtmlTables::None);
+    EXPECT_EQ(scanHtmlTables(u"<table><!--[if gte mso 9]><table><![endif]--></table>"), HtmlTables::Flat);
+    // An end tag without a start tag changes nothing; an unclosed comment ends the scan.
+    EXPECT_EQ(scanHtmlTables(u"</table><table></table>"), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(u"<!-- <table>"), HtmlTables::None);
+}
+
+TEST(S031_PasteTables, ScanIsLinearInDeepNesting) {
+    // 100,000 nested tables (about 2.4 MB): the scan stops at the second level.
+    std::u16string html;
+    for (int i = 0; i < 100000; ++i) {
+        html += u"<table><tr><td>";
+    }
+    EXPECT_EQ(scanHtmlTables(html), HtmlTables::Nested);
+}
+
+namespace {
+
+/// `above` for pasteLineInContainer: `lines` from the top of the document to the line above.
+std::function<std::optional<std::u16string>(std::size_t)> linesAbove(std::vector<std::u16string> lines) {
+    return [lines = std::move(lines)](std::size_t i) -> std::optional<std::u16string> {
+        if (i >= lines.size()) {
+            return std::nullopt;
+        }
+        return lines[lines.size() - 1 - i];
+    };
+}
+
+}  // namespace
+
+// Review O4: a paste in a block quote or list item stays plain text; where a table would split the
+// container, cmark-gfm (cmarkgfm 2025.10.22) shows the rest of the line outside it.
+TEST(S031_PasteTables, BlockQuotesAndListItemsAreContainers) {
+    for (const std::u16string_view line :
+         {u"> quoted text here", u">", u"   > indented quote", u"- item one", u"+ item", u"* item", u"-",
+          u"1. step one", u"2) step two", u"123456789. nine digits", u"  - nested item", u"> - item in a quote"}) {
+        EXPECT_TRUE(pasteLineInContainer(line, linesAbove({}))) << "container line of length " << line.size();
+    }
+    for (const std::u16string_view line : {u"Para one.", u"", u"   ", u"-item", u"1.5 kg", u"1234567890. ten digits",
+                                           u"---", u"* * *", u"- - -", u"# heading", u"| a | b |", u"a > b"}) {
+        EXPECT_FALSE(pasteLineInContainer(line, linesAbove({}))) << "plain line of length " << line.size();
+    }
+}
+
+TEST(S031_PasteTables, ParagraphLinesOfAContainerAreInIt) {
+    // A paragraph continues the quote or item above it, also lazily.
+    EXPECT_TRUE(pasteLineInContainer(u"lazy line", linesAbove({u"> quoted"})));
+    EXPECT_TRUE(pasteLineInContainer(u"   more of step one", linesAbove({u"1. step one"})));
+    EXPECT_TRUE(pasteLineInContainer(u"third line", linesAbove({u"- item", u"second line"})));
+    // A blank line ends a quote and a lazy paragraph.
+    EXPECT_FALSE(pasteLineInContainer(u"Para", linesAbove({u"> quoted", u""})));
+    EXPECT_FALSE(pasteLineInContainer(u"Para", linesAbove({u"- item", u""})));
+    // Indented under a list item after blank lines: the item's next paragraph.
+    EXPECT_TRUE(pasteLineInContainer(u"   second paragraph", linesAbove({u"1. step one", u"", u""})));
+    EXPECT_TRUE(pasteLineInContainer(u"  more", linesAbove({u"- item", u"", u"  first", u""})));
+    // Indented after blank lines below a paragraph: no container.
+    EXPECT_FALSE(pasteLineInContainer(u"  indented", linesAbove({u"Para one.", u""})));
+    EXPECT_FALSE(pasteLineInContainer(u"Para two.", linesAbove({u"Para one."})));
+    EXPECT_FALSE(pasteLineInContainer(u"Para", linesAbove({})));
 }

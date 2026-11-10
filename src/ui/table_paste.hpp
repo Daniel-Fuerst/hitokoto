@@ -7,6 +7,7 @@
 
 #include <QString>
 
+#include <cstdint>
 #include <vector>
 
 namespace hitokoto::ui {
@@ -14,5 +15,8 @@ namespace hitokoto::ui {
 /// The parts of `html` in source order: text outside tables (one line per block) and tables (each
 /// cell with its span and the lines of its blocks; a table in a cell marks the outer table).
 [[nodiscard]] std::vector<core::PastedPart> readPastedHtml(const QString& html);
+
+/// How often readPastedHtml has run in this process (tests and benchmarks: S031 review O1, O9).
+[[nodiscard]] std::uint64_t pastedHtmlImports() noexcept;
 
 }  // namespace hitokoto::ui

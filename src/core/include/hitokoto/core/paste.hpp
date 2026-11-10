@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -46,6 +47,22 @@ struct PasteBlock {
     std::u16string text;
     friend bool operator==(const PasteBlock&, const PasteBlock&) = default;
 };
+
+/// What the HTML of a paste holds, found by one linear scan before Qt's import (S031 review O1,
+/// O9): no table start tag, tables only side by side, or a table inside a table. Tags are matched
+/// without case; comments are skipped.
+enum class HtmlTables : std::uint8_t { None, Flat, Nested };
+
+/// Scans `html` for table start and end tags and tracks their depth (S031 review O1, O9).
+[[nodiscard]] HtmlTables scanHtmlTables(std::u16string_view html) noexcept;
+
+/// Whether a paste at `line` lands in a block quote or a list item, so that it stays plain text
+/// (S031 review O4): `line` starts one, continues the paragraph of one (also lazily), or is indented
+/// under a list item after blank lines. `above(i)` is the i-th line above `line` (0 = the line
+/// directly above), nothing at the start of the document. Conservative: a line that only looks
+/// like a container's (in a code block above, say) keeps the paste plain text too.
+[[nodiscard]] bool pasteLineInContainer(std::u16string_view line,
+                                        const std::function<std::optional<std::u16string>(std::size_t)>& above);
 
 /// Whether a table counts as a table (S031): at least two rows and two columns.
 [[nodiscard]] bool countsAsTable(const PastedTable& table);

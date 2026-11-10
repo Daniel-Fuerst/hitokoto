@@ -16,6 +16,8 @@ namespace hitokoto::ui {
 
 namespace {
 
+std::uint64_t imports = 0;
+
 /// Qt's HTML import, with every resource refused: a stylesheet <link> or an image is never read
 /// from disk or anywhere else (ADR 0011: nothing is loaded or followed).
 class NoResourceDocument : public QTextDocument {
@@ -88,11 +90,16 @@ void readFrame(QTextFrame* frame, std::vector<core::PastedPart>& parts) {
 }  // namespace
 
 std::vector<core::PastedPart> readPastedHtml(const QString& html) {
+    ++imports;
     NoResourceDocument document;
     document.setHtml(html);
     std::vector<core::PastedPart> parts;
     readFrame(document.rootFrame(), parts);
     return parts;
+}
+
+std::uint64_t pastedHtmlImports() noexcept {
+    return imports;
 }
 
 }  // namespace hitokoto::ui

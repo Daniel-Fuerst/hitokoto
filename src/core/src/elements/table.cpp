@@ -288,6 +288,10 @@ bool tableCellIsPlainText(std::u16string_view markdown) noexcept {
     return true;
 }
 
+std::u16string escapeTableCellBlockStart(std::u16string_view markdown) {
+    return std::u16string(markdown);  // stub (S031 review O3)
+}
+
 std::u16string tableCellToText(std::u16string_view markdown) {
     std::u16string out;
     out.reserve(markdown.size());

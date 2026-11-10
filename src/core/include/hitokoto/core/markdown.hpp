@@ -428,6 +428,12 @@ std::size_t separateTextAfterTables(DecodedText& decoded, const ElementRegistry&
 /// times faster than Qt's Markdown import (S031: sizing pasted tables). Conservative: false
 /// does not mean the cell holds syntax.
 [[nodiscard]] bool tableCellIsPlainText(std::u16string_view markdown) noexcept;
+/// Cell Markdown with a block marker at its start escaped, for laying the cell out as a Markdown
+/// document of its own: GFM reads a cell as inline text, so `# 12`, `> 5 kg`, `- 5 %`, `1. Jänner`,
+/// `---` or a fence show their characters there, while a document of their own would show a
+/// heading, quote, list, rule or code block (S031 review O3). Display only; the file keeps its
+/// Markdown.
+[[nodiscard]] std::u16string escapeTableCellBlockStart(std::u16string_view markdown);
 /// Edited text as cell Markdown: `|` becomes `\|`, a line break `<br>`.
 [[nodiscard]] std::u16string tableCellFromText(std::u16string_view text);
 /// `line` with the content of cell `column` replaced by `markdown`; the rest stays byte for byte.

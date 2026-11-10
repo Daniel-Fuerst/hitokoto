@@ -202,6 +202,15 @@ std::u16string textBlock(const std::vector<std::u16string>& lines) {
 
 }  // namespace
 
+HtmlTables scanHtmlTables(std::u16string_view /*html*/) noexcept {
+    return HtmlTables::Flat;  // stub (S031 review O1, O9)
+}
+
+bool pasteLineInContainer(std::u16string_view /*line*/,
+                          const std::function<std::optional<std::u16string>(std::size_t)>& /*above*/) {
+    return false;  // stub (S031 review O4)
+}
+
 bool countsAsTable(const PastedTable& table) {
     const Size s = sizeOf(table);
     return s.rows >= 2 && s.columns >= 2;

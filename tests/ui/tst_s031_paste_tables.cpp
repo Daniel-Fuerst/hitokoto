@@ -2,8 +2,10 @@
 // S031: pasting a table from Outlook, Excel or a web page as a Markdown table (ADR 0011). Pastes go
 // through the clipboard with the samples of tests/data/s031/samples: HTML as Qt hands it to the
 // editor on Windows and the plain text, so the tests run alike on every platform.
+#include "find_bar.hpp"
 #include "paste_samples.hpp"
 #include "table_model.hpp"
+#include "table_paste.hpp"
 #include "ui_test_support.hpp"
 
 #include <QAbstractItemModel>
@@ -12,7 +14,9 @@
 #include <QContextMenuEvent>
 #include <QCursor>
 #include <QDropEvent>
+#include <QElapsedTimer>
 #include <QGuiApplication>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMimeData>
@@ -25,6 +29,7 @@
 #include <memory>
 #include <optional>
 #include <type_traits>
+#include <utility>
 
 using namespace hitokoto;
 
@@ -224,10 +229,75 @@ public:
                std::all_of(shapes_.begin(), shapes_.end(), [](Qt::CursorShape s) { return s == Qt::WaitCursor; });
     }
 
+    /// Whether there were changes and no wait cursor showed during any of them.
+    [[nodiscard]] bool noWaitCursor() const {
+        return !shapes_.isEmpty() &&
+               std::none_of(shapes_.begin(), shapes_.end(), [](Qt::CursorShape s) { return s == Qt::WaitCursor; });
+    }
+
 private:
     QMetaObject::Connection connection_;
     QList<Qt::CursorShape> shapes_;
 };
+
+/// Records the override cursor at the moment a table view is shown (review O6: the wait cursor
+/// lasts until the pasted table is shown, not only while the text is inserted).
+class CursorWhenTablesShow : public QObject {
+public:
+    CursorWhenTablesShow() { qApp->installEventFilter(this); }
+    ~CursorWhenTablesShow() override { qApp->removeEventFilter(this); }
+    CursorWhenTablesShow(const CursorWhenTablesShow&) = delete;
+    CursorWhenTablesShow& operator=(const CursorWhenTablesShow&) = delete;
+
+    /// Whether a table view was shown and the wait cursor showed each time.
+    [[nodiscard]] bool waitCursorEachTime() const {
+        return !shapes_.isEmpty() &&
+               std::all_of(shapes_.begin(), shapes_.end(), [](Qt::CursorShape s) { return s == Qt::WaitCursor; });
+    }
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override {
+        if (event->type() == QEvent::Show && qobject_cast<QTableView*>(watched) != nullptr) {
+            const QCursor* c = QGuiApplication::overrideCursor();
+            shapes_ << (c != nullptr ? c->shape() : Qt::BitmapCursor);
+        }
+        return false;
+    }
+
+private:
+    QList<Qt::CursorShape> shapes_;
+};
+
+/// Clipboard data that offers `formats` and counts every request for data (review O7).
+class CountingMimeData : public QMimeData {
+public:
+    explicit CountingMimeData(QStringList formats, int* fetched) : formats_(std::move(formats)), fetched_(fetched) {}
+
+    [[nodiscard]] QStringList formats() const override { return formats_; }
+
+protected:
+    [[nodiscard]] QVariant retrieveData(const QString& mimeType, QMetaType /*type*/) const override {
+        ++*fetched_;
+        return mimeType == QStringLiteral("text/plain") ? QVariant(QStringLiteral("text")) : QVariant();
+    }
+
+private:
+    QStringList formats_;
+    int* fetched_;
+};
+
+/// `depth` tables, each in the first cell of the one around it (review O1).
+QString nestedTables(int depth) {
+    QString html;
+    for (int i = 0; i < depth; ++i) {
+        html += QStringLiteral("<table><tr><td>");
+    }
+    html += QStringLiteral("x");
+    for (int i = 0; i < depth; ++i) {
+        html += QStringLiteral("</td><td>y</td></tr><tr><td>z</td><td>w</td></tr></table>");
+    }
+    return html;
+}
 
 }  // namespace
 
@@ -569,6 +639,82 @@ private slots:
                  QStringLiteral("| a | b |\n| --- | --- |\n") + QString::fromStdU16String(row) + QStringLiteral("\n"));
     }
 
+    // Review O1: a table nested thousands of levels deep stays plain text without Qt's import,
+    // which takes seconds for it (2.1 s at depth 3,000 on the development VM).
+    void aDeeplyNestedTableStaysPlainTextQuickly() {
+        const QString markdown = QStringLiteral("Para one.\n\nPara two.\n");
+        test::Fixture f;
+        QVERIFY(openText(f, markdown));
+        f.placeCaret(1);
+        const QString plain = QStringLiteral("x\ty\nz\tw\n");
+        test::putOnClipboard(nestedTables(3000), plain);
+        const std::uint64_t imports = ui::pastedHtmlImports();
+        QElapsedTimer t;
+        t.start();
+        pressPaste(f.editor());
+        const qint64 ms = t.elapsed();
+        f.settle();
+        QCOMPARE(text(f), inserted(markdown, 10, plain));
+        QCOMPARE(ui::pastedHtmlImports(), imports);
+        QVERIFY2(ms < 1000, qPrintable(QStringLiteral("paste took %1 ms").arg(ms)));
+    }
+
+    // Review O9: HTML without a table is not imported; the paste is plain text at once, without
+    // the wait cursor.
+    void htmlWithoutATableIsNotImported() {
+        const QString markdown = QStringLiteral("Para one.\n\nPara two.\n");
+        test::Fixture f;
+        QVERIFY(openText(f, markdown));
+        f.placeCaret(1);
+        QString html = QStringLiteral("<pre>");
+        QString plain;
+        for (int i = 0; i < 50; ++i) {
+            html += QStringLiteral("<span style='color:#0000ff'>int</span> x%1 = <span>%1</span>;\n").arg(i);
+            plain += QStringLiteral("int x%1 = %1;\n").arg(i);
+        }
+        html += QStringLiteral("</pre>");
+        test::putOnClipboard(html, plain);
+        const std::uint64_t imports = ui::pastedHtmlImports();
+        const CursorDuringChanges cursor(f.editor()->document());
+        pressPaste(f.editor());
+        f.settle();
+        QCOMPARE(text(f), inserted(markdown, 10, plain));
+        QCOMPARE(ui::pastedHtmlImports(), imports);
+        QVERIFY(cursor.noWaitCursor());
+        // A table is still imported (once).
+        test::putSampleOnClipboard(QStringLiteral("outlook-t1-example"));
+        pressPaste(f.editor());
+        f.settle();
+        QCOMPARE(ui::pastedHtmlImports(), imports + 1);
+    }
+
+    // Review O4: in a block quote or list item a table would split the container; the plain text
+    // is pasted (checked with cmark-gfm: the container keeps its lines).
+    void inAQuoteOrListItemThePlainTextIsPasted_data() {
+        QTest::addColumn<QString>("markdown");
+        QTest::addColumn<int>("line");
+        QTest::addColumn<int>("column");
+        QTest::newRow("block quote") << QStringLiteral("> quoted text here\n") << 0 << 9;
+        QTest::newRow("ordered list") << QStringLiteral("1. step one\n   more of step one\n2. step two\n") << 0 << 11;
+        QTest::newRow("bullet list") << QStringLiteral("- item one\n- item two\n") << 0 << 10;
+        QTest::newRow("lazy line of a quote") << QStringLiteral("> quoted\nlazy line\n") << 1 << 4;
+    }
+
+    void inAQuoteOrListItemThePlainTextIsPasted() {
+        QFETCH(QString, markdown);
+        QFETCH(int, line);
+        QFETCH(int, column);
+        test::Fixture f;
+        QVERIFY(openText(f, markdown));
+        f.placeCaret(line, column);
+        f.settle();
+        const int at = f.editor()->textCursor().position();
+        test::putSampleOnClipboard(QStringLiteral("outlook-t1-example"));
+        pressPaste(f.editor());
+        f.settle();
+        QCOMPARE(text(f), inserted(markdown, at, test::s031Text(QStringLiteral("outlook-t1-example"))));
+    }
+
     void aDropIsNotConverted() {
         const QString markdown = QStringLiteral("Para one.\n\nPara two.\n");
         test::Fixture f;
@@ -664,6 +810,71 @@ private slots:
         QVERIFY(action->isEnabled());
     }
 
+    // Review O2: Ctrl+Shift+V acts where the focus is. In a cell it pastes into the cell as Ctrl+V
+    // does there (S018); the rest of the document stays as it is.
+    void pasteAsPlainTextInACellPastesIntoTheCell() {
+        const QString markdown = QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2 |\n\nafter\n");
+        bool destroyed = false;  // before the fix the key rewrote the document and closed the editor
+        test::Fixture f;
+        QVERIFY(openText(f, markdown));
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        view->setCurrentIndex(view->model()->index(1, 0));
+        view->edit(view->model()->index(1, 0));
+        QCoreApplication::processEvents();
+        auto* cell = qobject_cast<QPlainTextEdit*>(QApplication::focusWidget());
+        QVERIFY(cell != nullptr);
+        connect(cell, &QObject::destroyed, this, [&destroyed] { destroyed = true; });
+        test::keyClick(cell, Qt::Key_A, Qt::ControlModifier);
+        test::putSampleOnClipboard(QStringLiteral("outlook-t1-example"));
+        pressPastePlain(cell);
+        QVERIFY(!destroyed);
+        test::keyClick(cell, Qt::Key_Backtab);  // commits, as in S018
+        f.settle();
+        const std::u16string plain = test::s031Text(QStringLiteral("outlook-t1-example")).toStdU16String();
+        const std::u16string row = core::replaceTableCell(u"| 1 | 2 |", 0, core::tableCellFromText(plain));
+        QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n") + QString::fromStdU16String(row) +
+                              QStringLiteral("\n\nafter\n"));
+    }
+
+    // Review O2: in the find field Ctrl+Shift+V pastes into the field.
+    void pasteAsPlainTextInTheFindFieldPastesIntoTheField() {
+        const QString markdown = QStringLiteral("Para one.\n\nPara two.\n");
+        test::Fixture f;
+        QVERIFY(openText(f, markdown));
+        pressStandardKey(f.editor(), QKeySequence::Find);
+        QLineEdit* field = f.window->findBar()->searchField();
+        QVERIFY(field->hasFocus());
+        QApplication::clipboard()->setText(QStringLiteral("needle"));
+        QCoreApplication::processEvents();
+        pressPastePlain(field);
+        f.settle();
+        QCOMPARE(field->text(), QStringLiteral("needle"));
+        QCOMPARE(text(f), markdown);
+    }
+
+    // Review O7: the Edit menu decides from the clipboard's formats; no text is fetched while the
+    // clipboard changes (another program would have to render it).
+    void pasteAsPlainTextAsksOnlyForTheFormats() {
+        test::Fixture f;
+        QAction* action = menuAction(f, QStringLiteral("Paste as Plain Text"));
+        QVERIFY(action != nullptr);
+        int fetched = 0;
+        auto* data = new CountingMimeData({QStringLiteral("text/plain")}, &fetched);
+        QApplication::clipboard()->setMimeData(data);
+        QCoreApplication::processEvents();
+        if (QApplication::clipboard()->mimeData() != data) {
+            QSKIP("this platform's clipboard hands out a copy of the data, which the test cannot count");
+        }
+        QVERIFY(QApplication::clipboard()->mimeData()->hasText());
+        QVERIFY(action->isEnabled());
+        QCOMPARE(fetched, 0);
+        QApplication::clipboard()->setMimeData(new CountingMimeData({QStringLiteral("image/png")}, &fetched));
+        QCoreApplication::processEvents();
+        QVERIFY(!action->isEnabled());
+        QCOMPARE(fetched, 0);
+    }
+
     // Scenario: one undo step.
     void oneUndoStep() {
         const QString markdown = QStringLiteral("Para one.\n\nPara two.\n");
@@ -742,10 +953,12 @@ private slots:
         test::Fixture f;
         test::putOnClipboard(html, test::s031GeneratedText(rows, columns));
         const CursorDuringChanges cursor(f.editor()->document());
+        const CursorWhenTablesShow shown;
         pressPaste(f.editor());
         f.settle();
         QCOMPARE(text(f), test::s031GeneratedMarkdown(rows, columns));
         QVERIFY(cursor.waitCursorThroughout());
+        QVERIFY(shown.waitCursorEachTime());
         QVERIFY(QGuiApplication::overrideCursor() == nullptr);
         QTableView* view = f.editor()->tableViewAt(0);
         QVERIFY(view != nullptr);
@@ -757,10 +970,12 @@ private slots:
         test::Fixture f;
         test::putSampleOnClipboard(QStringLiteral("outlook-t1-example"));
         const CursorDuringChanges cursor(f.editor()->document());
+        const CursorWhenTablesShow shown;  // review O6: until the table is shown
         pressPaste(f.editor());
         f.settle();
         QCOMPARE(text(f), kExample);
         QVERIFY(cursor.waitCursorThroughout());
+        QVERIFY(shown.waitCursorEachTime());
         QVERIFY(QGuiApplication::overrideCursor() == nullptr);
     }
 };

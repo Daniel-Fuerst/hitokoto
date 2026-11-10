@@ -31,14 +31,26 @@ inline QString s031Text(const QString& name) {
     return s031Sample(name + QStringLiteral(".txt"));
 }
 
-/// The text of the generated cell at (row, column).
-inline QString s031CellText(int row, int column) {
-    return QStringLiteral("r%1c%2").arg(row).arg(column);
+/// The lines of the generated cell at (row, column), like the samples' cells (S031 review O10): in
+/// turn one word, two lines, a word with `&`, and two lines with `:` and `_`.
+inline QStringList s031CellLines(int row, int column, int columns) {
+    const QString name = QStringLiteral("r%1c%2").arg(row).arg(column);
+    switch ((row * columns + column) % 4) {
+        case 1:
+            return {name, QStringLiteral("second line")};
+        case 2:
+            return {name + QStringLiteral(" R&D")};
+        case 3:
+            return {name + QStringLiteral(" 09:30"), QStringLiteral("a_b")};
+        default:
+            return {name};
+    }
 }
 
 /// A table of `rows` x `columns` cells in the markup of `html`, a sample whose first cell reads
 /// "Product" (outlook-t1-example, excel-t6-example): its head, the opening tag of its first row and
-/// the markup of its first cell, repeated; each cell reads s031CellText(row, column).
+/// the markup of its first cell, repeated; each cell holds s031CellLines(row, column), its lines
+/// as the sample separates them (Outlook: one paragraph each; Excel: `<br>` as Excel writes it).
 inline QString s031GeneratedHtml(const QString& html, int rows, int columns) {
     const qsizetype firstRow = html.indexOf(QStringLiteral("<tr"));
     const qsizetype rowTagEnd = html.indexOf(u'>', firstRow) + 1;
@@ -58,13 +70,21 @@ inline QString s031GeneratedHtml(const QString& html, int rows, int columns) {
     const QString beforeText = cell.left(text);
     const QString afterText = cell.mid(text + 7);
     const QString tail = html.mid(lastRowEnd);
+    const qsizetype paragraph = beforeText.indexOf(QStringLiteral("<p"));
+    const QString lineBreak =
+        paragraph >= 0 ? afterText.left(afterText.indexOf(QStringLiteral("</td>"))) + beforeText.mid(paragraph)
+                       : QStringLiteral("<br style='mso-data-placement:same-cell'>");
 
     QString out = head;
-    out.reserve(head.size() + tail.size() + rows * (rowTag.size() + 8 + columns * (cell.size() + 8)));
+    out.reserve(head.size() + tail.size() + rows * (rowTag.size() + 8 + columns * (2 * cell.size() + 16)));
     for (int r = 0; r < rows; ++r) {
         out += rowTag;
         for (int c = 0; c < columns; ++c) {
-            out += beforeText + s031CellText(r, c) + afterText;
+            QStringList lines = s031CellLines(r, c, columns);
+            for (QString& line : lines) {
+                line = line.toHtmlEscaped();
+            }
+            out += beforeText + lines.join(lineBreak) + afterText;
         }
         out += QStringLiteral("</tr>\n");
     }
@@ -72,26 +92,29 @@ inline QString s031GeneratedHtml(const QString& html, int rows, int columns) {
     return out;
 }
 
-/// The plain text that goes with a generated table: cells separated by tabs, rows by line breaks.
+/// The plain text that goes with a generated table, as Excel writes it: cells separated by tabs,
+/// rows by line breaks, a cell with a line break in quotes.
 inline QString s031GeneratedText(int rows, int columns) {
     QString out;
     for (int r = 0; r < rows; ++r) {
         QStringList cells;
         for (int c = 0; c < columns; ++c) {
-            cells << s031CellText(r, c);
+            const QStringList lines = s031CellLines(r, c, columns);
+            cells << (lines.size() > 1 ? u'"' + lines.join(u'\n') + u'"' : lines.front());
         }
         out += cells.join(u'\t') + u'\n';
     }
     return out;
 }
 
-/// The Markdown S031 makes of a generated table.
+/// The Markdown S031 makes of a generated table (checked with cmark-gfm: `R&D` stays as it is,
+/// `_` is escaped, the lines of a cell are joined with `<br>`).
 inline QString s031GeneratedMarkdown(int rows, int columns) {
     QString out;
     for (int r = 0; r < rows; ++r) {
         QStringList cells;
         for (int c = 0; c < columns; ++c) {
-            cells << s031CellText(r, c);
+            cells << s031CellLines(r, c, columns).join(QStringLiteral("<br>")).replace(u'_', QStringLiteral("\\_"));
         }
         out += QStringLiteral("| ") + cells.join(QStringLiteral(" | ")) + QStringLiteral(" |");
         if (r == 0) {

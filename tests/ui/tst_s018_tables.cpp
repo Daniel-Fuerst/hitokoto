@@ -14,6 +14,7 @@
 #include <QPlainTextEdit>
 #include <QScrollBar>
 #include <QTableView>
+#include <QTextBlock>
 #include <QTextBlockFormat>
 #include <QTextCursor>
 #include <QTextDocument>
@@ -300,6 +301,47 @@ private slots:
         f.settle();
         QCOMPARE(text(f), QString::fromUtf8(markdown));
         QVERIFY(!f.editor()->document()->isModified());
+    }
+
+    // S031 review O3: a cell starting with a block marker shows its characters, as GFM shows it in
+    // a cell (cmark-gfm: each of these cells renders as exactly its text); the file keeps it.
+    void blockMarkersAtACellStartShowAsText() {
+        const QStringList cells = {QStringLiteral("1. J\u00e4nner 2026"),
+                                   QStringLiteral("12. M\u00e4rz"),
+                                   QStringLiteral("- 5 %"),
+                                   QStringLiteral("+ 2 Stk."),
+                                   QStringLiteral("* x"),
+                                   QStringLiteral("# 12"),
+                                   QStringLiteral("> 5 kg"),
+                                   QStringLiteral("---"),
+                                   QStringLiteral("```"),
+                                   QStringLiteral("2) zwei")};
+        QString markdown = QStringLiteral("| A |\n| --- |\n");
+        for (const QString& cell : cells) {
+            markdown += QStringLiteral("| ") + cell + QStringLiteral(" |\n");
+        }
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("markers.md"), markdown.toUtf8())));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QAbstractItemModel* model = view->model();
+        auto* delegate = qobject_cast<ui::TableDelegate*>(view->itemDelegate());
+        QVERIFY(delegate != nullptr);
+        for (int i = 0; i < cells.size(); ++i) {
+            QTextDocument shown;
+            delegate->prepare(shown, model->index(1 + i, 0));
+            QCOMPARE(shown.toPlainText(), cells.at(i));
+            QCOMPARE(shown.blockCount(), 1);
+            const QTextBlock block = shown.firstBlock();
+            QVERIFY2(block.textList() == nullptr, qPrintable(cells.at(i)));
+            QCOMPARE(block.blockFormat().headingLevel(), 0);
+            QVERIFY2(!block.blockFormat().hasProperty(QTextFormat::BlockQuoteLevel), qPrintable(cells.at(i)));
+            QVERIFY2(!block.blockFormat().hasProperty(QTextFormat::BlockCodeFence), qPrintable(cells.at(i)));
+            QVERIFY2(!block.blockFormat().hasProperty(QTextFormat::BlockTrailingHorizontalRulerWidth),
+                     qPrintable(cells.at(i)));
+        }
+        QCOMPARE(text(f), markdown);
     }
 
     // S031 (sizing pasted tables): a cell is as wide and as high as Qt's Markdown rendering of it,
