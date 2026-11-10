@@ -17,6 +17,7 @@
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QResizeEvent>
+#include <QScopedValueRollback>
 #include <QScrollBar>
 #include <QStyle>
 #include <QTableView>
@@ -178,6 +179,7 @@ void EditorWidget::restoreAnchor(const ScrollAnchor& anchor) {
 }
 
 void EditorWidget::applyTheme(const core::Theme& theme) {
+    const QScopedValueRollback<bool> guard(resizing_, true);
     const ScrollAnchor anchor = captureAnchor();
     EditorFormats formats(theme);
     // Changing fonts and margins marks the document as modified in Qt; a theme is not an edit.
@@ -263,10 +265,15 @@ void EditorWidget::positionToolbar() {
 }
 
 void EditorWidget::resizeEvent(QResizeEvent* event) {
+    if (resizing_) {
+        QTextEdit::resizeEvent(event);
+        return;
+    }
+    const QScopedValueRollback<bool> guard(resizing_, true);
     verticalScroller_->stop();
     const ScrollAnchor anchor = captureAnchor();
-    QTextEdit::resizeEvent(event);
     updateMargins();
+    QTextEdit::resizeEvent(event);
     positionToolbar();
     tables_->setAvailableWidth(availableTableWidth());
     properties_->setAvailableWidth(availableTableWidth());

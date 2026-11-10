@@ -137,6 +137,7 @@ private:
     BlockLayout* layout_ = nullptr;
     qreal pendingShift_ = 0;  ///< height change above the viewport not yet scrolled away
     bool applyingShift_ = false;
+    bool resizing_ = false;
     BlockStyler* styler_ = nullptr;
     std::unique_ptr<TableEmbedder> tables_;
     std::unique_ptr<PropertiesEmbedder> properties_;
