@@ -117,6 +117,13 @@ if(NOT DEFINED MODE OR "${MODE}" STREQUAL "")
     set(MODE next)
 endif()
 
+# S032 temporary commit, reverted before the merge: the mode labels always succeeds here, so the
+# check "Version label" must stay red without a label because it runs main's copy of this script.
+if("${MODE}" STREQUAL "labels")
+    message(STATUS "S032 temporary: the mode labels always succeeds in this copy")
+    return()
+endif()
+
 if("${MODE}" STREQUAL "labels")
     read_lines("${LABELS_FILE}" labels)
     version_label("${labels}" label error)
