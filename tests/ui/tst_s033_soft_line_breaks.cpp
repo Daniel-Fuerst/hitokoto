@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S032: consecutive lines of a paragraph flow as one wrapped paragraph while the caret is outside
+// S033: consecutive lines of a paragraph flow as one wrapped paragraph while the caret is outside
 // the paragraph; CommonMark 6.7 hard line breaks (2+ trailing spaces or trailing '\') start a new
 // visual line inside the flowing paragraph; placing the caret or selection on any line of the
 // paragraph reveals all source lines of that paragraph.
@@ -60,7 +60,7 @@ QString differenceFromTheReference(ui::EditorWidget* editor) {
 
 }  // namespace
 
-class tst_s032_soft_line_breaks : public QObject {
+class tst_s033_soft_line_breaks : public QObject {
     Q_OBJECT
 private slots:
     void consecutiveParagraphLinesFlowAsOneWrappedBlock() {
@@ -424,5 +424,5 @@ private slots:
     }
 };
 
-QTEST_MAIN(tst_s032_soft_line_breaks)
-#include "tst_s032_soft_line_breaks.moc"
+QTEST_MAIN(tst_s033_soft_line_breaks)
+#include "tst_s033_soft_line_breaks.moc"

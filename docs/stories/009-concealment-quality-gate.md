@@ -83,7 +83,7 @@ depend on it.
 - And after `Escape` selects a match in a table or front matter, the caret and the selection are
   only ever on lines that are shown
 
-**Scenario: flowing paragraphs, soft and hard line breaks (S032)**
+**Scenario: flowing paragraphs, soft and hard line breaks (S033)**
 - Given multi-line paragraphs and bullet continuations with leading spaces, trailing spaces,
   hard line breaks (`\` and two trailing spaces) and inline markers
 - When the caret walks with arbitrary sequences of Up/Down/Left/Right/Home/End/PageUp/PageDown

@@ -20,7 +20,11 @@ if(TARGET hitokoto-bench-gate)
             image_change
             main_run
             main_hard_budget
-            print_class)
+            print_class
+            # S031: a hard budget new in the pull request; the base does not measure it yet.
+            new_hard_key
+            new_hard_key_missed
+            new_hard_key_one_base_round)
         add_test(NAME S029_GateCase_${c}
             COMMAND ${CMAKE_COMMAND} -DGATE=$<TARGET_FILE:hitokoto-bench-gate>
                     -DCASE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/data/${c}

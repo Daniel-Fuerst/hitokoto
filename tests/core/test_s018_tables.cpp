@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace hitokoto::core;
@@ -150,6 +151,64 @@ TEST(S018_Tables, CellTextForEditingAndBack) {
     EXPECT_EQ(tableCellFromText(tableCellToText(u"a \\| b<br>c")), u"a \\| b<br>c");
 }
 
+// S031 review O3: a `<br>` after an odd number of backslashes is text (CommonMark: the backslash
+// escapes `<`); after an even number the backslashes escape each other and it is a line break.
+TEST(S018_Tables, AnEscapedBreakStaysTextForEditing) {
+    EXPECT_EQ(tableCellToText(u"x\\<br>y"), u"x\\<br>y");
+    EXPECT_EQ(tableCellToText(u"x\\<BR/>y"), u"x\\<BR/>y");
+    EXPECT_EQ(tableCellToText(u"x\\\\\\<br />y"), u"x\\\\\\<br />y");
+    EXPECT_EQ(tableCellToText(u"x\\\\<br>y"), u"x\\\\\ny");
+    EXPECT_EQ(tableCellToText(u"\\<br>"), u"\\<br>");
+    EXPECT_EQ(tableCellToText(u"a<br>b\\<br>c"), u"a\nb\\<br>c");
+    // Typed back unchanged: editing the cell keeps the Markdown.
+    EXPECT_EQ(tableCellFromText(tableCellToText(u"x\\<br>y")), u"x\\<br>y");
+    EXPECT_EQ(tableCellFromText(tableCellToText(u"x\\\\<br>y")), u"x\\\\<br>y");
+}
+
+// S031 (sizing pasted tables): cells GFM shows as exactly their characters are laid out as plain
+// text. Expectations checked with cmark-gfm and markdown-it-py (tables on): each plain cell renders
+// as its text alone.
+TEST(S018_Tables, PlainCellsNeedNoMarkdown) {
+    for (const std::u16string_view plain :
+         {u"", u"r12c3", u"Green tea", u"12,50", u"Tea House North", u"5\" tin", u"say \"hi\"", u"a  b",
+          u"Open daily (9 to 18)", u"1.5 kg", u"x.y", u"50 % off; ok?", u"a-b", u"a+b=c", u"$5", u"Grüße, 一言",
+          u"no\u00a0break",
+          // Review (code) O10, step 3 (Armin, 2026-11-10): a colon not followed by // and an
+          // ampersand that starts no entity are text (cmark-gfm: each renders as its characters).
+          u"R&D", u"A & B", u"09:30", u"Hinweis: siehe unten", u"x:y", u"http:/x"}) {
+        EXPECT_TRUE(tableCellIsPlainText(plain)) << "plain cell of length " << plain.size();
+    }
+    for (const std::u16string_view syntax : {u"*x*",
+                                             u"_x_",
+                                             u"~x~",
+                                             u"`c`",
+                                             u"a\\|b",
+                                             u"C:\\Dev",
+                                             u"[l](u)",
+                                             u"![i](u)",
+                                             u"x<br>y",
+                                             u"&amp;",
+                                             u"&#38;",
+                                             u"&copy;",
+                                             u"R&D;",
+                                             u"# h",
+                                             u"- item",
+                                             u"+ item",
+                                             u"1. one",
+                                             u"2) two",
+                                             u"> quote",
+                                             u"www.example.org",
+                                             u"https://example.org",
+                                             u"ftp://example.org",
+                                             u"see https://example.org",
+                                             u"mail@example.org",
+                                             u"a\tb",
+                                             u"    code",
+                                             u"x\u2028y"}) {
+        EXPECT_FALSE(tableCellIsPlainText(syntax)) << "syntax cell of length " << syntax.size();
+    }
+}
+
 TEST(S018_Tables, ReplacingACellChangesNothingElse) {
     EXPECT_EQ(replaceTableCell(u"| a | b |", 1, u"x"), u"| a | x |");
     EXPECT_EQ(replaceTableCell(u"|a|bb|", 0, u"zz"), u"|zz|bb|");
@@ -268,4 +327,72 @@ TEST(S018_Tables, TextDirectlyBelowATableGetsABlankLineWhenOpened) {
     EXPECT_EQ(mixed.text, u"| a |\n| --- |\n\nText\nend");
     EXPECT_EQ(mixed.perBreak,
               (std::vector<LineEnding>{LineEnding::CRLF, LineEnding::LF, LineEnding::CRLF, LineEnding::CRLF}));
+}
+
+// S031 review O3: GFM reads a cell as inline text, so a block marker at its start shows as its
+// characters (checked with cmark-gfm, cmarkgfm 2025.10.22: each cell below renders as exactly its
+// text). Laid out as a Markdown document of its own, the cell needs the marker escaped; inline
+// syntax stays as it is.
+TEST(S018_Tables, BlockMarkersAtACellStartAreEscapedForDisplay) {
+    const std::vector<std::pair<std::u16string_view, std::u16string_view>> escaped = {
+        {u"1. Jänner 2026", u"1\\. Jänner 2026"},
+        {u"12. März", u"12\\. März"},
+        {u"2) zwei", u"2\\) zwei"},
+        {u"3.", u"3\\."},
+        {u"- 5 %", u"\\- 5 %"},
+        {u"-", u"\\-"},
+        {u"+ 2 Stk.", u"\\+ 2 Stk."},
+        {u"* x", u"\\* x"},
+        {u"# 12", u"\\# 12"},
+        {u"###### six", u"\\###### six"},
+        {u"#", u"\\#"},
+        {u"> 5 kg", u"\\> 5 kg"},
+        {u">", u"\\>"},
+        {u"---", u"\\---"},
+        {u"***", u"\\***"},
+        {u"___", u"\\___"},
+        {u"- - -", u"\\- - -"},
+        {u"```", u"\\```"},
+        {u"~~~ x", u"\\~~~ x"},
+        {u"[a]: b", u"\\[a]: b"},
+    };
+    for (const auto& [cell, expected] : escaped) {
+        EXPECT_EQ(escapeTableCellBlockStart(cell), expected);
+    }
+    for (const std::u16string_view unchanged : {u"", u"Green tea", u"1.5 kg", u"1234567890. ten digits", u"-5 %", u"+1",
+                                                u"*emph*", u"**bold**", u"####### seven", u"#tag", u"a > b", u"``x``",
+                                                u"```x```", u"__init__", u"[l](u)", u"\\- escaped", u"x<br>- y"}) {
+        EXPECT_EQ(escapeTableCellBlockStart(unchanged), unchanged);
+    }
+}
+
+// S031 review (code) O10: a cell whose Markdown holds nothing but plain characters, backslash
+// escapes and `<br>` is laid out as plain text with U+2028 between its lines. Checked with
+// cmark-gfm (cmarkgfm 2025.10.22): each cell below renders as exactly these characters and breaks.
+TEST(S018_Tables, TwoLineCellsNeedNoMarkdown) {
+    const std::vector<std::pair<std::u16string_view, std::u16string_view>> plain = {
+        {u"Green tea", u"Green tea"},
+        {u"r0c1<br>second line", u"r0c1\u2028second line"},
+        {u"Tea House North<br>Tea House South", u"Tea House North\u2028Tea House South"},
+        {u"12,50<br/>13,20", u"12,50\u202813,20"},
+        {u"x<br />y", u"x\u2028y"},
+        {u"x<BR>y", u"x\u2028y"},
+        {u"first<br><br>third", u"first\u2028\u2028third"},
+        {u"a\\_b", u"a_b"},
+        {u"Tea\\|Pot", u"Tea|Pot"},
+        {u"\\*x\\* and \\[l\\](u)", u"*x* and [l](u)"},
+        {u"a\\\\b", u"a\\b"},
+        {u"5\" tin<br>say \"hi\"", u"5\" tin\u2028say \"hi\""},
+        {u"r0c2 R&D", u"r0c2 R&D"},
+        {u"r0c3 09:30<br>a\\_b", u"r0c3 09:30\u2028a_b"},
+    };
+    for (const auto& [cell, expected] : plain) {
+        EXPECT_EQ(tableCellPlainLayout(cell).value_or(u"(not plain)"), expected);
+    }
+    for (const std::u16string_view syntax :
+         {u"&amp;<br>x", u"x<br>https://example.org", u"*x*", u"x<br>*y*", u"<br>x", u"x<br>", u"x <br>y", u"x<br> y",
+          u"x\\<br>y", u"C:\\Dev", u"\\a", u"- item<br>two", u"1. one<br>two", u"www.example.org<br>x",
+          u"x<br>www.y.org", u"x<b>y", u"x<brr>y", u"x\u2028y", u"a\tb"}) {
+        EXPECT_FALSE(tableCellPlainLayout(syntax).has_value()) << "syntax cell of length " << syntax.size();
+    }
 }

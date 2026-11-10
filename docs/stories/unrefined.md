@@ -120,24 +120,66 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   makes the entries go away, or a Qt or Visual Studio bug report; until then the Error List filter
   "Build Only" hides them. Armin's goal: no entries in the Error List.
 
-## Versioning, and packages and installers for every version
+## Packages and installers for every version
 
 - **Seen:** 2026-10-31 (Armin, after building main for daily use): every update means building
   locally, copying the exe and running `windeployqt` by hand.
-- **Now:** the version is `0.1.0` in `project()` in `CMakeLists.txt`, set by hand and unchanged
-  since S000; the app reports it through `QApplication::applicationVersion`. The repository has
-  no tags. `CMakeLists.txt` configures CPack for DEB and TGZ (pull request #15), but no CI job runs
-  it. S012 (distributable builds; Open in the backlog, Proposed in its file) asks for one artefact
-  per platform from a release workflow for a tagged release: a Windows installer or zip, a macOS
-  `.dmg` and a Linux AppImage, with the licences.
-- **Wanted (Armin):** a version, set automatically if possible, and for every new version packages
-  and installers built automatically.
-- **Open:** where the version comes from (a git tag read by CMake, a file, or derived from the
-  commit messages); what makes a new version (a tag on main, a GitHub release, every merge); the
-  formats per platform and whether this refines S012 or becomes a story of its own; signing
-  (Windows certificate, macOS notarisation); where the artefacts go (GitHub releases, now that the
-  repository is public). A release job changes `ci.yml` or adds a workflow, so it needs Armin's
-  approval.
+- **Refined so far:** the version itself is S030 (a defined version step for every merge into
+  main, ADR 0010).
+- **Now:** `CMakeLists.txt` configures CPack for DEB and TGZ (pull request #15), but no CI job runs
+  it; it installs only the binary (no `.desktop` file, icon or copyright file). S012 (distributable
+  builds; Open in the backlog, Proposed in its file) asks for one artefact per platform from a
+  release workflow for a tagged release: a Windows installer or zip, a macOS `.dmg` and a Linux
+  AppImage, with the licences.
+- **Wanted (Armin):** for every new version, packages and installers built automatically; on
+  2026-11-08 first of all a Debian package for trixie, built by CI on main against Debian's Qt
+  (6.8.2), once versions exist.
+- **Open:** the formats per platform and whether this refines S012 or becomes a story of its own
+  (S012 still says the `.deb` follows separate Debian packaging conventions; for Armin, a `.deb`
+  built by CI belongs to this project); signing (Windows certificate, macOS notarisation); where the
+  artefacts go (GitHub releases, now that the repository is public). Tags pushed by the S030 tag
+  job start no other workflow, so package builds run in the same workflow after it. A release job
+  changes `ci.yml` or adds a workflow, so it needs Armin's approval. GitHub Releases with generated
+  notes come with the packages, not with S030 (Armin, 2026-11-09), so that a release carries
+  something to download.
+- **Version of the packages (code review of S030, O6, 2026-11-09):** `CPACK_PACKAGE_VERSION` is the
+  full version from S030 (`0.4.0+3.gabc1234`); DEB and TGZ take it. Windows installers (WiX, Inno
+  Setup) and version resources need a numeric version: they take `HITOKOTO_VERSION_CORE`, not
+  `CPACK_PACKAGE_VERSION`.
+
+## Showing the version to the user
+
+- **Seen:** 2026-11-09 (Armin, while refining S030): S030 gives every build a version, but the user
+  sees it hardly anywhere.
+- **Now:** the version goes to `QApplication::applicationVersion()` (S030). `hitokoto --version`
+  shows it (the `QCommandLineParser` option exists since S000; on Windows a message box, because the
+  program is a GUI application; found while implementing S030); there is no About dialog and no
+  version in the title bar.
+- **Open:** where else it is shown: a dialog Help › About (with the licence and the Qt version), the
+  title bar, or both; theme tokens for a dialog (brief, section 8); whether builds between tags show
+  the full version (`0.4.0+3.gabc1234`) or the numeric core.
+
+## The check "Version label" with the script from main
+
+- **Seen:** 2026-11-09 (code review of S030, O3): the job "Version label" in `version.yml` runs
+  `scripts/version/NextVersion.cmake` from the pull request's own merge ref. A pull request that
+  changes the script changes its own required check; a script that always succeeds would let a
+  pull request without a version label through.
+- **Now:** accepted for the time being (Armin, 2026-11-09). The tag job runs the script from main
+  and stops after the merge at a pull request without exactly one version label (red, names the
+  pull request).
+- **Wanted (Armin):** follow-up work once S030 is on main: the check takes the script from main
+  (the base of the pull request), not from the pull request. Before the merge of S030 main has no
+  script, so it cannot be done in S030 itself.
+- **Purpose (Armin, 2026-11-09):** a guard against an accidental change of the script, not
+  against a deliberate one. GitHub runs `version.yml` for a pull request from the pull request
+  itself, so a pull request can still change or remove the check there; that must stay possible,
+  for example to move to another way of versioning (removing the check also takes it out of the
+  required checks of the ruleset). Closing that too would need `pull_request_target`, which S030
+  rules out.
+- **Open:** whether the check checks out the base commit or main's tip, and how a pull request that
+  changes the script itself is checked (with main's script, so that a change to the rules applies
+  from the next pull request on).
 
 ## Benchmark baselines per runner class (deferred)
 
@@ -152,3 +194,15 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   over many merges within the tolerance becomes a concern (the anchor of the class variant, or a
   comparison with the last release tag on the same runner). Window, minimum and tolerance would be
   tuned on recorded data.
+
+## Tables with more than 255 columns
+
+- **Seen:** 2026-11-09 (S031, while implementing). S018 recognises at most 255 columns
+  (`kMaxColumns` in `src/core/src/elements/table.cpp`; the column count lives in 8 bits of the
+  block state). A wider table, typed or pasted (S031 writes its Markdown without a size limit),
+  is shown as text.
+- **GFM:** no column limit; cmark-gfm (cmarkgfm 2025.10.22) and markdown-it-py 4.2.0 (tables on)
+  both render a 300-column table as a table.
+- **hitokoto:** up to 255 columns a table, above that every line is text.
+- **Open:** whether wider tables matter in practice; if so, more bits for the column count in the
+  block state (ADR 0006) and the cost of showing such a table (S018 budgets).

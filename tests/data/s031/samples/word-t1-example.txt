@@ -1,0 +1,5 @@
+Product	Supplier	Price per kg
+Green tea	Tea House North
+Tea House South	12,50
+13,20
+Black tea	Tea House West	9,80

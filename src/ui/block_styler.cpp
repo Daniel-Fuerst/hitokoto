@@ -947,7 +947,7 @@ void BlockStyler::updateParagraphAbove(const QTextBlock& block, const core::Line
         return;  // the line above is no paragraph text
     }
     if (previousLink && (*previousLink == kLinkContinues) != link.continues) {
-        restyleLater(above);  // S032: whether `above` flows into `block` changed
+        restyleLater(above);  // S033: whether `above` flows into `block` changed
     }
     if (!aboveState->underlinable()) {
         return;  // the line above is no paragraph text that could be underlined

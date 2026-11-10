@@ -75,7 +75,7 @@ private slots:
         f.placeCaret(101);
         f.placeCaret(102);
         test::keyClicks(f.editor(), QStringLiteral("abc"));
-        // S032: entering the 9-line paragraph 101..109 reveals its 9 lines (+ line 100 = 10);
+        // S033: entering the 9-line paragraph 101..109 reveals its 9 lines (+ line 100 = 10);
         // stepping 101 -> 102 restyles only those 2 lines; typing "abc" restyles 2 lines per key.
         QVERIFY2(styler.styledCount() - before <= 18, qPrintable(QString::number(styler.styledCount() - before)));
     }

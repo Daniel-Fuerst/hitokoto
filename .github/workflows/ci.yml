@@ -22,7 +22,7 @@ jobs:
     name: Format (clang-format)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check formatting
         run: clang-format-18 --dry-run --Werror $(git ls-files '*.cpp' '*.hpp')
 
@@ -30,7 +30,7 @@ jobs:
     name: Core with ASan/UBSan, without Qt (layering check)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Configure
         run: cmake --preset core-sanitize
       - name: Build
@@ -42,14 +42,14 @@ jobs:
     name: Fuzz core (60 s per target)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Configure
         run: cmake --preset fuzz
       - name: Build
         run: cmake --build --preset fuzz --parallel
       - name: Run fuzzers
         run: |
-          for f in fuzz_codec fuzz_render fuzz_theme; do
+          for f in fuzz_codec fuzz_render fuzz_theme fuzz_paste; do
             ./build/fuzz/fuzz/$f -max_total_time=60 -print_final_stats=1
           done
 
@@ -65,13 +65,10 @@ jobs:
           - { name: Windows, os: windows-2022, qt: "6.8.3", arch: win64_msvc2022_64, werror: "OFF" }
           - { name: macOS, os: macos-15, qt: "6.12.0", arch: clang_64, werror: "ON" }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Linux packages
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libegl1 libxkbcommon-x11-0 libxcb-cursor0 ninja-build
-      - name: MSVC environment
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -91,7 +88,7 @@ jobs:
     name: Lint (clang-tidy)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Linux packages
         run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libegl1 libxkbcommon-x11-0 clang-tidy-18
       - name: Install Qt
@@ -144,7 +141,7 @@ jobs:
       BENCH: build/bench/bench/hitokoto-bench
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # the base commit (first parent of the merge commit, or the merge base)
       - name: Kind of run and base commit
@@ -266,7 +263,7 @@ jobs:
           exit "$code"
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bench-${{ runner.os == 'Linux' && 'linux' || runner.os }}
           if-no-files-found: ignore

@@ -59,6 +59,8 @@ public:
     [[nodiscard]] QSizeF naturalSize(const QModelIndex& index) const;
     /// Height of a cell's content wrapped at `width` (padding included).
     [[nodiscard]] qreal heightAt(const QModelIndex& index, qreal width) const;
+    /// Lays the cell at `index` out in `document` as it is painted, without padding.
+    void prepare(QTextDocument& document, const QModelIndex& index) const;
 
 protected:
     /// Keys go to the cell editor (and from there to the view), not to the delegate, which would
@@ -66,8 +68,11 @@ protected:
     bool eventFilter(QObject* object, QEvent* event) override;
 
 private:
-    void prepare(QTextDocument& document, const QModelIndex& index) const;
-    [[nodiscard]] static QString cacheKey(const QModelIndex& index);
+    void prepare(QTextDocument& document, const QModelIndex& index, QString source) const;
+    [[nodiscard]] QSizeF naturalSize(const QModelIndex& index, const QString& markdown) const;
+    /// No block margins, the column's alignment.
+    static void formatBlocks(QTextDocument& document, const QModelIndex& index);
+    [[nodiscard]] static QString cacheKey(const QModelIndex& index, const QString& markdown);
 
     qreal padding_ = 4;
     mutable QHash<QString, QSizeF> naturalCache_;
