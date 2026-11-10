@@ -65,6 +65,48 @@ five):
 `s018_table_open_ms` (a 1,000-row table) went from 96 to 61 ms. Qt's HTML import of Outlook's
 markup stays: about 18 ms for 500 cells and 200 ms for 5,000 on the VM.
 
+### 2026-11-10, development VM, S031 review (code) (release build, offscreen, Qt 6.12.0)
+
+Review `docs/reviews/031-paste-tables-code.md`, O10 step 1: the generated tables now hold cells
+like the samples' (`tests/ui/paste_samples.hpp`, in turn one word, two lines, `R&D`, and two lines
+with `09:30` and `a_b`). Two-line cells and cells with `&`, `:` or `_` take Qt's Markdown layout,
+not the plain-text path of the sizing fix. Median of five pastes:
+
+| Table | One-word cells (2178d93) | Sample-like cells, with the red tests of the review | With the review fixes | Budget (hard) |
+|---|---|---|---|---|
+| Outlook 50 × 10 | 35 ms | 54 ms | 56 ms | 50 ms |
+| Outlook 500 × 10 | 311 ms | 462 ms | 480 ms | 500 ms |
+| Outlook 50 × 100 | 331 ms | 498 ms | 514 ms | 500 ms |
+| Excel 50 × 10 | 23 ms | 36 ms | 37 ms | 50 ms |
+| Excel 500 × 10 | 176 ms | 285 ms | 306 ms | 500 ms |
+| Excel 50 × 100 | 193 ms | 318 ms | 339 ms | 500 ms |
+
+With sample-like cells Outlook 50 × 10 and 50 × 100 miss their budgets on the VM; Excel holds them.
+The review fixes add up to 7 % (the scan of the HTML before the import, the display escape on the
+Markdown path); runs of the same build differ by about 5 %. Step 2 (two-line cells laid out as
+plain text) follows Armin's look at these numbers.
+
+Margin of the hard budgets (review O8): Outlook 50 × 10 with one-word cells took 35 ms on the VM
+(factor 1.4 to the budget) and 32 ms on the CI runner for 2178d93 (factor 1.55). Runner and VM
+compared on the same code before and after the S018 sizing fix: `s018_table_open_ms` 158–160 / 96
+ms = 1.65, then 60.2 / 61 ms = 1.0; Outlook 50 × 10 71.8 / 44 ms = 1.63, then 32.2 / 35 ms = 0.92;
+Excel 50 × 10 59.1 / 31 ms = 1.91, then 23.1 / 23 ms = 1.0. Split into import and layout, the
+runner was about 1.1 times slower in Qt's HTML import and about 2 times slower in `setMarkdown`
+layout, which plain cells no longer take; cells that still take it can be that much slower on the
+runner (an estimate from two dispatches). If an `s031_paste_*` hard budget trips in a pull
+request, first re-run the failed jobs; if it trips again, the numbers go to Armin before any budget
+changes.
+
+A paste without a table (review O9, `s031_paste_no_table_5000_lines_ms`: 5,000 lines of code, three
+spans per line, about 620 KB of HTML): 142.6 ms before the fixes, 26.9 ms after them (no import).
+Copies made in hitokoto itself carry HTML that Qt generates from the selection when it is asked
+for; a probe with the review fixes (lines of text with emphasis, code and a link, median of three):
+
+| Copied in hitokoto | Generating `html()` | Scan | `Ctrl+V` of the copy | `Ctrl+V` of the same plain text |
+|---|---|---|---|---|
+| 5,000 lines | 41.8 ms | 1.0 ms | 76.7 ms | 37.4 ms |
+| 50,000 lines | 447.5 ms | 14.1 ms | 818.2 ms | 285.8 ms |
+
 ### 2026-11-09, CI runner, S029 revised (pull request #31, run #125)
 
 The bench job of the revised S029 (base build and four rounds in every pull request run) took
