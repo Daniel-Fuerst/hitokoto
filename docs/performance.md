@@ -172,6 +172,37 @@ per cell for 50 × 100) the runner should take about 39, 356 and 400 ms with Out
 margin of about 1.25. On the slower development VM of 2026-11-10 (median of five): Outlook
 46.9 / 430.7 / 434.2 ms, Excel 33.3 / 227.0 / 276.0 ms (40 × 10, 400 × 10, 40 × 100).
 
+### 2026-11-10, development VM, S031: where a paste's time goes, and HTML without styles
+
+The CI run on 712f652 (AMD EPYC 7763) missed `s031_paste_outlook_40x10_ms` with 54.7–57.4 ms;
+400 × 10 took 437 ms and 40 × 100 483 ms. A probe on the VM (outside the repository, median of 7)
+found no fixed cost worth naming (a paste of 20 cells takes 7 ms in all); the time grows with the
+cells. About half of it is Qt's HTML import of Outlook's markup, which holds about 1 KB per cell,
+mostly inline CSS; the rest is embedding and showing the table, the same for both markups:
+
+| Outlook markup | HTML | Qt's import | Ctrl+V handler | Until shown after it | Total |
+|---|---|---|---|---|---|
+| 20 cells | 91 KB | 1.0 ms | 1.4 ms | 5.6 ms | 7.0 ms |
+| 400 cells | 401 KB | 20.2 ms | 20.7 ms | 23.9 ms | 44.6 ms |
+| 4,000 cells | 3,350 KB | 227 ms | 231 ms | 148 ms | 379 ms |
+| Excel markup, 400 cells | 90 KB | 6.1 ms | 7.5 ms | 23.4 ms | 30.9 ms |
+
+Armin, 2026-11-10: the style attributes leave the HTML before the import
+(`core::htmlWithoutStyles`); every sample gives the same Markdown, and Qt 6.12's import ignores
+`display: none` anyway (inline, by class and on blocks). The import alone: Outlook 400 cells
+17.9 → 8.9 ms, 4,000 cells 208 → 115 ms; Excel 4.6 → 3.3 and 65 → 47 ms. `hitokoto-bench` on the
+same VM (median of five, before → after):
+
+| Table | Outlook markup | Excel markup | Budget (hard) |
+|---|---|---|---|
+| 40 × 10 | 46.9 → 40.1 ms | 33.3 → 29.4 ms | 50 ms |
+| 400 × 10 | 430.7 → 320.1 ms | 227.0 → 206.0 ms | 500 ms |
+| 40 × 100 | 434.2 → 327.1 ms | 276.0 → 247.1 ms | 500 ms |
+
+The EPYC runner took 1.0–1.2 times the VM's time in the run above; the CI run shows the margin.
+The budgets follow one system when they change (Armin, 2026-11-10): the tables grow by a factor of
+ten (400, 4,000 and 40,000 cells) and the times with them (50, 500 and 5,000 ms).
+
 ### 2026-11-09, CI runner, S029 revised (pull request #31, run #125)
 
 The bench job of the revised S029 (base build and four rounds in every pull request run) took

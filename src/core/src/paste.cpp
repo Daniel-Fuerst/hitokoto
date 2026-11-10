@@ -249,7 +249,87 @@ HtmlTables scanHtmlTables(std::u16string_view html) noexcept {
 }
 
 std::u16string htmlWithoutStyles(std::u16string_view html) {
-    return std::u16string(html);  // stub (S031 review (code) O10)
+    const auto isSpace = [](char16_t c) { return c == u' ' || c == u'\t' || c == u'\n' || c == u'\r' || c == u'\f'; };
+    const auto isLetter = [](char16_t c) { return (c >= u'a' && c <= u'z') || (c >= u'A' && c <= u'Z'); };
+    const auto lower = [](char16_t c) { return c >= u'A' && c <= u'Z' ? static_cast<char16_t>(c + (u'a' - u'A')) : c; };
+    std::u16string out;
+    out.reserve(html.size());
+    std::size_t done = 0;  // html[0, done) is in `out`
+    std::size_t at = html.find(u'<');
+    while (at != std::u16string_view::npos) {
+        if (html.substr(at, 4) == u"<!--") {
+            const std::size_t end = html.find(u"-->", at + 4);
+            if (end == std::u16string_view::npos) {
+                break;
+            }
+            at = html.find(u'<', end + 3);
+            continue;
+        }
+        if (at + 1 >= html.size() || !isLetter(html[at + 1])) {
+            at = html.find(u'<', at + 1);
+            continue;
+        }
+        // A start tag: its attributes up to the `>` outside quotes.
+        std::size_t i = at + 1;
+        while (i < html.size() && !isSpace(html[i]) && html[i] != u'>' && html[i] != u'/') {
+            ++i;
+        }
+        bool closed = false;
+        while (i < html.size()) {
+            const std::size_t blank = i;
+            while (i < html.size() && (isSpace(html[i]) || html[i] == u'/')) {
+                ++i;
+            }
+            if (i >= html.size()) {
+                break;
+            }
+            if (html[i] == u'>') {
+                closed = true;
+                ++i;
+                break;
+            }
+            const std::size_t name = i;
+            while (i < html.size() && !isSpace(html[i]) && html[i] != u'=' && html[i] != u'>' && html[i] != u'/') {
+                ++i;
+            }
+            const bool style = i - name == 5 && lower(html[name]) == u's' && lower(html[name + 1]) == u't' &&
+                               lower(html[name + 2]) == u'y' && lower(html[name + 3]) == u'l' &&
+                               lower(html[name + 4]) == u'e';
+            std::size_t j = i;
+            while (j < html.size() && isSpace(html[j])) {
+                ++j;
+            }
+            if (j < html.size() && html[j] == u'=') {
+                ++j;
+                while (j < html.size() && isSpace(html[j])) {
+                    ++j;
+                }
+                if (j < html.size() && (html[j] == u'"' || html[j] == u'\'')) {
+                    const std::size_t close = html.find(html[j], j + 1);
+                    if (close == std::u16string_view::npos) {
+                        i = html.size();  // an unclosed quote: the tag stays as it is
+                        break;
+                    }
+                    j = close + 1;
+                } else {
+                    while (j < html.size() && !isSpace(html[j]) && html[j] != u'>') {
+                        ++j;
+                    }
+                }
+                i = j;
+            }
+            if (style && blank < name) {
+                out.append(html.substr(done, blank - done));  // drop the blank before it and the attribute
+                done = i;
+            }
+        }
+        if (!closed) {
+            break;
+        }
+        at = html.find(u'<', i);
+    }
+    out.append(html.substr(done));
+    return out;
 }
 
 namespace {

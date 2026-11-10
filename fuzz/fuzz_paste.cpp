@@ -152,6 +152,14 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         check(escaped == text || escaped.size() == text.size() + 1);
     }
 
+    // The HTML without style attributes (review (code) O10): never longer, and a second pass
+    // changes nothing.
+    {
+        const std::u16string withoutStyles = hitokoto::core::htmlWithoutStyles(text);
+        check(withoutStyles.size() <= text.size());
+        check(hitokoto::core::htmlWithoutStyles(withoutStyles) == withoutStyles);
+    }
+
     // A cell laid out as plain text (review (code) O10): never longer than its Markdown.
     if (const auto layout = hitokoto::core::tableCellPlainLayout(text)) {
         check(layout->size() <= text.size());

@@ -77,7 +77,9 @@ sample-like cells).
 
 - `ui::readPastedHtml` (`src/ui/table_paste.cpp`) imports into a `QTextDocument` whose
   `loadResource` returns nothing: a stylesheet `<link>` or an image is never read, also not from a
-  local file. The document is never laid out or shown.
+  local file. The document is never laid out or shown. The HTML loses its style attributes first
+  (`core::htmlWithoutStyles`, 2026-11-10): Outlook's inline CSS was half of the import, and the
+  tables and their text stay the same.
 - Before the import, `core::scanHtmlTables` scans the HTML once for table tags (comments
   skipped): HTML without a table, or with a table inside a table, is never imported and stays plain
   text (review (code) O1: Qt's import of deep nesting is far from linear, 64 s at depth 10,000;
