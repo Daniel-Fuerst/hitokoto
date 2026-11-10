@@ -172,7 +172,10 @@ TEST(S018_Tables, PlainCellsNeedNoMarkdown) {
     for (const std::u16string_view plain :
          {u"", u"r12c3", u"Green tea", u"12,50", u"Tea House North", u"5\" tin", u"say \"hi\"", u"a  b",
           u"Open daily (9 to 18)", u"1.5 kg", u"x.y", u"50 % off; ok?", u"a-b", u"a+b=c", u"$5", u"Grüße, 一言",
-          u"no\u00a0break"}) {
+          u"no\u00a0break",
+          // Review (code) O10, step 3 (Armin, 2026-11-10): a colon not followed by // and an
+          // ampersand that starts no entity are text (cmark-gfm: each renders as its characters).
+          u"R&D", u"A & B", u"09:30", u"Hinweis: siehe unten", u"x:y", u"http:/x"}) {
         EXPECT_TRUE(tableCellIsPlainText(plain)) << "plain cell of length " << plain.size();
     }
     for (const std::u16string_view syntax : {u"*x*",
@@ -185,7 +188,9 @@ TEST(S018_Tables, PlainCellsNeedNoMarkdown) {
                                              u"![i](u)",
                                              u"x<br>y",
                                              u"&amp;",
-                                             u"R&D",
+                                             u"&#38;",
+                                             u"&copy;",
+                                             u"R&D;",
                                              u"# h",
                                              u"- item",
                                              u"+ item",
@@ -194,6 +199,8 @@ TEST(S018_Tables, PlainCellsNeedNoMarkdown) {
                                              u"> quote",
                                              u"www.example.org",
                                              u"https://example.org",
+                                             u"ftp://example.org",
+                                             u"see https://example.org",
                                              u"mail@example.org",
                                              u"a\tb",
                                              u"    code",
@@ -376,12 +383,14 @@ TEST(S018_Tables, TwoLineCellsNeedNoMarkdown) {
         {u"\\*x\\* and \\[l\\](u)", u"*x* and [l](u)"},
         {u"a\\\\b", u"a\\b"},
         {u"5\" tin<br>say \"hi\"", u"5\" tin\u2028say \"hi\""},
+        {u"r0c2 R&D", u"r0c2 R&D"},
+        {u"r0c3 09:30<br>a\\_b", u"r0c3 09:30\u2028a_b"},
     };
     for (const auto& [cell, expected] : plain) {
         EXPECT_EQ(tableCellPlainLayout(cell).value_or(u"(not plain)"), expected);
     }
     for (const std::u16string_view syntax :
-         {u"r0c2 R&D", u"r0c3 09:30<br>a\\_b", u"*x*", u"x<br>*y*", u"<br>x", u"x<br>", u"x <br>y", u"x<br> y",
+         {u"&amp;<br>x", u"x<br>https://example.org", u"*x*", u"x<br>*y*", u"<br>x", u"x<br>", u"x <br>y", u"x<br> y",
           u"x\\<br>y", u"C:\\Dev", u"\\a", u"- item<br>two", u"1. one<br>two", u"www.example.org<br>x",
           u"x<br>www.y.org", u"x<b>y", u"x<brr>y", u"x\u2028y", u"a\tb"}) {
         EXPECT_FALSE(tableCellPlainLayout(syntax).has_value()) << "syntax cell of length " << syntax.size();

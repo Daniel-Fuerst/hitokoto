@@ -357,7 +357,10 @@ private slots:
             // Review (code) O10: lines and escapes, laid out as plain text too.
             "| Tea House North<br>Tea House South | 12,50<br/>13,20 | a\\_b<br>a second line that is longer and wraps "
             "|\n"
-            "| \\*x\\* | first<br><br>third | x<br />y |\n";
+            "| \\*x\\* | first<br><br>third | x<br />y |\n"
+            // Review (code) O10, step 3: colons and ampersands that start no syntax.
+            "| R&D | 09:30<br>A & B | Hinweis: siehe unten, mit einer Zeile, die umbricht |\n"
+            "| &amp; | https://example.org | x:y |\n";
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("sizes.md"), markdown)));
         f.settle();
