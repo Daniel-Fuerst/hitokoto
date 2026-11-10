@@ -288,8 +288,69 @@ bool tableCellIsPlainText(std::u16string_view markdown) noexcept {
     return true;
 }
 
-std::optional<std::u16string> tableCellPlainLayout(std::u16string_view /*markdown*/) {
-    return std::nullopt;  // stub (S031 review (code) O10)
+std::optional<std::u16string> tableCellPlainLayout(std::u16string_view markdown) {
+    constexpr char16_t kLineSeparator = u'\u2028';
+    const auto asciiPunctuation = [](char16_t c) {
+        return (c >= u'!' && c <= u'/') || (c >= u':' && c <= u'@') || (c >= u'[' && c <= u'`') ||
+               (c >= u'{' && c <= u'~');
+    };
+    // The end of a `<br>` (any spelling) at `at`, or 0.
+    const auto breakEnd = [markdown](std::size_t at) -> std::size_t {
+        if (at + 3 >= markdown.size() || markdown[at] != u'<' ||
+            (markdown[at + 1] != u'b' && markdown[at + 1] != u'B') ||
+            (markdown[at + 2] != u'r' && markdown[at + 2] != u'R')) {
+            return 0;
+        }
+        std::size_t j = at + 3;
+        while (j < markdown.size() && markdown[j] == u' ') {
+            ++j;
+        }
+        if (j < markdown.size() && markdown[j] == u'/') {
+            ++j;
+        }
+        return j < markdown.size() && markdown[j] == u'>' ? j + 1 : 0;
+    };
+    std::u16string out;
+    out.reserve(markdown.size());
+    std::u16string segment;  // the characters as written, for the checks of tableCellIsPlainText
+    const auto segmentPlain = [&segment](bool first) {
+        // Plain characters only (an escaped character counts as a letter), at the cell's start no
+        // block marker, www. nowhere, no blank beside a break; an empty line between two breaks
+        // is plain too, but the cell does not start with one.
+        if (segment.empty()) {
+            return !first;
+        }
+        return tableCellIsPlainText(segment) && (first || segment.front() != u' ') && segment.back() != u' ';
+    };
+    bool first = true;
+    for (std::size_t i = 0; i < markdown.size(); ++i) {
+        const char16_t c = markdown[i];
+        if (c == u'\\' && i + 1 < markdown.size() && asciiPunctuation(markdown[i + 1])) {
+            out += markdown[i + 1];
+            segment += u'x';
+            ++i;
+            continue;
+        }
+        if (const std::size_t end = breakEnd(i); end != 0) {
+            if (!segmentPlain(first) || end == markdown.size()) {
+                return std::nullopt;
+            }
+            out += kLineSeparator;
+            segment.clear();
+            first = false;
+            i = end - 1;
+            continue;
+        }
+        out += c;
+        segment += c;
+    }
+    if (markdown.empty()) {
+        return out;
+    }
+    if (!segmentPlain(first)) {
+        return std::nullopt;
+    }
+    return out;
 }
 
 std::u16string escapeTableCellBlockStart(std::u16string_view markdown) {

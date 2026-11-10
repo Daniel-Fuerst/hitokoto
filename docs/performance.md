@@ -83,8 +83,20 @@ not the plain-text path of the sizing fix. Median of five pastes:
 
 With sample-like cells Outlook 50 × 10 and 50 × 100 miss their budgets on the VM; Excel holds them.
 The review fixes add up to 7 % (the scan of the HTML before the import, the display escape on the
-Markdown path); runs of the same build differ by about 5 %. Step 2 (two-line cells laid out as
-plain text) follows Armin's look at these numbers.
+Markdown path); runs of the same build differ by about 5 %.
+
+Step 2 (Armin, after these numbers): a cell holding only plain characters, backslash escapes and
+`<br>` is laid out as plain text with U+2028 between its lines (`core::tableCellPlainLayout`).
+Cells with `R&D` or `09:30` still take Qt's Markdown layout. Median of five:
+
+| Table | Sample-like cells, step 1 | Step 2 | Budget (hard) |
+|---|---|---|---|
+| Outlook 50 × 10 | 56 ms | 51 ms | 50 ms |
+| Outlook 500 × 10 | 480 ms | 424 ms | 500 ms |
+| Outlook 50 × 100 | 514 ms | 475 ms | 500 ms |
+| Excel 50 × 10 | 37 ms | 35 ms | 50 ms |
+| Excel 500 × 10 | 306 ms | 267 ms | 500 ms |
+| Excel 50 × 100 | 339 ms | 316 ms | 500 ms |
 
 Margin of the hard budgets (review O8): Outlook 50 × 10 with one-word cells took 35 ms on the VM
 (factor 1.4 to the budget) and 32 ms on the CI runner for 2178d93 (factor 1.55). Runner and VM

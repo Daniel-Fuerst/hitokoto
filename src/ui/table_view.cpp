@@ -147,10 +147,11 @@ void TableDelegate::prepare(QTextDocument& document, const QModelIndex& index, Q
     if (font.isValid()) {
         document.setDefaultFont(font.value<QFont>());
     }
-    if (core::tableCellIsPlainText(view(source))) {
-        // Qt's Markdown import would show exactly these characters; plain text is several times
-        // faster to lay out (S031: sizing pasted tables).
-        document.setPlainText(source);
+    if (const auto plain = core::tableCellPlainLayout(view(source))) {
+        // Qt's Markdown import would show exactly these characters and line breaks; plain text is
+        // several times faster to lay out (S031: sizing pasted tables; review (code) O10: also
+        // cells with lines and backslash escapes).
+        document.setPlainText(toQString(*plain));
         formatBlocks(document, index);
         return;
     }

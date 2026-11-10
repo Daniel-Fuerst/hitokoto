@@ -152,6 +152,11 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         check(escaped == text || escaped.size() == text.size() + 1);
     }
 
+    // A cell laid out as plain text (review (code) O10): never longer than its Markdown.
+    if (const auto layout = hitokoto::core::tableCellPlainLayout(text)) {
+        check(layout->size() <= text.size());
+    }
+
     // Excel's plain text.
     if (const auto table = hitokoto::core::parseExcelPlainText(text)) {
         check(hitokoto::core::countsAsTable(*table) && !table->containsTable);
