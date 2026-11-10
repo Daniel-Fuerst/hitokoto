@@ -186,7 +186,7 @@ private:
     /// After styling `block`: how it relates to the paragraph above, and the level that follows for
     /// the line above.
     void updateParagraphAbove(const QTextBlock& block, const core::LineRender& render, core::ParagraphLink link);
-    /// S023/S032: the extent of the paragraph (and any setext underline) that holds `block`; walked
+    /// S023/S033: the extent of the paragraph (and any setext underline) that holds `block`; walked
     /// within the synchronous budget and continued in idle slices when longer.
     struct ParagraphExtent {
         core::BlockState inside;
@@ -231,7 +231,7 @@ private:
     std::function<std::pair<int, int>()> visibleBlocks_;
     EditorFormats formats_;
     core::LineRange revealed_{0, 0};
-    core::LineRange revealedParagraph_;  ///< paragraph lines revealed for revealed_ (S032)
+    core::LineRange revealedParagraph_;  ///< paragraph lines revealed for revealed_ (S033)
     int revealedOpen_ = -1;              ///< fence revealed besides revealed_ (S021), -1 = none
     int revealedClose_ = -1;             ///< likewise
     int revealedUnderline_ = -1;         ///< setext underline revealed besides revealed_ (S023), -1 = none

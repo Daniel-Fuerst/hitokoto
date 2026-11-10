@@ -27,6 +27,18 @@ bool escapedPipe(std::u16string_view line, std::size_t pos) noexcept {
     return pos > 0 && line[pos - 1] == u'\\';
 }
 
+}  // namespace
+
+bool escapedAt(std::u16string_view text, std::size_t pos) noexcept {
+    std::size_t backslashes = 0;
+    while (backslashes < pos && text[pos - 1 - backslashes] == u'\\') {
+        ++backslashes;
+    }
+    return backslashes % 2 == 1;
+}
+
+namespace {
+
 /// Index after the last non-blank character.
 std::size_t trimmedEnd(std::u16string_view line) noexcept {
     std::size_t end = line.size();
@@ -237,6 +249,187 @@ std::optional<std::vector<TableAlign>> tableDelimiterAligns(std::u16string_view 
     return std::vector<TableAlign>(aligns.begin(), aligns.begin() + static_cast<std::ptrdiff_t>(columns));
 }
 
+bool tableCellIsPlainText(std::u16string_view markdown) noexcept {
+    // Characters that can never start syntax inside a paragraph; everything else is refused.
+    const auto plainCharacter = [](char16_t c) {
+        if (c >= 0x80) {
+            return c != u'\u2028' && c != u'\u2029' && c != u'\ufffc';  // line breaks, objects
+        }
+        if ((c >= u'a' && c <= u'z') || (c >= u'A' && c <= u'Z') || (c >= u'0' && c <= u'9')) {
+            return true;
+        }
+        return std::u16string_view(u" ,.;?%/()'\"-+=$").find(c) != std::u16string_view::npos;
+    };
+    // A colon starts syntax only in a link scheme (`https://`, GFM's and Qt's autolinks), an
+    // ampersand only in an entity (a name or `#` and digits, then `;`); otherwise both are text
+    // (S031 review (code) O10, step 3). `@` (e-mail autolinks) stays refused.
+    const auto startsEntity = [markdown](std::size_t at) {
+        std::size_t j = at + 1;
+        if (j < markdown.size() && markdown[j] == u'#') {
+            ++j;
+        }
+        const std::size_t name = j;
+        while (j < markdown.size() &&
+               ((markdown[j] >= u'a' && markdown[j] <= u'z') || (markdown[j] >= u'A' && markdown[j] <= u'Z') ||
+                (markdown[j] >= u'0' && markdown[j] <= u'9'))) {
+            ++j;
+        }
+        return j > name && j < markdown.size() && markdown[j] == u';';
+    };
+    for (std::size_t i = 0; i < markdown.size(); ++i) {
+        const char16_t c = markdown[i];
+        if (plainCharacter(c) || (c == u':' && markdown.substr(i + 1, 2) != u"//") || (c == u'&' && !startsEntity(i))) {
+            continue;
+        }
+        return false;
+    }
+    if (markdown.empty()) {
+        return true;
+    }
+    // Block markers at the start: a bullet, an ordered list item, indented code.
+    if (markdown.front() == u'-' || markdown.front() == u'+' || markdown.starts_with(u"    ")) {
+        return false;
+    }
+    std::size_t digits = 0;
+    while (digits < markdown.size() && markdown[digits] >= u'0' && markdown[digits] <= u'9') {
+        ++digits;
+    }
+    if (digits > 0 && digits < markdown.size() && (markdown[digits] == u'.' || markdown[digits] == u')') &&
+        (digits + 1 == markdown.size() || markdown[digits + 1] == u' ')) {
+        return false;
+    }
+    // GFM's extended autolinks: www. and a scheme (the colon is refused above).
+    for (std::size_t i = 0; i + 4 <= markdown.size(); ++i) {
+        if ((markdown[i] == u'w' || markdown[i] == u'W') && (markdown[i + 1] == u'w' || markdown[i + 1] == u'W') &&
+            (markdown[i + 2] == u'w' || markdown[i + 2] == u'W') && markdown[i + 3] == u'.') {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::optional<std::u16string> tableCellPlainLayout(std::u16string_view markdown) {
+    constexpr char16_t kLineSeparator = u'\u2028';
+    const auto asciiPunctuation = [](char16_t c) {
+        return (c >= u'!' && c <= u'/') || (c >= u':' && c <= u'@') || (c >= u'[' && c <= u'`') ||
+               (c >= u'{' && c <= u'~');
+    };
+    // The end of a `<br>` (any spelling) at `at`, or 0.
+    const auto breakEnd = [markdown](std::size_t at) -> std::size_t {
+        if (at + 3 >= markdown.size() || markdown[at] != u'<' ||
+            (markdown[at + 1] != u'b' && markdown[at + 1] != u'B') ||
+            (markdown[at + 2] != u'r' && markdown[at + 2] != u'R')) {
+            return 0;
+        }
+        std::size_t j = at + 3;
+        while (j < markdown.size() && markdown[j] == u' ') {
+            ++j;
+        }
+        if (j < markdown.size() && markdown[j] == u'/') {
+            ++j;
+        }
+        return j < markdown.size() && markdown[j] == u'>' ? j + 1 : 0;
+    };
+    std::u16string out;
+    out.reserve(markdown.size());
+    std::u16string segment;  // the characters as written, for the checks of tableCellIsPlainText
+    const auto segmentPlain = [&segment](bool first) {
+        // Plain characters only (an escaped character counts as a letter), at the cell's start no
+        // block marker, www. nowhere, no blank beside a break; an empty line between two breaks
+        // is plain too, but the cell does not start with one.
+        if (segment.empty()) {
+            return !first;
+        }
+        return tableCellIsPlainText(segment) && (first || segment.front() != u' ') && segment.back() != u' ';
+    };
+    bool first = true;
+    for (std::size_t i = 0; i < markdown.size(); ++i) {
+        const char16_t c = markdown[i];
+        if (c == u'\\' && i + 1 < markdown.size() && asciiPunctuation(markdown[i + 1])) {
+            out += markdown[i + 1];
+            segment += u'x';
+            ++i;
+            continue;
+        }
+        if (const std::size_t end = breakEnd(i); end != 0) {
+            if (!segmentPlain(first) || end == markdown.size()) {
+                return std::nullopt;
+            }
+            out += kLineSeparator;
+            segment.clear();
+            first = false;
+            i = end - 1;
+            continue;
+        }
+        out += c;
+        segment += c;
+    }
+    if (markdown.empty()) {
+        return out;
+    }
+    if (!segmentPlain(first)) {
+        return std::nullopt;
+    }
+    return out;
+}
+
+std::u16string escapeTableCellBlockStart(std::u16string_view markdown) {
+    std::u16string out(markdown);
+    if (markdown.empty()) {
+        return out;
+    }
+    const auto blankOrEnd = [markdown](std::size_t at) {
+        return at == markdown.size() || blocks::isBlank(markdown[at]);
+    };
+    const char16_t c = markdown.front();
+    bool marker = false;
+    switch (c) {
+        case u'#':
+            marker = blocks::isAtxHeadingFrom(markdown, 0);
+            break;
+        case u'>':
+            marker = true;
+            break;
+        case u'-':
+        case u'+':
+        case u'*':
+            marker = blankOrEnd(1) || blocks::isThematicBreak(markdown);
+            break;
+        case u'_':
+            marker = blocks::isThematicBreak(markdown);
+            break;
+        case u'~':
+            marker = blocks::isFenceFrom(markdown, 0);
+            break;
+        case u'`': {
+            // A backtick fence has no backtick in its info string; otherwise it is a code span.
+            const std::size_t run = markdown.find_first_not_of(u'`');
+            marker = blocks::isFenceFrom(markdown, 0) &&
+                     (run == std::u16string_view::npos || markdown.find(u'`', run) == std::u16string_view::npos);
+            break;
+        }
+        case u'[':
+            marker = blocks::otherBlockStart(markdown, blocks::After::Block) == blocks::OtherBlock::Opaque;
+            break;
+        default:
+            break;
+    }
+    if (marker) {
+        out.insert(out.begin(), u'\\');
+        return out;
+    }
+    // An ordered list item: one to nine digits, `.` or `)`, then a blank or the end.
+    std::size_t digits = 0;
+    while (digits < markdown.size() && markdown[digits] >= u'0' && markdown[digits] <= u'9') {
+        ++digits;
+    }
+    if (digits >= 1 && digits <= 9 && digits < markdown.size() &&
+        (markdown[digits] == u'.' || markdown[digits] == u')') && blankOrEnd(digits + 1)) {
+        out.insert(out.begin() + static_cast<std::ptrdiff_t>(digits), u'\\');
+    }
+    return out;
+}
+
 std::u16string tableCellToText(std::u16string_view markdown) {
     std::u16string out;
     out.reserve(markdown.size());
@@ -248,8 +441,8 @@ std::u16string tableCellToText(std::u16string_view markdown) {
             continue;
         }
         if (c == u'<' && i + 3 < markdown.size() && (markdown[i + 1] == u'b' || markdown[i + 1] == u'B') &&
-            (markdown[i + 2] == u'r' || markdown[i + 2] == u'R')) {
-            // <br>, <br/>, <br />
+            (markdown[i + 2] == u'r' || markdown[i + 2] == u'R') && !escapedAt(markdown, i)) {
+            // <br>, <br/>, <br />; after an odd number of backslashes the `<` is escaped (S031 O3)
             std::size_t j = i + 3;
             while (j < markdown.size() && markdown[j] == u' ') {
                 ++j;

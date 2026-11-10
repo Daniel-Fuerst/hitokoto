@@ -101,7 +101,7 @@ and the walk over block states must stay cheap (S021).
   budget and then in idle slices, again when an edit touches the first line, the lines up to the
   closing one or, while it is open, a line that could close it.
 - `renderDocument()` also reveals the fences of the code block the range is in (S021).
-- **Flowing paragraphs and hard line breaks (S032, 2026-11-09):** A paragraph is a maximal run of
+- **Flowing paragraphs and hard line breaks (S033, 2026-11-09):** A paragraph is a maximal run of
   lines whose `BlockState` has `underlinable() == true` connected by `BlockLink::continues` (plus
   any setext underline on the line immediately after the run). While `revealed` does not overlap
   that run (or its underline), the paragraph flows:

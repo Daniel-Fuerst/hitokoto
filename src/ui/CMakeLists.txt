@@ -18,6 +18,7 @@ qt_add_library(hitokoto_ui STATIC
     smooth_scroller.cpp smooth_scroller.hpp
     table_embedder.cpp table_embedder.hpp
     table_model.cpp table_model.hpp
+    table_paste.cpp table_paste.hpp
     table_view.cpp table_view.hpp
     theme_applier.cpp theme_applier.hpp
     theme_manager.cpp theme_manager.hpp

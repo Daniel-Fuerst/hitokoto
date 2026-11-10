@@ -146,8 +146,8 @@ struct LineRender {
     bool thematicBreak = false;        ///< thematic break (S023); concealed, the UI draws a horizontal line
     std::uint8_t setextUnderline = 0;  ///< 1 or 2: the line underlines a setext heading of that level (S023)
     bool frontMatter = false;          ///< line of closed front matter, delimiters included (S024)
-    bool flowsToNext = false;          ///< soft line break: the next line continues this paragraph (S032)
-    bool hardBreak = false;            ///< hard line break (2+ spaces or `\`) before the next paragraph line (S032)
+    bool flowsToNext = false;          ///< soft line break: the next line continues this paragraph (S033)
+    bool hardBreak = false;            ///< hard line break (2+ spaces or `\`) before the next paragraph line (S033)
     BlockState blockState;             ///< state to pass when rendering the next line
     std::vector<TableCell> cells;      ///< cells of a table header or body row
     std::vector<StyleRun> runs;
@@ -176,11 +176,11 @@ struct LineContext {
     /// that level, found by walking the lines below (`ElementRegistry::paragraphLink`); else 0.
     /// Ignored on lines that are no paragraph text.
     std::uint8_t setextLevel = 0;
-    /// S032 (ADR 0006): true if the caret or selection is on any line of this line's paragraph (or
+    /// S033 (ADR 0006): true if the caret or selection is on any line of this line's paragraph (or
     /// its setext underline), so the paragraph's source lines and hard-break markers are revealed
     /// even when `revealed` is false for inline elements on this line.
     bool paragraphRevealed = false;
-    /// S032: line after `nextLine` in the document (so `render` can tell whether `nextLine` opens a
+    /// S033: line after `nextLine` in the document (so `render` can tell whether `nextLine` opens a
     /// pipe table or continues this paragraph).
     std::u16string_view nextNextLine{};
 
@@ -434,8 +434,29 @@ std::size_t separateTextAfterTables(DecodedText& decoded, const ElementRegistry&
 [[nodiscard]] std::vector<TableCell> tableRowCells(std::u16string_view line);
 /// The column alignments of a delimiter row, or nothing if `line` is not one.
 [[nodiscard]] std::optional<std::vector<TableAlign>> tableDelimiterAligns(std::u16string_view line);
-/// Cell Markdown as text to edit: `\|` becomes `|`, `<br>` (any spelling) a line break.
+/// Whether the character at `pos` follows an odd number of backslashes, so that CommonMark
+/// reads it escaped (S031 review O3: an escaped `<br>` is text).
+[[nodiscard]] bool escapedAt(std::u16string_view text, std::size_t pos) noexcept;
+/// Cell Markdown as text to edit: `\|` becomes `|`, `<br>` (any spelling, not escaped) a line break.
 [[nodiscard]] std::u16string tableCellToText(std::u16string_view markdown);
+/// Whether GFM shows the cell Markdown as exactly its characters in one plain paragraph: no
+/// character that could start syntax (escapes, emphasis, code, links, HTML, entities, autolinks;
+/// a colon only before `//`, an ampersand only before an entity) and no block marker at its start. The UI then lays the
+/// cell out as plain text, which is several times faster than Qt's Markdown import (S031: sizing pasted tables).
+/// Conservative: false does not mean the cell holds syntax.
+[[nodiscard]] bool tableCellIsPlainText(std::u16string_view markdown) noexcept;
+/// Cell Markdown with a block marker at its start escaped, for laying the cell out as a Markdown
+/// document of its own: GFM reads a cell as inline text, so `# 12`, `> 5 kg`, `- 5 %`, `1. Jänner`,
+/// `---` or a fence show their characters there, while a document of their own would show a
+/// heading, quote, list, rule or code block (S031 review O3). Display only; the file keeps its
+/// Markdown.
+[[nodiscard]] std::u16string escapeTableCellBlockStart(std::u16string_view markdown);
+/// The characters to lay a cell out as plain text, if GFM shows the cell Markdown as exactly them:
+/// plain characters as for tableCellIsPlainText, backslash escapes of ASCII punctuation resolved,
+/// and each `<br>` (any spelling, not escaped, no blank beside it, not at the start or end) as
+/// U+2028, a line break inside one block (S031 review (code) O10: two-line cells laid out several
+/// times faster than with Qt's Markdown import). Nothing if the cell may hold other syntax.
+[[nodiscard]] std::optional<std::u16string> tableCellPlainLayout(std::u16string_view markdown);
 /// Edited text as cell Markdown: `|` becomes `\|`, a line break `<br>`.
 [[nodiscard]] std::u16string tableCellFromText(std::u16string_view text);
 /// `line` with the content of cell `column` replaced by `markdown`; the rest stays byte for byte.

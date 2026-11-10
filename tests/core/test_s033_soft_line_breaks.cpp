@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S032: soft line breaks (paragraphs flow) and CommonMark 6.7 hard line breaks.
+// S033: soft line breaks (paragraphs flow) and CommonMark 6.7 hard line breaks.
 #include "hitokoto/core/find.hpp"
 #include "hitokoto/core/markdown.hpp"
 
@@ -22,7 +22,7 @@ std::vector<LineRender> showAll(const std::vector<std::u16string>& lines, LineRa
 }
 }  // namespace
 
-TEST(S032_SoftLineBreaks, ConsecutiveParagraphLinesFlowUntilTheLastLine) {
+TEST(S033_SoftLineBreaks, ConsecutiveParagraphLinesFlowUntilTheLastLine) {
     const std::vector<std::u16string> lines = {u"First line", u"second line", u"third line."};
     const auto r = showAll(lines);
     ASSERT_EQ(r.size(), 3U);
@@ -39,7 +39,7 @@ TEST(S032_SoftLineBreaks, ConsecutiveParagraphLinesFlowUntilTheLastLine) {
     EXPECT_TRUE(r[2].hidden.empty());
 }
 
-TEST(S032_SoftLineBreaks, LeadingAndTrailingBlanksCollapseOnFlowingParagraphLines) {
+TEST(S033_SoftLineBreaks, LeadingAndTrailingBlanksCollapseOnFlowingParagraphLines) {
     // CommonMark 4.8 & 6.8: leading spaces/tabs on continuation lines and single trailing space
     // or trailing tabs before a soft line break are removed.
     const std::vector<std::u16string> lines = {u"  First line ", u"   second line\t", u"\tthird line"};
@@ -55,7 +55,7 @@ TEST(S032_SoftLineBreaks, LeadingAndTrailingBlanksCollapseOnFlowingParagraphLine
     EXPECT_EQ(r[2].hidden, (std::vector<HiddenRange>{{{0, 1}, HideMode::Collapse}}));
 }
 
-TEST(S032_SoftLineBreaks, TwoOrMoreTrailingSpacesCreateAHardLineBreak) {
+TEST(S033_SoftLineBreaks, TwoOrMoreTrailingSpacesCreateAHardLineBreak) {
     // CommonMark 6.7: 2+ trailing spaces before a continuation line create a hard line break;
     // a single space or tabs do not.
     const std::vector<std::u16string> lines = {
@@ -84,7 +84,7 @@ TEST(S032_SoftLineBreaks, TwoOrMoreTrailingSpacesCreateAHardLineBreak) {
     EXPECT_FALSE(r[4].flowsToNext);
 }
 
-TEST(S032_SoftLineBreaks, BackslashBeforeContinuationLineCreatesAHardLineBreak) {
+TEST(S033_SoftLineBreaks, BackslashBeforeContinuationLineCreatesAHardLineBreak) {
     // CommonMark 6.7: an unescaped trailing `\` before a continuation line is a hard break;
     // `\\` is an escaped backslash followed by a soft break; `\\\` is an escaped backslash followed
     // by a hard break; a trailing `\` on the last line of a paragraph is literal text.
@@ -134,7 +134,7 @@ TEST(S032_SoftLineBreaks, BackslashBeforeContinuationLineCreatesAHardLineBreak) 
     EXPECT_TRUE(revealed0[4].runs.empty());
 }
 
-TEST(S032_SoftLineBreaks, BulletListItemContinuationsFlowAtTheBulletWrapIndent) {
+TEST(S033_SoftLineBreaks, BulletListItemContinuationsFlowAtTheBulletWrapIndent) {
     const std::vector<std::u16string> lines = {
         u"  - first bullet line",
         u"    indented continuation\\",
@@ -164,7 +164,7 @@ TEST(S032_SoftLineBreaks, BulletListItemContinuationsFlowAtTheBulletWrapIndent) 
     EXPECT_EQ(r[3].decorations.size(), 1U);
 }
 
-TEST(S032_SoftLineBreaks, RevealingAnyLineOfAParagraphRevealsTheParagraphFlowButKeepsOtherInlineMarkersConcealed) {
+TEST(S033_SoftLineBreaks, RevealingAnyLineOfAParagraphRevealsTheParagraphFlowButKeepsOtherInlineMarkersConcealed) {
     const std::vector<std::u16string> lines = {
         u"First **bold** line", u"  second line\\", u"  third *italic* line", u"",
         u"Other paragraph",     u"continues here",
@@ -195,7 +195,7 @@ TEST(S032_SoftLineBreaks, RevealingAnyLineOfAParagraphRevealsTheParagraphFlowBut
     }
 }
 
-TEST(S032_SoftLineBreaks, MultiLineSetextHeadingFlowsAndRevealsWithItsUnderline) {
+TEST(S033_SoftLineBreaks, MultiLineSetextHeadingFlowsAndRevealsWithItsUnderline) {
     const std::vector<std::u16string> lines = {
         u"Heading one\\",
         u"  heading two",
@@ -233,7 +233,7 @@ TEST(S032_SoftLineBreaks, MultiLineSetextHeadingFlowsAndRevealsWithItsUnderline)
     }
 }
 
-TEST(S032_SoftLineBreaks, OrderedListAndBlockquoteContinuationsFlow) {
+TEST(S033_SoftLineBreaks, OrderedListAndBlockquoteContinuationsFlow) {
     // Ordered lists and blockquotes have BlockState::kLazyParagraph; their continuation lines
     // conceal leading spaces and flow with the item/quote while the caret is outside.
     const std::vector<std::u16string> orderedLines = {
@@ -263,7 +263,7 @@ TEST(S032_SoftLineBreaks, OrderedListAndBlockquoteContinuationsFlow) {
     EXPECT_EQ(quote[1].hidden, (std::vector<HiddenRange>{{{0, 2}, HideMode::Collapse}}));
 }
 
-TEST(S032_SoftLineBreaks, FindInFileMatchesAcrossSoftAndHardBreaksInFlowingParagraphs) {
+TEST(S033_SoftLineBreaks, FindInFileMatchesAcrossSoftAndHardBreaksInFlowingParagraphs) {
     const std::vector<std::u16string> lines = {
         u"First word\\",
         u"  second word  ",

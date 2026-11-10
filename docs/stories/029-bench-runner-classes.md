@@ -90,7 +90,13 @@ a reader can place the numbers and the data exists if ADR 0009, "Deferred", come
    visible.
 3. **Rounds.** On the same runner the job measures four rounds of `hitokoto-bench`, in the order
    base, pull request, pull request, base. A round counts if `hitokoto-bench` wrote complete results
-   (every key of the hard budgets), whatever its exit code.
+   (every key of the hard budgets), whatever its exit code. A hard-budget key that neither base
+   round holds while a pull request round does is new: the pull request brings it, and the base's
+   harness does not measure it yet. The base's rounds are complete without it, the pull request's
+   rounds still need every hard key, and the key is listed as on one side only; its values in the
+   pull request's rounds are checked against its budget (step 4). A key that only one base round
+   holds still leaves that base incomplete (S031, Armin, 2026-11-09; `newHardKeys` in
+   `bench/gate/`, gate cases `new_hard_key`, `new_hard_key_missed`, `new_hard_key_one_base_round`).
 4. **Hard budgets** (saving, key events above 50 ms) of the pull request's rounds fail the job,
    whatever follows. Those of the base's rounds are reported as information, with round, value and
    limit.

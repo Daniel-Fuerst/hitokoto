@@ -61,9 +61,9 @@ The project wants to use as much of Qt as possible.
   `QAbstractTextDocumentLayout::documentSize` for other layouts (Qt source); anything else that
   shows up is fixed in `BlockLayout` or reported here.
 
-## Revision for S032 (2026-11-09): flowing paragraphs across blocks
+## Revision for S033 (2026-11-09): flowing paragraphs across blocks
 
-While the caret and selection are outside a paragraph (S032), consecutive `QTextBlock`s of that
+While the caret and selection are outside a paragraph (S033), consecutive `QTextBlock`s of that
 paragraph flow as a single wrapped paragraph without merging or modifying the blocks in
 `QTextDocument` (ADR 0002):
 

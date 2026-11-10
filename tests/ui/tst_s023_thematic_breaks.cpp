@@ -244,7 +244,7 @@ private slots:
         for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
             concealed.push_back(f.editor()->blockLayout()->blockBoundingRect(b));
         }
-        // S032: while concealed, the two lines of the second heading (3 and 4) flow on one line;
+        // S033: while concealed, the two lines of the second heading (3 and 4) flow on one line;
         // when the caret is on lines 3..5, the paragraph reveals onto its two source lines.
         QCOMPARE(concealed.at(3).top(), concealed.at(4).top());
         f.placeCaret(3);

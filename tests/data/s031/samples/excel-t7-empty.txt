@@ -1,0 +1,4 @@
+Product	Origin		Stock
+Green tea	Japan		12
+			
+Black tea	India		7

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S018: Markdown pipe tables shown as an embedded table view (ADR 0005, revised 2026-10-27).
 #include "table_model.hpp"
+#include "table_view.hpp"
 #include "ui_test_support.hpp"
 
 #include <QAbstractItemModel>
@@ -11,9 +12,13 @@
 #include <QInputMethodEvent>
 #include <QMenu>
 #include <QPlainTextEdit>
+#include <QRegularExpression>
 #include <QScrollBar>
 #include <QTableView>
+#include <QTextBlock>
+#include <QTextBlockFormat>
 #include <QTextCursor>
+#include <QTextDocument>
 #include <QTimer>
 #include <QToolButton>
 
@@ -262,6 +267,145 @@ private slots:
         }
         f.settle();
         QCOMPARE(text(f), QString::fromUtf8(markdown));
+    }
+
+    // S031 review O3: a `<br>` after an odd number of backslashes is text, in the cell editor and
+    // in the shown cell; after an even number it stays a line break.
+    void anEscapedBreakInACellStaysText() {
+        constexpr auto markdown =
+            "| A | B | C |\n"
+            "| --- | --- | --- |\n"
+            "| x\\<br>y | x&lt;br&gt;y | p\\\\<br>q |\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("escaped-br.md"), markdown)));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QAbstractItemModel* model = view->model();
+        QCOMPARE(model->data(model->index(1, 0)).toString(), QStringLiteral("x\\<br>y"));
+        QCOMPARE(model->data(model->index(1, 2)).toString(), QStringLiteral("p\\\\\nq"));
+
+        // Shown: "x<br>y" on one line, as wide as the entity spelling of the same text.
+        auto* delegate = qobject_cast<ui::TableDelegate*>(view->itemDelegate());
+        QVERIFY(delegate != nullptr);
+        const QSizeF escaped = delegate->naturalSize(model->index(1, 0));
+        const QSizeF entity = delegate->naturalSize(model->index(1, 1));
+        QCOMPARE(escaped.width(), entity.width());
+        QCOMPARE(escaped.height(), entity.height());
+        QVERIFY(delegate->naturalSize(model->index(1, 2)).height() > entity.height());
+
+        // In the cell editor: the Markdown with the escape, no line break; leaving changes nothing.
+        QPlainTextEdit* cell = clickCell(view, 1, 0);
+        QVERIFY(cell != nullptr);
+        QCOMPARE(cell->toPlainText(), QStringLiteral("x\\<br>y"));
+        press(Qt::Key_Tab);
+        f.settle();
+        QCOMPARE(text(f), QString::fromUtf8(markdown));
+        QVERIFY(!f.editor()->document()->isModified());
+    }
+
+    // S031 review O3: a cell starting with a block marker shows its characters, as GFM shows it in
+    // a cell (cmark-gfm: each of these cells renders as exactly its text); the file keeps it.
+    void blockMarkersAtACellStartShowAsText() {
+        const QStringList cells = {QStringLiteral("1. J\u00e4nner 2026"),
+                                   QStringLiteral("12. M\u00e4rz"),
+                                   QStringLiteral("- 5 %"),
+                                   QStringLiteral("+ 2 Stk."),
+                                   QStringLiteral("* x"),
+                                   QStringLiteral("# 12"),
+                                   QStringLiteral("> 5 kg"),
+                                   QStringLiteral("---"),
+                                   QStringLiteral("```"),
+                                   QStringLiteral("2) zwei")};
+        QString markdown = QStringLiteral("| A |\n| --- |\n");
+        for (const QString& cell : cells) {
+            markdown += QStringLiteral("| ") + cell + QStringLiteral(" |\n");
+        }
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("markers.md"), markdown.toUtf8())));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QAbstractItemModel* model = view->model();
+        auto* delegate = qobject_cast<ui::TableDelegate*>(view->itemDelegate());
+        QVERIFY(delegate != nullptr);
+        for (int i = 0; i < cells.size(); ++i) {
+            QTextDocument shown;
+            delegate->prepare(shown, model->index(1 + i, 0));
+            QCOMPARE(shown.toPlainText(), cells.at(i));
+            QCOMPARE(shown.blockCount(), 1);
+            const QTextBlock block = shown.firstBlock();
+            QVERIFY2(block.textList() == nullptr, qPrintable(cells.at(i)));
+            QCOMPARE(block.blockFormat().headingLevel(), 0);
+            QVERIFY2(!block.blockFormat().hasProperty(QTextFormat::BlockQuoteLevel), qPrintable(cells.at(i)));
+            QVERIFY2(!block.blockFormat().hasProperty(QTextFormat::BlockCodeFence), qPrintable(cells.at(i)));
+            QVERIFY2(!block.blockFormat().hasProperty(QTextFormat::BlockTrailingHorizontalRulerWidth),
+                     qPrintable(cells.at(i)));
+        }
+        QCOMPARE(text(f), markdown);
+    }
+
+    // S031 (sizing pasted tables): a cell is as wide and as high as Qt's Markdown rendering of it,
+    // whether it holds syntax or only plain text, unwrapped and wrapped.
+    void cellSizesMatchTheMarkdownRendering() {
+        constexpr auto markdown =
+            "| **ref** | Green tea | Grüße, 一言 |\n"
+            "| --- | --- | --- |\n"
+            "| r12c3 | 12,50 | Open daily (9 to 18) and a longer text that wraps |\n"
+            "| *x* | say \"hi\" | 1.5 kg |\n"
+            "|  | a  b | $5 |\n"
+            // Review (code) O10: lines and escapes, laid out as plain text too.
+            "| Tea House North<br>Tea House South | 12,50<br/>13,20 | a\\_b<br>a second line that is longer and wraps "
+            "|\n"
+            "| \\*x\\* | first<br><br>third | x<br />y |\n"
+            // Review (code) O10, step 3: colons and ampersands that start no syntax.
+            "| R&D | 09:30<br>A & B | Hinweis: siehe unten, mit einer Zeile, die umbricht |\n"
+            "| &amp; | https://example.org | x:y |\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("sizes.md"), markdown)));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QAbstractItemModel* model = view->model();
+        auto* delegate = qobject_cast<ui::TableDelegate*>(view->itemDelegate());
+        QVERIFY(delegate != nullptr);
+        // Qt's rendering of a cell's Markdown, laid out as TableDelegate lays it out.
+        const auto reference = [&](const QModelIndex& index, qreal width) {
+            auto document = std::make_unique<QTextDocument>();
+            document->setDocumentMargin(0);
+            document->setDefaultFont(model->data(index, Qt::FontRole).value<QFont>());
+            // Qt 6.12 drops what follows a <br> without slash; the delegate writes <br/> (ADR 0005).
+            static const QRegularExpression br(QStringLiteral("<br\\s*/?>"), QRegularExpression::CaseInsensitiveOption);
+            document->setMarkdown(
+                model->data(index, ui::TableModel::MarkdownRole).toString().replace(br, QStringLiteral("<br/>")),
+                QTextDocument::MarkdownDialectGitHub);
+            QTextBlockFormat format;
+            format.setTopMargin(0);
+            format.setBottomMargin(0);
+            QTextCursor cursor(document.get());
+            cursor.select(QTextCursor::Document);
+            cursor.mergeBlockFormat(format);
+            document->setTextWidth(width);
+            return document;
+        };
+        // The padding, from a cell with syntax.
+        const QModelIndex ref = model->index(0, 0);
+        const qreal padding = (delegate->naturalSize(ref).width() - reference(ref, -1)->idealWidth()) / 2;
+        QVERIFY(padding >= 0);
+        for (int r = 0; r < model->rowCount(); ++r) {
+            for (int c = 0; c < model->columnCount(); ++c) {
+                const QModelIndex index = model->index(r, c);
+                const auto unwrapped = reference(index, -1);
+                const QSizeF natural = delegate->naturalSize(index);
+                QCOMPARE(natural.width(), unwrapped->idealWidth() + 2 * padding);
+                QCOMPARE(natural.height(), unwrapped->size().height() + 2 * padding);
+                for (const qreal width : {natural.width(), natural.width() + 10, qreal(60)}) {
+                    QCOMPARE(
+                        delegate->heightAt(index, width),
+                        reference(index, std::max<qreal>(1.0, width - 2 * padding))->size().height() + 2 * padding);
+                }
+            }
+        }
     }
 
     void inputMethodCommitsIntoTheCell() {

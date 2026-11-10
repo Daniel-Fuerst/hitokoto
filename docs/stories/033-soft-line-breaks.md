@@ -1,6 +1,6 @@
-# S032 — Soft line breaks: paragraphs flow
+# S033 — Soft line breaks: paragraphs flow
 
-- **Status:** In review (confirmed by the user on 2026-11-09) · **Order:** 33 · **Size:** L ·
+- **Status:** In review (confirmed by the user on 2026-11-09) · **Order:** 34 · **Size:** L ·
   **Depends on:** S003, S009, S019, S020, S023, S028 · **Decision:** ADR 0003, ADR 0006
 - **Basis:** `docs/stories/unrefined.md` ("Soft line breaks: paragraphs flow"). In CommonMark 0.31.2
   (sections 4.8 and 6.8), a paragraph is a sequence of non-blank lines that cannot be interpreted as
@@ -317,18 +317,18 @@ No new theme tokens are required:
     - Update `draw`, `hitTest`, `blockBoundingRect`, and `visibleBlockRange` to step back to the
       first block sharing a visual line (`firstBlockOnVisualLine`) so all blocks on a shared visual
       line are painted and hit-tested together.
-- **Benchmarks (`s032_*`):**
+- **Benchmarks (`s033_*`):**
   - Add core and UI benchmarks for opening, typing in, and entering/leaving a flowing paragraph
     (including a 20,000-line hard-wrapped paragraph).
 
 ## Tests
 
-- Core: `tests/core/test_s032_soft_line_breaks.cpp` (`S032_SoftLineBreaks`) – soft line breaks,
+- Core: `tests/core/test_s033_soft_line_breaks.cpp` (`S033_SoftLineBreaks`) – soft line breaks,
   leading and trailing space concealment, two-space hard breaks, backslash hard breaks (including
   escaped `\\`, code spans, links, and trailing `\` on the last line of a paragraph), bullet list
   continuations and `wrapIndent` propagation, setext headings with multi-line paragraphs, paragraph
   reveal vs per-line inline reveal, find in file across soft and hard breaks.
-- UI: `tests/ui/tst_s032_soft_line_breaks.cpp` (`tst_s032_soft_line_breaks`) – visual line chaining
+- UI: `tests/ui/tst_s033_soft_line_breaks.cpp` (`tst_s033_soft_line_breaks`) – visual line chaining
   and word wrapping across blocks, caret/selection reveal and conceal of paragraphs, hard breaks
   (`\` and `2+` spaces), bullet continuations at hanging indent, clicking words on continuation
   blocks, Up/Down/Left/Right navigation, find-bar highlighting in flowing paragraphs, 20,000-line

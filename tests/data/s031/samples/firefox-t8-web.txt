@@ -1,0 +1,4 @@
+Tea	Shop	Rating	Picture
+Sencha 	Leaf and Cup 	good, fresh 	
+Assam 	Open daily
+9 to 18 	strong 	none

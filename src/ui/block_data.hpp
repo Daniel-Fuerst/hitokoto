@@ -40,9 +40,9 @@ public:
 // Bit 23 (0x800000): link to paragraph above is known
 // Bits 24-25 (0x3000000): link (none, continues, underline)
 // Bits 26-27 (0xC000000): wrapIndent columns for hanging indent (S003); 0 = none, 3 = in BlockData
-// Bit 28 (0x10000000): flowsToNext (S032)
-// Bit 29 (0x20000000): hardBreak (S032)
-// Bit 30 (0x40000000): sharesLineWithPrevious (S032)
+// Bit 28 (0x10000000): flowsToNext (S033)
+// Bit 29 (0x20000000): hardBreak (S033)
+// Bit 30 (0x40000000): sharesLineWithPrevious (S033)
 constexpr int kWrapIndentShift = 26;
 constexpr int kWrapIndentMax = 3;
 constexpr int kWrapIndentMask = kWrapIndentMax << kWrapIndentShift;

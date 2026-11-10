@@ -2,6 +2,7 @@
 #include "document_session.hpp"
 #include "editor_widget.hpp"
 #include "hitokoto/core/markdown.hpp"
+#include "hitokoto_version.hpp"
 #include "main_window.hpp"
 #include "theme_manager.hpp"
 
@@ -43,7 +44,7 @@ int main(int argc, char* argv[]) {
 
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("hitokoto"));
-    QApplication::setApplicationVersion(QStringLiteral(HITOKOTO_VERSION));
+    QApplication::setApplicationVersion(QString::fromLatin1(app::kVersion));
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("A single-file hybrid Markdown editor."));

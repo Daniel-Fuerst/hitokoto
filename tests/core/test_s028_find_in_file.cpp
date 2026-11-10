@@ -364,6 +364,18 @@ TEST(S028_FindInFile, CellsAreSearchedWithoutSyntax) {
     EXPECT_EQ(find(kTable, u"ziel").sources(), (Strings{"@L"}));
 }
 
+// S031 review O3 (S018's cell helpers): a `<br>` after an odd number of backslashes is text in a
+// cell, as tableCellToText reads it; the search sees the escaped `<` as `<`.
+TEST(S028_FindInFile, AnEscapedBreakInACellIsSearchedAsText) {
+    const std::u16string table =
+        u"| A | B |\n"
+        u"| --- | --- |\n"
+        u"| x\\<br>y | p\\\\<br>q |\n";
+    EXPECT_EQ(find(table, u"x<br>y").sources(), (Strings{"x\\<br>y"}));
+    EXPECT_TRUE(find(table, u"x y").matches.empty());
+    EXPECT_EQ(find(table, u"p\\ q").sources(), (Strings{"p\\\\<br>q"}));
+}
+
 TEST(S028_FindInFile, PipesTheDelimiterRowAndExtraCellsDoNotCount) {
     EXPECT_TRUE(find(kTable, u"Farbe | Text").matches.empty());
     EXPECT_TRUE(find(kTable, u"---").matches.empty());

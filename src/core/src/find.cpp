@@ -172,7 +172,7 @@ MappedText cellText(std::u16string_view line, std::size_t lineIndex, Span conten
             continue;
         }
         if (c == u'<' && i + 3 < md.size() && (md[i + 1] == u'b' || md[i + 1] == u'B') &&
-            (md[i + 2] == u'r' || md[i + 2] == u'R')) {
+            (md[i + 2] == u'r' || md[i + 2] == u'R') && !escapedAt(md, i)) {
             std::size_t j = i + 3;
             while (j < md.size() && md[j] == u' ') {
                 ++j;

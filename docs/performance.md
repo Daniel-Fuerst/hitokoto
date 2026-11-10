@@ -31,6 +31,182 @@ local measurements.
 
 ## Measurements
 
+### 2026-11-09, development VM, S031 (release build, offscreen, Qt 6.12.0)
+
+`s031_paste_*`: Ctrl+V in an empty document until the table view shows all rows, median of five
+pastes. The clipboard holds a table generated from the markup of a sample (`outlook-t1-example`,
+`excel-t6-example`; `tests/ui/paste_samples.hpp`) and its plain text. Story S031: 500 cells within
+50 ms, above that at most 100 µs per cell; hard budgets of the gate.
+
+| Table | Outlook markup | Excel markup | Budget (hard) |
+|---|---|---|---|
+| 50 × 10 (500 cells) | 44 ms | 31 ms | 50 ms |
+| 500 × 10 (5,000 cells) | 344 ms | 206 ms | 500 ms |
+| 50 × 100 (5,000 cells) | 356 ms | 233 ms | 500 ms |
+
+Of the 44 ms for 50 × 10 with Outlook's markup, Qt's HTML import takes 20 ms (198 KB), the core and
+the insertion 1.5 ms; the rest is styling and showing the table (S018). With Excel's markup (44 KB)
+the import takes 5 ms.
+
+On the CI runner (AMD EPYC 7763, dispatch on 7a742f6) the same pastes took 72 / 59 ms, 515 / 370 ms
+and 539 / 396 ms (Outlook / Excel): four hard budgets missed. Most of the time for Excel's markup
+went into sizing the cells (`TableView::fit`: a `QTextDocument` with `setMarkdown` per cell, for the
+width and again for the height). Since then a cell that GFM shows as exactly its characters
+(`core::tableCellIsPlainText`) is laid out as plain text, an unwrapped cell takes its natural height
+without a second layout, and each cell's Markdown is read once. Development VM afterwards (median of
+five):
+
+| Table | Outlook markup | Excel markup | Before |
+|---|---|---|---|
+| 50 × 10 | 35 ms | 23 ms | 44 / 31 ms |
+| 500 × 10 | 311 ms | 176 ms | 344 / 206 ms |
+| 50 × 100 | 331 ms | 193 ms | 356 / 233 ms |
+
+`s018_table_open_ms` (a 1,000-row table) went from 96 to 61 ms. Qt's HTML import of Outlook's
+markup stays: about 18 ms for 500 cells and 200 ms for 5,000 on the VM.
+
+### 2026-11-10, development VM, S031 review (code) (release build, offscreen, Qt 6.12.0)
+
+Review `docs/reviews/031-paste-tables-code.md`, O10 step 1: the generated tables now hold cells
+like the samples' (`tests/ui/paste_samples.hpp`, in turn one word, two lines, `R&D`, and two lines
+with `09:30` and `a_b`). Two-line cells and cells with `&`, `:` or `_` take Qt's Markdown layout,
+not the plain-text path of the sizing fix. Median of five pastes:
+
+| Table | One-word cells (2178d93) | Sample-like cells, with the red tests of the review | With the review fixes | Budget (hard) |
+|---|---|---|---|---|
+| Outlook 50 × 10 | 35 ms | 54 ms | 56 ms | 50 ms |
+| Outlook 500 × 10 | 311 ms | 462 ms | 480 ms | 500 ms |
+| Outlook 50 × 100 | 331 ms | 498 ms | 514 ms | 500 ms |
+| Excel 50 × 10 | 23 ms | 36 ms | 37 ms | 50 ms |
+| Excel 500 × 10 | 176 ms | 285 ms | 306 ms | 500 ms |
+| Excel 50 × 100 | 193 ms | 318 ms | 339 ms | 500 ms |
+
+With sample-like cells Outlook 50 × 10 and 50 × 100 miss their budgets on the VM; Excel holds them.
+The review fixes add up to 7 % (the scan of the HTML before the import, the display escape on the
+Markdown path); runs of the same build differ by about 5 %.
+
+Step 2 (Armin, after these numbers): a cell holding only plain characters, backslash escapes and
+`<br>` is laid out as plain text with U+2028 between its lines (`core::tableCellPlainLayout`).
+Cells with `R&D` or `09:30` still take Qt's Markdown layout. Median of five:
+
+| Table | Sample-like cells, step 1 | Step 2 | Budget (hard) |
+|---|---|---|---|
+| Outlook 50 × 10 | 56 ms | 51 ms | 50 ms |
+| Outlook 500 × 10 | 480 ms | 424 ms | 500 ms |
+| Outlook 50 × 100 | 514 ms | 475 ms | 500 ms |
+| Excel 50 × 10 | 37 ms | 35 ms | 50 ms |
+| Excel 500 × 10 | 306 ms | 267 ms | 500 ms |
+| Excel 50 × 100 | 339 ms | 316 ms | 500 ms |
+
+Step 3 (Armin, 2026-11-10): a colon not followed by `//` and an ampersand that starts no entity
+are text, so `R&D` and `09:30` cells are laid out as plain text too (`core::tableCellIsPlainText`;
+links with `://`, e-mail addresses and entities still take the Markdown layout; a link form that
+GFM does not recognise is an accepted risk, a follow-up story if practice needs it). The same rule
+as a spike on the same VM: Outlook 42 / 386 / 453 ms, Excel 27 / 220 / 265 ms (50 × 10, 500 × 10,
+50 × 100), every budget held. The implementation was measured after the session moved to a VM about
+1.3 times slower (`s018_table_open_ms` about 80–95 instead of 62 ms, the paste without a table 33
+instead of 25 ms), step 2 and step 3 in turn:
+
+| Table | Step 2 | Step 3 | Budget (hard) |
+|---|---|---|---|
+| Outlook 50 × 10 | 68 ms | 57–59 ms | 50 ms |
+| Outlook 500 × 10 | 541 ms | 487–523 ms | 500 ms |
+| Outlook 50 × 100 | 598 ms | 532–536 ms | 500 ms |
+| Excel 50 × 10 | 44 ms | 36–37 ms | 50 ms |
+| Excel 500 × 10 | 344 ms | 278–283 ms | 500 ms |
+| Excel 50 × 100 | 402 ms | 337–347 ms | 500 ms |
+
+Step 3 takes 15–20 % off step 2. Whether the Outlook budgets hold on the CI runner shows its run;
+on the earlier VM they held with a margin of about 1.2 (Outlook 50 × 10).
+
+Margin of the hard budgets (review O8): Outlook 50 × 10 with one-word cells took 35 ms on the VM
+(factor 1.4 to the budget) and 32 ms on the CI runner for 2178d93 (factor 1.55). Runner and VM
+compared on the same code before and after the S018 sizing fix: `s018_table_open_ms` 158–160 / 96
+ms = 1.65, then 60.2 / 61 ms = 1.0; Outlook 50 × 10 71.8 / 44 ms = 1.63, then 32.2 / 35 ms = 0.92;
+Excel 50 × 10 59.1 / 31 ms = 1.91, then 23.1 / 23 ms = 1.0. Split into import and layout, the
+runner was about 1.1 times slower in Qt's HTML import and about 2 times slower in `setMarkdown`
+layout, which plain cells no longer take; cells that still take it can be that much slower on the
+runner (an estimate from two dispatches). If an `s031_paste_*` hard budget trips in a pull
+request, first re-run the failed jobs; if it trips again, the numbers go to Armin before any budget
+changes.
+
+A paste without a table (review O9, `s031_paste_no_table_5000_lines_ms`: 5,000 lines of code, three
+spans per line, about 620 KB of HTML): 142.6 ms before the fixes, 26.9 ms after them (no import).
+Copies made in hitokoto itself carry HTML that Qt generates from the selection when it is asked
+for; a probe with the review fixes (lines of text with emphasis, code and a link, median of three):
+
+| Copied in hitokoto | Generating `html()` | Scan | `Ctrl+V` of the copy | `Ctrl+V` of the same plain text |
+|---|---|---|---|---|
+| 5,000 lines | 41.8 ms | 1.0 ms | 76.7 ms | 37.4 ms |
+| 50,000 lines | 447.5 ms | 14.1 ms | 818.2 ms | 285.8 ms |
+
+Qt's data for a selection (`QTextEditMimeData`) makes HTML, Markdown, ODF and plain text all at the
+first request, also when only the plain text is asked for; a marker alone, which skips the HTML,
+gave 71.4 and 668.2 ms. hitokoto's own copy (`OwnCopy` in `editor_widget.cpp`, review (code) O9)
+makes each format only when asked for and carries the marker; the same probe then measured:
+
+| Copied in hitokoto | Generating `html()` | Scan | `Ctrl+V` of the copy | `Ctrl+V` of the same plain text |
+|---|---|---|---|---|
+| 5,000 lines | 11.4 ms | 0.7 ms | 32.2 ms | 32.4 ms |
+| 50,000 lines | 125.9 ms | 9.0 ms | 255.2 ms | 255.8 ms |
+
+### 2026-11-10, CI runner, S031 after the review (dispatch on 5a1e4d0)
+
+Runner class `linux-intel-r-xeon-r-platinum-8573c-4cpu`, the two rounds of the pull request with
+the old table sizes and sample-like cells:
+
+| Table | Outlook markup | Excel markup | Budget (hard) |
+|---|---|---|---|
+| 50 × 10 | 49.3 / 48.0 ms | 34.2 / 34.2 ms | 50 ms |
+| 500 × 10 | 441.7 / 450.2 ms | 259.2 / 267.1 ms | 500 ms |
+| 50 × 100 | 502.1 / 492.2 ms | 308.1 / 316.9 ms | 500 ms |
+
+Outlook 50 × 100 missed its budget in the first round, the Outlook keys kept only 1–4 % margin.
+`s031_paste_no_table_5000_lines_ms` 29.3 / 28.2 ms; `s018_table_open_ms` 72 / 68 ms against
+111 / 108 ms of main on the same runner (the plain-text layout of steps 2 and 3 of review O10).
+
+Armin, 2026-11-10: the times stay, the tables shrink to 40 × 10 (400 cells, 50 ms), 400 × 10 and
+40 × 100 (4,000 cells, 500 ms); the story's rule is now 400 cells in 50 ms, then at most 125 µs
+per cell. From the run above (about 4 ms plus 88 µs per cell for Outlook 500 × 10, about 100 µs
+per cell for 50 × 100) the runner should take about 39, 356 and 400 ms with Outlook's markup, a
+margin of about 1.25. On the slower development VM of 2026-11-10 (median of five): Outlook
+46.9 / 430.7 / 434.2 ms, Excel 33.3 / 227.0 / 276.0 ms (40 × 10, 400 × 10, 40 × 100).
+
+### 2026-11-10, development VM, S031: where a paste's time goes, and HTML without styles
+
+The CI run on 712f652 (AMD EPYC 7763) missed `s031_paste_outlook_40x10_ms` with 54.7–57.4 ms;
+400 × 10 took 437 ms and 40 × 100 483 ms. A probe on the VM (outside the repository, median of 7)
+found no fixed cost worth naming (a paste of 20 cells takes 7 ms in all); the time grows with the
+cells. About half of it is Qt's HTML import of Outlook's markup, which holds about 1 KB per cell,
+mostly inline CSS; the rest is embedding and showing the table, the same for both markups:
+
+| Outlook markup | HTML | Qt's import | Ctrl+V handler | Until shown after it | Total |
+|---|---|---|---|---|---|
+| 20 cells | 91 KB | 1.0 ms | 1.4 ms | 5.6 ms | 7.0 ms |
+| 400 cells | 401 KB | 20.2 ms | 20.7 ms | 23.9 ms | 44.6 ms |
+| 4,000 cells | 3,350 KB | 227 ms | 231 ms | 148 ms | 379 ms |
+| Excel markup, 400 cells | 90 KB | 6.1 ms | 7.5 ms | 23.4 ms | 30.9 ms |
+
+Armin, 2026-11-10: the style attributes leave the HTML before the import
+(`core::htmlWithoutStyles`); every sample gives the same Markdown, and Qt 6.12's import ignores
+`display: none` anyway (inline, by class and on blocks). The import alone: Outlook 400 cells
+17.9 → 8.9 ms, 4,000 cells 208 → 115 ms; Excel 4.6 → 3.3 and 65 → 47 ms. `hitokoto-bench` on the
+same VM (median of five, before → after):
+
+| Table | Outlook markup | Excel markup | Budget (hard) |
+|---|---|---|---|
+| 40 × 10 | 46.9 → 40.1 ms | 33.3 → 29.4 ms | 50 ms |
+| 400 × 10 | 430.7 → 320.1 ms | 227.0 → 206.0 ms | 500 ms |
+| 40 × 100 | 434.2 → 327.1 ms | 276.0 → 247.1 ms | 500 ms |
+
+The CI run on 1096c0b landed on the slower runner class, AMD EPYC 7763 (pull request rounds 1 / 2):
+Outlook 43.5 / 43.8 ms (40 × 10), 332.8 / 327.6 ms (400 × 10), 376.7 / 377.8 ms (40 × 100); Excel
+38.4 / 38.7, 264.1 / 264.1, 312.4 / 314.0 ms; the paste without a table 28.5 / 28.8 ms. Against
+the run on 712f652 on the same class (56.4, 437.5, 483.3 ms Outlook) that is 22–25 % less; the
+smallest margin is now Outlook 40 × 10 with about 1.14.
+The budgets follow one system when they change (Armin, 2026-11-10): the tables grow by a factor of
+ten (400, 4,000 and 40,000 cells) and the times with them (50, 500 and 5,000 ms).
+
 ### 2026-11-09, CI runner, S029 revised (pull request #31, run #125)
 
 The bench job of the revised S029 (base build and four rounds in every pull request run) took

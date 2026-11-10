@@ -8,12 +8,16 @@
 #include "find_controller.hpp"
 
 #include <QAction>
+#include <QApplication>
+#include <QClipboard>
 #include <QCloseEvent>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QLineEdit>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QScreen>
 #include <QVBoxLayout>
 
@@ -108,6 +112,25 @@ void MainWindow::createMenus() {
     edit->addAction(tr("Cu&t"), QKeySequence::Cut, editor_, &QTextEdit::cut);
     edit->addAction(tr("&Copy"), QKeySequence::Copy, editor_, &QTextEdit::copy);
     edit->addAction(tr("&Paste"), QKeySequence::Paste, editor_, &QTextEdit::paste);
+    // S031: paste the clipboard's plain text without converting tables (decision 5).
+    // The key reaches the window from every widget: it acts where the focus is (review O2), in a
+    // cell editor or a text field as Ctrl+V there (both take plain text only), in the editor
+    // without converting tables, elsewhere not at all.
+    QAction* pastePlain =
+        edit->addAction(tr("Paste as &Plain Text"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V), this, [this] {
+            QWidget* focus = QApplication::focusWidget();
+            if (focus == nullptr || focus == editor_ || focus == editor_->viewport()) {
+                editor_->pasteAsPlainText();
+            } else if (auto* line = qobject_cast<QLineEdit*>(focus)) {
+                line->paste();
+            } else if (auto* text = qobject_cast<QPlainTextEdit*>(focus)) {
+                text->paste();
+            }
+        });
+    pastePlain->setObjectName(QStringLiteral("pasteAsPlainText"));
+    const auto updatePastePlain = [pastePlain] { pastePlain->setEnabled(EditorWidget::canPastePlainText()); };
+    connect(QApplication::clipboard(), &QClipboard::dataChanged, pastePlain, updatePastePlain);
+    updatePastePlain();
     edit->addAction(tr("Select &All"), QKeySequence::SelectAll, editor_, &QTextEdit::selectAll);
     // S028: find in the file (decision 7; review O10: the platform's find-next keys plus F3).
     edit->addSeparator();

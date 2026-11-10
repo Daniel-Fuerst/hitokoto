@@ -41,9 +41,18 @@ foreach(t IN ITEMS
         tst_s026_floating_toolbar
         tst_s027_smooth_scrolling
         tst_s028_find_in_file
-        tst_s032_soft_line_breaks)
+        tst_s031_paste_tables
+        tst_s033_soft_line_breaks)
     hitokoto_ui_test(${t})
 endforeach()
+
+# S031: the clipboard samples as resources (:/s031/<name>.html and .txt).
+file(GLOB hitokoto_s031_samples ${PROJECT_SOURCE_DIR}/tests/data/s031/samples/*.html
+     ${PROJECT_SOURCE_DIR}/tests/data/s031/samples/*.txt)
+target_sources(tst_s031_paste_tables PRIVATE paste_samples.hpp)
+qt_add_resources(tst_s031_paste_tables "s031_samples" PREFIX "/s031"
+                 BASE ${PROJECT_SOURCE_DIR}/tests/data/s031/samples
+                 FILES ${hitokoto_s031_samples})
 
 # S023: the line of a thematic break is crisp at fractional scaling too.
 add_test(NAME tst_s023_thematic_breaks_scaled COMMAND tst_s023_thematic_breaks aConcealedBreakIsCrispAtTheDeviceScale)

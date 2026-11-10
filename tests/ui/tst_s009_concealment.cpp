@@ -169,7 +169,7 @@ private slots:
         for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
             concealedGeometry.push_back(editor->blockLayout()->blockBoundingRect(b));
         }
-        // S032: the two-line setext heading at 9-10 flows while the caret is outside 9..11 and
+        // S033: the two-line setext heading at 9-10 flows while the caret is outside 9..11 and
         // expands to its two source lines while the caret is on 9..11.
         f.placeCaret(9);
         f.settle();
@@ -384,7 +384,7 @@ private slots:
         }
     }
 
-    // S032: soft and hard line breaks in flowing paragraphs and bullet continuations; the caret is
+    // S033: soft and hard line breaks in flowing paragraphs and bullet continuations; the caret is
     // never in a concealed range (leading continuation spaces, trailing hard-break markers, inline
     // markers), and the paragraph holding the caret reveals all its source lines onto separate lines.
     void flowingParagraphsWhileWalking() {
