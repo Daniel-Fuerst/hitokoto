@@ -38,7 +38,7 @@ story ID (see "Conventions").
 | 29 | [S028](028-find-in-file.md) | Find in the open file | S018, S022, S023, S024 | L | In review |
 | 30 | [S029](029-bench-runner-classes.md) | Benchmark compared with main on the same runner | S006, S007, S017 | M | Done |
 | 31 | [S030](030-automatic-versions.md) | A defined version step for every merge into main | S000 | M | Done |
-| 32 | [S031](031-paste-tables.md) | Pasting a table from Outlook, Excel or a web page as a Markdown table | S018, S019, S020 | M | In review |
+| 32 | [S031](031-paste-tables.md) | Pasting a table from Outlook, Excel or a web page as a Markdown table | S018, S019, S020 | M | Done |
 | 34 | [S033](033-soft-line-breaks.md) | Soft line breaks: paragraphs flow | S003, S009, S019, S020, S023, S028 | L | In review |
 | 35 | [S034](034-aur-package.md) | The AUR package follows every version | S030 | S | Done |
 | 36 | [S035](035-version-after-ci.md) | A version only after the CI on main is green | S030, S034 | S | Done |
