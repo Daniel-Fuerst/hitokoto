@@ -8,6 +8,7 @@
 
 #include <QObject>
 #include <QPoint>
+#include <QPointer>
 #include <QTextBlock>
 
 #include <vector>
@@ -107,11 +108,11 @@ private:
         QTextBlock header;
         QTextBlock last;
         bool source = false;
-        bool held = false;              ///< shows its lines while the caret is in a line typed in the editor
-        bool found = false;             ///< S028: shows its lines while it holds the find bar's current match
-        bool parked = false;            ///< S028: `widget` is kept hidden while `found` (not built again)
-        TableWidget* widget = nullptr;  ///< owned by the table; deleted in release()
-        quint64 signature = 0;          ///< of the lines and width the widget was fitted to
+        bool held = false;             ///< shows its lines while the caret is in a line typed in the editor
+        bool found = false;            ///< S028: shows its lines while it holds the find bar's current match
+        bool parked = false;           ///< S028: `widget` is kept hidden while `found` (not built again)
+        QPointer<TableWidget> widget;  ///< owned by the table; deleted in release()
+        quint64 signature = 0;         ///< of the lines and width the widget was fitted to
         /// A change removed one of its lines (or the line break before it): its QTextBlocks may
         /// no longer exist, so nothing touches them again; refresh() drops the table.
         bool stale = false;

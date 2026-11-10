@@ -46,7 +46,7 @@ TableEmbedder::TableEmbedder(EditorWidget* editor, BlockStyler* styler, BlockLay
 TableEmbedder::~TableEmbedder() {
     layout_->removeClaimant(this);
     for (Table& table : tables_) {
-        delete table.widget;
+        delete table.widget.data();
     }
 }
 

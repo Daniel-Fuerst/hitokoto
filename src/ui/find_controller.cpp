@@ -353,7 +353,7 @@ bool FindController::aheadWork(qint64 nanoseconds) {
     timer.start();
     QTextBlock block = editor_->document()->findBlockByNumber(ahead_.next);
     std::u16string text = block.isValid() ? textOf(block) : std::u16string{};
-    int n = 0;
+    unsigned int n = 0;
     while (block.isValid()) {
         const int b = block.blockNumber();
         const QTextBlock nextBlock = block.next();
@@ -400,7 +400,7 @@ bool FindController::aheadWork(qint64 nanoseconds) {
         }
         block = nextBlock;
         text = next;
-        if ((++n & 31) == 0 && timer.nsecsElapsed() > nanoseconds) {
+        if ((++n & 31U) == 0 && timer.nsecsElapsed() > nanoseconds) {
             return true;
         }
     }
@@ -442,7 +442,7 @@ bool FindController::frontMatterStep(const QElapsedTimer& timer, qint64 nanoseco
     const QTextDocument* doc = editor_->document();
     QTextBlock b = doc->findBlockByNumber(pass_.frontWalk);
     const core::BlockState start = registry_.documentStart();
-    int n = 0;
+    unsigned int n = 0;
     while (b.isValid()) {
         const QTextBlock nextBlock = b.next();
         const std::u16string text = textOf(b);
@@ -457,7 +457,7 @@ bool FindController::frontMatterStep(const QElapsedTimer& timer, qint64 nanoseco
             return true;
         }
         b = nextBlock;
-        if ((++n & 63) == 0 && timer.nsecsElapsed() > nanoseconds) {
+        if ((++n & 63U) == 0 && timer.nsecsElapsed() > nanoseconds) {
             pass_.frontWalk = b.isValid() ? b.blockNumber() : blockCount_;
             return false;
         }
@@ -575,7 +575,7 @@ bool FindController::work(qint64 nanoseconds) {
     const QTextDocument* doc = editor_->document();
     QTextBlock block = doc->findBlockByNumber(pass_.next);
     std::u16string text = block.isValid() ? textOf(block) : std::u16string{};
-    int n = 0;
+    unsigned int n = 0;
     while (block.isValid()) {
         const int b = block.blockNumber();
         BlockInfo& info = blocks_[static_cast<std::size_t>(b)];
@@ -623,7 +623,7 @@ bool FindController::work(qint64 nanoseconds) {
         }
         block = nextBlock;
         text = next;
-        if ((++n & 31) == 0 && timer.nsecsElapsed() > nanoseconds) {
+        if ((++n & 31U) == 0 && timer.nsecsElapsed() > nanoseconds) {
             return false;
         }
     }

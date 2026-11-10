@@ -12,7 +12,15 @@
 namespace hitokoto::ui {
 
 /// Zero-copy view of a QString as UTF-16 code units.
-inline std::u16string_view view(const QString& s) noexcept {
+#if defined(__has_cpp_attribute) && __has_cpp_attribute(clang::lifetimebound)
+#define HITOKOTO_LIFETIMEBOUND [[clang::lifetimebound]]
+#elif defined(__has_cpp_attribute) && __has_cpp_attribute(gnu::lifetimebound)
+#define HITOKOTO_LIFETIMEBOUND [[gnu::lifetimebound]]
+#else
+#define HITOKOTO_LIFETIMEBOUND
+#endif
+
+inline std::u16string_view view(const QString& s HITOKOTO_LIFETIMEBOUND) noexcept {
     return {reinterpret_cast<const char16_t*>(s.utf16()), static_cast<std::size_t>(s.size())};
 }
 
