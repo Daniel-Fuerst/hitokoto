@@ -168,7 +168,8 @@ later can be told apart and updated.
   `src/app/` and `tests/`; under `cmake/` its benchmark job would fail.
 - **Workflow:** a new file `.github/workflows/version.yml`, separate from `ci.yml`. Job "Version
   label" on `pull_request` (opened, reopened, edited, labeled, unlabeled, synchronize) for base
-  `main`, read-only token, never `pull_request_target`. Job "Tag" on push to main with
+  `main`, read-only token, never `pull_request_target`; it runs `NextVersion.cmake` from main's
+  tip, not from the pull request (S032, since 2026-11-10). Job "Tag" on push to main with
   `contents: write`:
   - Candidates are the commits on main's first-parent line after the last version tag, oldest
     first. A candidate is a version only if a pull request with base `main` has it as its

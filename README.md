@@ -58,7 +58,9 @@ Every pull request merged into main gives hitokoto its version step (story S030,
     with 0 (incompatible changes are `version:minor` until then).
 
   The label is part of the review before the merge and must fit the pull request's final content,
-  not only what it was opened for.
+  not only what it was opened for. The check takes its rules (`scripts/version/NextVersion.cmake`)
+  from main's tip, not from the pull request (S032): a pull request that changes them is checked
+  with main's rules, and its own apply from the next pull request on.
 - **The tag is the only source of the version.** After the merge, the workflow `version.yml` puts
   an annotated tag `vMAJOR.MINOR.PATCH` on the merge commit. `project()` in `CMakeLists.txt`
   carries no `VERSION`, and nobody sets a `v*` tag by hand (apart from the starting tag `v0.3.0`):

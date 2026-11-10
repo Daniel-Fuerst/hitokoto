@@ -1,7 +1,7 @@
 # S032 — The check "Version label" takes its script from main
 
-- **Status:** Confirmed (Armin, 2026-11-09) · **Order:** 33 (after S031) · **Size:** S ·
-  **Depends on:** S030 · **Decision:** ADR 0010 (unchanged)
+- **Status:** In progress (since 2026-11-10); confirmed by Armin, 2026-11-09 · **Order:** 33
+  (after S031) · **Size:** S · **Depends on:** S030 · **Decision:** ADR 0010 (unchanged)
 - **Basis:** code review of S030, O3 (`docs/reviews/030-automatic-versions-code.md`), and the entry
   "The check 'Version label' with the script from main" in `unrefined.md`, which this story
   replaces. Follow-up work to S030, written as a story on Armin's request (2026-11-09); implemented
