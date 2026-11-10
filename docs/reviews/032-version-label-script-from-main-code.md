@@ -12,26 +12,26 @@ objections:
     category: design
     severity: major
     title: "A pull request that moves the script or changes how it is called cannot pass its own check"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "Armin, 2026-11-10: such a change is a deliberate rebuild of the versioning, and two pull requests for it are acceptable, as long as it is written down. Story S032, decision 2, and README, 'Versions': moving NextVersion.cmake or changing how it is called takes two pull requests, first the new interface beside the old one, then, after its merge, the switch in version.yml."
   - id: O2
     category: design
     severity: minor
     title: "An accidental change of version.yml itself still passes unnoticed"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "Armin, 2026-11-10: test-first ctest cases. S032_TheLabelCheckUsesMainsScript runs tests/version/s032_workflow_lint.cmake on version.yml (no pull_request_target outside comments; the job label checks out main once, with persist-credentials false, and runs NextVersion.cmake in the mode labels); S032_LintFinds* write a copy with one deviation each and expect the lint to name it (red with a stub, green with the lint). A deliberate change adapts the lint with it (story requirement)."
   - id: O3
     category: failure
     severity: minor
     title: "A green check is not refreshed when main's rules change before the merge"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "Armin, 2026-11-10: a ruleset rule 'require branches to be up to date' or a workflow that re-checks open pull requests on every push to main costs more than this rare case is worth. Story S032, decision 3: a pull request keeps the result of its last run; changed rules apply to open pull requests from their next event on (a push, a label, a re-run of Version label); until then the tag job stops after the merge."
   - id: O4
     category: operational
     severity: minor
     title: "The temporary commit of the verification turns the S030 cases in ci.yml red"
-    disposition: pending
-    disposition_rationale: null
+    disposition: resolved
+    disposition_rationale: "Armin, 2026-11-10: the verification ran once and is done. On pull request 36 the temporary commit 76a560c turned the build jobs of CI run 147 red, as expected; it was reverted right after the check had shown its result (e92a9b7). The general point, expensive jobs that build fully before a cheap failure shows, became the entry 'CI: fail fast on cheap checks' in unrefined.md."
 ---
 
 # Objection record: S032 the check Version label takes its script from main (code)
@@ -44,7 +44,11 @@ without findings; `action.yml` of `actions/checkout` v7 (inputs `ref`, `sparse-c
 of main with `git sparse-checkout set --no-cone /scripts/version/` holds only the two files under
 `scripts/version/`, prints "Rules from main at 10a60bf…", passes with `version:none` and fails with
 `bug`, naming the four labels; the temporary commit (d1f1513) makes the mode `labels` of its own
-copy succeed without any label. The run on GitHub follows with the story's pull request.
+copy succeed without any label. On GitHub (pull request 36, 2026-11-10): with `version:none` the
+check is green (runs 14 to 17); with the temporary commit 76a560c and the label removed, run 18 is
+red, prints "Rules from main at 10a60bf94fd8a6e12a334059c41effb5caecb1ca" and fails at
+`scripts/version/NextVersion.cmake:124` with the message that names the four labels; line 124 is
+main's copy (the copy in the pull request has seven lines more before it and succeeds earlier).
 
 ## O1 - design - major
 
@@ -54,11 +58,11 @@ The pull request's own `version.yml` runs main's copy of the script (`version.ym
 `version.yml:45`). That is the point for the rules, but it also applies to the interface: a pull
 request that renames or moves `scripts/version/NextVersion.cmake`, renames the mode `labels`, or
 adds a required parameter, and adapts `version.yml` to it in the same pull request, calls main's
-script the new way and fails with "does not exist" or an unknown mode, whatever its label. A re-run cannot
-help, and the ruleset for main has an empty bypass list, so nobody can merge it. Decision 2 keeps a
-change of the versioning possible on purpose; for this kind of change the only ways are two pull
-requests (the new interface first beside the old one, then the switch) or the owner changing the
-ruleset for a moment. Neither the story nor README says so, and the first person to hit it sees
+script the new way and fails with "does not exist" or an unknown mode, whatever its label. A re-run
+cannot help, and the ruleset for main has an empty bypass list, so nobody can merge it. Decision 2
+keeps a change of the versioning possible on purpose; for this kind of change the only ways are two
+pull requests (the new interface first beside the old one, then the switch) or the owner changing
+the ruleset for a moment. Neither the story nor README says so, and the first person to hit it sees
 only a red required check.
 
 ## O2 - design - minor

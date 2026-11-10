@@ -22,9 +22,15 @@ check without a version label.
    from the pull request itself, so a pull request can still change or remove the check there.
    That stays possible on purpose, for example to move to another way of versioning; removing the
    check also takes it out of the required checks of the ruleset. Closing that too would need
-   `pull_request_target`, which S030 rules out.
+   `pull_request_target`, which S030 rules out. A change that moves `NextVersion.cmake` or changes
+   how it is called takes two pull requests: first the new interface beside the old one, then,
+   after its merge, the switch in `version.yml`; in one pull request its check would call main's
+   script the new way and never pass (code review O1, Armin, 2026-11-10).
 3. **A pull request that changes the rules in the script** is checked with main's rules; its own
-   rules apply from the next pull request on.
+   rules apply from the next pull request on. A pull request keeps the result of its last run: when
+   a merge changes the rules, they apply to open pull requests from their next event on (a push, a
+   label, or a re-run of "Version label"); until then the tag job, which runs main's script, stops
+   after the merge at a pull request that the new rules reject (code review O3, Armin, 2026-11-10).
 
 ## Acceptance scenarios
 
@@ -44,10 +50,15 @@ check without a version label.
 
 ## Requirements
 
-- Only `.github/workflows/version.yml` and the documentation change. The job "Version label" checks
-  out `main` (only `scripts/version/`, read-only token) instead of the pull request's merge ref; it
-  still reads the labels from the event, never runs code of the pull request, and stays on
-  `pull_request`, never `pull_request_target`.
+- `.github/workflows/version.yml`, the documentation and a lint of the workflow file change. The
+  job "Version label" checks out `main` (only `scripts/version/`, read-only token) instead of the
+  pull request's merge ref; it still reads the labels from the event, never runs code of the pull
+  request, and stays on `pull_request`, never `pull_request_target`.
+- The `ctest` case `S032_TheLabelCheckUsesMainsScript` runs `tests/version/s032_workflow_lint.cmake`
+  on `version.yml`: no `pull_request_target`, and the job "Version label" checks out `main` once,
+  without stored credentials, and runs `NextVersion.cmake` in the mode `labels`. The cases
+  `S032_LintFinds*` show that it finds each deviation. It guards against an accidental edit of the
+  workflow; a deliberate change adapts it (code review O2, Armin, 2026-11-10).
 - Verification: actionlint without findings, and the story's own pull request, once with a
   temporary commit that makes the script always succeed and no label (red), then without it and
   with `version:none` (green). The temporary commit is reverted before the merge.
