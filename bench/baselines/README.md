@@ -12,7 +12,12 @@ judged (`hitokoto-bench-gate`, rules in `docs/stories/029-bench-runner-classes.m
 - **Label.** `bench-accepted` on a pull request accepts failed comparisons (read at run time, so a
   re-run after adding it is enough). Hard budgets still fail.
 - **Hard budgets.** Those of the pull request's rounds fail the job; those of the base's rounds are
-  listed for information.
+  listed for information. A hard budget that a pull request adds is new while the base does not
+  measure it (neither base round holds the key): the base's rounds count without it, the pull
+  request's rounds must hold it and meet its limit, and the report lists it as on one side only.
+  A story with a new hard budget therefore needs no change to the gate, only the key in
+  `hardBudgets()`, in `kHardKeys` of `tests/bench/test_s029_runner_classes.cpp` and in the
+  fixtures under `tests/bench/data/` (all rounds).
 - **Toolchain.** The base is built from its own checkout, so its `CMakePresets.json`, `cmake/` and
   fetched test libraries are its own. If the Qt version of the bench job differs, the base is built
   with its own Qt; a new runner image affects both sides and is named in the report. A toolchain
