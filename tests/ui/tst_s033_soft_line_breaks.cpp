@@ -9,6 +9,7 @@
 
 #include <QElapsedTimer>
 #include <QLineEdit>
+#include <QScrollBar>
 
 #include <vector>
 
@@ -387,6 +388,51 @@ private slots:
         const QString saved = f.dir.filePath(QStringLiteral("saved.md"));
         QVERIFY(f.saveAndWait(saved));
         QCOMPARE(test::Fixture::readFile(saved), original);
+    }
+
+    // A new width re-estimates every block (S019 finding 2). In a flowing paragraph the line at the
+    // top of the view can start inside a block that shares its first line with the blocks before
+    // it; the reading position is that line, not the first block of the shared line.
+    void resizingKeepsTheTopLineInsideAFlowingParagraph() {
+        QByteArray markdown = "# Notes\n\n";
+        for (int p = 0; p < 40; ++p) {
+            for (int i = 0; i < 24; ++i) {
+                const QByteArray words = i % 5 == 0 ? QByteArray(120, 'a').replace("aaaa", "aa a") : "aa a";
+                markdown += "word " + QByteArray::number(p * 100 + i) + ' ' + words + '\n';
+            }
+            markdown += '\n';
+        }
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("resize_flow.md"), markdown)));
+        f.placeCaret(0);
+        f.settle();
+
+        auto* editor = f.editor();
+        auto* bar = editor->verticalScrollBar();
+        const auto topBlock = [&] { return editor->cursorForPosition(QPoint(40, 2)).blockNumber(); };
+        // Page down until the top line belongs to a block well behind the first block of its shared
+        // lines (blockAt), so that blocks between the two lie above the reading position.
+        bool inside = false;
+        for (int page = 0; page < 40 && !inside; ++page) {
+            bar->triggerAction(QAbstractSlider::SliderPageStepAdd);
+            f.settle();
+            const QTextBlock top = editor->document()->findBlockByNumber(topBlock());
+            inside = editor->blockLayout()->sharesLineWithPrevious(top) &&
+                     top.blockNumber() - editor->blockLayout()->blockAt(bar->value()).blockNumber() >= 6;
+        }
+        if (!inside) {
+            // Which page starts where depends on the font; tst_s019 resizingKeepsTheReadingPosition
+            // covers the same case at the end of a document.
+            QSKIP("no page starts well inside a shared line with this font");
+        }
+        const int before = topBlock();
+
+        f.window->resize(f.window->width() - 40, f.window->height());
+        f.settle();
+        QCOMPARE(topBlock(), before);
+        f.window->resize(f.window->width() + 40, f.window->height());
+        f.settle();
+        QCOMPARE(topBlock(), before);
     }
 
     void longFlowingParagraphStaysWithinLatencyBudget() {
