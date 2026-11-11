@@ -540,6 +540,29 @@ private slots:
         QCOMPARE(editor->anchorRestores() - before, static_cast<quint64>(editorResizes.count));
     }
 
+    // Benchmark of PR #37 (s031_paste_no_table_5000_lines_ms 29 -> 139 ms): an edit that adds many lines
+    // styles the lines on screen at once and the rest later, in slices. Qt reports the edit to the
+    // styler before the layout knows the new blocks; the visible range must not take every new block
+    // for visible then.
+    void insertingManyLinesStylesOnlyTheScreenAtOnce() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("empty.md"), QByteArray())));
+        f.settle();
+        auto* editor = f.editor();
+        QString text;
+        for (int i = 0; i < 5000; ++i) {
+            text += QStringLiteral("int value%1 = %1;\n").arg(i);
+        }
+        auto& styler = editor->styler();
+        const quint64 before = styler.styledCount();
+        QTextCursor(editor->document()).insertText(text);
+        const quint64 atOnce = styler.styledCount() - before;
+        // The screen holds a few hundred of these short lines when they flow; 5,000 means all of them.
+        QVERIFY2(atOnce < 1000, qPrintable(QStringLiteral("%1 lines styled at once").arg(atOnce)));
+        f.settle();
+        QCOMPARE(differenceFromTheReference(editor), QString());
+    }
+
     void longFlowingParagraphStaysWithinLatencyBudget() {
         constexpr int kLines = 20000;
         QByteArray document = "Outside top\n\n";
