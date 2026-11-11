@@ -308,6 +308,7 @@ qreal BlockLayout::layoutBlock(const QTextBlock& block) const {
 }
 
 qreal BlockLayout::layoutSingleBlock(const QTextBlock& block, qreal& subLeft, qreal& subWidth) const {
+    ++blockLayouts_;
     setSharesPrevLine(block, false);
     QTextLayout* layout = block.layout();
     layout->setTextOption(document()->defaultTextOption());
@@ -358,6 +359,7 @@ qreal BlockLayout::layoutSingleBlock(const QTextBlock& block, qreal& subLeft, qr
 
 void BlockLayout::layoutContinuationBlock(const QTextBlock& prev, const QTextBlock& cur, qreal subLeft,
                                           qreal subWidth) const {
+    ++blockLayouts_;
     QTextLayout* layout = cur.layout();
     const QTextLayout* prevLayout = prev.layout();
     bool placedOnPrev = false;

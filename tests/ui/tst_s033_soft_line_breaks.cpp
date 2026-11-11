@@ -571,6 +571,31 @@ private slots:
         QCOMPARE(differenceFromTheReference(editor), QString());
     }
 
+    // Benchmark of PR #37 (s031_paste_no_table_5000_lines_ms 29 -> 45 ms after the visible range was
+    // fixed): short lines flow, so a screen holds about three times as many blocks as on main, and
+    // each block found without lines on screen laid its paragraph out again from up to 64 blocks back,
+    // although those had lines already. The screen took about 20 layouts per block.
+    void layingOutTheScreenLaysOutEachBlockAboutOnce() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("empty.md"), QByteArray())));
+        f.settle();
+        auto* editor = f.editor();
+        QString text;
+        for (int i = 0; i < 5000; ++i) {
+            text += QStringLiteral("int value%1 = %1;\n").arg(i);
+        }
+        const quint64 before = editor->blockLayout()->blockLayouts();
+        QTextCursor(editor->document()).insertText(text);
+        f.settle();
+        editor->viewport()->repaint();
+        const quint64 layouts = editor->blockLayout()->blockLayouts() - before;
+        const int laidOut = laidOutBlocks(editor->document());
+        QVERIFY(laidOut > 0);
+        QVERIFY2(layouts <= static_cast<quint64>(3 * laidOut),
+                 qPrintable(QStringLiteral("%1 block layouts for %2 blocks with lines").arg(layouts).arg(laidOut)));
+        QCOMPARE(differenceFromTheReference(editor), QString());
+    }
+
     // Benchmark of the follow-up to PR #37 (s023_underline_settled_ms 97, 127, 170 ... 496 ms over ten
     // rounds): typing "-" below a long paragraph and deleting it again changes the flow of every line
     // of it. Laying the paragraph out again must not lay out more of it each time; it grew by the

@@ -96,6 +96,9 @@ public:
     };
     [[nodiscard]] bool inBatch() const noexcept { return batch_ > 0; }
 
+    /// How many times a block's lines were laid out so far (instrumentation for tests).
+    [[nodiscard]] quint64 blockLayouts() const noexcept { return blockLayouts_; }
+
     [[nodiscard]] int cursorWidth() const noexcept { return cursorWidth_; }
     void setCursorWidth(int width);
 
@@ -157,6 +160,7 @@ private:
     mutable std::vector<QTextBlock> deferred_;  ///< laid out while heights_ was stale
     mutable std::vector<int> dirtyBlocks_;      ///< flowing chains to relayout at batch end
     mutable bool flushingDirty_ = false;
+    mutable quint64 blockLayouts_ = 0;
     qreal laidOutWidth_ = -1;
     qreal lineSpacing_ = 0;       ///< of the default font, for estimates
     qreal averageCharWidth_ = 0;  ///< of the default font, for estimates
