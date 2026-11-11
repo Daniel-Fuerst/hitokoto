@@ -346,10 +346,13 @@ No new theme tokens are required:
 - UI: `tests/ui/tst_s033_soft_line_breaks.cpp` (`tst_s033_soft_line_breaks`) – visual line chaining
   and word wrapping across blocks, caret/selection reveal and conceal of paragraphs, hard breaks
   (`\` and `2+` spaces), bullet continuations at hanging indent, clicking words on continuation
-  blocks, Up/Down/Left/Right navigation, find-bar highlighting in flowing paragraphs, 20,000-line
-  paragraph latency budget, byte-exact save, reading position on resize inside a shared visual line
-  (`resizingKeepsTheTopLineInsideAFlowingParagraph`), one restore of the reading position per
-  resize although Qt nests a second `resizeEvent` (`aResizeRestoresTheReadingPositionOnce`).
+  blocks, a continuation line whose first word does not fit beside the line above starting a new
+  visual line of the paragraph (`orderedListContinuationThatDoesNotFitStartsANewLine`, widths from
+  the editor's font), Up/Down/Left/Right navigation, find-bar highlighting in flowing paragraphs,
+  20,000-line paragraph latency budget, byte-exact save, reading position on resize inside a shared
+  visual line (`resizingKeepsTheTopLineInsideAFlowingParagraph`), one restore of the reading
+  position per resize although Qt nests a second `resizeEvent`
+  (`aResizeRestoresTheReadingPositionOnce`).
 - S027: `tst_s027_smooth_scrolling::shiftDuringExternalSetValueUsesCurrentBarValue` – a shift while
   the program sets the scroll bar starts from the bar's value.
 - S009 & S023: update `tst_s009_concealment` and `tst_s023_thematic_breaks` where they previously

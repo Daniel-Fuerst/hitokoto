@@ -8,6 +8,7 @@
 #include "ui_test_support.hpp"
 
 #include <QElapsedTimer>
+#include <QFontMetricsF>
 #include <QLineEdit>
 #include <QScrollBar>
 
@@ -283,6 +284,52 @@ private slots:
             QVERIFY(!editor->blockLayout()->sharesLineWithPrevious(block(i)));
             QVERIFY(!test::isCollapsed(block(i), 0));
         }
+        QCOMPARE(differenceFromTheReference(editor), QString());
+    }
+
+    // A continuation line flows onto the last visual line of the line above only if its first word
+    // fits in the rest of that line; otherwise it starts the next visual line of the same paragraph.
+    // The widths come from the editor's font, so the case holds with any font: line 0 and the first
+    // word of line 1 each take about 60 % of the text column.
+    void orderedListContinuationThatDoesNotFitStartsANewLine() {
+        test::Fixture f;
+        f.window->resize(900, 700);
+        auto* editor = f.editor();
+        const QFontMetricsF metrics(editor->document()->defaultFont());
+        const qreal column = editor->viewport()->width() - 2 * editor->document()->documentMargin();
+        const auto wordOfWidth = [&](qreal width) {
+            QString word;
+            while (metrics.horizontalAdvance(word) < width) {
+                word += QLatin1Char('m');
+            }
+            return word;
+        };
+        const QString lineZeroWord = wordOfWidth(0.6 * column);
+        const QString lineOneWord = wordOfWidth(0.6 * column);
+        const QByteArray markdown = "1. " + lineZeroWord.toLatin1() + "\n" + "   " + lineOneWord.toLatin1() + " and\n" +
+                                    "   more.\n"
+                                    "\n"
+                                    "Outside\n";
+        QVERIFY(f.open(f.writeFile(QStringLiteral("ordered_no_room.md"), markdown)));
+        f.placeCaret(4);
+        f.settle();
+
+        const auto* doc = editor->document();
+        const auto block = [&](int n) { return doc->findBlockByNumber(n); };
+        for (int i = 0; i <= 2; ++i) {
+            editor->blockLayout()->ensureBlockLayout(block(i));
+        }
+        QCOMPARE(block(0).layout()->lineCount(), 1);  // line 0 stays one visual line
+
+        // The first word of line 1 does not fit beside line 0: line 1 starts a new visual line, with
+        // its indentation concealed.
+        QVERIFY(!editor->blockLayout()->sharesLineWithPrevious(block(1)));
+        QVERIFY(test::isCollapsed(block(1), 0));
+        QVERIFY(test::isCollapsed(block(1), 2));
+        const QTextLine first = block(1).layout()->lineAt(0);
+        QVERIFY(first.naturalTextWidth() <= first.width() + 0.5);  // the word fits on a line of its own
+        // The paragraph still flows: line 2 shares the last visual line of line 1.
+        QVERIFY(editor->blockLayout()->sharesLineWithPrevious(block(2)));
         QCOMPARE(differenceFromTheReference(editor), QString());
     }
 
