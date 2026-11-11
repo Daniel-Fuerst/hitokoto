@@ -30,6 +30,14 @@ std::vector<std::u16string> linesOf(const QTextDocument* doc) {
     return lines;
 }
 
+int laidOutBlocks(const QTextDocument* doc) {
+    int count = 0;
+    for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+        count += b.layout()->lineCount() > 0 ? 1 : 0;
+    }
+    return count;
+}
+
 QString differenceFromTheReference(ui::EditorWidget* editor) {
     const auto* doc = editor->document();
     const QTextCursor cursor = editor->textCursor();
@@ -560,6 +568,47 @@ private slots:
         // The screen holds a few hundred of these short lines when they flow; 5,000 means all of them.
         QVERIFY2(atOnce < 1000, qPrintable(QStringLiteral("%1 lines styled at once").arg(atOnce)));
         f.settle();
+        QCOMPARE(differenceFromTheReference(editor), QString());
+    }
+
+    // Benchmark of the follow-up to PR #37 (s023_underline_settled_ms 97, 127, 170 ... 496 ms over ten
+    // rounds): typing "-" below a long paragraph and deleting it again changes the flow of every line
+    // of it. Laying the paragraph out again must not lay out more of it each time; it grew by the
+    // lookback of a chain (64 blocks) per round, and restyling cost more with every round.
+    void changingTheFlowOfALongParagraphAgainLaysOutNoMoreOfIt() {
+        constexpr int kLines = 3000;
+        QByteArray document = "Outside top\n\n";
+        for (int i = 0; i < kLines; ++i) {
+            document += "hard-wrapped text of a long paragraph, line " + QByteArray::number(i) + "\n";
+        }
+        document += "\nOutside bottom\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("long_para_flow.md"), document)));
+        const int below = kLines + 2;  // the blank line below the paragraph
+        f.placeCaret(below);
+        f.settle();
+
+        auto* editor = f.editor();
+        const auto round = [&] {
+            f.placeCaret(below);
+            test::keyClick(editor, '-');  // the paragraph becomes a setext heading
+            f.settle();
+            test::keyClick(editor, Qt::Key_Backspace);  // and flows again
+            f.settle();
+        };
+        // The first rounds may lay out the lookback before the first line on screen once; after that,
+        // the screen may move by a block or so per round, the lookback (64 blocks) is not added again.
+        round();
+        round();
+        const int afterSecond = laidOutBlocks(editor->document());
+        for (int i = 0; i < 4; ++i) {
+            round();
+        }
+        const int afterSixth = laidOutBlocks(editor->document());
+        QVERIFY2(afterSixth - afterSecond < 16,
+                 qPrintable(QStringLiteral("%1 blocks laid out after the second round, %2 after the sixth")
+                                .arg(afterSecond)
+                                .arg(afterSixth)));
         QCOMPARE(differenceFromTheReference(editor), QString());
     }
 
