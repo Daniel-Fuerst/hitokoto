@@ -695,7 +695,9 @@ void BlockStyler::idleSlice() {
             styleBlock(b);
         }
         b = b.next();
-        if (++checked % 64 == 0 && timer.nsecsElapsed() > kSliceNanoseconds) {
+        ++checked;
+        if (sliceBlocks_ > 0 ? checked % sliceBlocks_ == 0
+                             : checked % 64 == 0 && timer.nsecsElapsed() > kSliceNanoseconds) {
             break;
         }
     }

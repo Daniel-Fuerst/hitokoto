@@ -885,10 +885,60 @@ private slots:
         pasteManyShortLines(family);
     }
 
+    // Typing "-" below a long paragraph turns it into a setext heading, deleting it lets it flow
+    // again; the styler restyles the paragraph in idle slices, and every slice changes the heights of
+    // blocks above the screen. The view stays at the caret through all of it, however the slices
+    // fall (tst_s033 changingTheFlowOfALongParagraphAgainLaysOutNoMoreOfIt failed at random: with
+    // slices of 512 blocks the caret ended 3,000 px below the view after the Backspace, with the
+    // slices by time 8,000 px below it after the "-").
+    void theCaretStaysOnScreenWhileALongParagraphIsRestyledInSlices() {
+        constexpr int kLines = 3000;
+        QByteArray document = "Outside top\n\n";
+        for (int i = 0; i < kLines; ++i) {
+            document += "hard-wrapped text of a long paragraph, line " + QByteArray::number(i) + "\n";
+        }
+        document += "\nOutside bottom\n";
+        QStringList failures;
+        for (const int slice : {0, 64, 512}) {
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("caret_on_screen.md"), document)));
+            auto* editor = f.editor();
+            editor->styler().setSliceBlocksForTests(slice);
+            const int below = kLines + 2;  // the blank line below the paragraph
+            f.placeCaret(below);
+            f.settle();
+            const auto check = [&](const char* after) {
+                const QRect caret = editor->cursorRect();
+                if (caret.top() < 0 || caret.bottom() > editor->viewport()->height()) {
+                    failures << QStringLiteral("slices of %1 blocks, after %2: caret at y %3, view %4 px high")
+                                    .arg(slice)
+                                    .arg(QString::fromLatin1(after))
+                                    .arg(caret.top())
+                                    .arg(editor->viewport()->height());
+                }
+            };
+            check("opening");
+            for (int round = 0; round < 2; ++round) {
+                f.placeCaret(below);
+                test::keyClick(editor, '-');
+                f.settle();
+                check("\"-\"");
+                test::keyClick(editor, Qt::Key_Backspace);
+                f.settle();
+                check("Backspace");
+            }
+        }
+        QVERIFY2(failures.isEmpty(), qPrintable(failures.join(QStringLiteral("; "))));
+    }
+
     // Benchmark of the follow-up to PR #37 (s023_underline_settled_ms 97, 127, 170 ... 496 ms over ten
     // rounds): typing "-" below a long paragraph and deleting it again changes the flow of every line
     // of it. Laying the paragraph out again must not lay out more of it each time; it grew by the
     // lookback of a chain (64 blocks) per round, and restyling cost more with every round.
+    // The idle slices of the styler end after a fixed number of blocks here, so the test is the same
+    // on every machine: with slices by time it failed at random, because the view lost the caret in
+    // some of the slicings (theCaretStaysOnScreenWhileALongParagraphIsRestyledInSlices) and laid out a
+    // new part of the paragraph each round.
     void changingTheFlowOfALongParagraphAgainLaysOutNoMoreOfIt() {
         constexpr int kLines = 3000;
         QByteArray document = "Outside top\n\n";
@@ -896,34 +946,40 @@ private slots:
             document += "hard-wrapped text of a long paragraph, line " + QByteArray::number(i) + "\n";
         }
         document += "\nOutside bottom\n";
-        test::Fixture f;
-        QVERIFY(f.open(f.writeFile(QStringLiteral("long_para_flow.md"), document)));
-        const int below = kLines + 2;  // the blank line below the paragraph
-        f.placeCaret(below);
-        f.settle();
-
-        auto* editor = f.editor();
-        const auto round = [&] {
+        for (const int slice : {384, 512, 768}) {
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("long_para_flow.md"), document)));
+            auto* editor = f.editor();
+            editor->styler().setSliceBlocksForTests(slice);
+            const int below = kLines + 2;  // the blank line below the paragraph
             f.placeCaret(below);
-            test::keyClick(editor, '-');  // the paragraph becomes a setext heading
             f.settle();
-            test::keyClick(editor, Qt::Key_Backspace);  // and flows again
-            f.settle();
-        };
-        // The first rounds may lay out the lookback before the first line on screen once; after that,
-        // the screen may move by a block or so per round, the lookback (64 blocks) is not added again.
-        round();
-        round();
-        const int afterSecond = laidOutBlocks(editor->document());
-        for (int i = 0; i < 4; ++i) {
+
+            const auto round = [&] {
+                f.placeCaret(below);
+                test::keyClick(editor, '-');  // the paragraph becomes a setext heading
+                f.settle();
+                test::keyClick(editor, Qt::Key_Backspace);  // and flows again
+                f.settle();
+            };
+            // The first rounds may lay out the lookback before the first line on screen once; after
+            // that, the screen may move by a block or so per round, the lookback (64 blocks) is not
+            // added again.
             round();
+            round();
+            const int afterSecond = laidOutBlocks(editor->document());
+            for (int i = 0; i < 4; ++i) {
+                round();
+            }
+            const int afterSixth = laidOutBlocks(editor->document());
+            QVERIFY2(afterSixth - afterSecond < 16,
+                     qPrintable(QStringLiteral("slices of %1 blocks: %2 blocks laid out after the second round, %3 "
+                                               "after the sixth")
+                                    .arg(slice)
+                                    .arg(afterSecond)
+                                    .arg(afterSixth)));
+            QCOMPARE(differenceFromTheReference(editor), QString());
         }
-        const int afterSixth = laidOutBlocks(editor->document());
-        QVERIFY2(afterSixth - afterSecond < 16,
-                 qPrintable(QStringLiteral("%1 blocks laid out after the second round, %2 after the sixth")
-                                .arg(afterSecond)
-                                .arg(afterSixth)));
-        QCOMPARE(differenceFromTheReference(editor), QString());
     }
 
     void longFlowingParagraphStaysWithinLatencyBudget() {

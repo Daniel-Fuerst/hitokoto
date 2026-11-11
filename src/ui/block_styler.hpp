@@ -86,6 +86,9 @@ public:
     /// Number of lines whose setext level was passed up a paragraph so far (instrumentation for
     /// tests, S023 review O2).
     [[nodiscard]] quint64 levelSteps() const noexcept { return levelSteps_; }
+    /// Ends each idle slice after `blocks` blocks instead of after a time, so that tests see the same
+    /// slices on every machine (0 = by time, the default; instrumentation for tests, S033).
+    void setSliceBlocksForTests(int blocks) noexcept { sliceBlocks_ = blocks; }
 
     /// How a block is shown right now (used for drawing decorations and hit testing).
     [[nodiscard]] core::LineRender renderFor(const QTextBlock& block);
@@ -271,6 +274,7 @@ private:
     int blockCount_ = 1;  ///< block count after the last change seen
     QTimer idle_;
     int idleNext_ = 0;
+    int sliceBlocks_ = 0;  ///< blocks per idle slice for tests; 0 = by time
     bool busy_ = false;
     quint64 styledCount_ = 0;
     quint64 renderCount_ = 0;
