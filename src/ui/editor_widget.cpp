@@ -74,30 +74,47 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     connect(layout_, &BlockLayout::blockHeightChanged, this, &EditorWidget::keepContentStill);
     connect(layout_, &BlockLayout::batchFinished, this, &EditorWidget::applyPendingShift);
     // A scroll of the reader's lets go of the reading position held across resizes (S033); the
-    // scrolls of a resize or theme change and those that keep the content still do not.
+    // scrolls of a resize or theme change and those that keep the content still do not. The view
+    // follows the caret while the caret is on screen after a scroll; one that leaves it off screen
+    // lets it go.
     connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this] {
         if (resizing_ || applyingShift_) {
             return;
         }
-        if (rangeClamps_ && verticalScrollBar()->value() == verticalScrollBar()->maximum()) {
+        if (rangeClamps_) {
             rangeClamps_ = false;  // the end of the document cut the value short, no scroll
             return;
         }
         heldAnchor_ = {};
+        if (!followingCaret_ && !typing_ && followCaret_ && !caretOnScreen()) {
+            followCaret_ = false;
+        }
     });
-    // A new scroll range clamps the value right after this signal. While a reading position is
-    // held, that is no scroll of the reader's, and the reading position is shown again once the
-    // range allows it.
-    connect(verticalScrollBar(), &QScrollBar::rangeChanged, this, [this] {
-        if (heldAnchor_.text.isNull()) {
+    // A new scroll range that no longer holds the value clamps it right after this signal. While a
+    // reading position is held or the view follows the caret, that is no scroll of the reader's; the
+    // reading position is shown again once the range allows it.
+    connect(verticalScrollBar(), &QScrollBar::rangeChanged, this, [this](int min, int max) {
+        if (heldAnchor_.text.isNull() && !followCaret_) {
             return;
         }
-        rangeClamps_ = true;
-        QMetaObject::invokeMethod(this, [this] { rangeClamps_ = false; }, Qt::QueuedConnection);
-        if (!resizing_) {
+        const int value = verticalScrollBar()->value();
+        rangeClamps_ = value > max || value < min;
+        if (!resizing_ && !heldAnchor_.text.isNull()) {
             QMetaObject::invokeMethod(this, &EditorWidget::settleAnchor, Qt::QueuedConnection);
         }
+        scheduleCaretCheck();
     });
+    // S033: a caret that moved, or text typed at it, is followed while blocks are laid out and
+    // restyled in idle slices; their heights change the place of the caret on screen.
+    connect(this, &QTextEdit::cursorPositionChanged, this, [this] {
+        // The caret is followed after typing and after a move of its own (keys, a click, the
+        // program placing it); not when an edit through another cursor carried it along off screen
+        // (opening a file, a program's insert).
+        followCaret_ = typing_ || !insideEdit_ || caretOnScreen();
+        scheduleCaretCheck();
+    });
+    connect(layout_, &BlockLayout::batchFinished, this, &EditorWidget::scheduleCaretCheck);
+    connect(layout_, &BlockLayout::documentSizeChanged, this, &EditorWidget::scheduleCaretCheck);
 
     setFrameShape(QFrame::NoFrame);
     setLineWrapMode(QTextEdit::WidgetWidth);
@@ -106,6 +123,8 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     viewport()->setMouseTracking(true);
     viewport()->setCursor(Qt::IBeamCursor);
 
+    connect(document(), &QTextDocument::contentsChange, this, [this](int, int, int) { insideEdit_ = true; });
+    connect(document(), &QTextDocument::contentsChanged, this, [this] { insideEdit_ = false; });
     connect(document(), &QTextDocument::contentsChange, this, [this](int, int, int) {
         if (!styler_->isBusy()) {
             ++editCount_;
@@ -172,6 +191,7 @@ void EditorWidget::keepContentStill(qreal top, qreal oldHeight, qreal newHeight)
     const QScrollBar* bar = verticalScrollBar();
     const qreal visualBottom = oldHeight > 0 ? top + oldHeight : top + newHeight;
     if (bar->value() <= 0 || visualBottom > bar->value() + 0.5) {
+        scheduleCaretCheck();  // a block on screen or below moves the caret, if it is below
         return;
     }
     pendingShift_ += newHeight - oldHeight;
@@ -193,6 +213,35 @@ void EditorWidget::applyPendingShift() {
         verticalScroller_->shift(shift);  // moves the bar, and a running wheel animation with it
         applyingShift_ = false;
     }
+}
+
+bool EditorWidget::caretOnScreen() const {
+    const QRect caret = cursorRect();
+    return caret.top() >= 0 && caret.bottom() <= viewport()->height();
+}
+
+void EditorWidget::scheduleCaretCheck() {
+    // Queued and once per turn of the event loop: heights change inside layout queries, often
+    // while painting, where the view must not scroll.
+    if (!followCaret_ || caretCheckQueued_) {
+        return;
+    }
+    caretCheckQueued_ = true;
+    QMetaObject::invokeMethod(
+        this,
+        [this] {
+            caretCheckQueued_ = false;
+            keepCaretOnScreen();
+        },
+        Qt::QueuedConnection);
+}
+
+void EditorWidget::keepCaretOnScreen() {
+    if (!followCaret_ || resizing_ || followingCaret_ || caretOnScreen()) {
+        return;
+    }
+    const QScopedValueRollback<bool> guard(followingCaret_, true);
+    ensureCursorVisible();
 }
 
 EditorWidget::ScrollAnchor EditorWidget::captureAnchor() const {
@@ -615,6 +664,9 @@ QString EditorWidget::anchorAt(const QPoint& pos) const {
 }
 
 void EditorWidget::keyPressEvent(QKeyEvent* event) {
+    // Qt scrolls to the caret of a key from layouts that the edit has not updated yet; that is no
+    // scroll of the reader's, and the caret is followed further (S033).
+    const QScopedValueRollback<bool> input(typing_, true);
     verticalScroller_->stop();
     if (tables_->handleEditorKey(event) || properties_->handleEditorKey(event)) {
         return;
@@ -632,6 +684,7 @@ void EditorWidget::keyPressEvent(QKeyEvent* event) {
 }
 
 void EditorWidget::inputMethodEvent(QInputMethodEvent* event) {
+    const QScopedValueRollback<bool> input(typing_, true);
     const TableEmbedder::Typing typing(tables_.get());
     if (!event->commitString().isEmpty()) {
         tables_->beforeWritingBelow();
@@ -640,6 +693,7 @@ void EditorWidget::inputMethodEvent(QInputMethodEvent* event) {
 }
 
 void EditorWidget::insertFromMimeData(const QMimeData* source) {
+    const QScopedValueRollback<bool> input(typing_, true);
     if (!plainPaste_ && pasteTables(source)) {
         return;
     }

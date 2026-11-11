@@ -114,7 +114,8 @@ signals:
     /// A block at document y `top` changed from `oldHeight` to `newHeight`. Lets the view keep its
     /// content still when blocks above the viewport change height.
     void blockHeightChanged(qreal top, qreal oldHeight, qreal newHeight);
-    /// A batch ended after the document size was reported.
+    /// A batch ended; emitted before the document size of the batch is reported, so that the view
+    /// keeps its content still before the scroll range changes.
     void batchFinished();
     /// Blocks are gone although the change reports nothing removed: Qt lays out a cleared document
     /// (documentChanged 0, 0, 1) before it reports the removal through contentsChange. Emitted

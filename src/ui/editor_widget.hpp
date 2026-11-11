@@ -142,6 +142,13 @@ private:
     /// Restores the held reading position again if it moved since a resize or theme change.
     void settleAnchor();
     void keepContentStill(qreal top, qreal oldHeight, qreal newHeight);
+    /// Whether the caret is wholly on screen.
+    [[nodiscard]] bool caretOnScreen() const;
+    /// Checks once the event loop runs whether the followed caret left the screen.
+    void scheduleCaretCheck();
+    /// Scrolls the followed caret back on screen (S033: heights change while blocks are restyled in
+    /// idle slices).
+    void keepCaretOnScreen();
     void applyPendingShift();
 
     void updateReveal();
@@ -166,9 +173,14 @@ private:
     qreal pendingShift_ = 0;  ///< height change above the viewport not yet scrolled away
     bool applyingShift_ = false;
     bool resizing_ = false;
-    ScrollAnchor heldAnchor_;   ///< reading position across resizes until the view scrolls
-    bool rangeClamps_ = false;  ///< a new scroll range is about to clamp the value
-    int settlePasses_ = 0;      ///< settleAnchor calls that moved the view since the last restore
+    ScrollAnchor heldAnchor_;        ///< reading position across resizes until the view scrolls
+    bool rangeClamps_ = false;       ///< a new scroll range is about to clamp the value
+    bool followCaret_ = false;       ///< the view follows the caret (no scroll left it off screen)
+    bool followingCaret_ = false;    ///< keepCaretOnScreen is scrolling
+    bool typing_ = false;            ///< inside a key, input method or paste event
+    bool insideEdit_ = false;        ///< between contentsChange and contentsChanged of the document
+    bool caretCheckQueued_ = false;  ///< a caret check waits for the event loop
+    int settlePasses_ = 0;           ///< settleAnchor calls that moved the view since the last restore
     static constexpr int kMaxSettlePasses = 4;
     quint64 anchorRestores_ = 0;  ///< reading positions restored by a resize or theme change
     BlockStyler* styler_ = nullptr;

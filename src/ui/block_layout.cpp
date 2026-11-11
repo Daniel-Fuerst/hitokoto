@@ -303,6 +303,8 @@ BlockLayout::Batch::~Batch() {
         return;
     }
     layout_->flushDirtyChains(false);
+    // The view applies the height changes above it before the new size, as in setHeight.
+    emit layout_->batchFinished();
     if (layout_->batchChanged_) {
         // Blocks report their own repaints (updateBlock); only the size is still owed.
         layout_->batchChanged_ = false;
@@ -312,7 +314,6 @@ BlockLayout::Batch::~Batch() {
         layout_->batchNeedsRepaint_ = false;
         emit layout_->update();
     }
-    emit layout_->batchFinished();
 }
 
 void BlockLayout::setCursorWidth(int width) {
@@ -773,6 +774,10 @@ void BlockLayout::setHeight(int number, qreal height, bool emitNow) const {
     heights_.set(index, height);
     const qreal top = margin() + heights_.sumBefore(index);
     auto* self = const_cast<BlockLayout*>(this);
+    // The view keeps its content still first and takes in the new size after: the other way round,
+    // a smaller document cut the scroll value short at its end, and the view's shift then moved it a
+    // second time (S033).
+    emit self->blockHeightChanged(top, height - delta, height);
     if (batch_ > 0) {
         batchChanged_ = true;
     } else if (emitNow) {
@@ -780,7 +785,6 @@ void BlockLayout::setHeight(int number, qreal height, bool emitNow) const {
     } else {
         scheduleSizeChange();
     }
-    emit self->blockHeightChanged(top, height - delta, height);
 }
 
 void BlockLayout::scheduleSizeChange() const {
