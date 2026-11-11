@@ -375,6 +375,35 @@ private slots:
         }
     }
 
+    // CI of agents/s033-layout-cost on Windows: multiLineSetextHeadingFlowsAndReveals failed there only.
+    // MSVC evaluates rect(1) in "rect(0).top() < rect(1).top()" first. When the caret reveals the
+    // heading, line 1 stops sharing the line of line 0 while line 0 has no lines yet; the height of
+    // line 0 was still its advance with line 1 on its last line, so line 1 got the top of line 0.
+    // Line 1 must be below line 0 whichever is queried first (until line 0 is laid out, its height is
+    // an estimate).
+    void aBlockThatStopsSharingALineGetsItsTopWithoutTheBlockBeforeLaidOut() {
+        test::Fixture f;
+        constexpr auto kDoc =
+            "Heading one\n"
+            "heading two\n"
+            "===\n"
+            "\n"
+            "Outside\n";
+        QVERIFY(f.open(f.writeFile(QStringLiteral("setext_order.md"), kDoc)));
+        f.placeCaret(4);
+        f.settle();
+        auto* editor = f.editor();
+        const auto* doc = editor->document();
+        const auto rect = [&](int n) { return editor->blockLayout()->blockBoundingRect(doc->findBlockByNumber(n)); };
+        QCOMPARE(rect(0).top(), rect(1).top());
+
+        f.placeCaret(0);
+        f.settle();
+        const qreal top1 = rect(1).top();  // first, as MSVC does
+        const qreal top0 = rect(0).top();
+        QVERIFY2(top0 < top1, qPrintable(QStringLiteral("line 0 at %1, line 1 at %2").arg(top0).arg(top1)));
+    }
+
     void clickingContinuationLinePlacesCaretAndRevealsParagraph() {
         test::Fixture f;
         constexpr auto kDoc =
