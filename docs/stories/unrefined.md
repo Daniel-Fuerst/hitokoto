@@ -173,28 +173,6 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   title bar, or both; theme tokens for a dialog (brief, section 8); whether builds between tags show
   the full version (`0.4.0+3.gabc1234`) or the numeric core.
 
-## The check "Version label" with the script from main
-
-- **Seen:** 2026-11-09 (code review of S030, O3): the job "Version label" in `version.yml` runs
-  `scripts/version/NextVersion.cmake` from the pull request's own merge ref. A pull request that
-  changes the script changes its own required check; a script that always succeeds would let a
-  pull request without a version label through.
-- **Now:** accepted for the time being (Armin, 2026-11-09). The tag job runs the script from main
-  and stops after the merge at a pull request without exactly one version label (red, names the
-  pull request).
-- **Wanted (Armin):** follow-up work once S030 is on main: the check takes the script from main
-  (the base of the pull request), not from the pull request. Before the merge of S030 main has no
-  script, so it cannot be done in S030 itself.
-- **Purpose (Armin, 2026-11-09):** a guard against an accidental change of the script, not
-  against a deliberate one. GitHub runs `version.yml` for a pull request from the pull request
-  itself, so a pull request can still change or remove the check there; that must stay possible,
-  for example to move to another way of versioning (removing the check also takes it out of the
-  required checks of the ruleset). Closing that too would need `pull_request_target`, which S030
-  rules out.
-- **Open:** whether the check checks out the base commit or main's tip, and how a pull request that
-  changes the script itself is checked (with main's script, so that a change to the rules applies
-  from the next pull request on).
-
 ## Benchmark baselines per runner class (deferred)
 
 - **Seen:** 2026-11-09 (Armin, code review of S029). The first version of S029 compared the Linux
@@ -220,3 +198,20 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
 - **hitokoto:** up to 255 columns a table, above that every line is text.
 - **Open:** whether wider tables matter in practice; if so, more bits for the column count in the
   block state (ADR 0006) and the cost of showing such a table (S018 budgets).
+
+## CI: fail fast on cheap checks
+
+- **Seen:** 2026-11-10 (Armin, verification of S032 in pull request 36): a commit that breaks
+  `scripts/version/NextVersion.cmake` turns the jobs "Build and test" red only at their last step.
+  The `ctest` cases `S030_*` that run the script with `cmake -P` need no build, but they run in
+  `ctest --preset ci` after "Install Qt", "Configure" and the full "Build", on all four platforms
+  (`fail-fast: false`). The same holds for a formatting error: the job "Format" is red after a
+  minute, while the expensive jobs build to the end.
+- **Now:** accepted; a broken version script is rare (this one was made on purpose for the
+  verification).
+- **Possible:** a quick job without Qt for the cheap checks (`S030_*` cases without the build,
+  `clang-format`), which "Build and test", "Lint (clang-tidy)", "Fuzz core" and "Core with
+  ASan/UBSan" wait for (`needs:`): red after about a minute, at the cost of about a minute more for
+  every green run. Or the `S030_*` cases without the build right after "Configure" in "Build and
+  test" (needs a label for the cases that need the build). Either changes `ci.yml` and is follow-up
+  work of its own.

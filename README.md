@@ -58,7 +58,11 @@ Every pull request merged into main gives hitokoto its version step (story S030,
     with 0 (incompatible changes are `version:minor` until then).
 
   The label is part of the review before the merge and must fit the pull request's final content,
-  not only what it was opened for.
+  not only what it was opened for. The check takes its rules (`scripts/version/NextVersion.cmake`)
+  from main's tip, not from the pull request (S032): a pull request that changes them is checked
+  with main's rules, and its own apply from the next pull request on. Moving the script or changing
+  how it is called therefore takes two pull requests: first the new interface beside the old one,
+  then the switch in `version.yml`.
 - **The tag is the only source of the version.** After the merge, the workflow `version.yml` puts
   an annotated tag `vMAJOR.MINOR.PATCH` on the merge commit. `project()` in `CMakeLists.txt`
   carries no `VERSION`, and nobody sets a `v*` tag by hand (apart from the starting tag `v0.3.0`):
@@ -72,8 +76,11 @@ Every pull request merged into main gives hitokoto its version step (story S030,
   `0.0.0+unknown` and CMake warns. Configure prints the version and where it came from. The option
   stays in the cache of the build directory and wins over git; in a checkout with a version tag
   CMake warns about it. Remove it with `-DHITOKOTO_VERSION=` (or configure with `--fresh`).
-- **Changes reach main only through pull requests**, also notes and status changes (with
-  `version:none`).
+- **Changes reach main only through pull requests**, also notes and status changes. A story's
+  status Done is normally the last commit of its own pull request: the story is accepted on the
+  branch, and the merge brings it to main as done. A status change that comes after the merge
+  rides with the next pull request into main; a pull request of its own with `version:none` only
+  when nothing else is due. The label follows the whole content of the pull request.
 
 ## Documentation
 

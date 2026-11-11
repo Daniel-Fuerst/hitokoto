@@ -81,6 +81,10 @@ Option 2.
 
 - Changes reach main only through pull requests (a ruleset for main, set by the owner); notes and
   status changes that used to be pushed directly take a pull request with `version:none`.
+  Amended (Armin, 2026-11-10): a story's status Done is normally the last commit of its own pull
+  request, accepted on the branch before the merge; a status change that comes after the merge
+  rides with the next pull request into main, whose label follows its whole content. A pull request
+  of its own with `version:none` only when nothing else is due.
 - Every merge into main makes a version unless labelled `version:none`, also small ones; version
   numbers rise quickly. A code change labelled `version:none` by mistake gets no version; the
   review before the merge has to catch it.
