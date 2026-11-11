@@ -243,7 +243,7 @@ private slots:
         test::Fixture f;
         f.window->resize(900, 700);
         constexpr auto kDoc =
-            "1. Implement `LineElement` for line-local block constructs, `MultiLineElement` for blocks that\n"
+            "1. Implement `LineElement` for blocks that\n"
             "   span lines (fenced code) or `InlineElement` for inline constructs in\n"
             "   `src/core/src/elements/<name>.cpp`, with a factory function. Inline code runs take precedence\n"
             "   over other inline styles. A multi-line element keeps a non-zero number of its own as state;\n"
@@ -270,7 +270,9 @@ private slots:
             QVERIFY2(!test::isCollapsed(block(i), firstVisibleCol),
                      qPrintable(QStringLiteral("line %1 col %2").arg(i).arg(firstVisibleCol)));
         }
-        // Line 1 ("   span lines...") shares the last visual line of line 0 ("... that").
+        // Line 1 ("   span lines...") shares the last visual line of line 0 ("... that"). Line 0 is
+        // short so that its line has room for "span" with any font (with Helvetica's metrics a longer
+        // line 0 ended too close to the right edge, and "span" rightly started a new line).
         QVERIFY(editor->blockLayout()->sharesLineWithPrevious(block(1)));
         QCOMPARE(differenceFromTheReference(editor), QString());
 
