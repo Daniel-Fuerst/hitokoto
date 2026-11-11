@@ -215,8 +215,9 @@ private:
     [[nodiscard]] int paragraphStartOf(const QTextBlock& block);
     [[nodiscard]] core::ParagraphLink paragraphLinkOf(const QTextBlock& block, core::BlockState inside);
     [[nodiscard]] bool paragraphContinues(const QTextBlock& block, core::BlockState inside);
-    /// Walks on towards the paragraph's ends and underline, at most `nanoseconds`; true when done.
-    bool continueUnderlineSearch(qint64 nanoseconds);
+    /// Walks on towards the paragraph's ends and underline, at most `nanoseconds` and, given a
+    /// `screen` (first and last block on screen), no further than past it; true when done.
+    bool continueUnderlineSearch(qint64 nanoseconds, std::pair<int, int> screen = {-1, -1});
     void underlineSearchSlice();
     /// After an edit of lines `first` to `last`: keeps the paragraph extent found last if the edit
     /// leaves its lines continuing the paragraph.

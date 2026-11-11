@@ -1076,7 +1076,7 @@ BlockStyler::ParagraphExtent BlockStyler::paragraphExtentOf(const QTextBlock& bl
                   .back = from,
                   .forward = underline >= 0 ? -1 : from + 1,
                   .valid = true};
-    if (!continueUnderlineSearch(kParagraphSearchNanoseconds)) {
+    if (!continueUnderlineSearch(kParagraphSearchNanoseconds, visibleBlocks_())) {
         underlineSearchTimer_.start();
     }
     return underline_;
@@ -1117,7 +1117,7 @@ int BlockStyler::paragraphStartOf(const QTextBlock& block) {
     return number;
 }
 
-bool BlockStyler::continueUnderlineSearch(qint64 nanoseconds) {
+bool BlockStyler::continueUnderlineSearch(qint64 nanoseconds, std::pair<int, int> screen) {
     QElapsedTimer timer;
     timer.start();
     int steps = 0;
@@ -1125,6 +1125,12 @@ bool BlockStyler::continueUnderlineSearch(qint64 nanoseconds) {
         ++extentSteps_;
         return ++steps % 64 == 0 && timer.nsecsElapsed() > nanoseconds;
     };
+    // With a screen (first and last block on it), a long walk stops once it is past the screen in
+    // both directions; idle slices walk on to the paragraph's ends (S033). Paragraphs of up to a few
+    // hundred lines are walked at once, as before.
+    constexpr int kWalkedAtOnce = 512;
+    const bool toScreen = screen.first >= 0;
+    bool backLeft = false;
     if (underline_.back >= 0) {
         QTextBlock b = document_->findBlockByNumber(underline_.back);
         while (b.isValid() && b.previous().isValid() && blockStateAfter(b.previous()) == underline_.inside &&
@@ -1134,9 +1140,16 @@ bool BlockStyler::continueUnderlineSearch(qint64 nanoseconds) {
                 underline_.back = b.blockNumber();
                 return false;
             }
+            if (toScreen && steps >= kWalkedAtOnce && b.blockNumber() < screen.first) {
+                underline_.back = b.blockNumber();
+                backLeft = true;
+                break;
+            }
         }
-        underline_.first = b.isValid() ? b.blockNumber() : 0;
-        underline_.back = -1;
+        if (!backLeft) {
+            underline_.first = b.isValid() ? b.blockNumber() : 0;
+            underline_.back = -1;
+        }
     }
     if (underline_.forward >= 0) {
         int number = underline_.forward;
@@ -1146,15 +1159,15 @@ bool BlockStyler::continueUnderlineSearch(qint64 nanoseconds) {
                 underline_.last = number - 1;
                 underline_.underline = number;
                 underline_.forward = -1;
-                return true;
+                return !backLeft;
             }
             if (!link.continues) {
                 underline_.last = number - 1;
                 underline_.underline = -1;
                 underline_.forward = -1;
-                return true;
+                return !backLeft;
             }
-            if (overBudget()) {
+            if (overBudget() || (toScreen && steps >= kWalkedAtOnce && number > screen.second + 1)) {
                 underline_.forward = number + 1;
                 return false;
             }
@@ -1163,7 +1176,7 @@ bool BlockStyler::continueUnderlineSearch(qint64 nanoseconds) {
         underline_.underline = -1;
         underline_.forward = -1;
     }
-    return true;
+    return !backLeft;
 }
 
 void BlockStyler::underlineSearchSlice() {
