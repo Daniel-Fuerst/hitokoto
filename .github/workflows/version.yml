@@ -40,6 +40,8 @@ jobs:
     permissions:
       contents: write       # push the tags
       pull-requests: read   # the pull request of a merge commit and its labels
+    outputs:
+      new_version: ${{ steps.tag_merges.outputs.new_version }}
     # One run at a time, never cancelled while running. A run that GitHub cancels while pending is
     # caught up by the next one: every run tags all untagged merges since the last version tag.
     concurrency:
@@ -51,6 +53,7 @@ jobs:
           ref: main
           fetch-depth: 0  # the history and the tags
       - name: Tag the merges into main
+        id: tag_merges
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -98,11 +101,49 @@ jobs:
           status=0
           cmake -DMODE=plan -DTAGS_FILE="$work/tags.txt" -DCANDIDATES_FILE="$work/candidates.txt" \
                 -DOUTPUT="$work/plan.txt" -P "$script" || status=$?
+          tagged=false
           while read -r sha tag pr; do
             git -c user.name="github-actions[bot]" \
                 -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
                 tag -a "$tag" -m "hitokoto ${tag#v} (pull request #$pr)" "$sha"
             git push origin "refs/tags/$tag"
             echo "- $tag on $sha (pull request #$pr)" >> "$GITHUB_STEP_SUMMARY"
+            tagged=true
           done < "$work/plan.txt"
+          echo "new_version=$tagged" >> "$GITHUB_OUTPUT"
           exit "$status"
+
+  aur:
+    name: Update AUR package
+    needs: tag
+    if: github.event_name != 'pull_request' && needs.tag.outputs.new_version == 'true'
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:base-devel
+    steps:
+      - uses: actions/checkout@v7
+      - name: Update AUR
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          pacman -Syu --noconfirm git openssh pacman-contrib
+
+          mkdir -p ~/.ssh
+          echo "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          trap 'rm -f ~/.ssh/aur' EXIT
+          ssh-keyscan -H aur.archlinux.org >> ~/.ssh/known_hosts
+
+          git config --global core.sshCommand "ssh -i ~/.ssh/aur"
+          git clone ssh://aur@aur.archlinux.org/hitokoto.git /tmp/aur-pkg
+          cd /tmp/aur-pkg
+
+          updpkgsums
+          makepkg --printsrcinfo > .SRCINFO
+
+          git config user.name "${{ secrets.AUR_NAME }}"
+          git config user.email "${{ secrets.AUR_EMAIL }}"
+
+          git add -A
+          git commit -m "Update hitokoto"
+          git push origin master
