@@ -5,7 +5,7 @@ spec: docs/stories/033-soft-line-breaks.md
 commits: 763b39c, e6f635c, d3053e7
 date: 2026-11-10
 reviewer: Advocatus Diaboli (same session as the rework, no independent subagent)
-dispositioned: 2026-11-11 (proposed by Claude on 2026-11-10, confirmed or changed by Armin on 2026-11-11)
+dispositioned: 2026-11-11 (proposed by Claude on 2026-11-10, confirmed or changed by Armin on 2026-11-11; O2 changed to fixed by Armin on 2026-11-11, on agents/s033-layout-cost)
 objections:
   - id: O1
     category: failure
@@ -17,8 +17,8 @@ objections:
     category: failure
     severity: minor
     title: "Height estimates ignore shared lines, so the scroll range is about half too large after every re-estimate"
-    disposition: documented
-    disposition_rationale: "Confirmed by Armin. Out of scope of the rework (estimatedHeight is unchanged S033 behaviour); the reading position now holds despite it. Recorded in the story's rework section as a known limit, left to the story's owner (Daniel); a possible fix is to estimate a block that flows from the previous one without the one-line minimum."
+    disposition: fixed
+    disposition_rationale: "First confirmed as documented by Armin (2026-11-11). The same estimate drove the rest of s031_paste_no_table_5000_lines_ms (a paste at the end followed the caret again as the lines were laid out), so Armin decided the same day to fix it on agents/s033-layout-cost. Fixed by 0b3e7ee (red tests) and ed0b7b3: a block that goes on in the last line of the block before takes its share of a line (estimatedToFlowOn: as the styler set it once the block before is styled, before that when both blocks have text); a block that starts a line keeps one line at least. The macOS CI then showed the estimate 26 % too large: QFontMetricsF::averageCharWidth is 20-30 % wider than running text for Arial, Helvetica and their metric twins; d16c3f0 (red tests with such a font) and 7787bdd measure the width of a sample of running text instead. Tests: tst_s033 theEstimatedHeightOfAFlowingParagraphIsCloseToItsLaidOutHeight, theEstimatedHeightHoldsWithAFontWhoseAverageWidthIsOff, pastingManyShortLinesLaysOutTheScreenAtTheCaretAboutOnce, pastingManyShortLinesWithAFontWhoseAverageWidthIsOff. The known limit in the story is removed."
   - id: O3
     category: operational
     severity: minor
@@ -80,6 +80,9 @@ absorb large corrections while the reader scrolls back up.
 
 Evidence: `src/ui/block_layout.cpp`, `estimatedHeight` and `advanceOf`; probe output of
 `resizingKeepsTheReadingPosition` (max 29,555 before, 43,292 after).
+
+Disposition (2026-11-11, Armin): fixed on `agents/s033-layout-cost` (ed0b7b3, 7787bdd); see the
+frontmatter.
 
 ## O3 - operational - minor
 

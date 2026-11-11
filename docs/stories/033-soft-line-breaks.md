@@ -162,6 +162,8 @@ All rules follow CommonMark 0.31.2 (sections 4.8 Paragraphs, 5.2 List items, 6.7
   - Consecutive resizes and theme changes return to the same reading position until the view
     scrolls; taken anew at each one, it would drift. At the end of the document the view returns to
     the same line as well, although the scroll range takes in new heights only later.
+  - After the caret moved or text was typed at it, the caret stays on screen while blocks are laid
+    out and restyled in idle slices, until the reader scrolls it off screen.
 
 ## Acceptance scenarios
 
@@ -358,7 +360,20 @@ No new theme tokens are required:
   (`aResizeAndBackShowsTheSameTopLine`, `aResizeAndBackAtTheEndShowsTheSameTopLine`), a new reading
   position once the view scrolls (`scrollingAfterAResizeTakesTheNewTopLine`), one restore of the
   reading position per resize although Qt nests a second `resizeEvent`
-  (`aResizeRestoresTheReadingPositionOnce`).
+  (`aResizeRestoresTheReadingPositionOnce`), only the screen styled at once after an edit of many
+  lines (`insertingManyLinesStylesOnlyTheScreenAtOnce`), each block of a screen laid out about once
+  (`layingOutTheScreenLaysOutEachBlockAboutOnce`), a block that stops sharing a line
+  (`aBlockThatStopsSharingALineGetsItsTopWithoutTheBlockBeforeLaidOut`), estimates close to the
+  laid-out height and a paste that follows the caret once, also with a font whose own average
+  character width is off (`theEstimatedHeightOfAFlowingParagraphIsCloseToItsLaidOutHeight`,
+  `theEstimatedHeightHoldsWithAFontWhoseAverageWidthIsOff`,
+  `pastingManyShortLinesLaysOutTheScreenAtTheCaretAboutOnce`,
+  `pastingManyShortLinesWithAFontWhoseAverageWidthIsOff`), the caret on screen while a long
+  paragraph is restyled in slices (`theCaretStaysOnScreenWhileALongParagraphIsRestyledInSlices`),
+  a long paragraph whose flow changes again laid out no further
+  (`changingTheFlowOfALongParagraphAgainLaysOutNoMoreOfIt`, with fixed slices), and a key before a
+  long paragraph that searches its extent about as far as the screen
+  (`aKeyBeforeALongParagraphSearchesItsExtentAboutAsFarAsTheScreen`).
 - S027: `tst_s027_smooth_scrolling::shiftDuringExternalSetValueUsesCurrentBarValue` – a shift while
   the program sets the scroll bar starts from the bar's value.
 - S009 & S023: update `tst_s009_concealment` and `tst_s023_thematic_breaks` where they previously
@@ -397,10 +412,55 @@ red in `tst_s019_editor_surface::resizingKeepsTheReadingPosition`):
   `blockCovering` and `blockAt` until review O5 named them by what they return).
 - The guard against the nested `resizeEvent` has a test of its own (review O3): one resize restores
   the reading position once; `EditorWidget::anchorRestores()` counts the restores for tests.
-- Known limits (review `docs/reviews/033-soft-line-breaks-code-resize-anchor.md`, O1 and O2),
-  left to this story's owner (decision Armin, 2026-11-11): inside a paragraph of more than 64
-  source lines the top line can move by one block on a resize, because a paragraph is laid out from
-  at most 64 blocks back (`kMaxLookback`); and `estimatedHeight` gives every block at least one
-  line, so after a re-estimate the scroll range of documents with flowing paragraphs is about half
-  too large until the blocks are laid out (the scroll bar's thumb jumps on every resize or theme
-  change).
+- Known limit (review `docs/reviews/033-soft-line-breaks-code-resize-anchor.md`, O1), left to this
+  story's owner (decision Armin, 2026-11-11): inside a paragraph of more than 64 source lines the
+  top line can move by one block on a resize, because a paragraph is laid out from at most 64
+  blocks back (`kMaxLookback`). Review O2 was fixed in the rework of 2026-11-11.
+
+Rework on 2026-11-11 (branch `agents/s033-layout-cost`, from be81762; the benchmark of PR #37
+against main was red, `s031_paste_no_table_5000_lines_ms` 29 -> 139 ms among others, and the CI
+on the follow-up was red on Windows and macOS):
+
+- The visible range adds up the blocks' own advances (63cddaf). Between Qt's `contentsChange` and
+  the layout's `documentChanged` the height index still has the old size, so every new block of an
+  edit got the same top and seemed to be on screen; the whole edit was styled and laid out at once.
+- Laying a changed chain out again lays out only what had lines (7ca2a47, `ChainScope::Extend` and
+  `LaidOutOnly`): each island of laid-out blocks grew by the lookback on every change of flow, and
+  restyling cost more each time (`s023_underline_settled_ms` 97, 127, 170 ... 496 ms).
+- A chain is laid out from the last block with lines, and the forward pass stops at a block whose
+  lines did not change (7f459d1): a screen took about 20 layouts per block.
+  `BlockLayout::blockLayouts()` counts them for tests.
+- A block that stops sharing a line updates the advance of the block before it, also when that one
+  has no lines (7371461; MSVC evaluates the operands of a comparison in the other order and found
+  it).
+- Review O2 fixed (ed0b7b3, 7787bdd): a block that goes on in the last line of the block before is
+  estimated at its share of a line, measured with the width of running text in the editor's font
+  (a sample, not `QFontMetricsF::averageCharWidth`, which is 20-30 % too wide for Arial, Helvetica
+  and their metric twins).
+- The reading position is the text that starts the top line plus how far into that line the view
+  starts (28cb865), held across consecutive resizes and theme changes until the reader scrolls; at
+  the end of the document the restore is not cut short by a scroll range that has not taken in the
+  new heights yet, and it is shown again once the layout settles (24acd13).
+- The layout reports a height change, and the end of a batch, before the new document size, so the
+  view keeps its content still before the scroll range shrinks; the other way round, the end of the
+  document cut the value short and the shift moved it a second time. The view follows the caret
+  after the caret moved or text was typed at it, until a scroll leaves the caret off screen: while
+  a long paragraph is restyled in idle slices, the caret no longer ends off screen.
+  `BlockStyler::setSliceBlocksForTests` makes the idle slices end after a fixed number of blocks
+  in tests.
+- On a key, the reveal of the paragraph at the caret searches the paragraph's extent only about as
+  far as the screen (and 512 lines at least) instead of for up to 2 ms; idle slices walk on to its
+  ends as before (`s023_bullet_typing_median_ms`: "- " before a paragraph of 20,000 lines).
+  `BlockStyler::extentSteps()` counts the lines walked, for tests.
+- Known limit, left to this story's owner: how a chain wraps depends on which blocks before it
+  already have lines (`Extend` stops at the first block with lines, a block without lines whose
+  block before has none either stays without lines). A block partly on screen at the top can be
+  laid out again later with other line breaks and move by a line; the reading position after a
+  resize is restored again when that happens, the view at other times is not.
+- Known limit: a scroll of the reader's that ends exactly on the maximum in the same turn of the
+  event loop as a new, smaller scroll range counts as a clamp and keeps the held reading position.
+- Open (benchmark against main in the cloud, 2026-11-12, four rounds): `s023_open_10mb_styled_ms`
+  2,025 -> 2,602 ms and `s031_paste_no_table_5000_lines_ms` 24.7 -> 33.4 ms stay SLOW. In the
+  opening of the 10 MB file most of the difference is painting (callgrind: `BlockLayout::draw`
+  +27 %, 12 % more blocks per screen, each drawn at 13 % more cost), not layout or styling (styling
+  is cheaper than on main); flowing paragraphs put more, smaller blocks on a screen.
