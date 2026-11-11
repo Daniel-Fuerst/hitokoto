@@ -384,3 +384,8 @@ red in `tst_s019_editor_surface::resizingKeepsTheReadingPosition`):
   scroll anchor, and the margins are set before `QTextEdit::resizeEvent` (763b39c).
 - The scroll anchor is the block covering the top of the view (`BlockLayout::blockCovering`), not
   the first block of a visual line it shares.
+- Known limits (review `docs/reviews/033-soft-line-breaks-code-resize-anchor.md`, O1 and O2):
+  inside a paragraph of more than 64 source lines the top line can move by one block on a resize,
+  because a paragraph is laid out from at most 64 blocks back (`kMaxLookback`); and
+  `estimatedHeight` gives every block at least one line, so after a re-estimate the scroll range of
+  documents with flowing paragraphs is about half too large until the blocks are laid out.
