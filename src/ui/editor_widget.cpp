@@ -191,6 +191,7 @@ void EditorWidget::restoreAnchor(const ScrollAnchor& anchor) {
     if (!anchor.block.isValid()) {
         return;
     }
+    ++anchorRestores_;
     const QRectF rect = blockBoundingGeometry(anchor.block);
     pendingShift_ = 0;
     verticalScrollBar()->setValue(static_cast<int>(std::lround(rect.top() + anchor.fraction * rect.height())));

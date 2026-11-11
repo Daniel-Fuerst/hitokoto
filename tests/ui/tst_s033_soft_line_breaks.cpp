@@ -59,6 +59,30 @@ QString differenceFromTheReference(ui::EditorWidget* editor) {
     return {};
 }
 
+/// Counts the resize events a widget receives itself (not those of its viewport).
+class ResizeCounter : public QObject {
+public:
+    explicit ResizeCounter(QWidget* widget) : widget_(widget) { widget_->installEventFilter(this); }
+    ~ResizeCounter() override { widget_->removeEventFilter(this); }
+    ResizeCounter(const ResizeCounter&) = delete;
+    ResizeCounter& operator=(const ResizeCounter&) = delete;
+    ResizeCounter(ResizeCounter&&) = delete;
+    ResizeCounter& operator=(ResizeCounter&&) = delete;
+
+    int count = 0;
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override {
+        if (watched == widget_ && event->type() == QEvent::Resize) {
+            ++count;
+        }
+        return false;
+    }
+
+private:
+    QWidget* widget_;
+};
+
 }  // namespace
 
 class tst_s033_soft_line_breaks : public QObject {
@@ -433,6 +457,38 @@ private slots:
         f.window->resize(f.window->width() + 40, f.window->height());
         f.settle();
         QCOMPARE(topBlock(), before);
+    }
+
+    // The new margins of a resize re-lay out the viewport, and Qt passes that resize on to the
+    // editor's resizeEvent while the first one still runs (S033 review O3). The nested call must
+    // not restore a reading position of its own, taken from the width in between: one resize of
+    // the editor restores the reading position once.
+    void aResizeRestoresTheReadingPositionOnce() {
+        QByteArray markdown;
+        for (int i = 0; i < 1500; ++i) {
+            markdown += "line " + QByteArray::number(i) + ' ' +
+                        QByteArray(i % 3 == 0 ? 180 : 10, 'a').replace("aaaa", "aa a") + '\n';
+        }
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("resize_once.md"), markdown)));
+        f.settle();
+        auto* editor = f.editor();
+        auto* bar = editor->verticalScrollBar();
+        for (int page = 0; page < 30; ++page) {
+            bar->triggerAction(QAbstractSlider::SliderPageStepAdd);
+            f.settle();
+        }
+        QVERIFY(bar->value() > 0);  // at the very top there is no reading position to restore
+
+        // The window is wider than the built-in theme's editor-max-width, so the side margins
+        // change with the width.
+        QVERIFY(editor->width() > 760 + 40);
+        ResizeCounter editorResizes(editor);
+        const quint64 before = editor->anchorRestores();
+        f.window->resize(f.window->width() - 40, f.window->height());
+        f.settle();
+        QVERIFY(editorResizes.count > 0);
+        QCOMPARE(editor->anchorRestores() - before, static_cast<quint64>(editorResizes.count));
     }
 
     void longFlowingParagraphStaysWithinLatencyBudget() {
