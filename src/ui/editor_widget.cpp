@@ -247,9 +247,16 @@ std::pair<int, int> EditorWidget::visibleBlockRange() const {
     const int first = block.blockNumber();
     int last = first;
     const qreal bottom = viewport()->height();
-    const QPointF offset = contentOffset();
-    while (block.isValid() && blockBoundingGeometry(block).translated(offset).top() <= bottom) {
+    // Add up the blocks' own advances from the first block down. Tops from the height index would
+    // lag behind while Qt reports an edit before the layout knows the new blocks: every new block
+    // would then seem to be on screen, and all of them were styled and laid out at once (S033).
+    qreal top = blockBoundingGeometry(block).translated(contentOffset()).top();
+    while (block.isValid() && top <= bottom) {
         last = block.blockNumber();
+        if (block.isVisible()) {
+            layout_->ensureBlockLayout(block);
+        }
+        top += layout_->advanceOf(block);
         block = block.next();
     }
     return {first, last};

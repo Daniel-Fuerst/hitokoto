@@ -75,6 +75,9 @@ public:
     [[nodiscard]] QTextBlock blockOfTextAt(qreal y) const;
     /// Lays out `block` now unless it already has lines.
     void ensureBlockLayout(const QTextBlock& block) const;
+    /// How far the next block starts below the top of `block`: its height, or, when the next block
+    /// shares its last line (S033), the top of that line. Estimated while `block` has no lines.
+    [[nodiscard]] qreal advanceOf(const QTextBlock& block) const;
     /// Takes the block's height from the lines it has now; for callers that set the lines of a
     /// block's QTextLayout themselves (table rows, S018).
     void blockLayoutChanged(const QTextBlock& block);
@@ -134,7 +137,6 @@ private:
     void flushDirtyChains(bool emitNow) const;
     [[nodiscard]] bool continuesFlowFrom(const QTextBlock& prev, const QTextBlock& cur) const;
     [[nodiscard]] qreal heightOf(const QTextBlock& block) const;
-    [[nodiscard]] qreal advanceOf(const QTextBlock& block) const;
     /// Stores `height` for block `number`; emits the size and height signals when it changed.
     void setHeight(int number, qreal height, bool emitNow) const;
     /// Estimated heights for every block (loading, a new width).
