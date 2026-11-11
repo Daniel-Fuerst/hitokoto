@@ -147,7 +147,16 @@ private slots:
         };
         Hider hider;
         test::Fixture f;
-        QVERIFY(f.open(f.writeFile(QStringLiteral("hidden.md"), numberedLines(3000))));
+        // 3,000 blocks: lines with a blank line after each, so that every line is a paragraph of its
+        // own. Consecutive lines would flow as one paragraph (S033), whose layout reaches far below
+        // the screen (block 364 with 34 blocks on screen and DejaVu Sans, past block 500 with the
+        // fonts of Windows); this test is about hidden blocks, not about paragraphs.
+        QByteArray markdown;
+        for (int i = 0; i < 1500; ++i) {
+            markdown += "line " + QByteArray::number(i) + "\n\n";
+        }
+        QVERIFY(f.open(f.writeFile(QStringLiteral("hidden.md"), markdown)));
+        QCOMPARE(f.editor()->document()->blockCount(), 3001);
         f.settle();
         auto* editor = f.editor();
         auto* layout = editor->blockLayout();
