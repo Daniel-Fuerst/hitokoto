@@ -7,11 +7,14 @@
 #include "find_controller.hpp"
 #include "ui_test_support.hpp"
 
+#include <QClipboard>
 #include <QElapsedTimer>
 #include <QFontMetricsF>
+#include <QGuiApplication>
 #include <QLineEdit>
 #include <QScrollBar>
 
+#include <cmath>
 #include <vector>
 
 using namespace hitokoto;
@@ -623,6 +626,59 @@ private slots:
         QVERIFY2(layouts <= static_cast<quint64>(3 * laidOut),
                  qPrintable(QStringLiteral("%1 block layouts for %2 blocks with lines").arg(layouts).arg(laidOut)));
         QCOMPARE(differenceFromTheReference(editor), QString());
+    }
+
+    // Review O2 (docs/reviews/033-soft-line-breaks-code-resize-anchor.md), fixed on the follow-up to
+    // PR #37: a block without lines was estimated at a line at least, but lines of a paragraph flow,
+    // so the scroll range of a document was too large until it was laid out (here about three times).
+    void theEstimatedHeightOfAFlowingParagraphIsCloseToItsLaidOutHeight() {
+        QByteArray document = "Outside top\n\n";
+        for (int i = 0; i < 3000; ++i) {
+            document += "short line " + QByteArray::number(i) + "\n";
+        }
+        document += "\nOutside bottom\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("estimate.md"), document)));
+        f.placeCaret(0);
+        f.settle();
+        auto* editor = f.editor();
+        auto* layout = editor->blockLayout();
+        const qreal estimated = layout->documentSize().height();
+        for (QTextBlock b = editor->document()->begin(); b.isValid(); b = b.next()) {
+            layout->ensureBlockLayout(b);
+        }
+        const qreal laidOut = layout->documentSize().height();
+        QVERIFY(laidOut > 0);
+        QVERIFY2(std::abs(estimated - laidOut) < 0.15 * laidOut,
+                 qPrintable(QStringLiteral("estimated %1 px, laid out %2 px").arg(estimated).arg(laidOut)));
+    }
+
+    // Benchmark of PR #37 (s031_paste_no_table_5000_lines_ms): pasted at the caret, 5,000 short lines
+    // were estimated a line each; laid out at the end of the document they flow into far fewer lines,
+    // the document shrank, the view followed the caret again and laid out the next screen (13 scrolls
+    // during the paste, 2 on main).
+    void pastingManyShortLinesLaysOutTheScreenAtTheCaretAboutOnce() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("empty.md"), QByteArray())));
+        f.settle();
+        auto* editor = f.editor();
+        QString text;
+        for (int i = 0; i < 5000; ++i) {
+            text += QStringLiteral("int value%1 = %1;\n").arg(i);
+        }
+        QGuiApplication::clipboard()->setText(text);
+        QCoreApplication::processEvents();
+        const quint64 before = editor->blockLayout()->blockLayouts();
+        test::keyClick(editor, Qt::Key_V, Qt::ControlModifier);
+        f.settle();
+        editor->viewport()->repaint();
+        const quint64 layouts = editor->blockLayout()->blockLayouts() - before;
+        const int laidOut = laidOutBlocks(editor->document());
+        QVERIFY(laidOut > 0);
+        // The scroll bar appears once and narrows the text, so the screen is laid out twice; more
+        // than five layouts per block means the view went on following the caret.
+        QVERIFY2(layouts <= static_cast<quint64>(5 * laidOut),
+                 qPrintable(QStringLiteral("%1 block layouts for %2 blocks with lines").arg(layouts).arg(laidOut)));
     }
 
     // Benchmark of the follow-up to PR #37 (s023_underline_settled_ms 97, 127, 170 ... 496 ms over ten
