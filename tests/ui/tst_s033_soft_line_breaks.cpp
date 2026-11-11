@@ -421,7 +421,7 @@ private slots:
         QByteArray markdown = "# Notes\n\n";
         for (int p = 0; p < 40; ++p) {
             for (int i = 0; i < 24; ++i) {
-                const QByteArray words = i % 5 == 0 ? QByteArray(120, 'a').replace("aaaa", "aa a") : "aa a";
+                const QByteArray words = i % 5 == 0 ? QByteArray(120, 'a').replace("aaaa", "aa a") : QByteArray("aa a");
                 markdown += "word " + QByteArray::number(p * 100 + i) + ' ' + words + '\n';
             }
             markdown += '\n';
