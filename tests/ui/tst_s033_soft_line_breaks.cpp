@@ -982,6 +982,37 @@ private slots:
         }
     }
 
+    // Benchmark of the follow-up to PR #37 (s023_bullet_typing_median_ms 3.5 -> 5.9 ms): "- " before a
+    // paragraph of 20,000 lines changes the paragraph, and the reveal of the paragraph at the caret
+    // searched its extent for up to 2 ms on each key, far beyond the screen; the rest of the search
+    // goes on in idle slices anyway. A key walks a long paragraph about as far as the screen needs (and
+    // a few hundred lines at least, so that short paragraphs are found at once).
+    void aKeyBeforeALongParagraphSearchesItsExtentAboutAsFarAsTheScreen() {
+        QByteArray document;
+        for (int i = 0; i < 20000; ++i) {
+            document += (i == 0 ? "Long" : "long") + QByteArray(" paragraph line ") + QByteArray::number(i) +
+                        " of hard-wrapped text without a blank line\n";
+        }
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("long_extent.md"), document)));
+        auto* editor = f.editor();
+        f.placeCaret(0);
+        f.settle();
+        const auto [firstOnScreen, lastOnScreen] = editor->visibleBlockRange();
+        const auto onScreen = static_cast<quint64>(lastOnScreen - firstOnScreen + 1);
+        for (const auto key : {Qt::Key_Minus, Qt::Key_Space, Qt::Key_Backspace, Qt::Key_Backspace}) {
+            const quint64 before = editor->styler().extentSteps();
+            test::keyClick(editor, key);  // QTest sends the key directly; no idle slice runs in between
+            const quint64 steps = editor->styler().extentSteps() - before;
+            QVERIFY2(
+                steps <= 4 * onScreen + 1024,
+                qPrintable(
+                    QStringLiteral("key %1: %2 lines walked, %3 on screen").arg(int(key)).arg(steps).arg(onScreen)));
+            f.settle();
+            QCOMPARE(differenceFromTheReference(editor), QString());
+        }
+    }
+
     void longFlowingParagraphStaysWithinLatencyBudget() {
         constexpr int kLines = 20000;
         QByteArray document = "Outside top\n\n";

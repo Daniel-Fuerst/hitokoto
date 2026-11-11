@@ -1121,7 +1121,10 @@ bool BlockStyler::continueUnderlineSearch(qint64 nanoseconds) {
     QElapsedTimer timer;
     timer.start();
     int steps = 0;
-    const auto overBudget = [&] { return ++steps % 64 == 0 && timer.nsecsElapsed() > nanoseconds; };
+    const auto overBudget = [&] {
+        ++extentSteps_;
+        return ++steps % 64 == 0 && timer.nsecsElapsed() > nanoseconds;
+    };
     if (underline_.back >= 0) {
         QTextBlock b = document_->findBlockByNumber(underline_.back);
         while (b.isValid() && b.previous().isValid() && blockStateAfter(b.previous()) == underline_.inside &&

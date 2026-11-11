@@ -86,6 +86,9 @@ public:
     /// Number of lines whose setext level was passed up a paragraph so far (instrumentation for
     /// tests, S023 review O2).
     [[nodiscard]] quint64 levelSteps() const noexcept { return levelSteps_; }
+    /// Number of lines the search for the extent of a paragraph walked so far (instrumentation for
+    /// tests, S033).
+    [[nodiscard]] quint64 extentSteps() const noexcept { return extentSteps_; }
     /// Ends each idle slice after `blocks` blocks instead of after a time, so that tests see the same
     /// slices on every machine (0 = by time, the default; instrumentation for tests, S033).
     void setSliceBlocksForTests(int blocks) noexcept { sliceBlocks_ = blocks; }
@@ -279,6 +282,7 @@ private:
     quint64 styledCount_ = 0;
     quint64 renderCount_ = 0;
     quint64 levelSteps_ = 0;
+    quint64 extentSteps_ = 0;
 };
 
 }  // namespace hitokoto::ui
