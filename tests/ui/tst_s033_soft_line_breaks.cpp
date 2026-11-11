@@ -9,6 +9,8 @@
 
 #include <QClipboard>
 #include <QElapsedTimer>
+#include <QFont>
+#include <QFontInfo>
 #include <QFontMetricsF>
 #include <QGuiApplication>
 #include <QLineEdit>
@@ -139,6 +141,35 @@ void showLineAtTop(ui::EditorWidget* editor, const QTextBlock& block, int line) 
     const QRectF rect = editor->blockLayout()->blockBoundingRect(block);
     editor->verticalScrollBar()->setValue(static_cast<int>(std::lround(rect.top() + block.layout()->lineAt(line).y())) +
                                           3);
+}
+
+/// An installed font whose own average character width (QFontMetricsF::averageCharWidth, from the
+/// font's tables) is more than 10 % wider than `text` set in it, at the theme's editor size; empty if
+/// none of the candidates is installed or off. DejaVu Sans, the usual Linux default, is close; Arial,
+/// Helvetica and their metric twins Liberation Sans, Calibri and Carlito are not (macOS CI: the
+/// estimate of a flowing paragraph was 26 % too large).
+QString fontWithAverageWidthOff(const QString& text) {
+    const double size = core::builtinTheme(core::ColorScheme::Light).editorFontSize;
+    for (const char* family :
+         {"Liberation Sans", "Arial", "Helvetica", "Helvetica Neue", "Carlito", "Calibri", "Segoe UI"}) {
+        QFont font(QString::fromLatin1(family));
+        font.setPointSizeF(size);
+        if (QFontInfo(font).family() != QLatin1String(family)) {
+            continue;
+        }
+        const QFontMetricsF metrics(font);
+        if (metrics.averageCharWidth() > 1.1 * metrics.horizontalAdvance(text) / static_cast<qreal>(text.size())) {
+            return QString::fromLatin1(family);
+        }
+    }
+    return {};
+}
+
+/// Applies the built-in light theme with `family` as the editor font.
+void useEditorFont(test::Fixture& f, const QString& family) {
+    auto theme = core::builtinTheme(core::ColorScheme::Light);
+    theme.editorFontFamily = family.toStdString();
+    f.window->applyTheme(theme);
 }
 
 /// Lines of a paragraph that flow: every tenth a heading, every third long enough to wrap.
@@ -820,54 +851,33 @@ private slots:
     // Review O2 (docs/reviews/033-soft-line-breaks-code-resize-anchor.md), fixed on the follow-up to
     // PR #37: a block without lines was estimated at a line at least, but lines of a paragraph flow,
     // so the scroll range of a document was too large until it was laid out (here about three times).
-    void theEstimatedHeightOfAFlowingParagraphIsCloseToItsLaidOutHeight() {
-        QByteArray document = "Outside top\n\n";
-        for (int i = 0; i < 3000; ++i) {
-            document += "short line " + QByteArray::number(i) + "\n";
+    void theEstimatedHeightOfAFlowingParagraphIsCloseToItsLaidOutHeight() { estimateOfAFlowingParagraph({}); }
+
+    // The same with a font whose own average character width is far wider than running text set in
+    // it (macOS CI on 28cb865: estimated 11,868 px, laid out 9,393 px). The estimate takes the width of
+    // text as the font sets it.
+    void theEstimatedHeightHoldsWithAFontWhoseAverageWidthIsOff() {
+        const QString family = fontWithAverageWidthOff(QStringLiteral("short line 1234 "));
+        if (family.isEmpty()) {
+            QSKIP("no installed font whose average character width is off");
         }
-        document += "\nOutside bottom\n";
-        test::Fixture f;
-        QVERIFY(f.open(f.writeFile(QStringLiteral("estimate.md"), document)));
-        f.placeCaret(0);
-        f.settle();
-        auto* editor = f.editor();
-        auto* layout = editor->blockLayout();
-        const qreal estimated = layout->documentSize().height();
-        for (QTextBlock b = editor->document()->begin(); b.isValid(); b = b.next()) {
-            layout->ensureBlockLayout(b);
-        }
-        const qreal laidOut = layout->documentSize().height();
-        QVERIFY(laidOut > 0);
-        QVERIFY2(std::abs(estimated - laidOut) < 0.15 * laidOut,
-                 qPrintable(QStringLiteral("estimated %1 px, laid out %2 px").arg(estimated).arg(laidOut)));
+        estimateOfAFlowingParagraph(family);
     }
 
     // Benchmark of PR #37 (s031_paste_no_table_5000_lines_ms): pasted at the caret, 5,000 short lines
     // were estimated a line each; laid out at the end of the document they flow into far fewer lines,
     // the document shrank, the view followed the caret again and laid out the next screen (13 scrolls
     // during the paste, 2 on main).
-    void pastingManyShortLinesLaysOutTheScreenAtTheCaretAboutOnce() {
-        test::Fixture f;
-        QVERIFY(f.open(f.writeFile(QStringLiteral("empty.md"), QByteArray())));
-        f.settle();
-        auto* editor = f.editor();
-        QString text;
-        for (int i = 0; i < 5000; ++i) {
-            text += QStringLiteral("int value%1 = %1;\n").arg(i);
+    void pastingManyShortLinesLaysOutTheScreenAtTheCaretAboutOnce() { pasteManyShortLines({}); }
+
+    // The same with a font whose own average character width is off (macOS CI on 28cb865: 800 block
+    // layouts for 135 blocks).
+    void pastingManyShortLinesWithAFontWhoseAverageWidthIsOff() {
+        const QString family = fontWithAverageWidthOff(QStringLiteral("int value1234 = 1234; "));
+        if (family.isEmpty()) {
+            QSKIP("no installed font whose average character width is off");
         }
-        QGuiApplication::clipboard()->setText(text);
-        QCoreApplication::processEvents();
-        const quint64 before = editor->blockLayout()->blockLayouts();
-        test::keyClick(editor, Qt::Key_V, Qt::ControlModifier);
-        f.settle();
-        editor->viewport()->repaint();
-        const quint64 layouts = editor->blockLayout()->blockLayouts() - before;
-        const int laidOut = laidOutBlocks(editor->document());
-        QVERIFY(laidOut > 0);
-        // The scroll bar appears once and narrows the text, so the screen is laid out twice; more
-        // than five layouts per block means the view went on following the caret.
-        QVERIFY2(layouts <= static_cast<quint64>(5 * laidOut),
-                 qPrintable(QStringLiteral("%1 block layouts for %2 blocks with lines").arg(layouts).arg(laidOut)));
+        pasteManyShortLines(family);
     }
 
     // Benchmark of the follow-up to PR #37 (s023_underline_settled_ms 97, 127, 170 ... 496 ms over ten
@@ -943,6 +953,65 @@ private slots:
         const quint64 styledOnStep = styler.styledCount() - styledBefore;
         QVERIFY2(stepMs < 50, qPrintable(QStringLiteral("step inside paragraph took %1 ms").arg(stepMs)));
         QVERIFY2(styledOnStep <= 4, qPrintable(QStringLiteral("styled %1 blocks on step").arg(styledOnStep)));
+    }
+
+private:
+    static void estimateOfAFlowingParagraph(const QString& family) {
+        QByteArray document = "Outside top\n\n";
+        for (int i = 0; i < 3000; ++i) {
+            document += "short line " + QByteArray::number(i) + "\n";
+        }
+        document += "\nOutside bottom\n";
+        test::Fixture f;
+        if (!family.isEmpty()) {
+            useEditorFont(f, family);
+        }
+        QVERIFY(f.open(f.writeFile(QStringLiteral("estimate.md"), document)));
+        f.placeCaret(0);
+        f.settle();
+        auto* editor = f.editor();
+        auto* layout = editor->blockLayout();
+        const qreal estimated = layout->documentSize().height();
+        for (QTextBlock b = editor->document()->begin(); b.isValid(); b = b.next()) {
+            layout->ensureBlockLayout(b);
+        }
+        const qreal laidOut = layout->documentSize().height();
+        QVERIFY(laidOut > 0);
+        QVERIFY2(std::abs(estimated - laidOut) < 0.15 * laidOut,
+                 qPrintable(QStringLiteral("estimated %1 px, laid out %2 px (font %3)")
+                                .arg(estimated)
+                                .arg(laidOut)
+                                .arg(QFontInfo(editor->document()->defaultFont()).family())));
+    }
+
+    static void pasteManyShortLines(const QString& family) {
+        test::Fixture f;
+        if (!family.isEmpty()) {
+            useEditorFont(f, family);
+        }
+        QVERIFY(f.open(f.writeFile(QStringLiteral("empty.md"), QByteArray())));
+        f.settle();
+        auto* editor = f.editor();
+        QString text;
+        for (int i = 0; i < 5000; ++i) {
+            text += QStringLiteral("int value%1 = %1;\n").arg(i);
+        }
+        QGuiApplication::clipboard()->setText(text);
+        QCoreApplication::processEvents();
+        const quint64 before = editor->blockLayout()->blockLayouts();
+        test::keyClick(editor, Qt::Key_V, Qt::ControlModifier);
+        f.settle();
+        editor->viewport()->repaint();
+        const quint64 layouts = editor->blockLayout()->blockLayouts() - before;
+        const int laidOut = laidOutBlocks(editor->document());
+        QVERIFY(laidOut > 0);
+        // The scroll bar appears once and narrows the text, so the screen is laid out twice; more
+        // than five layouts per block means the view went on following the caret.
+        QVERIFY2(layouts <= static_cast<quint64>(5 * laidOut),
+                 qPrintable(QStringLiteral("%1 block layouts for %2 blocks with lines (font %3)")
+                                .arg(layouts)
+                                .arg(laidOut)
+                                .arg(QFontInfo(editor->document()->defaultFont()).family())));
     }
 };
 
