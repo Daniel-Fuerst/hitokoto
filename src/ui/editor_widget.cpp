@@ -76,8 +76,26 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     // A scroll of the reader's lets go of the reading position held across resizes (S033); the
     // scrolls of a resize or theme change and those that keep the content still do not.
     connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this] {
-        if (!resizing_ && !applyingShift_) {
-            heldAnchor_ = {};
+        if (resizing_ || applyingShift_) {
+            return;
+        }
+        if (rangeClamps_ && verticalScrollBar()->value() == verticalScrollBar()->maximum()) {
+            rangeClamps_ = false;  // the end of the document cut the value short, no scroll
+            return;
+        }
+        heldAnchor_ = {};
+    });
+    // A new scroll range clamps the value right after this signal. While a reading position is
+    // held, that is no scroll of the reader's, and the reading position is shown again once the
+    // range allows it.
+    connect(verticalScrollBar(), &QScrollBar::rangeChanged, this, [this] {
+        if (heldAnchor_.text.isNull()) {
+            return;
+        }
+        rangeClamps_ = true;
+        QMetaObject::invokeMethod(this, [this] { rangeClamps_ = false; }, Qt::QueuedConnection);
+        if (!resizing_) {
+            QMetaObject::invokeMethod(this, &EditorWidget::settleAnchor, Qt::QueuedConnection);
         }
     });
 
@@ -218,24 +236,24 @@ EditorWidget::ScrollAnchor EditorWidget::readingAnchor() {
     return heldAnchor_;
 }
 
+int EditorWidget::anchorValue(const ScrollAnchor& anchor) const {
+    const QTextBlock block = anchor.text.block();
+    qreal top = blockBoundingGeometry(block).top();  // lays the block out
+    if (const QTextLayout* text = block.layout(); layout_->reservedHeight(block) <= 0 && text->lineCount() > 0) {
+        const QTextLine line = text->lineForTextPosition(anchor.text.positionInBlock());
+        if (line.isValid()) {
+            top += line.y();
+        }
+    }
+    return static_cast<int>(std::lround(top + anchor.offset));
+}
+
 void EditorWidget::restoreAnchor(const ScrollAnchor& anchor) {
     // A new width or font re-estimates every block, so the same scroll value would show other
     // text; scroll back to the line that was at the top.
     if (anchor.text.isNull()) {
         return;
     }
-    ++anchorRestores_;
-    const QTextBlock block = anchor.text.block();
-    const auto lineTop = [&] {
-        qreal top = blockBoundingGeometry(block).top();  // lays the block out
-        if (const QTextLayout* text = block.layout(); layout_->reservedHeight(block) <= 0 && text->lineCount() > 0) {
-            const QTextLine line = text->lineForTextPosition(anchor.text.positionInBlock());
-            if (line.isValid()) {
-                top += line.y();
-            }
-        }
-        return top;
-    };
     pendingShift_ = 0;
     // Laying blocks out changes heights that the scroll range takes in only once the event loop
     // runs, and scrolling lays out the blocks that come into view: near the end of the document
@@ -243,12 +261,28 @@ void EditorWidget::restoreAnchor(const ScrollAnchor& anchor) {
     // once the blocks on screen have their lines; the range follows the document size later.
     QScrollBar* bar = verticalScrollBar();
     for (int pass = 0; pass < 2; ++pass) {
-        const int value = static_cast<int>(std::lround(lineTop() + anchor.offset));
+        const int value = anchorValue(anchor);
         bar->setMaximum(std::max(bar->maximum(), value));
         bar->setValue(value);
         if (bar->value() == value) {
             break;
         }
+    }
+}
+
+void EditorWidget::settleAnchor() {
+    // Heights above the reading position can still change after it was restored, and the end of the
+    // document can cut the value short until the blocks below are laid out (S033). While the reader
+    // has not scrolled, show the reading position again, as far as the scroll range allows.
+    if (heldAnchor_.text.isNull() || resizing_ || settlePasses_ >= kMaxSettlePasses) {
+        return;
+    }
+    const QScopedValueRollback<bool> guard(resizing_, true);
+    const int value = anchorValue(heldAnchor_);
+    if (value != verticalScrollBar()->value()) {
+        ++settlePasses_;
+        pendingShift_ = 0;
+        verticalScrollBar()->setValue(value);
     }
 }
 
@@ -275,8 +309,13 @@ void EditorWidget::applyTheme(const core::Theme& theme) {
     if (!wasModified) {
         document()->setModified(false);
     }
+    if (!anchor.text.isNull()) {
+        ++anchorRestores_;
+    }
+    settlePasses_ = 0;
     restoreAnchor(anchor);
     viewport()->update();
+    QMetaObject::invokeMethod(this, &EditorWidget::settleAnchor, Qt::QueuedConnection);
 }
 
 int EditorWidget::availableTableWidth() const {
@@ -358,6 +397,10 @@ void EditorWidget::resizeEvent(QResizeEvent* event) {
     positionToolbar();
     tables_->setAvailableWidth(availableTableWidth());
     properties_->setAvailableWidth(availableTableWidth());
+    if (!anchor.text.isNull()) {
+        ++anchorRestores_;
+    }
+    settlePasses_ = 0;
     restoreAnchor(anchor);
     styler_->styleVisible();
     // The widgets follow at once; finding tables waits for the event loop, so it never runs in
@@ -365,6 +408,7 @@ void EditorWidget::resizeEvent(QResizeEvent* event) {
     tables_->reposition();
     properties_->reposition();
     tables_->scheduleRefresh();
+    QMetaObject::invokeMethod(this, &EditorWidget::settleAnchor, Qt::QueuedConnection);
 }
 
 void EditorWidget::scrollContentsBy(int dx, int dy) {

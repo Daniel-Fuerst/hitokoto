@@ -136,7 +136,11 @@ private:
     /// resizes and theme changes return to the same line instead of a position taken anew each
     /// time, which would drift (S033).
     [[nodiscard]] ScrollAnchor readingAnchor();
+    /// The scroll value that shows `anchor` at the top (lays its block out).
+    [[nodiscard]] int anchorValue(const ScrollAnchor& anchor) const;
     void restoreAnchor(const ScrollAnchor& anchor);
+    /// Restores the held reading position again if it moved since a resize or theme change.
+    void settleAnchor();
     void keepContentStill(qreal top, qreal oldHeight, qreal newHeight);
     void applyPendingShift();
 
@@ -162,8 +166,11 @@ private:
     qreal pendingShift_ = 0;  ///< height change above the viewport not yet scrolled away
     bool applyingShift_ = false;
     bool resizing_ = false;
-    ScrollAnchor heldAnchor_;  ///< reading position across resizes until the view scrolls
-    quint64 anchorRestores_ = 0;
+    ScrollAnchor heldAnchor_;   ///< reading position across resizes until the view scrolls
+    bool rangeClamps_ = false;  ///< a new scroll range is about to clamp the value
+    int settlePasses_ = 0;      ///< settleAnchor calls that moved the view since the last restore
+    static constexpr int kMaxSettlePasses = 4;
+    quint64 anchorRestores_ = 0;  ///< reading positions restored by a resize or theme change
     BlockStyler* styler_ = nullptr;
     std::unique_ptr<TableEmbedder> tables_;
     std::unique_ptr<PropertiesEmbedder> properties_;
