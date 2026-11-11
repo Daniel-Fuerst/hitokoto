@@ -133,7 +133,12 @@ private:
     qreal layoutBlock(const QTextBlock& block) const;
     qreal layoutSingleBlock(const QTextBlock& block, qreal& subLeft, qreal& subWidth) const;
     void layoutContinuationBlock(const QTextBlock& prev, const QTextBlock& cur, qreal subLeft, qreal subWidth) const;
-    int layoutParagraphChain(const QTextBlock& target, bool emitNow) const;
+    /// How far a chain is laid out: `Extend` lays out what `target` needs to be drawn (up to
+    /// kMaxLookback blocks before it, and blocks after it that share its last line); `LaidOutOnly`
+    /// lays out again only blocks that have lines (and `target`), for changes to blocks laid out
+    /// before, so that laying them out again does not grow the laid-out part of a long paragraph.
+    enum class ChainScope { Extend, LaidOutOnly };
+    int layoutParagraphChain(const QTextBlock& target, bool emitNow, ChainScope scope = ChainScope::Extend) const;
     void flushDirtyChains(bool emitNow) const;
     [[nodiscard]] bool continuesFlowFrom(const QTextBlock& prev, const QTextBlock& cur) const;
     [[nodiscard]] qreal heightOf(const QTextBlock& block) const;

@@ -166,7 +166,7 @@ void BlockLayout::setWrapIndent(const QTextBlock& block, int columns) {
         batchNeedsRepaint_ = true;
         return;
     }
-    layoutParagraphChain(block, true);
+    layoutParagraphChain(block, true, ChainScope::LaidOutOnly);
     emit update();
 }
 
@@ -429,7 +429,7 @@ void BlockLayout::layoutContinuationBlock(const QTextBlock& prev, const QTextBlo
     }
 }
 
-int BlockLayout::layoutParagraphChain(const QTextBlock& target, bool emitNow) const {
+int BlockLayout::layoutParagraphChain(const QTextBlock& target, bool emitNow, ChainScope scope) const {
     if (!target.isValid()) {
         return -1;
     }
@@ -443,10 +443,35 @@ int BlockLayout::layoutParagraphChain(const QTextBlock& target, bool emitNow) co
         return target.blockNumber();
     }
 
+    const bool laidOutOnly = scope == ChainScope::LaidOutOnly;
+    if (laidOutOnly && target.layout()->lineCount() == 0) {
+        // Nothing of the block is drawn, so it shares no line; it is laid out when it is needed.
+        // Laying it out here would also lay out the lookback before it and grow the laid-out part
+        // of a long paragraph on every change of flow. Only its laid-out neighbours change: the one
+        // before by its advance, the one after by no longer sharing a line with it.
+        if (sharesLineWithPrevious(target)) {
+            setSharesPrevLine(target, false);
+            const QTextBlock prev = target.previous();
+            if (prev.isValid() && prev.layout()->lineCount() > 0) {
+                if (!inSync()) {
+                    deferred_.push_back(prev);
+                } else {
+                    setHeight(prev.blockNumber(), advanceOf(prev), emitNow);
+                }
+            }
+        }
+        const QTextBlock next = target.next();
+        if (next.isValid() && next.layout()->lineCount() > 0 && sharesLineWithPrevious(next)) {
+            return layoutParagraphChain(next, emitNow, scope);
+        }
+        return target.blockNumber();
+    }
+
     constexpr int kMaxLookback = 64;
     QTextBlock start = target;
     int stepsBack = 0;
-    while (stepsBack < kMaxLookback && continuesFlowFrom(start.previous(), start) && !hardBreak(start.previous())) {
+    while (stepsBack < kMaxLookback && continuesFlowFrom(start.previous(), start) && !hardBreak(start.previous()) &&
+           (!laidOutOnly || start.previous().layout()->lineCount() > 0)) {
         start = start.previous();
         ++stepsBack;
     }
@@ -514,6 +539,13 @@ int BlockLayout::layoutParagraphChain(const QTextBlock& target, bool emitNow) co
             break;
         }
         const bool curHadLayout = cur.layout()->lineCount() > 0;
+        if (laidOutOnly && !curHadLayout && cur.blockNumber() > targetNum) {
+            // Not drawn before, so not now either: it is laid out when it is needed.
+            if (wasSharing) {
+                setSharesPrevLine(cur, false);
+            }
+            break;
+        }
         layoutContinuationBlock(prev, cur, subLeft, subWidth);
         laidOut.push_back(cur);
         prev = cur;
@@ -551,7 +583,7 @@ void BlockLayout::flushDirtyChains(bool emitNow) const {
         if (num <= lastLaidOut && continuesFlowFrom(b.previous(), b)) {
             continue;
         }
-        lastLaidOut = std::max(lastLaidOut, layoutParagraphChain(b, emitNow));
+        lastLaidOut = std::max(lastLaidOut, layoutParagraphChain(b, emitNow, ChainScope::LaidOutOnly));
     }
     flushingDirty_ = false;
     if (batch_ > 0) {
