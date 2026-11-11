@@ -156,9 +156,9 @@ All rules follow CommonMark 0.31.2 (sections 4.8 Paragraphs, 5.2 List items, 6.7
 - **Reading position (S019 finding 2):**
   - A new width or font re-estimates every block; the line at the top of the view stays at the top.
     The scroll anchor is the block whose own lines cover the top of the view
-    (`BlockLayout::blockCovering`), not the first block of a visual line it shares
-    (`BlockLayout::blockAt`): the blocks in between are estimated anew like all others, so an
-    offset measured across them would not hold.
+    (`BlockLayout::blockOfTextAt`), not the first block of a visual line it shares
+    (`BlockLayout::firstBlockOfLineAt`): the blocks in between are estimated anew like all
+    others, so an offset measured across them would not hold.
 
 ## Acceptance scenarios
 
@@ -330,7 +330,7 @@ No new theme tokens are required:
     - Update `draw`, `hitTest`, `blockBoundingRect`, and `visibleBlockRange` to step back to the
       first block sharing a visual line (`firstBlockOnVisualLine`) so all blocks on a shared visual
       line are painted and hit-tested together.
-    - `blockCovering(y)` returns the block whose own advance covers `y`, without stepping back;
+    - `blockOfTextAt(y)` returns the block whose own advance covers `y`, without stepping back;
       `EditorWidget::captureAnchor` takes the scroll anchor from it.
 - **Benchmarks (`s033_*`):**
   - Add core and UI benchmarks for opening, typing in, and entering/leaving a flowing paragraph
@@ -382,7 +382,7 @@ red in `tst_s019_editor_surface::resizingKeepsTheReadingPosition`):
 - Qt lays the viewport out with the old margins before `EditorWidget::resizeEvent` sets the new
   ones, so a second `resizeEvent` runs inside the first; it no longer captures or restores the
   scroll anchor, and the margins are set before `QTextEdit::resizeEvent` (763b39c).
-- The scroll anchor is the block covering the top of the view (`BlockLayout::blockCovering`), not
+- The scroll anchor is the block covering the top of the view (`BlockLayout::blockOfTextAt`), not
   the first block of a visual line it shares.
 - Known limits (review `docs/reviews/033-soft-line-breaks-code-resize-anchor.md`, O1 and O2):
   inside a paragraph of more than 64 source lines the top line can move by one block on a resize,

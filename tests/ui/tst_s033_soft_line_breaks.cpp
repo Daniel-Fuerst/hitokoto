@@ -435,14 +435,14 @@ private slots:
         auto* bar = editor->verticalScrollBar();
         const auto topBlock = [&] { return editor->cursorForPosition(QPoint(40, 2)).blockNumber(); };
         // Page down until the top line belongs to a block well behind the first block of its shared
-        // lines (blockAt), so that blocks between the two lie above the reading position.
+        // lines (firstBlockOfLineAt), so that blocks between the two lie above the reading position.
         bool inside = false;
         for (int page = 0; page < 40 && !inside; ++page) {
             bar->triggerAction(QAbstractSlider::SliderPageStepAdd);
             f.settle();
             const QTextBlock top = editor->document()->findBlockByNumber(topBlock());
             inside = editor->blockLayout()->sharesLineWithPrevious(top) &&
-                     top.blockNumber() - editor->blockLayout()->blockAt(bar->value()).blockNumber() >= 6;
+                     top.blockNumber() - editor->blockLayout()->firstBlockOfLineAt(bar->value()).blockNumber() >= 6;
         }
         if (!inside) {
             // Which page starts where depends on the font; tst_s019 resizingKeepsTheReadingPosition
