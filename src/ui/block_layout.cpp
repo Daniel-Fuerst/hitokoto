@@ -690,12 +690,16 @@ void BlockLayout::estimateAll() {
     heights_.assign(heights);
 }
 
-QTextBlock BlockLayout::blockAt(qreal y) const {
+QTextBlock BlockLayout::blockCovering(qreal y) const {
     const std::size_t index = heights_.indexAt(y - margin());
     if (index >= heights_.size()) {
         return {};
     }
-    QTextBlock b = document()->findBlockByNumber(static_cast<int>(index));
+    return document()->findBlockByNumber(static_cast<int>(index));
+}
+
+QTextBlock BlockLayout::blockAt(qreal y) const {
+    QTextBlock b = blockCovering(y);
     while (b.isValid() && sharesLineWithPrevious(b) && b.previous().isValid()) {
         b = b.previous();
     }

@@ -153,6 +153,12 @@ All rules follow CommonMark 0.31.2 (sections 4.8 Paragraphs, 5.2 List items, 6.7
     flowing paragraph (including matches whose whitespace spans a soft line break between two source
     lines). Closing the find bar (`Escape`) selects the match, which places the selection inside the
     paragraph and reveals its source lines.
+- **Reading position (S019 finding 2):**
+  - A new width or font re-estimates every block; the line at the top of the view stays at the top.
+    The scroll anchor is the block whose own lines cover the top of the view
+    (`BlockLayout::blockCovering`), not the first block of a visual line it shares
+    (`BlockLayout::blockAt`): the blocks in between are estimated anew like all others, so an
+    offset measured across them would not hold.
 
 ## Acceptance scenarios
 
@@ -249,6 +255,13 @@ All rules follow CommonMark 0.31.2 (sections 4.8 Paragraphs, 5.2 List items, 6.7
 - Then every keystroke and caret move completes within the 50 ms budget (synchronous work bounded to
   4 ms, any remaining restyling completed in idle slices)
 
+**Scenario: resizing keeps the top line inside a flowing paragraph (S019)**
+- Given a long document of flowing paragraphs whose short source lines share visual lines
+- And the view scrolled so that its top line belongs to a block that shares its first line with
+  several blocks before it
+- When I make the window narrower and then wider again
+- Then the same block is at the top of the view after each resize
+
 **Scenario: the file stays byte for byte (ADR 0002)**
 - Given a document with flowing paragraphs, hard line breaks (`\` and `2+` spaces), and bullet
   continuations
@@ -317,6 +330,8 @@ No new theme tokens are required:
     - Update `draw`, `hitTest`, `blockBoundingRect`, and `visibleBlockRange` to step back to the
       first block sharing a visual line (`firstBlockOnVisualLine`) so all blocks on a shared visual
       line are painted and hit-tested together.
+    - `blockCovering(y)` returns the block whose own advance covers `y`, without stepping back;
+      `EditorWidget::captureAnchor` takes the scroll anchor from it.
 - **Benchmarks (`s033_*`):**
   - Add core and UI benchmarks for opening, typing in, and entering/leaving a flowing paragraph
     (including a 20,000-line hard-wrapped paragraph).
@@ -332,7 +347,10 @@ No new theme tokens are required:
   and word wrapping across blocks, caret/selection reveal and conceal of paragraphs, hard breaks
   (`\` and `2+` spaces), bullet continuations at hanging indent, clicking words on continuation
   blocks, Up/Down/Left/Right navigation, find-bar highlighting in flowing paragraphs, 20,000-line
-  paragraph latency budget, byte-exact save.
+  paragraph latency budget, byte-exact save, reading position on resize inside a shared visual line
+  (`resizingKeepsTheTopLineInsideAFlowingParagraph`).
+- S027: `tst_s027_smooth_scrolling::shiftDuringExternalSetValueUsesCurrentBarValue` – a shift while
+  the program sets the scroll bar starts from the bar's value.
 - S009 & S023: update `tst_s009_concealment` and `tst_s023_thematic_breaks` where they previously
   asserted that a 2-line setext heading had the same height while unrevealed as while revealed, and
   add `flowingParagraphsWhileWalking` to `tst_s009_concealment`.
@@ -355,3 +373,14 @@ Implemented on 2026-11-09 following ADR 0003 and ADR 0006:
   `BlockStyler` tracks `revealedParagraph_` via bounded `ParagraphExtent` walks and caches
   `kStyledParagraphRevealed` in `QTextBlock::userState()` so caret movement and typing inside a
   paragraph remain $O(1)$.
+
+Rework on 2026-11-10 (branch `agents/s033-resize-anchor`; CI job Build and test (Linux min Qt) was
+red in `tst_s019_editor_surface::resizingKeepsTheReadingPosition`):
+
+- `SmoothScroller::shift` without a running animation starts from the scroll bar's value, not from
+  a target that the scroller's own `valueChanged` slot has not updated yet (763b39c).
+- Qt lays the viewport out with the old margins before `EditorWidget::resizeEvent` sets the new
+  ones, so a second `resizeEvent` runs inside the first; it no longer captures or restores the
+  scroll anchor, and the margins are set before `QTextEdit::resizeEvent` (763b39c).
+- The scroll anchor is the block covering the top of the view (`BlockLayout::blockCovering`), not
+  the first block of a visual line it shares.

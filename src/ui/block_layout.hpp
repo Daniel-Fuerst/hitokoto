@@ -65,8 +65,14 @@ public:
     [[nodiscard]] bool hardBreak(const QTextBlock& block) const;
     [[nodiscard]] bool sharesLineWithPrevious(const QTextBlock& block) const;
 
-    /// The visible block at document y, or an invalid block below the last one.
+    /// The visible block at document y, or an invalid block below the last one. On lines that
+    /// blocks of a flowing paragraph share, the first block of those lines (for painting and hit
+    /// tests, which go along the line from there).
     [[nodiscard]] QTextBlock blockAt(qreal y) const;
+    /// The block whose own lines cover document y (the line of text there), or an invalid block
+    /// below the last one. Unlike blockAt, a block that shares its first line with the block before
+    /// it is not walked back to the first block of that line (S033).
+    [[nodiscard]] QTextBlock blockCovering(qreal y) const;
     /// Lays out `block` now unless it already has lines.
     void ensureBlockLayout(const QTextBlock& block) const;
     /// Takes the block's height from the lines it has now; for callers that set the lines of a

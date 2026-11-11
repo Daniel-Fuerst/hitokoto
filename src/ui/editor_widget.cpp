@@ -174,7 +174,12 @@ EditorWidget::ScrollAnchor EditorWidget::captureAnchor() const {
     if (verticalScrollBar()->value() <= 0) {
         return {};
     }
-    const QTextBlock block = firstVisibleBlock();
+    // The block of the top line itself, not the first block of a line it shares (S033): the blocks
+    // in between are estimated anew like all others, so an offset across them would not hold.
+    QTextBlock block = layout_->blockCovering(verticalScrollBar()->value());
+    if (!block.isValid()) {
+        block = document()->lastBlock();
+    }
     const QRectF rect = blockBoundingGeometry(block);
     const qreal into = verticalScrollBar()->value() - rect.top();
     return {block, rect.height() > 0 ? into / rect.height() : 0.0};
