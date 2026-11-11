@@ -73,6 +73,13 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     properties_ = std::make_unique<PropertiesEmbedder>(this, styler_, layout_);
     connect(layout_, &BlockLayout::blockHeightChanged, this, &EditorWidget::keepContentStill);
     connect(layout_, &BlockLayout::batchFinished, this, &EditorWidget::applyPendingShift);
+    // A scroll of the reader's lets go of the reading position held across resizes (S033); the
+    // scrolls of a resize or theme change and those that keep the content still do not.
+    connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this] {
+        if (!resizing_ && !applyingShift_) {
+            heldAnchor_ = {};
+        }
+    });
 
     setFrameShape(QFrame::NoFrame);
     setLineWrapMode(QTextEdit::WidgetWidth);
@@ -171,35 +178,83 @@ void EditorWidget::applyPendingShift() {
 }
 
 EditorWidget::ScrollAnchor EditorWidget::captureAnchor() const {
-    if (verticalScrollBar()->value() <= 0) {
+    const qreal y = verticalScrollBar()->value();
+    if (y <= 0) {
         return {};
     }
-    // The block of the top line itself, not the first block of a line it shares (S033): the blocks
-    // in between are estimated anew like all others, so an offset across them would not hold.
-    QTextBlock block = layout_->blockOfTextAt(verticalScrollBar()->value());
+    // The text of the top line itself, not a share of a block's height: a block that shares its first
+    // line with the blocks before it has more or fewer lines at another width, and the same share
+    // would land on another of its lines (S033).
+    QTextBlock block = layout_->blockOfTextAt(y);
     if (!block.isValid()) {
         block = document()->lastBlock();
     }
-    const QRectF rect = blockBoundingGeometry(block);
-    const qreal into = verticalScrollBar()->value() - rect.top();
-    return {block, rect.height() > 0 ? into / rect.height() : 0.0};
+    const QRectF rect = blockBoundingGeometry(block);  // lays the block out
+    const QTextLayout* text = block.layout();
+    if (layout_->reservedHeight(block) > 0 || text->lineCount() == 0) {
+        QTextCursor cursor(block);
+        return {cursor, y - rect.top()};
+    }
+    int index = 0;
+    while (index + 1 < text->lineCount() && text->lineAt(index + 1).y() <= y - rect.top()) {
+        ++index;
+    }
+    const qreal lineTop = rect.top() + text->lineAt(index).y();
+    // A first line that goes on in the line before: the line starts in an earlier block.
+    while (index == 0 && layout_->sharesLineWithPrevious(block) && block.previous().isValid() &&
+           block.previous().layout()->lineCount() > 0) {
+        block = block.previous();
+        index = block.layout()->lineCount() - 1;
+    }
+    QTextCursor cursor(block);
+    cursor.setPosition(block.position() + block.layout()->lineAt(index).textStart());
+    return {cursor, y - lineTop};
+}
+
+EditorWidget::ScrollAnchor EditorWidget::readingAnchor() {
+    if (heldAnchor_.text.isNull()) {
+        heldAnchor_ = captureAnchor();
+    }
+    return heldAnchor_;
 }
 
 void EditorWidget::restoreAnchor(const ScrollAnchor& anchor) {
     // A new width or font re-estimates every block, so the same scroll value would show other
     // text; scroll back to the line that was at the top.
-    if (!anchor.block.isValid()) {
+    if (anchor.text.isNull()) {
         return;
     }
     ++anchorRestores_;
-    const QRectF rect = blockBoundingGeometry(anchor.block);
+    const QTextBlock block = anchor.text.block();
+    const auto lineTop = [&] {
+        qreal top = blockBoundingGeometry(block).top();  // lays the block out
+        if (const QTextLayout* text = block.layout(); layout_->reservedHeight(block) <= 0 && text->lineCount() > 0) {
+            const QTextLine line = text->lineForTextPosition(anchor.text.positionInBlock());
+            if (line.isValid()) {
+                top += line.y();
+            }
+        }
+        return top;
+    };
     pendingShift_ = 0;
-    verticalScrollBar()->setValue(static_cast<int>(std::lround(rect.top() + anchor.fraction * rect.height())));
+    // Laying blocks out changes heights that the scroll range takes in only once the event loop
+    // runs, and scrolling lays out the blocks that come into view: near the end of the document
+    // either can cut the value short while the estimates below are still too small. Set it again
+    // once the blocks on screen have their lines; the range follows the document size later.
+    QScrollBar* bar = verticalScrollBar();
+    for (int pass = 0; pass < 2; ++pass) {
+        const int value = static_cast<int>(std::lround(lineTop() + anchor.offset));
+        bar->setMaximum(std::max(bar->maximum(), value));
+        bar->setValue(value);
+        if (bar->value() == value) {
+            break;
+        }
+    }
 }
 
 void EditorWidget::applyTheme(const core::Theme& theme) {
     const QScopedValueRollback<bool> guard(resizing_, true);
-    const ScrollAnchor anchor = captureAnchor();
+    const ScrollAnchor anchor = readingAnchor();
     EditorFormats formats(theme);
     // Changing fonts and margins marks the document as modified in Qt; a theme is not an edit.
     const bool wasModified = document()->isModified();
@@ -297,7 +352,7 @@ void EditorWidget::resizeEvent(QResizeEvent* event) {
     }
     const QScopedValueRollback<bool> guard(resizing_, true);
     verticalScroller_->stop();
-    const ScrollAnchor anchor = captureAnchor();
+    const ScrollAnchor anchor = readingAnchor();
     updateMargins();
     QTextEdit::resizeEvent(event);
     positionToolbar();

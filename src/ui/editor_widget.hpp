@@ -10,6 +10,7 @@
 
 #include <QPointF>
 #include <QTextBlock>
+#include <QTextCursor>
 #include <QTextEdit>
 
 #include <memory>
@@ -123,12 +124,18 @@ private:
     [[nodiscard]] QRectF blockBoundingGeometry(const QTextBlock& block) const;
     [[nodiscard]] QPointF contentOffset() const;
     [[nodiscard]] QTextBlock firstVisibleBlock() const;
-    /// The line at the top of the viewport and how far into it the view starts.
+    /// The reading position: the first character of the line at the top of the viewport (a cursor,
+    /// so that it follows edits) and how far below the top of that line the view starts. Null at
+    /// the top of the document.
     struct ScrollAnchor {
-        QTextBlock block;
-        qreal fraction = 0;
+        QTextCursor text;
+        qreal offset = 0;
     };
     [[nodiscard]] ScrollAnchor captureAnchor() const;
+    /// The reading position held since the last scroll, taken now if none is held: consecutive
+    /// resizes and theme changes return to the same line instead of a position taken anew each
+    /// time, which would drift (S033).
+    [[nodiscard]] ScrollAnchor readingAnchor();
     void restoreAnchor(const ScrollAnchor& anchor);
     void keepContentStill(qreal top, qreal oldHeight, qreal newHeight);
     void applyPendingShift();
@@ -155,6 +162,7 @@ private:
     qreal pendingShift_ = 0;  ///< height change above the viewport not yet scrolled away
     bool applyingShift_ = false;
     bool resizing_ = false;
+    ScrollAnchor heldAnchor_;  ///< reading position across resizes until the view scrolls
     quint64 anchorRestores_ = 0;
     BlockStyler* styler_ = nullptr;
     std::unique_ptr<TableEmbedder> tables_;

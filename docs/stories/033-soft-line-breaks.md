@@ -155,10 +155,13 @@ All rules follow CommonMark 0.31.2 (sections 4.8 Paragraphs, 5.2 List items, 6.7
     paragraph and reveals its source lines.
 - **Reading position (S019 finding 2):**
   - A new width or font re-estimates every block; the line at the top of the view stays at the top.
-    The scroll anchor is the block whose own lines cover the top of the view
-    (`BlockLayout::blockOfTextAt`), not the first block of a visual line it shares
-    (`BlockLayout::firstBlockOfLineAt`): the blocks in between are estimated anew like all
-    others, so an offset measured across them would not hold.
+    The reading position is the text that starts that line (in the first block of a line that
+    blocks share) and how far into the line the view starts, not a share of a block's height: a
+    block that shares its first line has more or fewer lines at another width, and the same share
+    would land on another of its lines.
+  - Consecutive resizes and theme changes return to the same reading position until the view
+    scrolls; taken anew at each one, it would drift. At the end of the document the view returns to
+    the same line as well, although the scroll range takes in new heights only later.
 
 ## Acceptance scenarios
 
@@ -350,8 +353,11 @@ No new theme tokens are required:
   visual line of the paragraph (`orderedListContinuationThatDoesNotFitStartsANewLine`, widths from
   the editor's font), Up/Down/Left/Right navigation, find-bar highlighting in flowing paragraphs,
   20,000-line paragraph latency budget, byte-exact save, reading position on resize inside a shared
-  visual line (`resizingKeepsTheTopLineInsideAFlowingParagraph`), one restore of the reading
-  position per resize although Qt nests a second `resizeEvent`
+  visual line (`resizingKeepsTheTopLineInsideAFlowingParagraph`), the same top line after a resize
+  and back at many widths, in the middle and at the end of the document
+  (`aResizeAndBackShowsTheSameTopLine`, `aResizeAndBackAtTheEndShowsTheSameTopLine`), a new reading
+  position once the view scrolls (`scrollingAfterAResizeTakesTheNewTopLine`), one restore of the
+  reading position per resize although Qt nests a second `resizeEvent`
   (`aResizeRestoresTheReadingPositionOnce`).
 - S027: `tst_s027_smooth_scrolling::shiftDuringExternalSetValueUsesCurrentBarValue` – a shift while
   the program sets the scroll bar starts from the bar's value.
