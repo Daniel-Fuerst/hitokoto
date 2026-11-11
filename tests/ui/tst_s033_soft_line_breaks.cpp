@@ -95,6 +95,63 @@ private:
     QWidget* widget_;
 };
 
+/// The line at the top of the view: the block and line of the text that starts it, and its position.
+struct TopLine {
+    int block = -1;
+    int line = -1;
+    int position = -1;
+};
+
+TopLine topLineOf(const ui::EditorWidget* editor) {
+    const QTextCursor c = editor->cursorForPosition(QPoint(0, 2));
+    const QTextLine line = c.block().layout()->lineForTextPosition(c.positionInBlock());
+    return {c.blockNumber(), line.isValid() ? line.lineNumber() : -1, c.position()};
+}
+
+/// Whether the text at `position` is in the line at y 2 of the view (the tests start the view 3
+/// pixels into a line, so the rounding of the scroll value does not matter).
+bool inTopLine(const ui::EditorWidget* editor, int position) {
+    const QTextBlock block = editor->document()->findBlock(position);
+    const QTextLine line = block.layout()->lineForTextPosition(position - block.position());
+    const qreal top =
+        editor->blockLayout()->blockBoundingRect(block).top() + line.y() - editor->verticalScrollBar()->value();
+    return top <= 2 && top + line.height() > 2;
+}
+
+/// Whether the line with the text at `position` reaches the top edge of the view, to half a pixel
+/// (the rounding of the scroll value).
+bool reachesTopEdge(const ui::EditorWidget* editor, int position) {
+    const QTextBlock block = editor->document()->findBlock(position);
+    const QTextLine line = block.layout()->lineForTextPosition(position - block.position());
+    const qreal top =
+        editor->blockLayout()->blockBoundingRect(block).top() + line.y() - editor->verticalScrollBar()->value();
+    return top <= 0.5 && top + line.height() >= -0.5;
+}
+
+/// Whether a line starts with the text at `position`.
+bool startsLine(const QTextDocument* doc, int position) {
+    const QTextBlock block = doc->findBlock(position);
+    return block.position() + block.layout()->lineForTextPosition(position - block.position()).textStart() == position;
+}
+
+/// Scrolls `editor` so that the view starts 3 pixels into line `line` of `block`.
+void showLineAtTop(ui::EditorWidget* editor, const QTextBlock& block, int line) {
+    const QRectF rect = editor->blockLayout()->blockBoundingRect(block);
+    editor->verticalScrollBar()->setValue(static_cast<int>(std::lround(rect.top() + block.layout()->lineAt(line).y())) +
+                                          3);
+}
+
+/// Lines of a paragraph that flow: every tenth a heading, every third long enough to wrap.
+QByteArray flowingLines(int count) {
+    QByteArray markdown;
+    for (int i = 0; i < count; ++i) {
+        markdown += i % 10 == 0 ? "## Heading " + QByteArray::number(i) + '\n'
+                                : "line " + QByteArray::number(i) + ' ' +
+                                      QByteArray(i % 3 == 0 ? 180 : 10, 'a').replace("aaaa", "aa a") + '\n';
+    }
+    return markdown;
+}
+
 }  // namespace
 
 class tst_s033_soft_line_breaks : public QObject {
@@ -546,6 +603,138 @@ private slots:
         f.window->resize(f.window->width() + 40, f.window->height());
         f.settle();
         QCOMPARE(topBlock(), before);
+    }
+
+    // A resize and back again shows the same line at the top (follow-up to PR #37: Windows CI red in
+    // tst_s019 resizingKeepsTheReadingPosition, 1451 instead of 1452). The top line of the view can be
+    // the second or a later line of a block that shares its first line with the blocks before it; a
+    // share of that block's height lands on another of its lines once the width changes, and taking
+    // the reading position anew at each resize lets the view drift. After the smaller width the text
+    // that started the top line is still in it; after the way back it is the same line again.
+    void aResizeAndBackShowsTheSameTopLine() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("resize_back.md"), flowingLines(1500))));
+        f.settle();
+        auto* editor = f.editor();
+        const auto* doc = editor->document();
+
+        QStringList failures;
+        int cases = 0;
+        for (int width = 700; width <= 1100; width += 20) {
+            f.window->resize(width, 700);
+            f.settle();
+            for (const int number : {603, 702, 801}) {
+                const QTextBlock block = doc->findBlockByNumber(number);
+                (void)editor->blockLayout()->blockBoundingRect(block);  // lays it out
+                if (!editor->blockLayout()->sharesLineWithPrevious(block)) {
+                    continue;
+                }
+                for (int line = 1; line < block.layout()->lineCount(); ++line) {
+                    showLineAtTop(editor, block, line);
+                    f.settle();
+                    const TopLine before = topLineOf(editor);
+                    if (before.block != number || before.line != line) {
+                        failures << QStringLiteral("width %1: block %2 line %3 not at the top (%4 line %5)")
+                                        .arg(width)
+                                        .arg(number)
+                                        .arg(line)
+                                        .arg(before.block)
+                                        .arg(before.line);
+                        continue;
+                    }
+                    ++cases;
+                    f.window->resize(width - 40, 700);
+                    f.settle();
+                    if (!inTopLine(editor, before.position)) {
+                        const TopLine narrow = topLineOf(editor);
+                        failures << QStringLiteral("width %1, block %2 line %3: narrower, top is %4 line %5")
+                                        .arg(width)
+                                        .arg(number)
+                                        .arg(line)
+                                        .arg(narrow.block)
+                                        .arg(narrow.line);
+                    }
+                    f.window->resize(width, 700);
+                    f.settle();
+                    const TopLine after = topLineOf(editor);
+                    if (after.block != before.block || after.line != before.line) {
+                        failures << QStringLiteral("width %1, block %2 line %3: back, top is %4 line %5")
+                                        .arg(width)
+                                        .arg(number)
+                                        .arg(line)
+                                        .arg(after.block)
+                                        .arg(after.line);
+                    }
+                }
+            }
+        }
+        QVERIFY(cases > 20);
+        QVERIFY2(failures.isEmpty(), qPrintable(QStringLiteral("%1 of %2 cases: %3")
+                                                    .arg(failures.size())
+                                                    .arg(cases)
+                                                    .arg(failures.mid(0, 8).join(QStringLiteral("; ")))));
+    }
+
+    // The same at the end of the document, where the view starts anywhere in its top line. Laying
+    // out the line to return to changes the document's height before the scroll range follows it,
+    // and scrolling there lays out the blocks that come into view, which can make the document
+    // shorter for a moment: neither may cut the scroll value short.
+    void aResizeAndBackAtTheEndShowsTheSameTopLine() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("resize_end.md"), flowingLines(1500))));
+        f.settle();
+        auto* editor = f.editor();
+        auto* bar = editor->verticalScrollBar();
+
+        QStringList failures;
+        for (int width = 700; width <= 1100; width += 10) {
+            f.window->resize(width, 700);
+            f.settle();
+            for (int i = 0; i < 3 && bar->value() < bar->maximum(); ++i) {
+                bar->setValue(bar->maximum());
+                f.settle();
+            }
+            const int before = editor->cursorForPosition(QPoint(0, 0)).position();
+            if (!reachesTopEdge(editor, before) || !startsLine(editor->document(), before)) {
+                failures << QStringLiteral("width %1: no line starts at the top").arg(width);
+                continue;
+            }
+            f.window->resize(width - 40, 700);
+            f.settle();
+            if (!reachesTopEdge(editor, before)) {
+                failures << QStringLiteral("width %1: narrower, %2 is not in the top line").arg(width).arg(before);
+            }
+            f.window->resize(width, 700);
+            f.settle();
+            if (!reachesTopEdge(editor, before) || !startsLine(editor->document(), before)) {
+                failures
+                    << QStringLiteral("width %1: back, the top line does not start with %2").arg(width).arg(before);
+            }
+        }
+        QVERIFY2(failures.isEmpty(), qPrintable(QStringLiteral("%1 of 41 widths: %2")
+                                                    .arg(failures.size())
+                                                    .arg(failures.mid(0, 8).join(QStringLiteral("; ")))));
+    }
+
+    // The reading position holds across consecutive resizes only until the view scrolls; the next
+    // resize keeps the line the reader scrolled to.
+    void scrollingAfterAResizeTakesTheNewTopLine() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("resize_scroll.md"), flowingLines(1500))));
+        f.settle();
+        auto* editor = f.editor();
+        showLineAtTop(editor, editor->document()->findBlockByNumber(702), 1);
+        f.settle();
+
+        f.window->resize(f.window->width() - 40, f.window->height());
+        f.settle();
+        editor->verticalScrollBar()->triggerAction(QAbstractSlider::SliderPageStepAdd);
+        f.settle();
+        const TopLine scrolled = topLineOf(editor);
+        QVERIFY(scrolled.block > 702);
+        f.window->resize(f.window->width() + 40, f.window->height());
+        f.settle();
+        QVERIFY(inTopLine(editor, scrolled.position));
     }
 
     // The new margins of a resize re-lay out the viewport, and Qt passes that resize on to the
