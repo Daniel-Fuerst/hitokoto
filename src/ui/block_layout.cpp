@@ -33,6 +33,28 @@ void setSharesPrevLine(const QTextBlock& block, bool shares) {
     }
 }
 
+/// Where a line of a block starts in its text and in the block (S033: whether laying a block out
+/// again changed what the next block continues from).
+struct LineShape {
+    int textStart = 0;
+    int textLength = 0;
+    qreal x = 0;
+    qreal y = 0;
+    qreal width = 0;
+    bool operator==(const LineShape&) const = default;
+};
+
+std::vector<LineShape> lineShapes(const QTextBlock& block) {
+    const QTextLayout* layout = block.layout();
+    std::vector<LineShape> shapes;
+    shapes.reserve(static_cast<std::size_t>(layout->lineCount()));
+    for (int i = 0; i < layout->lineCount(); ++i) {
+        const QTextLine line = layout->lineAt(i);
+        shapes.push_back({line.textStart(), line.textLength(), line.x(), line.y(), line.naturalTextWidth()});
+    }
+    return shapes;
+}
+
 }  // namespace
 
 BlockLayout::BlockLayout(QTextDocument* document) : QAbstractTextDocumentLayout(document) {
@@ -217,9 +239,26 @@ void BlockLayout::setParagraphFlow(const QTextBlock& block, bool flowsToNext, bo
     if (!anyLaidOut) {
         return;
     }
-    dirtyBlocks_.push_back(block.blockNumber());
-    if (flowChanged && block.next().isValid()) {
-        dirtyBlocks_.push_back(block.next().blockNumber());
+    if (block.layout()->lineCount() > 0) {
+        dirtyBlocks_.push_back(block.blockNumber());
+        if (flowChanged && block.next().isValid()) {
+            dirtyBlocks_.push_back(block.next().blockNumber());
+        }
+    } else {
+        // Nothing of the block is drawn, so it shares no line, and it is laid out when it is needed.
+        // Laying it out here would grow the laid-out part of a long paragraph by it on every change
+        // of flow. Only laid-out neighbours change: the one before by its advance, the one after
+        // when it shared a line with this block.
+        if (sharesLineWithPrevious(block)) {
+            setSharesPrevLine(block, false);
+            if (block.previous().isValid() && block.previous().layout()->lineCount() > 0) {
+                dirtyBlocks_.push_back(block.previous().blockNumber());
+            }
+        }
+        const QTextBlock next = block.next();
+        if (next.isValid() && next.layout()->lineCount() > 0 && sharesLineWithPrevious(next)) {
+            dirtyBlocks_.push_back(next.blockNumber());
+        }
     }
     if (batch_ == 0) {
         flushDirtyChains(true);
@@ -446,11 +485,13 @@ int BlockLayout::layoutParagraphChain(const QTextBlock& target, bool emitNow, Ch
     }
 
     const bool laidOutOnly = scope == ChainScope::LaidOutOnly;
-    if (laidOutOnly && target.layout()->lineCount() == 0) {
-        // Nothing of the block is drawn, so it shares no line; it is laid out when it is needed.
-        // Laying it out here would also lay out the lookback before it and grow the laid-out part
-        // of a long paragraph on every change of flow. Only its laid-out neighbours change: the one
-        // before by its advance, the one after by no longer sharing a line with it.
+    if (laidOutOnly && target.layout()->lineCount() == 0 && continuesFlowFrom(target.previous(), target) &&
+        target.previous().layout()->lineCount() == 0) {
+        // The change dropped the block's lines, and those of the block it continues from too: it
+        // cannot be placed on that block's last line now, and laying the paragraph out from further
+        // back would grow its laid-out part. It is laid out when it is needed; until then it shares
+        // no line. Only laid-out neighbours change: the one before by its advance, the one after by
+        // no longer sharing a line with it.
         if (sharesLineWithPrevious(target)) {
             setSharesPrevLine(target, false);
             const QTextBlock prev = target.previous();
@@ -472,8 +513,11 @@ int BlockLayout::layoutParagraphChain(const QTextBlock& target, bool emitNow, Ch
     constexpr int kMaxLookback = 64;
     QTextBlock start = target;
     int stepsBack = 0;
-    while (stepsBack < kMaxLookback && continuesFlowFrom(start.previous(), start) && !hardBreak(start.previous()) &&
-           (!laidOutOnly || start.previous().layout()->lineCount() > 0)) {
+    // Extend lays out the blocks before `target` that have no lines yet and goes on from the last one
+    // before them that has lines. LaidOutOnly starts at `target`: the lines before it stay as they
+    // are (a dirty block before it is laid out first, flushDirtyChains goes in block order).
+    while (!laidOutOnly && stepsBack < kMaxLookback && continuesFlowFrom(start.previous(), start) &&
+           !hardBreak(start.previous()) && start.previous().layout()->lineCount() == 0) {
         start = start.previous();
         ++stepsBack;
     }
@@ -548,9 +592,14 @@ int BlockLayout::layoutParagraphChain(const QTextBlock& target, bool emitNow, Ch
             }
             break;
         }
+        const std::vector<LineShape> before = curHadLayout ? lineShapes(cur) : std::vector<LineShape>{};
         layoutContinuationBlock(prev, cur, subLeft, subWidth);
         laidOut.push_back(cur);
         prev = cur;
+        if (curHadLayout && cur.blockNumber() > targetNum && sharesLineWithPrevious(cur) == wasSharing &&
+            lineShapes(cur) == before) {
+            break;  // the same lines as before: the blocks after it keep theirs
+        }
         if (cur.blockNumber() > targetNum && !curHadLayout &&
             (!sharesLineWithPrevious(cur) || cur.layout()->lineCount() > 1)) {
             break;
