@@ -45,6 +45,9 @@ public:
     [[nodiscard]] BlockLayout* blockLayout() const noexcept { return layout_; }
     /// Counts real text edits (not formatting); used to decide whether a save is current.
     [[nodiscard]] quint64 editCount() const noexcept { return editCount_; }
+    /// How often the reading position was restored after a new width or theme (instrumentation for
+    /// tests, S033 review O3).
+    [[nodiscard]] quint64 anchorRestores() const noexcept { return anchorRestores_; }
     /// First and last block number on screen.
     [[nodiscard]] std::pair<int, int> visibleBlockRange() const;
     /// The language badge painted on `block` (an opening fence while concealed), else empty (S021).
@@ -152,6 +155,7 @@ private:
     qreal pendingShift_ = 0;  ///< height change above the viewport not yet scrolled away
     bool applyingShift_ = false;
     bool resizing_ = false;
+    quint64 anchorRestores_ = 0;
     BlockStyler* styler_ = nullptr;
     std::unique_ptr<TableEmbedder> tables_;
     std::unique_ptr<PropertiesEmbedder> properties_;

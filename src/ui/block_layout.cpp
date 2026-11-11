@@ -690,12 +690,16 @@ void BlockLayout::estimateAll() {
     heights_.assign(heights);
 }
 
-QTextBlock BlockLayout::blockAt(qreal y) const {
+QTextBlock BlockLayout::blockOfTextAt(qreal y) const {
     const std::size_t index = heights_.indexAt(y - margin());
     if (index >= heights_.size()) {
         return {};
     }
-    QTextBlock b = document()->findBlockByNumber(static_cast<int>(index));
+    return document()->findBlockByNumber(static_cast<int>(index));
+}
+
+QTextBlock BlockLayout::firstBlockOfLineAt(qreal y) const {
+    QTextBlock b = blockOfTextAt(y);
     while (b.isValid() && sharesLineWithPrevious(b) && b.previous().isValid()) {
         b = b.previous();
     }
@@ -732,7 +736,7 @@ int BlockLayout::pageCount() const {
 }
 
 int BlockLayout::hitTest(const QPointF& point, Qt::HitTestAccuracy accuracy) const {
-    QTextBlock first = blockAt(point.y());
+    QTextBlock first = firstBlockOfLineAt(point.y());
     if (!first.isValid()) {
         if (accuracy == Qt::ExactHit) {
             return -1;
@@ -805,7 +809,7 @@ int BlockLayout::hitTest(const QPointF& point, Qt::HitTestAccuracy accuracy) con
 
 void BlockLayout::draw(QPainter* painter, const PaintContext& context) {
     const QRectF clip = context.clip.isValid() ? context.clip : QRectF(QPointF(0, 0), documentSize());
-    for (QTextBlock block = blockAt(clip.top()); block.isValid(); block = block.next()) {
+    for (QTextBlock block = firstBlockOfLineAt(clip.top()); block.isValid(); block = block.next()) {
         if (!block.isVisible()) {
             continue;
         }

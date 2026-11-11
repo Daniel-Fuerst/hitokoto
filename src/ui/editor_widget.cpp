@@ -135,7 +135,7 @@ QPointF EditorWidget::contentOffset() const {
 }
 
 QTextBlock EditorWidget::firstVisibleBlock() const {
-    QTextBlock block = layout_->blockAt(verticalScrollBar()->value());
+    QTextBlock block = layout_->firstBlockOfLineAt(verticalScrollBar()->value());
     return block.isValid() ? block : document()->lastBlock();
 }
 
@@ -174,7 +174,12 @@ EditorWidget::ScrollAnchor EditorWidget::captureAnchor() const {
     if (verticalScrollBar()->value() <= 0) {
         return {};
     }
-    const QTextBlock block = firstVisibleBlock();
+    // The block of the top line itself, not the first block of a line it shares (S033): the blocks
+    // in between are estimated anew like all others, so an offset across them would not hold.
+    QTextBlock block = layout_->blockOfTextAt(verticalScrollBar()->value());
+    if (!block.isValid()) {
+        block = document()->lastBlock();
+    }
     const QRectF rect = blockBoundingGeometry(block);
     const qreal into = verticalScrollBar()->value() - rect.top();
     return {block, rect.height() > 0 ? into / rect.height() : 0.0};
@@ -186,6 +191,7 @@ void EditorWidget::restoreAnchor(const ScrollAnchor& anchor) {
     if (!anchor.block.isValid()) {
         return;
     }
+    ++anchorRestores_;
     const QRectF rect = blockBoundingGeometry(anchor.block);
     pendingShift_ = 0;
     verticalScrollBar()->setValue(static_cast<int>(std::lround(rect.top() + anchor.fraction * rect.height())));
@@ -459,7 +465,7 @@ bool EditorWidget::viewportEvent(QEvent* event) {
 
 QTextCharFormat EditorWidget::formatAt(const QPoint& pos) const {
     const QPointF docPos(pos.x() + horizontalScrollBar()->value(), pos.y() + verticalScrollBar()->value());
-    const QTextBlock first = layout_->blockAt(docPos.y());
+    const QTextBlock first = layout_->firstBlockOfLineAt(docPos.y());
     if (!first.isValid()) {
         return {};
     }

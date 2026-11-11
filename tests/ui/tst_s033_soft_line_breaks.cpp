@@ -8,7 +8,9 @@
 #include "ui_test_support.hpp"
 
 #include <QElapsedTimer>
+#include <QFontMetricsF>
 #include <QLineEdit>
+#include <QScrollBar>
 
 #include <vector>
 
@@ -57,6 +59,30 @@ QString differenceFromTheReference(ui::EditorWidget* editor) {
     }
     return {};
 }
+
+/// Counts the resize events a widget receives itself (not those of its viewport).
+class ResizeCounter : public QObject {
+public:
+    explicit ResizeCounter(QWidget* widget) : widget_(widget) { widget_->installEventFilter(this); }
+    ~ResizeCounter() override { widget_->removeEventFilter(this); }
+    ResizeCounter(const ResizeCounter&) = delete;
+    ResizeCounter& operator=(const ResizeCounter&) = delete;
+    ResizeCounter(ResizeCounter&&) = delete;
+    ResizeCounter& operator=(ResizeCounter&&) = delete;
+
+    int count = 0;
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override {
+        if (watched == widget_ && event->type() == QEvent::Resize) {
+            ++count;
+        }
+        return false;
+    }
+
+private:
+    QWidget* widget_;
+};
 
 }  // namespace
 
@@ -218,7 +244,7 @@ private slots:
         test::Fixture f;
         f.window->resize(900, 700);
         constexpr auto kDoc =
-            "1. Implement `LineElement` for line-local block constructs, `MultiLineElement` for blocks that\n"
+            "1. Implement `LineElement` for blocks that\n"
             "   span lines (fenced code) or `InlineElement` for inline constructs in\n"
             "   `src/core/src/elements/<name>.cpp`, with a factory function. Inline code runs take precedence\n"
             "   over other inline styles. A multi-line element keeps a non-zero number of its own as state;\n"
@@ -245,7 +271,9 @@ private slots:
             QVERIFY2(!test::isCollapsed(block(i), firstVisibleCol),
                      qPrintable(QStringLiteral("line %1 col %2").arg(i).arg(firstVisibleCol)));
         }
-        // Line 1 ("   span lines...") shares the last visual line of line 0 ("... that").
+        // Line 1 ("   span lines...") shares the last visual line of line 0 ("... that"). Line 0 is
+        // short so that its line has room for "span" with any font (with Helvetica's metrics a longer
+        // line 0 ended too close to the right edge, and "span" rightly started a new line).
         QVERIFY(editor->blockLayout()->sharesLineWithPrevious(block(1)));
         QCOMPARE(differenceFromTheReference(editor), QString());
 
@@ -256,6 +284,52 @@ private slots:
             QVERIFY(!editor->blockLayout()->sharesLineWithPrevious(block(i)));
             QVERIFY(!test::isCollapsed(block(i), 0));
         }
+        QCOMPARE(differenceFromTheReference(editor), QString());
+    }
+
+    // A continuation line flows onto the last visual line of the line above only if its first word
+    // fits in the rest of that line; otherwise it starts the next visual line of the same paragraph.
+    // The widths come from the editor's font, so the case holds with any font: line 0 and the first
+    // word of line 1 each take about 60 % of the text column.
+    void orderedListContinuationThatDoesNotFitStartsANewLine() {
+        test::Fixture f;
+        f.window->resize(900, 700);
+        auto* editor = f.editor();
+        const QFontMetricsF metrics(editor->document()->defaultFont());
+        const qreal column = editor->viewport()->width() - 2 * editor->document()->documentMargin();
+        const auto wordOfWidth = [&](qreal width) {
+            QString word;
+            while (metrics.horizontalAdvance(word) < width) {
+                word += QLatin1Char('m');
+            }
+            return word;
+        };
+        const QString lineZeroWord = wordOfWidth(0.6 * column);
+        const QString lineOneWord = wordOfWidth(0.6 * column);
+        const QByteArray markdown = "1. " + lineZeroWord.toLatin1() + "\n" + "   " + lineOneWord.toLatin1() + " and\n" +
+                                    "   more.\n"
+                                    "\n"
+                                    "Outside\n";
+        QVERIFY(f.open(f.writeFile(QStringLiteral("ordered_no_room.md"), markdown)));
+        f.placeCaret(4);
+        f.settle();
+
+        const auto* doc = editor->document();
+        const auto block = [&](int n) { return doc->findBlockByNumber(n); };
+        for (int i = 0; i <= 2; ++i) {
+            editor->blockLayout()->ensureBlockLayout(block(i));
+        }
+        QCOMPARE(block(0).layout()->lineCount(), 1);  // line 0 stays one visual line
+
+        // The first word of line 1 does not fit beside line 0: line 1 starts a new visual line, with
+        // its indentation concealed.
+        QVERIFY(!editor->blockLayout()->sharesLineWithPrevious(block(1)));
+        QVERIFY(test::isCollapsed(block(1), 0));
+        QVERIFY(test::isCollapsed(block(1), 2));
+        const QTextLine first = block(1).layout()->lineAt(0);
+        QVERIFY(first.naturalTextWidth() <= first.width() + 0.5);  // the word fits on a line of its own
+        // The paragraph still flows: line 2 shares the last visual line of line 1.
+        QVERIFY(editor->blockLayout()->sharesLineWithPrevious(block(2)));
         QCOMPARE(differenceFromTheReference(editor), QString());
     }
 
@@ -387,6 +461,83 @@ private slots:
         const QString saved = f.dir.filePath(QStringLiteral("saved.md"));
         QVERIFY(f.saveAndWait(saved));
         QCOMPARE(test::Fixture::readFile(saved), original);
+    }
+
+    // A new width re-estimates every block (S019 finding 2). In a flowing paragraph the line at the
+    // top of the view can start inside a block that shares its first line with the blocks before
+    // it; the reading position is that line, not the first block of the shared line.
+    void resizingKeepsTheTopLineInsideAFlowingParagraph() {
+        QByteArray markdown = "# Notes\n\n";
+        for (int p = 0; p < 40; ++p) {
+            for (int i = 0; i < 24; ++i) {
+                const QByteArray words = i % 5 == 0 ? QByteArray(120, 'a').replace("aaaa", "aa a") : QByteArray("aa a");
+                markdown += "word " + QByteArray::number(p * 100 + i) + ' ' + words + '\n';
+            }
+            markdown += '\n';
+        }
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("resize_flow.md"), markdown)));
+        f.placeCaret(0);
+        f.settle();
+
+        auto* editor = f.editor();
+        auto* bar = editor->verticalScrollBar();
+        const auto topBlock = [&] { return editor->cursorForPosition(QPoint(40, 2)).blockNumber(); };
+        // Page down until the top line belongs to a block well behind the first block of its shared
+        // lines (firstBlockOfLineAt), so that blocks between the two lie above the reading position.
+        bool inside = false;
+        for (int page = 0; page < 40 && !inside; ++page) {
+            bar->triggerAction(QAbstractSlider::SliderPageStepAdd);
+            f.settle();
+            const QTextBlock top = editor->document()->findBlockByNumber(topBlock());
+            inside = editor->blockLayout()->sharesLineWithPrevious(top) &&
+                     top.blockNumber() - editor->blockLayout()->firstBlockOfLineAt(bar->value()).blockNumber() >= 6;
+        }
+        if (!inside) {
+            // Which page starts where depends on the font; tst_s019 resizingKeepsTheReadingPosition
+            // covers the same case at the end of a document.
+            QSKIP("no page starts well inside a shared line with this font");
+        }
+        const int before = topBlock();
+
+        f.window->resize(f.window->width() - 40, f.window->height());
+        f.settle();
+        QCOMPARE(topBlock(), before);
+        f.window->resize(f.window->width() + 40, f.window->height());
+        f.settle();
+        QCOMPARE(topBlock(), before);
+    }
+
+    // The new margins of a resize re-lay out the viewport, and Qt passes that resize on to the
+    // editor's resizeEvent while the first one still runs (S033 review O3). The nested call must
+    // not restore a reading position of its own, taken from the width in between: one resize of
+    // the editor restores the reading position once.
+    void aResizeRestoresTheReadingPositionOnce() {
+        QByteArray markdown;
+        for (int i = 0; i < 1500; ++i) {
+            markdown += "line " + QByteArray::number(i) + ' ' +
+                        QByteArray(i % 3 == 0 ? 180 : 10, 'a').replace("aaaa", "aa a") + '\n';
+        }
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("resize_once.md"), markdown)));
+        f.settle();
+        auto* editor = f.editor();
+        auto* bar = editor->verticalScrollBar();
+        for (int page = 0; page < 30; ++page) {
+            bar->triggerAction(QAbstractSlider::SliderPageStepAdd);
+            f.settle();
+        }
+        QVERIFY(bar->value() > 0);  // at the very top there is no reading position to restore
+
+        // The window is wider than the built-in theme's editor-max-width, so the side margins
+        // change with the width.
+        QVERIFY(editor->width() > 760 + 40);
+        ResizeCounter editorResizes(editor);
+        const quint64 before = editor->anchorRestores();
+        f.window->resize(f.window->width() - 40, f.window->height());
+        f.settle();
+        QVERIFY(editorResizes.count > 0);
+        QCOMPARE(editor->anchorRestores() - before, static_cast<quint64>(editorResizes.count));
     }
 
     void longFlowingParagraphStaysWithinLatencyBudget() {
