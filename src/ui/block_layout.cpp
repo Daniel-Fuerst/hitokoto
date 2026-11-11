@@ -495,7 +495,7 @@ int BlockLayout::layoutParagraphChain(const QTextBlock& target, bool emitNow, Ch
         if (sharesLineWithPrevious(target)) {
             setSharesPrevLine(target, false);
             const QTextBlock prev = target.previous();
-            if (prev.isValid() && prev.layout()->lineCount() > 0) {
+            if (prev.isValid()) {
                 if (!inSync()) {
                     deferred_.push_back(prev);
                 } else {
@@ -553,13 +553,17 @@ int BlockLayout::layoutParagraphChain(const QTextBlock& target, bool emitNow, Ch
     }
 
     std::vector<QTextBlock> laidOut;
-    if (start.previous().isValid() && start.previous().layout()->lineCount() > 0) {
-        laidOut.push_back(start.previous());
-    }
+    const bool startWasSharing = sharesLineWithPrevious(start);
     if (!continuesFlowFrom(start.previous(), start)) {
         layoutSingleBlock(start, subLeft, subWidth);
     } else {
         layoutContinuationBlock(start.previous(), start, subLeft, subWidth);
+    }
+    // The block before `start` ends where `start` begins: its advance changes with whether `start`
+    // shares its last line. Without lines of its own it gets its estimate until it is laid out.
+    if (start.previous().isValid() &&
+        (start.previous().layout()->lineCount() > 0 || startWasSharing != sharesLineWithPrevious(start))) {
+        laidOut.push_back(start.previous());
     }
     laidOut.push_back(start);
 
