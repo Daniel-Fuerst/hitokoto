@@ -132,6 +132,10 @@ private:
     void applyChange(int position, int charsRemoved, int charsAdded);
     void storeDeferredHeights();
     [[nodiscard]] qreal estimatedHeight(const QTextBlock& block) const;
+    /// Whether `block` is estimated to go on in the last line of the block before it (S033, review
+    /// O2): as the styler set it once the block before is styled; before that, when both blocks have
+    /// text, as most consecutive lines of Markdown are lines of one paragraph.
+    [[nodiscard]] bool estimatedToFlowOn(const QTextBlock& block) const;
     /// Lays out the lines of `block` (wrapping at the available width) and returns its height.
     qreal layoutBlock(const QTextBlock& block) const;
     qreal layoutSingleBlock(const QTextBlock& block, qreal& subLeft, qreal& subWidth) const;

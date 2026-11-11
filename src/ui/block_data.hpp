@@ -43,6 +43,7 @@ public:
 // Bit 28 (0x10000000): flowsToNext (S032)
 // Bit 29 (0x20000000): hardBreak (S032)
 // Bit 30 (0x40000000): sharesLineWithPrevious (S032)
+constexpr int kStyleBits = 0x3;
 constexpr int kWrapIndentShift = 26;
 constexpr int kWrapIndentMax = 3;
 constexpr int kWrapIndentMask = kWrapIndentMax << kWrapIndentShift;

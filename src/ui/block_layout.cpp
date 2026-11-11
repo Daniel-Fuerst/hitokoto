@@ -227,6 +227,16 @@ void BlockLayout::setParagraphFlow(const QTextBlock& block, bool flowsToNext, bo
         const_cast<QTextBlock&>(block).setUserState(updated);
     }
     const bool flowChanged = (oldFlows != flowsToNext) || (oldHard != hardBreak);
+    // The estimates of this block and of the next follow the flow (estimatedToFlowOn).
+    for (const QTextBlock& b : {block, block.next()}) {
+        if (b.isValid() && b.layout()->lineCount() == 0 && b.isVisible() && reservedHeight(b) <= 0) {
+            if (!inSync()) {
+                deferred_.push_back(b);
+            } else {
+                setHeight(b.blockNumber(), estimatedHeight(b), batch_ == 0);
+            }
+        }
+    }
     const bool inChain =
         flowsToNext || hardBreak || sharesLineWithPrevious(block) || continuesFlowFrom(block.previous(), block);
     if (!flowChanged && !(block.layout()->lineCount() > 0 && inChain)) {
@@ -336,8 +346,25 @@ qreal BlockLayout::estimatedHeight(const QTextBlock& block) const {
         return reserved;
     }
     const qreal textWidth = averageCharWidth_ * block.length();
-    const qreal lines = std::max<qreal>(1.0, std::ceil(textWidth / availableWidth()));
+    // A block that goes on in the line of the block before takes its share of lines; one that starts a
+    // line takes that line at least (S033, review O2: a line each made the scroll range of flowing
+    // paragraphs far too large, and the view followed the caret again as they were laid out).
+    const qreal lines = estimatedToFlowOn(block) ? textWidth / availableWidth()
+                                                 : std::max<qreal>(1.0, std::ceil(textWidth / availableWidth()));
     return lines * lineSpacing_ + spaceAbove(block) + spaceBelow(block);
+}
+
+bool BlockLayout::estimatedToFlowOn(const QTextBlock& block) const {
+    const QTextBlock prev = block.previous();
+    if (!prev.isValid()) {
+        return false;
+    }
+    if (prev.userState() >= 0 && (prev.userState() & kStyleBits) != 0) {
+        return flowsToNext(prev) && continuesFlowFrom(prev, block);
+    }
+    // Not styled yet: only the lengths, which cost nothing; reading the text of every block would
+    // cost more than the estimate saves (the styler corrects it through setParagraphFlow).
+    return block.length() > 1 && prev.length() > 1;
 }
 
 qreal BlockLayout::layoutBlock(const QTextBlock& block) const {
