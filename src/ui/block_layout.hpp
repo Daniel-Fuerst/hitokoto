@@ -167,7 +167,8 @@ private:
     mutable quint64 blockLayouts_ = 0;
     qreal laidOutWidth_ = -1;
     qreal lineSpacing_ = 0;       ///< of the default font, for estimates
-    qreal averageCharWidth_ = 0;  ///< of the default font, for estimates
+    qreal averageCharWidth_ = 0;  ///< of the default font (the bullet indent)
+    qreal textCharWidth_ = 0;     ///< per character of running text in the default font, for estimates
     qreal spaceWidth_ = 0;        ///< width of a space in the default font (S032)
     int cursorWidth_ = 1;
     int batch_ = 0;

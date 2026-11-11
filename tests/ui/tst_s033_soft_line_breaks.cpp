@@ -721,6 +721,11 @@ private slots:
         for (int width = 700; width <= 1100; width += 10) {
             f.window->resize(width, 700);
             f.settle();
+            // A scroll lets go of the reading position held since the last width; already at the
+            // end, the view would keep it and return to it, which is not the line at the top now
+            // when the end of the document holds the view below it.
+            bar->setValue(0);
+            f.settle();
             for (int i = 0; i < 3 && bar->value() < bar->maximum(); ++i) {
                 bar->setValue(bar->maximum());
                 f.settle();

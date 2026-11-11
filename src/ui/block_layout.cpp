@@ -336,6 +336,11 @@ void BlockLayout::refreshMetrics() {
     lineSpacing_ = metrics.lineSpacing();
     averageCharWidth_ = metrics.averageCharWidth();
     spaceWidth_ = metrics.horizontalAdvance(QLatin1Char(' '));
+    // The width of running text for estimates, measured on a sample: the font's own average
+    // character width (xAvgCharWidth) is close for some fonts and 20-30 % too wide for others, such
+    // as Arial, Helvetica and their metric twins (S033).
+    const QString sample = QStringLiteral("The quick brown fox jumps over the lazy dog, 1234567890. ");
+    textCharWidth_ = metrics.horizontalAdvance(sample) / static_cast<qreal>(sample.size());
 }
 
 qreal BlockLayout::estimatedHeight(const QTextBlock& block) const {
@@ -345,7 +350,7 @@ qreal BlockLayout::estimatedHeight(const QTextBlock& block) const {
     if (const qreal reserved = reservedHeight(block); reserved > 0) {
         return reserved;
     }
-    const qreal textWidth = averageCharWidth_ * block.length();
+    const qreal textWidth = textCharWidth_ * block.length();
     // A block that goes on in the line of the block before takes its share of lines; one that starts a
     // line takes that line at least (S033, review O2: a line each made the scroll range of flowing
     // paragraphs far too large, and the view followed the caret again as they were laid out).
