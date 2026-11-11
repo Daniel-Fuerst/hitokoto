@@ -348,7 +348,8 @@ No new theme tokens are required:
   (`\` and `2+` spaces), bullet continuations at hanging indent, clicking words on continuation
   blocks, Up/Down/Left/Right navigation, find-bar highlighting in flowing paragraphs, 20,000-line
   paragraph latency budget, byte-exact save, reading position on resize inside a shared visual line
-  (`resizingKeepsTheTopLineInsideAFlowingParagraph`).
+  (`resizingKeepsTheTopLineInsideAFlowingParagraph`), one restore of the reading position per
+  resize although Qt nests a second `resizeEvent` (`aResizeRestoresTheReadingPositionOnce`).
 - S027: `tst_s027_smooth_scrolling::shiftDuringExternalSetValueUsesCurrentBarValue` – a shift while
   the program sets the scroll bar starts from the bar's value.
 - S009 & S023: update `tst_s009_concealment` and `tst_s023_thematic_breaks` where they previously
@@ -383,9 +384,14 @@ red in `tst_s019_editor_surface::resizingKeepsTheReadingPosition`):
   ones, so a second `resizeEvent` runs inside the first; it no longer captures or restores the
   scroll anchor, and the margins are set before `QTextEdit::resizeEvent` (763b39c).
 - The scroll anchor is the block covering the top of the view (`BlockLayout::blockOfTextAt`), not
-  the first block of a visual line it shares.
-- Known limits (review `docs/reviews/033-soft-line-breaks-code-resize-anchor.md`, O1 and O2):
-  inside a paragraph of more than 64 source lines the top line can move by one block on a resize,
-  because a paragraph is laid out from at most 64 blocks back (`kMaxLookback`); and
-  `estimatedHeight` gives every block at least one line, so after a re-estimate the scroll range of
-  documents with flowing paragraphs is about half too large until the blocks are laid out.
+  the first block of a visual line it shares (`BlockLayout::firstBlockOfLineAt`; the two were
+  `blockCovering` and `blockAt` until review O5 named them by what they return).
+- The guard against the nested `resizeEvent` has a test of its own (review O3): one resize restores
+  the reading position once; `EditorWidget::anchorRestores()` counts the restores for tests.
+- Known limits (review `docs/reviews/033-soft-line-breaks-code-resize-anchor.md`, O1 and O2),
+  left to this story's owner (decision Armin, 2026-11-11): inside a paragraph of more than 64
+  source lines the top line can move by one block on a resize, because a paragraph is laid out from
+  at most 64 blocks back (`kMaxLookback`); and `estimatedHeight` gives every block at least one
+  line, so after a re-estimate the scroll range of documents with flowing paragraphs is about half
+  too large until the blocks are laid out (the scroll bar's thumb jumps on every resize or theme
+  change).

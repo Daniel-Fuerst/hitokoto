@@ -2,48 +2,48 @@
 story: S033
 mode: code
 spec: docs/stories/033-soft-line-breaks.md
-commits: 763b39c, 0fa2423, 37089ac
+commits: 763b39c, e6f635c, d3053e7
 date: 2026-11-10
 reviewer: Advocatus Diaboli (same session as the rework, no independent subagent)
-dispositioned: 2026-11-10 (proposed by Claude while the device bridge was closed; to confirm with Armin)
+dispositioned: 2026-11-11 (proposed by Claude on 2026-11-10, confirmed or changed by Armin on 2026-11-11)
 objections:
   - id: O1
     category: failure
     severity: minor
     title: "Inside a paragraph of more than 64 source lines the top line moves by one block on a resize"
     disposition: documented
-    disposition_rationale: "Proposed. The limit is S033's kMaxLookback in BlockLayout::layoutParagraphChain, which keeps the 20,000-line paragraph within its budget; lifting it is a change of S033's layout, not of the scroll anchor. Recorded in the story's rework section as a known limit; Armin decides whether it becomes a follow-up."
+    disposition_rationale: "Confirmed by Armin. The limit is S033's kMaxLookback in BlockLayout::layoutParagraphChain, which keeps the 20,000-line paragraph within its budget; lifting it is a change of S033's layout, not of the scroll anchor. Recorded in the story's rework section as a known limit, left to the story's owner (Daniel)."
   - id: O2
     category: failure
     severity: minor
     title: "Height estimates ignore shared lines, so the scroll range is about half too large after every re-estimate"
     disposition: documented
-    disposition_rationale: "Proposed. Out of scope of the rework (estimatedHeight is unchanged S033 behaviour); the reading position now holds despite it. Open point in the project knowledge for a follow-up: estimate a block that flows from the previous one without the one-line minimum."
+    disposition_rationale: "Confirmed by Armin. Out of scope of the rework (estimatedHeight is unchanged S033 behaviour); the reading position now holds despite it. Recorded in the story's rework section as a known limit, left to the story's owner (Daniel); a possible fix is to estimate a block that flows from the previous one without the one-line minimum."
   - id: O3
     category: operational
     severity: minor
     title: "The guard against the nested resizeEvent has no test of its own"
-    disposition: documented
-    disposition_rationale: "Proposed. With the anchor fix and the scroller fix, no observable behaviour depends on the guard any more (both resize tests stay green without it on Qt 6.8.3 and 6.12). It stays as Daniel wrote it: the nested call no longer captures and restores an anchor from the in-between width. A test through the scroll bar's values does not work, because a re-estimate changes the coordinates."
+    disposition: fixed
+    disposition_rationale: "Proposed as documented; Armin chose a test. tst_s033 aResizeRestoresTheReadingPositionOnce counts the editor's own resize events and EditorWidget::anchorRestores() (instrumentation for tests, like BlockStyler::styledCount): one resize, one restore. With the guard removed it is red (2 restores for 1 resize, Qt 6.12). The guard stays as Daniel wrote it. A test through the scroll bar's values does not work, because a re-estimate changes the coordinates."
   - id: O4
     category: operational
     severity: minor
     title: "The new test finds its starting position by paging and skips where no page fits the font"
     disposition: documented
-    disposition_rationale: "Proposed. Placing the view directly on such a line did not reproduce the fault (the layout of the paragraph then reaches the anchor), so the test pages like tst_s019 does. On Linux in CI the precondition holds (Qt 6.8.3 and 6.12); elsewhere the test skips with a message instead of failing, and tst_s019 resizingKeepsTheReadingPosition covers the same case."
+    disposition_rationale: "Confirmed by Armin. Placing the view directly on such a line did not reproduce the fault (the layout of the paragraph then reaches the anchor), so the test pages like tst_s019 does. On Linux in CI the precondition holds (Qt 6.8.3 and 6.12); elsewhere the test skips with a message instead of failing, and tst_s019 resizingKeepsTheReadingPosition covers the same case. Whether it runs or skips on Windows and macOS is read from the CI logs of the pull request."
   - id: O5
     category: design
     severity: minor
     title: "blockAt and blockCovering answer two similar questions; the wrong one is easy to pick"
-    disposition: documented
-    disposition_rationale: "Proposed. The header now says what each returns and for whom (painting and hit tests vs. the line of text at y), and captureAnchor says why it takes blockCovering. firstVisibleBlock keeps returning the first block of a shared line, which painting and visibleBlockRange need."
+    disposition: fixed
+    disposition_rationale: "Proposed as documented; Armin chose new names. blockAt is now firstBlockOfLineAt (painting, hit tests, visibleBlockRange) and blockCovering is now blockOfTextAt (the reading position); the header says what each returns and for whom, and captureAnchor says why it takes blockOfTextAt. EditorWidget::firstVisibleBlock keeps its name from QPlainTextEdit and returns the first block of a shared line, which painting and visibleBlockRange need."
 ---
 
 # S033 — Advocatus Diaboli, mode code (rework: reading position on resize)
 
 Reviewed: Daniel's 763b39c (SmoothScroller shift from the bar's value, guard against the nested
 `resizeEvent`, margins before `QTextEdit::resizeEvent`) as merged in ae9d45f, and on
-`agents/s033-resize-anchor` the commits 0fa2423 (red test) and 37089ac (fix and story), against
+`agents/s033-resize-anchor` the commits e6f635c (red test) and d3053e7 (fix and story), against
 `docs/stories/033-soft-line-breaks.md` and S019 finding 2 (`docs/stories/019-editor-surface.md`). Code read:
 `src/ui/editor_widget.cpp` (`captureAnchor`, `restoreAnchor`, `keepContentStill`,
 `applyPendingShift`, `resizeEvent`, `applyTheme`), `src/ui/smooth_scroller.cpp`,
@@ -119,6 +119,6 @@ Evidence: `src/ui/block_layout.hpp`; `src/ui/editor_widget.cpp`, `firstVisibleBl
   the in-between width.
 - Setting the margins before `QTextEdit::resizeEvent`: Qt still lays the viewport out once with the
   old margins, but the outer call works with the final width.
-- `blockAt` stepping back to the first block of a shared line for painting, hit tests and
-  `visibleBlockRange`: those need every block of the line.
+- `blockAt` (now `firstBlockOfLineAt`) stepping back to the first block of a shared line for
+  painting, hit tests and `visibleBlockRange`: those need every block of the line.
 - No new Qt module or dependency and no ADR: the change is a query on the existing height index.
