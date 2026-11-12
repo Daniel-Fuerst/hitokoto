@@ -70,7 +70,10 @@ a recipe that does not build.
    off by default; a pull request that changes `packaging/archlinux`, `scripts/packaging` or the
    workflow also runs it, always without publishing and without the environment. A dry run runs the
    build job of decision 4 for the highest version tag, and prints which version it would publish
-   and the diff of the three files against the AUR repository.
+   and the diff of the three files against the AUR repository. If the AUR is behind, a job without
+   the environment also downloads the artifact of decision 4 and checks that it holds exactly the
+   three files, as the publish job will get them (added after the first publish failed on that
+   hand-over, 2026-11-12).
 8. **Credentials.** The SSH private key of a key pair only for this workflow, whose public key is in
    Daniel's AUR account, is a secret of the environment `aur`, which only main may use; the commit
    author name and e-mail are variables of that environment, passed to the script as environment

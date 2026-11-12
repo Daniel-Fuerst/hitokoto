@@ -199,6 +199,20 @@ elseif("${CASE}" STREQUAL "CarriageReturnsAreIgnored")
     expect_contains("${text}" "aur_version=0.5.0\n" "aur_version")
     expect_contains("${text}" "aur_sha256=${sha_b}\n" "aur_sha256")
 
+elseif("${CASE}" STREQUAL "AnUnreachableAurStillGivesTheVersion")
+    # S035, decision 5: with AUR_UNREACHABLE the plan needs no .SRCINFO and publishes nothing.
+    file(WRITE "${WORK_DIR}/tags.txt" "v0.5.0\nv0.5.1\n")
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -DMODE=plan -DAUR_UNREACHABLE=ON -DTAGS_FILE=${WORK_DIR}/tags.txt
+                -DSRCINFO_FILE=${WORK_DIR}/missing -DOUTPUT=${WORK_DIR}/output.txt -P "${SCRIPT}"
+        RESULT_VARIABLE code OUTPUT_VARIABLE out ERROR_VARIABLE err)
+    expect_eq("${code}" "0" "exit code\n${out}\n${err}")
+    expect_contains("${out}\n${err}" "unreachable" "message")
+    file(READ "${WORK_DIR}/output.txt" text)
+    expect_contains("${text}" "action=unreachable\n" "action")
+    expect_contains("${text}" "version=0.5.1\n" "version")
+    expect_contains("${text}" "aur_version=\n" "aur_version")
+
 # --- pkgbuild: the values written into the PKGBUILD (decision 3) -------------------------------
 
 elseif("${CASE}" STREQUAL "ThePkgbuildGetsVersionReleaseAndChecksum")

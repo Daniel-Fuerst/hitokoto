@@ -110,3 +110,23 @@ Option 2.
 - More people contribute and labels are forgotten often: option 3 with a title check, or a default.
 - Versions should come from something other than merges, such as release candidates or several
   supported release lines; then GitVersion or release branches.
+
+## Amendment: the tag only after a green CI on main (S035, 2026-11-12)
+
+Approved by Armin in conversation on 2026-11-12, after the tag job had tagged merges while their CI
+on main was still running (and could have ended red).
+
+- The tag job no longer runs on a push to main. `ci.yml` calls `version.yml` (`workflow_call`) as
+  its last job "Version", which needs every other job of the CI, benchmarks included, and runs
+  unless one of them failed or was cancelled. The tag job checks out the commit of that CI run and
+  tags merges up to it. `version.yml` keeps the label check on pull requests; its manual trigger is
+  gone.
+- A red CI on main gives no tag until "Re-run failed jobs" turns the run green; the job "Version"
+  then runs in that run. A merge whose CI stays red is tagged by the next green run (catch-up),
+  whose commit contains it. A missing label still stops the tag job; after setting it, the CI run's
+  failed jobs are re-run.
+- CI runs on main are never cancelled (one concurrency group per push); pull requests still cancel
+  their older runs.
+- Builds for a new version follow the CI by `workflow_run` on "CI" (`packaging.yml`, S034), not the
+  tag job: a run started by `workflow_run` belongs to the newest commit of main, so only one such
+  step keeps the commit the CI passed (`github.event.workflow_run.head_sha`).

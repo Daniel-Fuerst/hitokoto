@@ -1,6 +1,6 @@
 # S011 — Budgets confirmed on reference hardware
 
-- **Status:** Proposed · **Order:** 37 · **Depends on:** S007
+- **Status:** Proposed · **Order:** 38 · **Depends on:** S007
 
 ## Story
 

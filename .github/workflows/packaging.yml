@@ -1,16 +1,20 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# S034: the AUR package hitokoto follows every version. After every successful run of "Version" on
-# a push to main, the highest version tag is compared with the pkgver in the AUR; if the tag is
-# higher, the recipe of packaging/archlinux is filled in, built and installed against Arch's Qt, and
-# pushed to the AUR. The tags the tag job pushes start no workflow themselves (GITHUB_TOKEN), hence
-# workflow_run. The decision logic is scripts/packaging/AurPackage.cmake (tests: S034_*).
+# S034: the AUR package hitokoto follows every version. After every successful run of "CI" on a
+# push to main (S035: its last job Version has set the version tag), the highest version tag is
+# compared with the pkgver in the AUR; if the tag is higher, the recipe of packaging/archlinux is
+# filled in, built and installed against Arch's Qt, and pushed to the AUR. A workflow of its own,
+# so that an unreachable AUR makes only this workflow red, never the CI, and it can be run again on
+# its own. One workflow_run step only: the CI run belongs to the merge commit, so
+# github.event.workflow_run.head_sha is the commit the CI passed (a second step would get the
+# newest commit of main instead). The decision logic is scripts/packaging/AurPackage.cmake (tests:
+# S034_*, S035_*).
 # A pull request that changes the recipe, and a manual run without "publish", run everything up to
 # the push (dry run).
 name: Packaging
 
 on:
   workflow_run:
-    workflows: ["Version"]
+    workflows: ["CI"]
     types: [completed]
     branches: [main]
   pull_request:
@@ -37,7 +41,8 @@ env:
 jobs:
   build:
     name: Build the AUR package
-    # Decision 1: only after a successful Version run on a push to main; always for pull requests
+    # S034 decision 1, S035 decision 4: only after a successful CI run on a push to main; always
+    # for pull requests and manual runs.
     # and manual runs.
     if: >-
       github.event_name != 'workflow_run' ||
@@ -58,7 +63,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          # Decision 1: the commit the Version run built; empty (the default) for other events.
+          # The commit the CI run passed; empty (the default) for other events.
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0  # the tags
           persist-credentials: false
@@ -79,9 +84,19 @@ jobs:
           work="$RUNNER_TEMP/plan"
           mkdir -p "$work"
           git tag --merged HEAD > "$work/tags.txt"
-          git clone --quiet --depth 1 "$AUR_GIT_HTTPS" "$work/aur"
-          cmake -DMODE=plan -DTAGS_FILE="$work/tags.txt" -DSRCINFO_FILE="$work/aur/.SRCINFO" \
-                -DOUTPUT="$work/plan.txt" -P scripts/packaging/AurPackage.cmake
+          unreachable=OFF
+          if ! git clone --quiet --depth 1 "$AUR_GIT_HTTPS" "$work/aur"; then
+            # S035 decision 5: a dry run builds anyway; after a CI run on main the run is red.
+            if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+              echo "::error::The AUR cannot be reached; run this workflow again later."
+              exit 1
+            fi
+            echo "::warning::The AUR cannot be reached; the comparison with the AUR is left out."
+            unreachable=ON
+          fi
+          cmake -DMODE=plan -DAUR_UNREACHABLE="$unreachable" -DTAGS_FILE="$work/tags.txt" \
+                -DSRCINFO_FILE="$work/aur/.SRCINFO" -DOUTPUT="$work/plan.txt" \
+                -P scripts/packaging/AurPackage.cmake
           cat "$work/plan.txt" >> "$GITHUB_OUTPUT"
           {
             echo "### AUR package"
@@ -90,6 +105,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Check the checksum in the AUR
+        if: steps.plan.outputs.action != 'unreachable'
         # Decision 9: GitHub's tag archives are stable by policy only; warn if the AUR's checksum
         # no longer matches the archive of the AUR's version. Never fails the run.
         env:
@@ -114,14 +130,17 @@ jobs:
           fi
 
       - name: Fill in the recipe
-        # Decision 3. A run after the Version run that has nothing to publish stops here.
+        # Decision 3. A run after the CI that has nothing to publish stops here.
         if: steps.plan.outputs.action == 'publish' || github.event_name != 'workflow_run'
         env:
           VERSION: ${{ steps.plan.outputs.version }}
           REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
           set -euo pipefail
-          out="$RUNNER_TEMP/aur-files"
+          # The files for the AUR live in the workspace: in this container job ${{ runner.temp }}
+          # does not name the directory that $RUNNER_TEMP names, and the first upload took 1 of
+          # the 3 files from the root "/" (run 43292098955).
+          out="$GITHUB_WORKSPACE/aur-files"
           mkdir -p "$out"
           curl -fsSL -o "$RUNNER_TEMP/source.tar.gz" "$REPOSITORY_URL/archive/refs/tags/v$VERSION.tar.gz"
           sha=$(sha256sum "$RUNNER_TEMP/source.tar.gz" | cut -d' ' -f1)
@@ -140,7 +159,7 @@ jobs:
           VERSION: ${{ steps.plan.outputs.version }}
         run: |
           set -euo pipefail
-          out="$RUNNER_TEMP/aur-files"
+          out="$GITHUB_WORKSPACE/aur-files"
           build=/home/builder/build
           runuser -u builder -- mkdir -p "$build"
           cp "$out/PKGBUILD" "$out/hitokoto.desktop" "$build/"
@@ -158,7 +177,9 @@ jobs:
           fi
 
       - name: Diff against the AUR
-        if: steps.plan.outputs.action == 'publish' || github.event_name != 'workflow_run'
+        if: >-
+          steps.plan.outputs.action != 'unreachable' &&
+          (steps.plan.outputs.action == 'publish' || github.event_name != 'workflow_run')
         run: |
           set -uo pipefail
           {
@@ -167,29 +188,56 @@ jobs:
             echo
             echo '```diff'
             for f in PKGBUILD .SRCINFO hitokoto.desktop; do
-              diff -u "$RUNNER_TEMP/plan/aur/$f" "$RUNNER_TEMP/aur-files/$f" || true
+              diff -u "$RUNNER_TEMP/plan/aur/$f" "$GITHUB_WORKSPACE/aur-files/$f" || true
             done
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check the files for the AUR
+        if: steps.plan.outputs.action == 'publish' || github.event_name != 'workflow_run'
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/aur-files"
+          find . -mindepth 1 -maxdepth 1 -printf '%f\n' | sort > "$RUNNER_TEMP/files.txt"
+          printf '%s\n' .SRCINFO PKGBUILD hitokoto.desktop | sort | diff - "$RUNNER_TEMP/files.txt"
 
       - name: Hand the files on
         if: steps.plan.outputs.action == 'publish'
         uses: actions/upload-artifact@v7
         with:
           name: aur-files
-          path: |
-            ${{ runner.temp }}/aur-files/PKGBUILD
-            ${{ runner.temp }}/aur-files/.SRCINFO
-            ${{ runner.temp }}/aur-files/hitokoto.desktop
+          # A directory relative to the workspace: its content becomes the root of the artifact.
+          path: aur-files
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
 
+  handover:
+    name: Check the hand-over
+    # The artifact the publish job gets, checked without the environment, also in a dry run (the
+    # first publish failed because the artifact held 1 of the 3 files, run 43292098955).
+    needs: build
+    if: needs.build.outputs.action == 'publish'
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: aur-files
+          path: ${{ runner.temp }}/aur-files
+
+      - name: Check the files
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/aur-files"
+          find . -mindepth 1 -printf '%P\n' | sort > "$RUNNER_TEMP/files.txt"
+          printf '%s\n' .SRCINFO PKGBUILD hitokoto.desktop | sort | diff - "$RUNNER_TEMP/files.txt"
+
   publish:
     name: Push to the AUR
-    # Decision 5: only on main, after a Version run or a manual run with "publish"; never for a
+    # Decision 5: only on main, after a CI run or a manual run with "publish"; never for a
     # pull request. The only job with the environment aur (code review O7).
-    needs: build
+    needs: [build, handover]
     if: >-
       needs.build.outputs.action == 'publish' && github.ref == 'refs/heads/main' &&
       (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.publish))
@@ -251,6 +299,14 @@ jobs:
             echo "The AUR is no longer behind $VERSION; nothing to push."
             exit 0
           fi
+          files="$RUNNER_TEMP/aur-files"
+          for f in PKGBUILD .SRCINFO hitokoto.desktop; do
+            if [ ! -f "$files/$f" ]; then
+              echo "::error::$f is missing in the artifact aur-files"
+              ls -lAR "$files" || true
+              exit 1
+            fi
+          done
           cp "$RUNNER_TEMP/aur-files/PKGBUILD" "$RUNNER_TEMP/aur-files/.SRCINFO" \
              "$RUNNER_TEMP/aur-files/hitokoto.desktop" "$aur/"
           cd "$aur"

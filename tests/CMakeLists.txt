@@ -58,6 +58,9 @@ add_subdirectory(version)
 # S034: the AUR package.
 add_subdirectory(packaging)
 
+# S035: a version only after a green CI on main (the wiring of the workflows).
+add_subdirectory(workflows)
+
 if(HITOKOTO_BUILD_UI)
     add_subdirectory(ui)
 endif()
