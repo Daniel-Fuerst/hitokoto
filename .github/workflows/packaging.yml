@@ -1,16 +1,20 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# S034: the AUR package hitokoto follows every version. After every successful run of "Version" on
-# a push to main, the highest version tag is compared with the pkgver in the AUR; if the tag is
-# higher, the recipe of packaging/archlinux is filled in, built and installed against Arch's Qt, and
-# pushed to the AUR. The tags the tag job pushes start no workflow themselves (GITHUB_TOKEN), hence
-# workflow_run. The decision logic is scripts/packaging/AurPackage.cmake (tests: S034_*).
+# S034: the AUR package hitokoto follows every version. After every successful run of "CI" on a
+# push to main (S035: its last job Version has set the version tag), the highest version tag is
+# compared with the pkgver in the AUR; if the tag is higher, the recipe of packaging/archlinux is
+# filled in, built and installed against Arch's Qt, and pushed to the AUR. A workflow of its own,
+# so that an unreachable AUR makes only this workflow red, never the CI, and it can be run again on
+# its own. One workflow_run step only: the CI run belongs to the merge commit, so
+# github.event.workflow_run.head_sha is the commit the CI passed (a second step would get the
+# newest commit of main instead). The decision logic is scripts/packaging/AurPackage.cmake (tests:
+# S034_*, S035_*).
 # A pull request that changes the recipe, and a manual run without "publish", run everything up to
 # the push (dry run).
 name: Packaging
 
 on:
   workflow_run:
-    workflows: ["Version"]
+    workflows: ["CI"]
     types: [completed]
     branches: [main]
   pull_request:
@@ -37,7 +41,8 @@ env:
 jobs:
   build:
     name: Build the AUR package
-    # Decision 1: only after a successful Version run on a push to main; always for pull requests
+    # S034 decision 1, S035 decision 4: only after a successful CI run on a push to main; always
+    # for pull requests and manual runs.
     # and manual runs.
     if: >-
       github.event_name != 'workflow_run' ||
@@ -58,7 +63,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          # Decision 1: the commit the Version run built; empty (the default) for other events.
+          # The commit the CI run passed; empty (the default) for other events.
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0  # the tags
           persist-credentials: false
@@ -79,9 +84,19 @@ jobs:
           work="$RUNNER_TEMP/plan"
           mkdir -p "$work"
           git tag --merged HEAD > "$work/tags.txt"
-          git clone --quiet --depth 1 "$AUR_GIT_HTTPS" "$work/aur"
-          cmake -DMODE=plan -DTAGS_FILE="$work/tags.txt" -DSRCINFO_FILE="$work/aur/.SRCINFO" \
-                -DOUTPUT="$work/plan.txt" -P scripts/packaging/AurPackage.cmake
+          unreachable=OFF
+          if ! git clone --quiet --depth 1 "$AUR_GIT_HTTPS" "$work/aur"; then
+            # S035 decision 5: a dry run builds anyway; after a CI run on main the run is red.
+            if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+              echo "::error::The AUR cannot be reached; run this workflow again later."
+              exit 1
+            fi
+            echo "::warning::The AUR cannot be reached; the comparison with the AUR is left out."
+            unreachable=ON
+          fi
+          cmake -DMODE=plan -DAUR_UNREACHABLE="$unreachable" -DTAGS_FILE="$work/tags.txt" \
+                -DSRCINFO_FILE="$work/aur/.SRCINFO" -DOUTPUT="$work/plan.txt" \
+                -P scripts/packaging/AurPackage.cmake
           cat "$work/plan.txt" >> "$GITHUB_OUTPUT"
           {
             echo "### AUR package"
@@ -90,6 +105,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Check the checksum in the AUR
+        if: steps.plan.outputs.action != 'unreachable'
         # Decision 9: GitHub's tag archives are stable by policy only; warn if the AUR's checksum
         # no longer matches the archive of the AUR's version. Never fails the run.
         env:
@@ -114,7 +130,7 @@ jobs:
           fi
 
       - name: Fill in the recipe
-        # Decision 3. A run after the Version run that has nothing to publish stops here.
+        # Decision 3. A run after the CI that has nothing to publish stops here.
         if: steps.plan.outputs.action == 'publish' || github.event_name != 'workflow_run'
         env:
           VERSION: ${{ steps.plan.outputs.version }}
@@ -161,7 +177,9 @@ jobs:
           fi
 
       - name: Diff against the AUR
-        if: steps.plan.outputs.action == 'publish' || github.event_name != 'workflow_run'
+        if: >-
+          steps.plan.outputs.action != 'unreachable' &&
+          (steps.plan.outputs.action == 'publish' || github.event_name != 'workflow_run')
         run: |
           set -uo pipefail
           {
@@ -217,7 +235,7 @@ jobs:
 
   publish:
     name: Push to the AUR
-    # Decision 5: only on main, after a Version run or a manual run with "publish"; never for a
+    # Decision 5: only on main, after a CI run or a manual run with "publish"; never for a
     # pull request. The only job with the environment aur (code review O7).
     needs: [build, handover]
     if: >-

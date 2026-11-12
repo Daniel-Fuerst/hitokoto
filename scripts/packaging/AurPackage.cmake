@@ -10,6 +10,8 @@
 #         aur_sha256=<first sha256sums entry of the AUR package (the archive), may be empty>
 #       one per line. Fails without a version tag, and without a .SRCINFO that has a pkgver of the
 #       form MAJOR.MINOR.PATCH: the package exists, and the workflow never creates one.
+#       With -DAUR_UNREACHABLE=ON (a dry run that could not reach the AUR, S035) it needs no
+#       .SRCINFO and writes action=unreachable with the highest version and an empty aur_version.
 #   cmake -DMODE=pkgbuild -DPKGBUILD_FILE=<f> -DVERSION=<X.Y.Z> -DSHA256=<hex> -DOUTPUT=<f>
 #         -P AurPackage.cmake
 #       Writes the PKGBUILD with pkgver=<X.Y.Z>, pkgrel=1 and <hex> as the first sha256sums entry
@@ -68,6 +70,13 @@ function(plan)
     highest_version("${tags}" version)
     if("${version}" STREQUAL "")
         message(FATAL_ERROR "no version tag vMAJOR.MINOR.PATCH is reachable; nothing to publish")
+    endif()
+
+    if(AUR_UNREACHABLE)
+        message(WARNING "the AUR is unreachable; the version would be ${version}, the comparison "
+                        "with the AUR is left out")
+        file(WRITE "${OUTPUT}" "action=unreachable\nversion=${version}\naur_version=\naur_sha256=\n")
+        return()
     endif()
 
     # pkgver and the first sha256sums entry of the pkgbase section (makepkg --printsrcinfo).
