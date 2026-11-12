@@ -65,7 +65,12 @@ jobs:
 
       - name: Commit
         id: commit
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        # In the container git runs as root, the workspace belongs to the runner's user, and
+        # actions/checkout trusts the directory only for its own git calls ("dubious ownership").
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Plan
         id: plan
