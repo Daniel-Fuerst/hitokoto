@@ -1,0 +1,12 @@
+# S036: the Debian packages that build-package.sh needs in debian:trixie, one per line; the
+# workflow and the README install them with apt-get install --no-install-recommends.
+ca-certificates
+cmake
+ninja-build
+g++
+qt6-base-dev
+qt6-svg-dev
+libgtest-dev
+fonts-dejavu-core
+dpkg-dev
+lintian
