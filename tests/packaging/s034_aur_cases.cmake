@@ -269,6 +269,15 @@ elseif("${CASE}" STREQUAL "TheDesktopEntryPassesOneFile")
     file(STRINGS "${RECIPE_DIR}/hitokoto.desktop" exec_lines REGEX "^Exec=")
     expect_eq("${exec_lines}" "Exec=hitokoto %f" "Exec")
 
+elseif("${CASE}" STREQUAL "TheDesktopEntryChecksumMatches")
+    # The second sha256sums entry pins hitokoto.desktop; it must follow every change of the file.
+    file(SHA256 "${RECIPE_DIR}/hitokoto.desktop" actual)
+    file(READ "${RECIPE_DIR}/PKGBUILD" text)
+    string(REGEX MATCH "sha256sums=\\([^)]*\\)" sums "${text}")
+    string(REGEX MATCHALL "'[^']*'" entries "${sums}")
+    list(GET entries 1 pinned)
+    expect_eq("${pinned}" "'${actual}'" "checksum of hitokoto.desktop in the PKGBUILD")
+
 elseif("${CASE}" STREQUAL "TheRepositoryKeepsNoSrcinfo")
     if(EXISTS "${RECIPE_DIR}/.SRCINFO")
         message(FATAL_ERROR "${RECIPE_DIR}/.SRCINFO exists; the workflow generates it (decision 3)")

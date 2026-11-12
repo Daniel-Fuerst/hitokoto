@@ -22,6 +22,7 @@ foreach(name IN ITEMS
         ThePkgbuildModeRejectsBadInput
         TheRecipeBuildsForX86Only
         TheDesktopEntryPassesOneFile
+        TheDesktopEntryChecksumMatches
         TheRepositoryKeepsNoSrcinfo)
     add_test(NAME S034_${name}
         COMMAND ${CMAKE_COMMAND} -DCASE=${name} -DSCRIPT=${s034_script} -DRECIPE_DIR=${s034_recipe}
