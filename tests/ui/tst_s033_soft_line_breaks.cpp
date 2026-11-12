@@ -999,7 +999,7 @@ private slots:
         f.placeCaret(0);
         f.settle();
         const auto [firstOnScreen, lastOnScreen] = editor->visibleBlockRange();
-        const auto onScreen = static_cast<quint64>(lastOnScreen - firstOnScreen + 1);
+        const auto onScreen = static_cast<quint64>(lastOnScreen - firstOnScreen) + 1;
         for (const auto key : {Qt::Key_Minus, Qt::Key_Space, Qt::Key_Backspace, Qt::Key_Backspace}) {
             const quint64 before = editor->styler().extentSteps();
             test::keyClick(editor, key);  // QTest sends the key directly; no idle slice runs in between
