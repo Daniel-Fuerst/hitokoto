@@ -1068,6 +1068,29 @@ private slots:
         QCOMPARE(differenceFromTheReference(editor), QString());
     }
 
+    // Review O3: with slices of a fixed number of blocks for tests, the walks of the styler end after
+    // that many lines too, not after a time, so that the tests that set it are the same on every
+    // machine. A key before a long paragraph walks its extent in steps of that size.
+    void withSlicesForTestsAKeyWalksALongParagraphInStepsOfThatSize() {
+        QByteArray document;
+        for (int i = 0; i < 3000; ++i) {
+            document += (i == 0 ? "Long" : "long") + QByteArray(" paragraph line ") + QByteArray::number(i) +
+                        " of hard-wrapped text without a blank line\n";
+        }
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("long_extent_slices.md"), document)));
+        auto* editor = f.editor();
+        editor->styler().setSliceBlocksForTests(64);
+        f.placeCaret(0);
+        f.settle();
+        const quint64 before = editor->styler().extentSteps();
+        test::keyClick(editor, Qt::Key_Minus);  // no idle slice runs in between
+        const quint64 steps = editor->styler().extentSteps() - before;
+        QVERIFY2(steps <= 64, qPrintable(QStringLiteral("%1 lines walked at once").arg(steps)));
+        f.settle();
+        QCOMPARE(differenceFromTheReference(editor), QString());
+    }
+
     void longFlowingParagraphStaysWithinLatencyBudget() {
         constexpr int kLines = 20000;
         QByteArray document = "Outside top\n\n";
