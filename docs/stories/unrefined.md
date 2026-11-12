@@ -7,20 +7,6 @@ this folder and is removed here, with the story ID in the commit message. This f
 on any branch; it needs no branch of its own (Armin, 2026-10-30). Expectations are checked against
 commonmark.js or markdown-it-py (mode `commonmark`) before they are written here.
 
-## Soft line breaks: paragraphs flow
-
-- **Seen:** 2026-10-30 (Armin, `docs/adr/0006-context-beyond-one-line.md` on Windows). A paragraph
-  that is hard-wrapped in the source shows each source line as its own line; a source line wider
-  than the window wraps, so its last word can stand alone, and the next source line starts anew.
-- **CommonMark:** a line ending inside a paragraph is a soft line break and renders as a space; the
-  paragraph flows (`a` / `b` gives `<p>a\nb</p>`). A hard line break needs two trailing spaces or a
-  backslash before the line ending (`a  ` / `b` gives `a<br />b`).
-- **hitokoto:** every source line is a line on screen (S001–S003); a soft break is not concealed.
-- **Open:** whether paragraphs flow as in the rendered document while the caret is elsewhere, and
-  what happens on the caret line (show the source lines again, like revealed markers); how a hard
-  line break is shown; how the caret moves over a flowing paragraph; the cost for long hard-wrapped
-  paragraphs (S007 budgets). Related: bullet list indentation below, ADR 0003 (editor surface).
-
 ## Emphasis across a line break
 
 - **Seen:** 2026-11-04 (Armin, Windows release on main 6c67e67, a bullet list with hard-wrapped

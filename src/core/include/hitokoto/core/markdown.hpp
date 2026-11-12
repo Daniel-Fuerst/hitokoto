@@ -128,6 +128,8 @@ struct BlockState {
     std::uint16_t paragraph = 0;
     /// A multi-line block is open (independent of `paragraph`).
     [[nodiscard]] bool active() const noexcept { return element != 0; }
+    /// The line has paragraph text (top-level, inside a list item, or lazy text after `1.` / `>`).
+    [[nodiscard]] bool inParagraph() const noexcept { return paragraph != 0; }
     /// The line is paragraph text that a setext underline on the next line can underline.
     [[nodiscard]] bool underlinable() const noexcept { return paragraph != 0 && paragraph != kLazyParagraph; }
     friend bool operator==(const BlockState&, const BlockState&) = default;
@@ -144,6 +146,8 @@ struct LineRender {
     bool thematicBreak = false;        ///< thematic break (S023); concealed, the UI draws a horizontal line
     std::uint8_t setextUnderline = 0;  ///< 1 or 2: the line underlines a setext heading of that level (S023)
     bool frontMatter = false;          ///< line of closed front matter, delimiters included (S024)
+    bool flowsToNext = false;          ///< soft line break: the next line continues this paragraph (S032)
+    bool hardBreak = false;            ///< hard line break (2+ spaces or `\`) before the next paragraph line (S032)
     BlockState blockState;             ///< state to pass when rendering the next line
     std::vector<TableCell> cells;      ///< cells of a table header or body row
     std::vector<StyleRun> runs;
@@ -157,8 +161,8 @@ struct LineRender {
     std::uint32_t wrapIndent = 0;      ///< column where continuation lines align (hanging indent, S003); 0 = none
     [[nodiscard]] bool empty() const noexcept {
         return headingLevel == 0 && !codeBlock && !fenceLine && !table && !thematicBreak && setextUnderline == 0 &&
-               !frontMatter && runs.empty() && inlineStyles.empty() && hidden.empty() && decorations.empty() &&
-               links.empty() && opaqueSpans.empty() && inlineContexts.empty() && wrapIndent == 0;
+               !frontMatter && !flowsToNext && !hardBreak && runs.empty() && inlineStyles.empty() && hidden.empty() &&
+               decorations.empty() && links.empty() && opaqueSpans.empty() && inlineContexts.empty() && wrapIndent == 0;
     }
     friend bool operator==(const LineRender&, const LineRender&) = default;
 };
@@ -172,9 +176,22 @@ struct LineContext {
     /// that level, found by walking the lines below (`ElementRegistry::paragraphLink`); else 0.
     /// Ignored on lines that are no paragraph text.
     std::uint8_t setextLevel = 0;
+    /// S032 (ADR 0006): true if the caret or selection is on any line of this line's paragraph (or
+    /// its setext underline), so the paragraph's source lines and hard-break markers are revealed
+    /// even when `revealed` is false for inline elements on this line.
+    bool paragraphRevealed = false;
+    /// S032: line after `nextLine` in the document (so `render` can tell whether `nextLine` opens a
+    /// pipe table or continues this paragraph).
+    std::u16string_view nextNextLine{};
 
-    LineContext(bool showSource = false, BlockState state = {}, std::u16string_view next = {}, std::uint8_t setext = 0)
-        : revealed(showSource), blockState(state), nextLine(next), setextLevel(setext) {}
+    LineContext(bool showSource = false, BlockState state = {}, std::u16string_view next = {}, std::uint8_t setext = 0,
+                bool showParagraph = false, std::u16string_view nextNext = {})
+        : revealed(showSource),
+          blockState(state),
+          nextLine(next),
+          setextLevel(setext),
+          paragraphRevealed(showSource || showParagraph),
+          nextNextLine(nextNext) {}
 };
 
 /// Result of a line element's parse rule.

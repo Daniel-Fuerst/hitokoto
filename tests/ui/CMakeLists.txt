@@ -2,6 +2,15 @@
 # UI tests run headless (QT_QPA_PLATFORM=offscreen), one Qt Test class per story.
 find_package(Qt6 REQUIRED COMPONENTS Test)
 
+# The environment of every UI test. Under Windows the offscreen platform looks for fonts in Qt's
+# lib/fonts, which Qt no longer ships, and lays text out without a real font; the tests then measure
+# nothing like what a user sees (a test of S033 failed only there). They take the system's fonts.
+set(hitokoto_ui_test_env "QT_QPA_PLATFORM=offscreen")
+if(WIN32)
+    file(TO_CMAKE_PATH "$ENV{SystemRoot}/Fonts" hitokoto_system_fonts)
+    list(APPEND hitokoto_ui_test_env "QT_QPA_FONTDIR=${hitokoto_system_fonts}")
+endif()
+
 function(hitokoto_ui_test name)
     qt_add_executable(${name} ${name}.cpp ui_test_support.hpp key_input.hpp)
     target_link_libraries(${name} PRIVATE hitokoto::ui Qt6::Test)
@@ -11,7 +20,7 @@ function(hitokoto_ui_test name)
         target_compile_options(${name} PRIVATE -Wno-conversion -Wno-sign-conversion)
     endif()
     add_test(NAME ${name} COMMAND ${name})
-    set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 300)
+    set_tests_properties(${name} PROPERTIES ENVIRONMENT "${hitokoto_ui_test_env}" TIMEOUT 300)
     hitokoto_qt_runtime_beside(${name})
 endfunction()
 
@@ -41,7 +50,8 @@ foreach(t IN ITEMS
         tst_s026_floating_toolbar
         tst_s027_smooth_scrolling
         tst_s028_find_in_file
-        tst_s031_paste_tables)
+        tst_s031_paste_tables
+        tst_s033_soft_line_breaks)
     hitokoto_ui_test(${t})
 endforeach()
 
@@ -56,7 +66,7 @@ qt_add_resources(tst_s031_paste_tables "s031_samples" PREFIX "/s031"
 # S023: the line of a thematic break is crisp at fractional scaling too.
 add_test(NAME tst_s023_thematic_breaks_scaled COMMAND tst_s023_thematic_breaks aConcealedBreakIsCrispAtTheDeviceScale)
 set_tests_properties(tst_s023_thematic_breaks_scaled PROPERTIES
-                     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=1.5" TIMEOUT 120)
+                     ENVIRONMENT "${hitokoto_ui_test_env};QT_SCALE_FACTOR=1.5" TIMEOUT 120)
 
 if(WIN32)
     # Qt's DLLs must be found beside the test executable: Visual Studio's Test Explorer starts the
@@ -66,5 +76,5 @@ if(WIN32)
              COMMAND ${CMAKE_COMMAND} -E env --modify "PATH=set:${hitokoto_system32}"
                      $<TARGET_FILE:tst_s000_skeleton>)
     set_tests_properties(S000_UiTestsStartWithoutQtOnPath PROPERTIES
-                         ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
+                         ENVIRONMENT "${hitokoto_ui_test_env}" TIMEOUT 60)
 endif()

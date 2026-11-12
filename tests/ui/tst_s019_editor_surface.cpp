@@ -5,7 +5,12 @@
 #include <QAccessible>
 #include <QInputMethodEvent>
 #include <QScrollBar>
+#include <QTextBlock>
+#include <QTextCursor>
 #include <QTextEdit>
+#include <QTextLayout>
+
+#include <utility>
 
 using namespace hitokoto;
 
@@ -147,7 +152,16 @@ private slots:
         };
         Hider hider;
         test::Fixture f;
-        QVERIFY(f.open(f.writeFile(QStringLiteral("hidden.md"), numberedLines(3000))));
+        // 3,000 blocks: lines with a blank line after each, so that every line is a paragraph of its
+        // own. Consecutive lines would flow as one paragraph (S033), whose layout reaches far below
+        // the screen (block 364 with 34 blocks on screen and DejaVu Sans, past block 500 with the
+        // fonts of Windows); this test is about hidden blocks, not about paragraphs.
+        QByteArray markdown;
+        for (int i = 0; i < 1500; ++i) {
+            markdown += "line " + QByteArray::number(i) + "\n\n";
+        }
+        QVERIFY(f.open(f.writeFile(QStringLiteral("hidden.md"), markdown)));
+        QCOMPARE(f.editor()->document()->blockCount(), 3001);
         f.settle();
         auto* editor = f.editor();
         auto* layout = editor->blockLayout();
@@ -246,16 +260,35 @@ private slots:
             bar->triggerAction(QAbstractSlider::SliderPageStepAdd);
             f.settle();
         }
-        const auto topBlock = [&] { return f.editor()->cursorForPosition(QPoint(40, 2)).blockNumber(); };
-        const int before = topBlock();
-        QVERIFY(before > 100);
+        // The reading position is the line at the top edge of the view, found by the text that starts
+        // it. A line is at the top when it reaches the top edge, to half a pixel (the rounding of the
+        // scroll value).
+        const auto lineOf = [&](int position) {
+            const QTextBlock block = f.editor()->document()->findBlock(position);
+            return std::pair{block, block.layout()->lineForTextPosition(position - block.position())};
+        };
+        const auto atTop = [&](int position) {
+            const auto [block, line] = lineOf(position);
+            const qreal top = f.editor()->blockLayout()->blockBoundingRect(block).top() + line.y() - bar->value();
+            return top <= 0.5 && top + line.height() >= -0.5;
+        };
+        const auto startsLine = [&](int position) {
+            const auto [block, line] = lineOf(position);
+            return block.position() + line.textStart() == position;
+        };
+        const QTextCursor before = f.editor()->cursorForPosition(QPoint(0, 0));
+        QVERIFY(before.blockNumber() > 100);
+        QVERIFY(atTop(before.position()) && startsLine(before.position()));
 
+        // Narrower, the lines wrap anew (S033: blocks of a paragraph share lines), and the text that
+        // started the top line may go on in a line that starts earlier; it is still in the top line.
+        // Back at the old width, the same line is at the top again.
         f.window->resize(f.window->width() - 40, f.window->height());
         f.settle();
-        QCOMPARE(topBlock(), before);
+        QVERIFY(atTop(before.position()));
         f.window->resize(f.window->width() + 40, f.window->height());
         f.settle();
-        QCOMPARE(topBlock(), before);
+        QVERIFY(atTop(before.position()) && startsLine(before.position()));
     }
 
     void inputMethodComposesAtTheCaret() {

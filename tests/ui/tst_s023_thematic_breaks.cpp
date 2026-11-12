@@ -244,6 +244,16 @@ private slots:
         for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
             concealed.push_back(f.editor()->blockLayout()->blockBoundingRect(b));
         }
+        // S033: while concealed, the two lines of the second heading (3 and 4) flow on one line;
+        // when the caret is on lines 3..5, the paragraph reveals onto its two source lines.
+        QCOMPARE(concealed.at(3).top(), concealed.at(4).top());
+        f.placeCaret(3);
+        f.settle();
+        std::vector<QRectF> revealedSecond;
+        for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+            revealedSecond.push_back(f.editor()->blockLayout()->blockBoundingRect(b));
+        }
+        QVERIFY(revealedSecond.at(4).top() > revealedSecond.at(3).top());
 
         // The caret on a line of a heading reveals its underline, and only that one.
         const QColor marker = qcolor(core::builtinTheme(core::ColorScheme::Light).marker);
@@ -254,9 +264,10 @@ private slots:
             QCOMPARE(test::formatAt(block(revealed), 0).foreground().color(), marker);
             QCOMPARE(test::formatAt(block(revealed), 0).fontPointSize(), formats.heading(0).fontPointSize());
             QCOMPARE(test::formatAt(block(other), 0).foreground().color(), QColor(Qt::transparent));
+            const auto& expected = revealed == 5 ? revealedSecond : concealed;
             for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
                 QCOMPARE(f.editor()->blockLayout()->blockBoundingRect(b),
-                         concealed.at(static_cast<std::size_t>(b.blockNumber())));
+                         expected.at(static_cast<std::size_t>(b.blockNumber())));
             }
         }
     }
