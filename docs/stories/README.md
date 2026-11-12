@@ -40,7 +40,7 @@ story ID (see "Conventions").
 | 31 | [S030](030-automatic-versions.md) | A defined version step for every merge into main | S000 | M | Done |
 | 32 | [S031](031-paste-tables.md) | Pasting a table from Outlook, Excel or a web page as a Markdown table | S018, S019, S020 | M | In review |
 | 34 | [S033](033-soft-line-breaks.md) | Soft line breaks: paragraphs flow | S003, S009, S019, S020, S023, S028 | L | In review |
-| 35 | [S034](034-aur-package.md) | The AUR package follows every version | S030 | S | Confirmed |
+| 35 | [S034](034-aur-package.md) | The AUR package follows every version | S030 | S | In review |
 | 36 | [S007](007-large-files.md) | 10 MB files open within budget and type without lag | S006 | L | Partly done |
 | 37 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
 | 38 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |

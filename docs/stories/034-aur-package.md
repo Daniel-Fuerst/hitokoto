@@ -1,6 +1,8 @@
 # S034 — The AUR package follows every version
 
-- **Status:** Confirmed (Armin, 2026-11-12, after the review `docs/reviews/034-aur-package-spec.md`)
+- **Status:** In review since 2026-11-12 (CI green on Linux, Windows and macOS on pull request 40;
+  the dry run of "Packaging" built, installed and started the package for v0.5.0); Confirmed
+  (Armin, 2026-11-12, after the review `docs/reviews/034-aur-package-spec.md`)
   · **Order:** 35 · **Size:** S · **Depends on:** S030
 - **Basis:** Daniel's Arch Linux packaging (pull request 38, `packaging/archlinux`) and his workflow
   `.github/workflows/packaging.yml` (pull request 40, branch `packaging/aur-update-on-new-version`,
