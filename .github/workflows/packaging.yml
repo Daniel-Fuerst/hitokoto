@@ -121,7 +121,10 @@ jobs:
           REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
           set -euo pipefail
-          out="$RUNNER_TEMP/aur-files"
+          # The files for the AUR live in the workspace: in this container job ${{ runner.temp }}
+          # does not name the directory that $RUNNER_TEMP names, and the first upload took 1 of
+          # the 3 files from the root "/" (run 43292098955).
+          out="$GITHUB_WORKSPACE/aur-files"
           mkdir -p "$out"
           curl -fsSL -o "$RUNNER_TEMP/source.tar.gz" "$REPOSITORY_URL/archive/refs/tags/v$VERSION.tar.gz"
           sha=$(sha256sum "$RUNNER_TEMP/source.tar.gz" | cut -d' ' -f1)
@@ -140,7 +143,7 @@ jobs:
           VERSION: ${{ steps.plan.outputs.version }}
         run: |
           set -euo pipefail
-          out="$RUNNER_TEMP/aur-files"
+          out="$GITHUB_WORKSPACE/aur-files"
           build=/home/builder/build
           runuser -u builder -- mkdir -p "$build"
           cp "$out/PKGBUILD" "$out/hitokoto.desktop" "$build/"
@@ -167,29 +170,56 @@ jobs:
             echo
             echo '```diff'
             for f in PKGBUILD .SRCINFO hitokoto.desktop; do
-              diff -u "$RUNNER_TEMP/plan/aur/$f" "$RUNNER_TEMP/aur-files/$f" || true
+              diff -u "$RUNNER_TEMP/plan/aur/$f" "$GITHUB_WORKSPACE/aur-files/$f" || true
             done
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check the files for the AUR
+        if: steps.plan.outputs.action == 'publish' || github.event_name != 'workflow_run'
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/aur-files"
+          find . -mindepth 1 -maxdepth 1 -printf '%f\n' | sort > "$RUNNER_TEMP/files.txt"
+          printf '%s\n' .SRCINFO PKGBUILD hitokoto.desktop | sort | diff - "$RUNNER_TEMP/files.txt"
 
       - name: Hand the files on
         if: steps.plan.outputs.action == 'publish'
         uses: actions/upload-artifact@v7
         with:
           name: aur-files
-          path: |
-            ${{ runner.temp }}/aur-files/PKGBUILD
-            ${{ runner.temp }}/aur-files/.SRCINFO
-            ${{ runner.temp }}/aur-files/hitokoto.desktop
+          # A directory relative to the workspace: its content becomes the root of the artifact.
+          path: aur-files
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
+
+  handover:
+    name: Check the hand-over
+    # The artifact the publish job gets, checked without the environment, also in a dry run (the
+    # first publish failed because the artifact held 1 of the 3 files, run 43292098955).
+    needs: build
+    if: needs.build.outputs.action == 'publish'
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: aur-files
+          path: ${{ runner.temp }}/aur-files
+
+      - name: Check the files
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/aur-files"
+          find . -mindepth 1 -printf '%P\n' | sort > "$RUNNER_TEMP/files.txt"
+          printf '%s\n' .SRCINFO PKGBUILD hitokoto.desktop | sort | diff - "$RUNNER_TEMP/files.txt"
 
   publish:
     name: Push to the AUR
     # Decision 5: only on main, after a Version run or a manual run with "publish"; never for a
     # pull request. The only job with the environment aur (code review O7).
-    needs: build
+    needs: [build, handover]
     if: >-
       needs.build.outputs.action == 'publish' && github.ref == 'refs/heads/main' &&
       (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.publish))
@@ -251,6 +281,14 @@ jobs:
             echo "The AUR is no longer behind $VERSION; nothing to push."
             exit 0
           fi
+          files="$RUNNER_TEMP/aur-files"
+          for f in PKGBUILD .SRCINFO hitokoto.desktop; do
+            if [ ! -f "$files/$f" ]; then
+              echo "::error::$f is missing in the artifact aur-files"
+              ls -lAR "$files" || true
+              exit 1
+            fi
+          done
           cp "$RUNNER_TEMP/aur-files/PKGBUILD" "$RUNNER_TEMP/aur-files/.SRCINFO" \
              "$RUNNER_TEMP/aur-files/hitokoto.desktop" "$aur/"
           cd "$aur"
