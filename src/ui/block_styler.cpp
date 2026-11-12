@@ -476,7 +476,7 @@ bool BlockStyler::continueFenceSearch(qint64 nanoseconds) {
     QElapsedTimer timer;
     timer.start();
     int steps = 0;
-    const auto overBudget = [&] { return ++steps % 256 == 0 && timer.nsecsElapsed() > nanoseconds; };
+    const auto overBudget = [&] { return spent(++steps, timer, nanoseconds, 256); };
     if (search_.back >= 0) {
         // The states above the line the search started from are cached: rendering it computed them.
         QTextBlock b = document_->findBlockByNumber(search_.back);
@@ -687,6 +687,14 @@ void BlockStyler::scheduleFrom(int blockNumber) {
     }
 }
 
+bool BlockStyler::spent(int steps, const QElapsedTimer& timer, qint64 nanoseconds, int every) const {
+    return sliceBlocks_ > 0 ? steps % sliceBlocks_ == 0 : steps % every == 0 && timer.nsecsElapsed() > nanoseconds;
+}
+
+bool BlockStyler::timeLeft(const QElapsedTimer& timer) const {
+    return sliceBlocks_ > 0 || timer.nsecsElapsed() < kSliceNanoseconds;
+}
+
 void BlockStyler::idleSlice() {
     const BlockLayout::Batch batch(qobject_cast<BlockLayout*>(document_->documentLayout()));
     QElapsedTimer timer;
@@ -702,8 +710,7 @@ void BlockStyler::idleSlice() {
         }
         b = b.next();
         ++checked;
-        if (sliceBlocks_ > 0 ? checked % sliceBlocks_ == 0
-                             : checked % 64 == 0 && timer.nsecsElapsed() > kSliceNanoseconds) {
+        if (spent(checked, timer, kSliceNanoseconds, 64)) {
             break;
         }
     }
@@ -755,7 +762,8 @@ BlockStyler::Level BlockStyler::setextLevel(const QTextBlock& block, core::Block
         ++steps;
         if (steps == 64) {
             timer.start();
-        } else if (steps > 64 && steps % 64 == 0 && timer.nsecsElapsed() > kParagraphSearchNanoseconds) {
+        }
+        if ((steps > 64 || sliceBlocks_ > 0) && spent(steps, timer, kParagraphSearchNanoseconds, 64)) {
             // A long paragraph (a cold walk takes about 0.3 us per line): walk on in idle slices
             // and show the level the line had until then.
             search.from = block.blockNumber();
@@ -842,7 +850,7 @@ bool BlockStyler::continueParagraphSearch(ParagraphSearch& search, qint64 nanose
         if (const auto level = paragraphStep(b, search)) {
             return found(b.blockNumber(), *level);
         }
-        if (++steps % 64 == 0 && timer.nsecsElapsed() > nanoseconds) {
+        if (spent(++steps, timer, nanoseconds, 64)) {
             search.next = b.next().isValid() ? b.next().blockNumber() : document_->blockCount();
             return false;
         }
@@ -865,7 +873,7 @@ bool BlockStyler::applyParagraphLevel(ParagraphSearch& search, const QElapsedTim
         if (!past) {
             setLevel(b, search.level, true);
         }
-        if (++steps % 256 == 0 && timer.nsecsElapsed() > nanoseconds) {
+        if (spent(++steps, timer, nanoseconds, 256)) {
             search.applyNext = number + 1;
             return false;
         }
@@ -920,7 +928,7 @@ bool BlockStyler::continueLevelJob(LevelJob& job, qint64 nanoseconds) {
             if (storedLink(b) != kLinkContinues) {
                 return true;
             }
-            if (++steps % 256 == 0 && timer.nsecsElapsed() > nanoseconds) {
+            if (spent(++steps, timer, nanoseconds, 256)) {
                 job.line = b.previous().isValid() ? b.blockNumber() - 1 : 0;
                 return false;
             }
@@ -932,7 +940,7 @@ bool BlockStyler::continueLevelJob(LevelJob& job, qint64 nanoseconds) {
         if ((stateBits(b) & kStyleMask) != kUnstyled) {
             setStyled(b, kUnstyled);
         }
-        if (++steps % 256 == 0 && timer.nsecsElapsed() > nanoseconds) {
+        if (spent(++steps, timer, nanoseconds, 256)) {
             scheduleFrom(job.line);
             job.line = number + 1;
             return false;
@@ -974,13 +982,13 @@ void BlockStyler::updateParagraphAbove(const QTextBlock& block, const core::Line
 void BlockStyler::paragraphSearchSlice() {
     QElapsedTimer timer;
     timer.start();
-    while (!levelJobs_.empty() && timer.nsecsElapsed() < kSliceNanoseconds) {
+    while (!levelJobs_.empty() && timeLeft(timer)) {
         if (!continueLevelJob(levelJobs_.front(), kSliceNanoseconds - timer.nsecsElapsed())) {
             return;
         }
         levelJobs_.erase(levelJobs_.begin());
     }
-    while (!paragraphSearches_.empty() && timer.nsecsElapsed() < kSliceNanoseconds) {
+    while (!paragraphSearches_.empty() && timeLeft(timer)) {
         if (!continueParagraphSearch(paragraphSearches_.front(), kSliceNanoseconds - timer.nsecsElapsed())) {
             return;
         }
@@ -1116,7 +1124,8 @@ int BlockStyler::paragraphStartOf(const QTextBlock& block) {
         ++steps;
         if (steps == 64) {
             timer.start();
-        } else if (steps > 64 && steps % 64 == 0 && timer.nsecsElapsed() > kParagraphSearchNanoseconds) {
+        }
+        if ((steps > 64 || sliceBlocks_ > 0) && spent(steps, timer, kParagraphSearchNanoseconds, 64)) {
             break;
         }
     }
@@ -1129,7 +1138,7 @@ bool BlockStyler::continueUnderlineSearch(qint64 nanoseconds, std::pair<int, int
     int steps = 0;
     const auto overBudget = [&] {
         ++extentSteps_;
-        return ++steps % 64 == 0 && timer.nsecsElapsed() > nanoseconds;
+        return spent(++steps, timer, nanoseconds, 64);
     };
     // With a screen (first and last block on it), a long walk stops once it is past the screen in
     // both directions; idle slices walk on to the paragraph's ends (S033). Paragraphs of up to a few
@@ -1266,7 +1275,7 @@ bool BlockStyler::continueFrontMatterSearch(qint64 nanoseconds) {
             close = b.blockNumber() > 0 ? b.blockNumber() : -1;  // closed, or no front matter at all
             break;
         }
-        if (++steps % 256 == 0 && timer.nsecsElapsed() > nanoseconds) {
+        if (spent(++steps, timer, nanoseconds, 256)) {
             frontMatter_.next = b.blockNumber() + 1;
             return false;
         }

@@ -17,6 +17,7 @@
 #include <QScrollBar>
 #include <QStringList>
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -963,22 +964,28 @@ private slots:
                 test::keyClick(editor, Qt::Key_Backspace);  // and flows again
                 f.settle();
             };
-            // The first rounds may lay out the lookback before the first line on screen once; after
-            // that, the screen may move by a block or so per round, the lookback (64 blocks) is not
-            // added again.
-            round();
-            round();
-            const int afterSecond = laidOutBlocks(editor->document());
+            // A round may lay out the lookback before the first line on screen (64 blocks) or not,
+            // depending on where the slices end; what must not happen is that it is added again and
+            // again. The most laid out after rounds three to six is compared with the most after the
+            // first two (with walks that end after a number of lines, review O3, the count goes
+            // 121, 57, 58, 122, 121, 122 with slices of 384 blocks).
+            int firstTwo = 0;
+            for (int i = 0; i < 2; ++i) {
+                round();
+                firstTwo = std::max(firstTwo, laidOutBlocks(editor->document()));
+            }
+            int nextFour = 0;
             for (int i = 0; i < 4; ++i) {
                 round();
+                nextFour = std::max(nextFour, laidOutBlocks(editor->document()));
             }
-            const int afterSixth = laidOutBlocks(editor->document());
-            QVERIFY2(afterSixth - afterSecond < 16,
-                     qPrintable(QStringLiteral("slices of %1 blocks: %2 blocks laid out after the second round, %3 "
-                                               "after the sixth")
-                                    .arg(slice)
-                                    .arg(afterSecond)
-                                    .arg(afterSixth)));
+            QVERIFY2(
+                nextFour - firstTwo < 16,
+                qPrintable(QStringLiteral("slices of %1 blocks: at most %2 blocks laid out in the first two rounds, "
+                                          "%3 in the next four")
+                               .arg(slice)
+                               .arg(firstTwo)
+                               .arg(nextFour)));
             QCOMPARE(differenceFromTheReference(editor), QString());
         }
     }
