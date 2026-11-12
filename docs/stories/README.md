@@ -41,10 +41,11 @@ story ID (see "Conventions").
 | 32 | [S031](031-paste-tables.md) | Pasting a table from Outlook, Excel or a web page as a Markdown table | S018, S019, S020 | M | In review |
 | 34 | [S033](033-soft-line-breaks.md) | Soft line breaks: paragraphs flow | S003, S009, S019, S020, S023, S028 | L | In review |
 | 35 | [S034](034-aur-package.md) | The AUR package follows every version | S030 | S | In review |
-| 36 | [S007](007-large-files.md) | 10 MB files open within budget and type without lag | S006 | L | Partly done |
-| 37 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
-| 38 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |
-| 39 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | Open |
+| 36 | [S035](035-version-after-ci.md) | A version only after the CI on main is green | S030, S034 | S | Confirmed |
+| 37 | [S007](007-large-files.md) | 10 MB files open within budget and type without lag | S006 | L | Partly done |
+| 38 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
+| 39 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |
+| 40 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | Open |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 
