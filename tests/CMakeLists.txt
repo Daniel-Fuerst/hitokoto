@@ -55,6 +55,9 @@ add_subdirectory(bench)
 # S030: versions.
 add_subdirectory(version)
 
+# S034: the AUR package.
+add_subdirectory(packaging)
+
 if(HITOKOTO_BUILD_UI)
     add_subdirectory(ui)
 endif()
