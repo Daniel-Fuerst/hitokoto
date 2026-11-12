@@ -1005,8 +1005,9 @@ private slots:
             const quint64 before = editor->styler().extentSteps();
             test::keyClick(editor, key);  // QTest sends the key directly; no idle slice runs in between
             const quint64 steps = editor->styler().extentSteps() - before;
+            // The walk stops past the screen once it has walked kWalkedAtOnce (512) lines (review O8).
             QVERIFY2(
-                steps <= 4 * onScreen + 1024,
+                steps <= 512 + onScreen,
                 qPrintable(
                     QStringLiteral("key %1: %2 lines walked, %3 on screen").arg(int(key)).arg(steps).arg(onScreen)));
             f.settle();
