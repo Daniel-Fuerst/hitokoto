@@ -482,6 +482,23 @@ elseif("${CASE}" STREQUAL "TheControlFileGetsVersionDependsAndSize")
         message(FATAL_ERROR "the synopsis starts with an article (lintian):\n${control}")
     endif()
 
+elseif("${CASE}" STREQUAL "TheQtPluginsAreDependedOn")
+    # No library links the platform plugin (offscreen, xcb, wayland) or the SVG icon engine of the
+    # application icon, so dpkg-shlibdeps does not name them; without the platform plugin hitokoto
+    # does not start, and Debian has them only as Recommends of libqt6gui6.
+    run_control(VERSION 0.5.1 SIZE 1 DEPENDS "libc6 (>= 2.38)")
+    if(NOT control_result EQUAL 0)
+        message(FATAL_ERROR "control failed:\n${control_messages}")
+    endif()
+    expect_contains_exactly("${control}" "\nDepends: libc6 (>= 2.38), qt6-qpa-plugins, qt6-svg-plugins\n"
+        "Depends with the Qt plugins")
+    file(STRINGS "${RECIPE_DIR}/build-depends" build_depends)
+    foreach(package IN ITEMS qt6-qpa-plugins qt6-svg-plugins)
+        if(NOT package IN_LIST build_depends)
+            message(FATAL_ERROR "build-depends lacks ${package} (the tests start Qt)")
+        endif()
+    endforeach()
+
 elseif("${CASE}" STREQUAL "TheControlModeRejectsBadInput")
     run_control(VERSION 0.5.1 SIZE 1234 DEPENDS "")
     if(control_result EQUAL 0)

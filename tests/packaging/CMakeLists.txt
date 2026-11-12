@@ -60,6 +60,7 @@ foreach(name IN ITEMS
         TheNotesListOnlyTheVersion
         TheChangelogNeedsTheVersionTag
         TheControlFileGetsVersionDependsAndSize
+        TheQtPluginsAreDependedOn
         TheControlModeRejectsBadInput
         TheMaintainerIsTheOneOfThePkgbuild
         TheCopyrightRefersToCommonLicenses
