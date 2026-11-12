@@ -661,10 +661,15 @@ void BlockStyler::onContentsChange(int position, int charsRemoved, int charsAdde
     updateUnderlineAfterEdit(firstNumber, lastNumber, delta);
     frontMatterAfterEdit(firstNumber, lastNumber);
     styleRange(firstNumber, std::min(lastNumber + 1, document_->blockCount() - 1));
-    if (first.isValid() && first.previous().isValid() &&
-        (!isStyled(first.previous()) ||
-         (firstOldLink && (*firstOldLink == kLinkContinues) != (storedLink(first) == kLinkContinues)))) {
-        styleRange(firstNumber - 1, firstNumber - 1);
+    if (first.isValid() && first.previous().isValid()) {
+        if (!isStyled(first.previous())) {
+            // Not styled yet, as while a file is opened in chunks: the idle styler styles it with
+            // the lines above it. Styling it now worked out the state of every line back to the
+            // last one styled, and styling those lines worked it out again.
+            scheduleFrom(firstNumber - 1);
+        } else if (firstOldLink && (*firstOldLink == kLinkContinues) != (storedLink(first) == kLinkContinues)) {
+            styleRange(firstNumber - 1, firstNumber - 1);
+        }
     }
     if (charsRemoved != charsAdded || lastNumber - firstNumber > kSynchronousLimit) {
         // Line numbers below may have shifted relative to the revealed range: re-check lazily.
