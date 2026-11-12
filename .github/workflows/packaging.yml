@@ -1,0 +1,264 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# S034: the AUR package hitokoto follows every version. After every successful run of "Version" on
+# a push to main, the highest version tag is compared with the pkgver in the AUR; if the tag is
+# higher, the recipe of packaging/archlinux is filled in, built and installed against Arch's Qt, and
+# pushed to the AUR. The tags the tag job pushes start no workflow themselves (GITHUB_TOKEN), hence
+# workflow_run. The decision logic is scripts/packaging/AurPackage.cmake (tests: S034_*).
+# A pull request that changes the recipe, and a manual run without "publish", run everything up to
+# the push (dry run).
+name: Packaging
+
+on:
+  workflow_run:
+    workflows: ["Version"]
+    types: [completed]
+    branches: [main]
+  pull_request:
+    paths:
+      - packaging/archlinux/**
+      - scripts/packaging/**
+      - .github/workflows/packaging.yml
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Push to the AUR if the AUR is behind (only on main)
+        type: boolean
+        default: false
+
+permissions: {}
+
+env:
+  AUR_GIT_HTTPS: https://aur.archlinux.org/hitokoto.git
+  AUR_GIT_SSH: ssh://aur@aur.archlinux.org/hitokoto.git
+  # The Ed25519 host key of aur.archlinux.org, as published on the AUR home page and in
+  # https://archlinux.org/news/aur-migration-new-ssh-hostkeys/ (review O8 of the code review).
+  AUR_HOST_KEY_FINGERPRINT: SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4
+
+jobs:
+  build:
+    name: Build the AUR package
+    # Decision 1: only after a successful Version run on a push to main; always for pull requests
+    # and manual runs.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:base-devel
+    permissions:
+      contents: read
+    outputs:
+      action: ${{ steps.plan.outputs.action }}
+      version: ${{ steps.plan.outputs.version }}
+      commit: ${{ steps.commit.outputs.sha }}
+    steps:
+      - name: Install the tools
+        # git before the checkout, so that it is a repository with tags, not an archive.
+        run: pacman -Syu --noconfirm --needed git cmake desktop-file-utils
+
+      - uses: actions/checkout@v7
+        with:
+          # Decision 1: the commit the Version run built; empty (the default) for other events.
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0  # the tags
+          persist-credentials: false
+
+      - name: Commit
+        id: commit
+        # In the container git runs as root, the workspace belongs to the runner's user, and
+        # actions/checkout trusts the directory only for its own git calls ("dubious ownership").
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Plan
+        id: plan
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/plan"
+          mkdir -p "$work"
+          git tag --merged HEAD > "$work/tags.txt"
+          git clone --quiet --depth 1 "$AUR_GIT_HTTPS" "$work/aur"
+          cmake -DMODE=plan -DTAGS_FILE="$work/tags.txt" -DSRCINFO_FILE="$work/aur/.SRCINFO" \
+                -DOUTPUT="$work/plan.txt" -P scripts/packaging/AurPackage.cmake
+          cat "$work/plan.txt" >> "$GITHUB_OUTPUT"
+          {
+            echo "### AUR package"
+            echo
+            sed 's/^/- /' "$work/plan.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check the checksum in the AUR
+        # Decision 9: GitHub's tag archives are stable by policy only; warn if the AUR's checksum
+        # no longer matches the archive of the AUR's version. Never fails the run.
+        env:
+          AUR_VERSION: ${{ steps.plan.outputs.aur_version }}
+          AUR_SHA256: ${{ steps.plan.outputs.aur_sha256 }}
+          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -uo pipefail
+          if [ "$AUR_SHA256" = "SKIP" ] || [ -z "$AUR_SHA256" ]; then
+            echo "::notice::The AUR's PKGBUILD has no checksum for the archive of $AUR_VERSION."
+            exit 0
+          fi
+          archive="$RUNNER_TEMP/aur-version.tar.gz"
+          if ! curl -fsSL -o "$archive" "$REPOSITORY_URL/archive/refs/tags/v$AUR_VERSION.tar.gz"; then
+            echo "::warning::The archive of v$AUR_VERSION could not be downloaded."
+            exit 0
+          fi
+          actual=$(sha256sum "$archive" | cut -d' ' -f1)
+          if [ "$actual" != "$AUR_SHA256" ]; then
+            echo "::warning::The checksum of v$AUR_VERSION in the AUR ($AUR_SHA256) no longer matches GitHub's archive ($actual)."
+            echo "- **Warning:** the AUR's checksum of v$AUR_VERSION no longer matches GitHub's archive" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Fill in the recipe
+        # Decision 3. A run after the Version run that has nothing to publish stops here.
+        if: steps.plan.outputs.action == 'publish' || github.event_name != 'workflow_run'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/aur-files"
+          mkdir -p "$out"
+          curl -fsSL -o "$RUNNER_TEMP/source.tar.gz" "$REPOSITORY_URL/archive/refs/tags/v$VERSION.tar.gz"
+          sha=$(sha256sum "$RUNNER_TEMP/source.tar.gz" | cut -d' ' -f1)
+          cmake -DMODE=pkgbuild -DPKGBUILD_FILE=packaging/archlinux/PKGBUILD -DVERSION="$VERSION" \
+                -DSHA256="$sha" -DOUTPUT="$out/PKGBUILD" -P scripts/packaging/AurPackage.cmake
+          cp packaging/archlinux/hitokoto.desktop "$out/"
+          # Code review O2: makepkg refuses to run as root.
+          useradd --create-home builder
+          chown -R builder "$out"
+          (cd "$out" && runuser -u builder -- makepkg --printsrcinfo > .SRCINFO)
+
+      - name: Build, install and start the package
+        # Decision 4 (code review O11): against Arch's own Qt, as an unprivileged user.
+        if: steps.plan.outputs.action == 'publish' || github.event_name != 'workflow_run'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/aur-files"
+          build=/home/builder/build
+          runuser -u builder -- mkdir -p "$build"
+          cp "$out/PKGBUILD" "$out/hitokoto.desktop" "$build/"
+          chown -R builder "$build"
+          # makepkg --syncdeps would need sudo; root installs what the recipe needs.
+          mapfile -t deps < <(sed -n 's/^\t\(make\)\?depends = //p' "$out/.SRCINFO")
+          pacman -S --noconfirm --needed "${deps[@]}"
+          (cd "$build" && runuser -u builder -- makepkg --noconfirm)
+          pacman -U --noconfirm "$build"/hitokoto-"$VERSION"-1-*.pkg.tar.zst
+          desktop-file-validate /usr/share/applications/hitokoto.desktop
+          printed=$(QT_QPA_PLATFORM=offscreen hitokoto --version)
+          if [ "$printed" != "hitokoto $VERSION" ]; then
+            echo "::error::hitokoto --version printed '$printed', expected 'hitokoto $VERSION'"
+            exit 1
+          fi
+
+      - name: Diff against the AUR
+        if: steps.plan.outputs.action == 'publish' || github.event_name != 'workflow_run'
+        run: |
+          set -uo pipefail
+          {
+            echo
+            echo "Diff of the files for the AUR against the AUR repository:"
+            echo
+            echo '```diff'
+            for f in PKGBUILD .SRCINFO hitokoto.desktop; do
+              diff -u "$RUNNER_TEMP/plan/aur/$f" "$RUNNER_TEMP/aur-files/$f" || true
+            done
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Hand the files on
+        if: steps.plan.outputs.action == 'publish'
+        uses: actions/upload-artifact@v7
+        with:
+          name: aur-files
+          path: |
+            ${{ runner.temp }}/aur-files/PKGBUILD
+            ${{ runner.temp }}/aur-files/.SRCINFO
+            ${{ runner.temp }}/aur-files/hitokoto.desktop
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Push to the AUR
+    # Decision 5: only on main, after a Version run or a manual run with "publish"; never for a
+    # pull request. The only job with the environment aur (code review O7).
+    needs: build
+    if: >-
+      needs.build.outputs.action == 'publish' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.publish))
+    runs-on: ubuntu-24.04
+    environment: aur
+    permissions:
+      contents: read
+    concurrency:
+      group: aur
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.build.outputs.commit }}
+          sparse-checkout: scripts/packaging
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: aur-files
+          path: ${{ runner.temp }}/aur-files
+
+      - name: Push
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          AUR_NAME: ${{ vars.AUR_NAME }}
+          AUR_EMAIL: ${{ vars.AUR_EMAIL }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          for v in AUR_SSH_PRIVATE_KEY AUR_NAME AUR_EMAIL; do
+            if [ -z "${!v}" ]; then
+              echo "::error::$v is not set in the environment aur"
+              exit 1
+            fi
+          done
+          ssh_dir="$RUNNER_TEMP/ssh"
+          mkdir -m 700 "$ssh_dir"
+          trap 'rm -rf "$ssh_dir"' EXIT
+          (umask 077 && printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > "$ssh_dir/aur")
+          # Code review O8: the scanned host key is used only if it has the published fingerprint.
+          ssh-keyscan -t ed25519 aur.archlinux.org > "$ssh_dir/scanned" 2> /dev/null
+          fingerprint=$(ssh-keygen -lf "$ssh_dir/scanned" | awk '{print $2}')
+          if [ "$fingerprint" != "$AUR_HOST_KEY_FINGERPRINT" ]; then
+            echo "::error::aur.archlinux.org presented $fingerprint, expected $AUR_HOST_KEY_FINGERPRINT"
+            exit 1
+          fi
+          mv "$ssh_dir/scanned" "$ssh_dir/known_hosts"
+          # Code review O3: both files named explicitly, independent of HOME.
+          export GIT_SSH_COMMAND="ssh -i $ssh_dir/aur -o IdentitiesOnly=yes -o UserKnownHostsFile=$ssh_dir/known_hosts -o StrictHostKeyChecking=yes"
+
+          aur="$RUNNER_TEMP/aur"
+          git clone --quiet "$AUR_GIT_SSH" "$aur"
+          # Review (spec) O5: read the AUR again; another run may have published in the meantime.
+          echo "v$VERSION" > "$RUNNER_TEMP/tags.txt"
+          cmake -DMODE=plan -DTAGS_FILE="$RUNNER_TEMP/tags.txt" -DSRCINFO_FILE="$aur/.SRCINFO" \
+                -DOUTPUT="$RUNNER_TEMP/plan.txt" -P scripts/packaging/AurPackage.cmake
+          if ! grep -qx 'action=publish' "$RUNNER_TEMP/plan.txt"; then
+            echo "The AUR is no longer behind $VERSION; nothing to push."
+            exit 0
+          fi
+          cp "$RUNNER_TEMP/aur-files/PKGBUILD" "$RUNNER_TEMP/aur-files/.SRCINFO" \
+             "$RUNNER_TEMP/aur-files/hitokoto.desktop" "$aur/"
+          cd "$aur"
+          git add PKGBUILD .SRCINFO hitokoto.desktop
+          if git diff --cached --quiet; then
+            echo "Nothing changed; nothing to push."
+            exit 0
+          fi
+          git -c user.name="$AUR_NAME" -c user.email="$AUR_EMAIL" commit --quiet -m "Update to $VERSION"
+          git push origin HEAD:master
+          echo "- Pushed **$VERSION** to the AUR" >> "$GITHUB_STEP_SUMMARY"

@@ -1,10 +1,13 @@
 # Maintainer: Daniel Fürst <daniel@fuerst.priv.at>
 
+# pkgver, pkgrel and the checksum of the source archive are filled in by the workflow
+# .github/workflows/packaging.yml for every new version before it goes to the AUR (S034); 'SKIP'
+# keeps a local makepkg working. .SRCINFO is generated, not kept here.
 pkgname=hitokoto
-pkgver=0.4.0
+pkgver=0.5.0
 pkgrel=1
 pkgdesc="A native, single-file hybrid Markdown editor"
-arch=('x86_64' 'aarch64')
+arch=('x86_64')
 url="https://github.com/Daniel-Fuerst/hitokoto"
 license=('GPL-3.0-or-later')
 depends=(
@@ -24,7 +27,7 @@ source=(
 )
 sha256sums=(
     'SKIP'
-    'eabd8f8ea10edf6b570fe7772df7219c78ef7a63fe846cd7044ddf12f5e754e9'
+    '6e780a4fce0fc06cb349b88a8976bb2793cdbe949f60afb0573de375083659b6'
 )
 
 build() {

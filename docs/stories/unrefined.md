@@ -133,7 +133,10 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   AppImage, with the licences.
 - **Wanted (Armin):** for every new version, packages and installers built automatically; on
   2026-11-08 first of all a Debian package for trixie, built by CI on main against Debian's Qt
-  (6.8.2), once versions exist.
+  (6.8.2), once versions exist. On 2026-11-12 Armin added a Windows installer for every version.
+- **Refined so far (2):** S034 keeps the AUR package `hitokoto` (Daniel's source recipe, pull
+  requests 38 and 40) up to date with every version. The Debian package and the Windows installer
+  are decided after S034 (Armin, 2026-11-12).
 - **Open:** the formats per platform and whether this refines S012 or becomes a story of its own
   (S012 still says the `.deb` follows separate Debian packaging conventions; for Armin, a `.deb`
   built by CI belongs to this project); signing (Windows certificate, macOS notarisation); where the

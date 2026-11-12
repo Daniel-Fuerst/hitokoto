@@ -5,3 +5,6 @@
 tests/fixtures/** -text
 # S031: clipboard samples stay byte-exact as Qt delivers them.
 tests/data/s031/samples/** -text
+# S034: the Arch Linux recipe goes to the AUR byte for byte, and the PKGBUILD pins the checksum of
+# the desktop entry.
+packaging/archlinux/** text eol=lf
