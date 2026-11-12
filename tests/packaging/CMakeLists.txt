@@ -35,3 +35,39 @@ add_test(NAME S035_AnUnreachableAurStillGivesTheVersion
             -DRECIPE_DIR=${s034_recipe}
             -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/cases/AnUnreachableAurStillGivesTheVersion
             -P ${s034_cases})
+
+# S036: the decision logic of the Debian package and the GitHub releases (scripts/packaging) and
+# the recipe in packaging/debian.
+set(s036_script "${PROJECT_SOURCE_DIR}/scripts/packaging/DebianPackage.cmake")
+set(s036_cases "${CMAKE_CURRENT_SOURCE_DIR}/s036_debian_cases.cmake")
+foreach(name IN ITEMS
+        TheFirstRunReleasesTheFirstVersion
+        APublishedVersionIsNotReleasedAgain
+        SeveralMissingVersionsComeOldestFirst
+        ACaughtUpVersionIsNeverLatest
+        OnlyExactVersionTagsCount
+        SkippedVersionsAreLeftOutAndNamed
+        ASkippedHighestVersionIsNotLatest
+        AReleaseWithoutThePackageIsReported
+        ADryRunBuildsTheHighestVersion
+        NoVersionFromTheFirstOnIsGreen
+        BadSettingsFail
+        CarriageReturnsAreIgnored
+        TheRecipeStartsAt051
+        TheChangelogHasAnEntryPerVersion
+        MergesShowNumberAndTitle
+        LongLinesAreWrapped
+        TheNotesListOnlyTheVersion
+        TheChangelogNeedsTheVersionTag
+        TheControlFileGetsVersionDependsAndSize
+        TheControlModeRejectsBadInput
+        TheMaintainerIsTheOneOfThePkgbuild
+        TheCopyrightRefersToCommonLicenses
+        CPackMakesNoDeb
+        TheRecipeKeepsLfLineEndings
+        TheBuildTakesTheSharedDesktopEntry)
+    add_test(NAME S036_${name}
+        COMMAND ${CMAKE_COMMAND} -DCASE=${name} -DSCRIPT=${s036_script}
+                -DRECIPE_DIR=${PROJECT_SOURCE_DIR}/packaging/debian -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
+                -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/cases/s036/${name} -P ${s036_cases})
+endforeach()
