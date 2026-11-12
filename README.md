@@ -59,8 +59,10 @@ Every pull request merged into main gives hitokoto its version step (story S030,
 
   The label is part of the review before the merge and must fit the pull request's final content,
   not only what it was opened for.
-- **The tag is the only source of the version.** After the merge, the workflow `version.yml` puts
-  an annotated tag `vMAJOR.MINOR.PATCH` on the merge commit. `project()` in `CMakeLists.txt`
+- **The tag is the only source of the version.** After the merge, once the CI on main is green
+  (all jobs, benchmarks included; S035), its last job "Version" (`version.yml`) puts an annotated
+  tag `vMAJOR.MINOR.PATCH` on the merge commit. A red CI on main gives no tag until "Re-run failed
+  jobs" turns it green. `project()` in `CMakeLists.txt`
   carries no `VERSION`, and nobody sets a `v*` tag by hand (apart from the starting tag `v0.3.0`):
   a tag set by hand would become the base of every later version.
 - **Builds** take the version from `git describe` when CMake configures: `0.4.0` on the tagged

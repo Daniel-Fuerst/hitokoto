@@ -27,9 +27,9 @@ In this directory the checksum of the archive is `SKIP`, so that a local build w
 
 ## How the AUR is updated (S034)
 
-The workflow `.github/workflows/packaging.yml` runs after every successful run of "Version" on
-main. It compares the highest version tag `vMAJOR.MINOR.PATCH` with the `pkgver` in the AUR. If the
-tag is higher, it
+The workflow `.github/workflows/packaging.yml` runs after every successful run of "CI" on main,
+whose last job "Version" has set the version tag (S035). It compares the highest version tag
+`vMAJOR.MINOR.PATCH` with the `pkgver` in the AUR. If the tag is higher, it
 
 1. fills in this `PKGBUILD`: `pkgver` from the tag, `pkgrel=1` and the SHA-256 of GitHub's archive
    of the tag (`scripts/packaging/AurPackage.cmake`), and generates `.SRCINFO`;
@@ -44,7 +44,9 @@ this recipe alone reaches the AUR with the next version.
 
 A pull request that changes this directory, `scripts/packaging` or the workflow runs everything up
 to the push (dry run), and so does a manual run of "Packaging" with "publish" off. The job summary
-shows the plan and the diff against the AUR.
+shows the plan and the diff against the AUR; if the AUR cannot be reached, a dry run warns and
+still builds. After a CI run on main an unreachable AUR makes only "Packaging" red: run it again
+later with "Re-run failed jobs".
 
 When `hitokoto.desktop` changes, its checksum in `PKGBUILD` has to change with it; the test
 `S034_TheDesktopEntryChecksumMatches` checks that.
