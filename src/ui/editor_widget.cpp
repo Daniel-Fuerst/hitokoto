@@ -683,6 +683,16 @@ void EditorWidget::keyPressEvent(QKeyEvent* event) {
     QTextEdit::keyPressEvent(event);
 }
 
+void EditorWidget::undoEdit() {
+    const QScopedValueRollback<bool> input(typing_, true);
+    undo();
+}
+
+void EditorWidget::redoEdit() {
+    const QScopedValueRollback<bool> input(typing_, true);
+    redo();
+}
+
 void EditorWidget::inputMethodEvent(QInputMethodEvent* event) {
     const QScopedValueRollback<bool> input(typing_, true);
     const TableEmbedder::Typing typing(tables_.get());

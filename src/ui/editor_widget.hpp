@@ -71,6 +71,10 @@ public:
     /// After opening a file (`loaded`: all of it is in): the caret below closed front matter, else at
     /// the start of the document (S024).
     void placeCaretAfterOpening(bool loaded);
+    /// Undo and Redo of the Edit menu: they change the text at the caret as a key does, and the view
+    /// follows the caret through them (S033 review O5).
+    void undoEdit();
+    void redoEdit();
     /// The anchor URL at viewport point `pos`, or empty (S022).
     [[nodiscard]] QString anchorAt(const QPoint& pos) const;
     /// Merged character format at viewport point `pos` (S022).
