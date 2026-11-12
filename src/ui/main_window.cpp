@@ -106,8 +106,8 @@ void MainWindow::createMenus() {
     quit->setMenuRole(QAction::QuitRole);
 
     QMenu* edit = menuBar()->addMenu(tr("&Edit"));
-    edit->addAction(tr("&Undo"), QKeySequence::Undo, editor_, &QTextEdit::undo);
-    edit->addAction(tr("&Redo"), QKeySequence::Redo, editor_, &QTextEdit::redo);
+    edit->addAction(tr("&Undo"), QKeySequence::Undo, editor_, &EditorWidget::undoEdit);
+    edit->addAction(tr("&Redo"), QKeySequence::Redo, editor_, &EditorWidget::redoEdit);
     edit->addSeparator();
     edit->addAction(tr("Cu&t"), QKeySequence::Cut, editor_, &QTextEdit::cut);
     edit->addAction(tr("&Copy"), QKeySequence::Copy, editor_, &QTextEdit::copy);

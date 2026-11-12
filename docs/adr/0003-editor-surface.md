@@ -61,6 +61,25 @@ The project wants to use as much of Qt as possible.
   `QAbstractTextDocumentLayout::documentSize` for other layouts (Qt source); anything else that
   shows up is fixed in `BlockLayout` or reported here.
 
+## Revision for S033 (2026-11-09): flowing paragraphs across blocks
+
+While the caret and selection are outside a paragraph (S033), consecutive `QTextBlock`s of that
+paragraph flow as a single wrapped paragraph without merging or modifying the blocks in
+`QTextDocument` (ADR 0002):
+
+- Each `QTextBlock` keeps its own `QTextLayout`. When block `k` flows across a soft line break into
+  block `k + 1` (`flowsToNext`), block `k + 1`'s first `QTextLine` is positioned on block `k`'s last
+  visual line at `x = prevLineEndX + spaceWidth`, `y = 0`, with width `rightEdge - x` (or on a new
+  visual line at the paragraph's hanging indent `subLeft` if the first word does not fit in the
+  remaining width).
+- In `HeightIndex`, a block whose last visual line is continued by the next block contributes only
+  the height of its completed visual lines (`0` if it has a single visual line), and the final block
+  on that visual line contributes the visual line's height. Thus every entry in `HeightIndex` stays
+  non-negative (`>= 0`), every `QTextLine` has `y() >= 0` within its block layout, and the sum of
+  block heights equals the exact height of the flowing paragraph.
+- `draw`, `hitTest`, `blockBoundingRect`, and `visibleBlockRange` step back to the first block sharing
+  a visual line so all blocks on a shared visual line are painted and hit-tested together.
+
 ## Reconsider if
 
 - The budgets (brief section 4) or the S009 scenarios fail on the new surface and cannot be met

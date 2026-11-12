@@ -1,0 +1,1249 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// S033: consecutive lines of a paragraph flow as one wrapped paragraph while the caret is outside
+// the paragraph; CommonMark 6.7 hard line breaks (2+ trailing spaces or trailing '\') start a new
+// visual line inside the flowing paragraph; placing the caret or selection on any line of the
+// paragraph reveals all source lines of that paragraph.
+#include "find_bar.hpp"
+#include "find_controller.hpp"
+#include "ui_test_support.hpp"
+
+#include <QAction>
+#include <QClipboard>
+#include <QElapsedTimer>
+#include <QFont>
+#include <QFontInfo>
+#include <QFontMetricsF>
+#include <QGuiApplication>
+#include <QLineEdit>
+#include <QScrollBar>
+#include <QStringList>
+
+#include <algorithm>
+#include <cmath>
+#include <vector>
+
+using namespace hitokoto;
+
+namespace {
+
+QColor qcolor(const core::Color& c) {
+    return {c.r, c.g, c.b, c.a};
+}
+
+std::vector<std::u16string> linesOf(const QTextDocument* doc) {
+    std::vector<std::u16string> lines;
+    for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+        lines.push_back(b.text().toStdU16String());
+    }
+    return lines;
+}
+
+int laidOutBlocks(const QTextDocument* doc) {
+    int count = 0;
+    for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+        count += b.layout()->lineCount() > 0 ? 1 : 0;
+    }
+    return count;
+}
+
+QString differenceFromTheReference(ui::EditorWidget* editor) {
+    const auto* doc = editor->document();
+    const QTextCursor cursor = editor->textCursor();
+    const int anchor = doc->findBlock(cursor.anchor()).blockNumber();
+    const auto reference =
+        test::registry().renderDocument(linesOf(doc), core::revealedLines(anchor, cursor.blockNumber()));
+    auto& styler = editor->styler();
+    for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+        auto got = styler.renderFor(b);
+        auto want = reference.at(static_cast<std::size_t>(b.blockNumber()));
+        if (!got.table && b.layout()->formats() != styler.formats().ranges(got)) {
+            return QStringLiteral("line %1 \"%2\" is formatted for another render").arg(b.blockNumber()).arg(b.text());
+        }
+        got.blockState = {};
+        want.blockState = {};
+        if (!(got == want)) {
+            return QStringLiteral("line %1 \"%2\" differs (flows %3/%4, hardBreak %5/%6, wrapIndent %7/%8)")
+                .arg(b.blockNumber())
+                .arg(b.text())
+                .arg(got.flowsToNext)
+                .arg(want.flowsToNext)
+                .arg(got.hardBreak)
+                .arg(want.hardBreak)
+                .arg(got.wrapIndent)
+                .arg(want.wrapIndent);
+        }
+    }
+    return {};
+}
+
+/// Counts the resize events a widget receives itself (not those of its viewport).
+class ResizeCounter : public QObject {
+public:
+    explicit ResizeCounter(QWidget* widget) : widget_(widget) { widget_->installEventFilter(this); }
+    ~ResizeCounter() override { widget_->removeEventFilter(this); }
+    ResizeCounter(const ResizeCounter&) = delete;
+    ResizeCounter& operator=(const ResizeCounter&) = delete;
+    ResizeCounter(ResizeCounter&&) = delete;
+    ResizeCounter& operator=(ResizeCounter&&) = delete;
+
+    int count = 0;
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override {
+        if (watched == widget_ && event->type() == QEvent::Resize) {
+            ++count;
+        }
+        return false;
+    }
+
+private:
+    QWidget* widget_;
+};
+
+/// The line at the top of the view: the block and line of the text that starts it, and its position.
+struct TopLine {
+    int block = -1;
+    int line = -1;
+    int position = -1;
+};
+
+TopLine topLineOf(const ui::EditorWidget* editor) {
+    const QTextCursor c = editor->cursorForPosition(QPoint(0, 2));
+    const QTextLine line = c.block().layout()->lineForTextPosition(c.positionInBlock());
+    return {c.blockNumber(), line.isValid() ? line.lineNumber() : -1, c.position()};
+}
+
+/// Whether the text at `position` is in the line at y 2 of the view (the tests start the view 3
+/// pixels into a line, so the rounding of the scroll value does not matter).
+bool inTopLine(const ui::EditorWidget* editor, int position) {
+    const QTextBlock block = editor->document()->findBlock(position);
+    const QTextLine line = block.layout()->lineForTextPosition(position - block.position());
+    const qreal top =
+        editor->blockLayout()->blockBoundingRect(block).top() + line.y() - editor->verticalScrollBar()->value();
+    return top <= 2 && top + line.height() > 2;
+}
+
+/// Whether the line with the text at `position` reaches the top edge of the view, to half a pixel
+/// (the rounding of the scroll value).
+bool reachesTopEdge(const ui::EditorWidget* editor, int position) {
+    const QTextBlock block = editor->document()->findBlock(position);
+    const QTextLine line = block.layout()->lineForTextPosition(position - block.position());
+    const qreal top =
+        editor->blockLayout()->blockBoundingRect(block).top() + line.y() - editor->verticalScrollBar()->value();
+    return top <= 0.5 && top + line.height() >= -0.5;
+}
+
+/// Whether a line starts with the text at `position`.
+bool startsLine(const QTextDocument* doc, int position) {
+    const QTextBlock block = doc->findBlock(position);
+    return block.position() + block.layout()->lineForTextPosition(position - block.position()).textStart() == position;
+}
+
+/// Scrolls `editor` so that the view starts 3 pixels into line `line` of `block`.
+void showLineAtTop(ui::EditorWidget* editor, const QTextBlock& block, int line) {
+    const QRectF rect = editor->blockLayout()->blockBoundingRect(block);
+    editor->verticalScrollBar()->setValue(static_cast<int>(std::lround(rect.top() + block.layout()->lineAt(line).y())) +
+                                          3);
+}
+
+/// An installed font whose own average character width (QFontMetricsF::averageCharWidth, from the
+/// font's tables) is more than 10 % wider than `text` set in it, at the theme's editor size; empty if
+/// none of the candidates is installed or off. DejaVu Sans, the usual Linux default, is close; Arial,
+/// Helvetica and their metric twins Liberation Sans, Calibri and Carlito are not (macOS CI: the
+/// estimate of a flowing paragraph was 26 % too large).
+QString fontWithAverageWidthOff(const QString& text) {
+    const double size = core::builtinTheme(core::ColorScheme::Light).editorFontSize;
+    for (const char* family :
+         {"Liberation Sans", "Arial", "Helvetica", "Helvetica Neue", "Carlito", "Calibri", "Segoe UI"}) {
+        QFont font(QString::fromLatin1(family));
+        font.setPointSizeF(size);
+        if (QFontInfo(font).family() != QLatin1String(family)) {
+            continue;
+        }
+        const QFontMetricsF metrics(font);
+        if (metrics.averageCharWidth() > 1.1 * metrics.horizontalAdvance(text) / static_cast<qreal>(text.size())) {
+            return QString::fromLatin1(family);
+        }
+    }
+    return {};
+}
+
+/// Applies the built-in light theme with `family` as the editor font.
+void useEditorFont(test::Fixture& f, const QString& family) {
+    auto theme = core::builtinTheme(core::ColorScheme::Light);
+    theme.editorFontFamily = family.toStdString();
+    f.window->applyTheme(theme);
+}
+
+/// Lines of a paragraph that flow: every tenth a heading, every third long enough to wrap.
+QByteArray flowingLines(int count) {
+    QByteArray markdown;
+    for (int i = 0; i < count; ++i) {
+        markdown += i % 10 == 0 ? "## Heading " + QByteArray::number(i) + '\n'
+                                : "line " + QByteArray::number(i) + ' ' +
+                                      QByteArray(i % 3 == 0 ? 180 : 10, 'a').replace("aaaa", "aa a") + '\n';
+    }
+    return markdown;
+}
+
+}  // namespace
+
+class tst_s033_soft_line_breaks : public QObject {
+    Q_OBJECT
+private slots:
+    void consecutiveParagraphLinesFlowAsOneWrappedBlock() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("flow.md"), "Alpha\nBeta\nGamma\n\nOutside\n")));
+        f.placeCaret(4);
+        f.settle();
+
+        auto* editor = f.editor();
+        const auto* doc = editor->document();
+        const auto block = [&](int n) { return doc->findBlockByNumber(n); };
+        const auto rect = [&](int n) { return editor->blockLayout()->blockBoundingRect(block(n)); };
+
+        QVERIFY(editor->styler().renderFor(block(0)).flowsToNext);
+        QVERIFY(editor->styler().renderFor(block(1)).flowsToNext);
+        QVERIFY(!editor->styler().renderFor(block(2)).flowsToNext);
+
+        // Wide window: all three source lines sit on the same visual line with a space gap.
+        QCOMPARE(rect(0).top(), rect(1).top());
+        QCOMPARE(rect(1).top(), rect(2).top());
+        const QTextLine l0 = block(0).layout()->lineAt(0);
+        const QTextLine l1 = block(1).layout()->lineAt(0);
+        const QTextLine l2 = block(2).layout()->lineAt(0);
+        QVERIFY2(l1.x() > l0.x() + l0.naturalTextWidth(), "Beta sits to the right of Alpha with a space gap");
+        QVERIFY2(l2.x() > l1.x() + l1.naturalTextWidth(), "Gamma sits to the right of Beta with a space gap");
+        QCOMPARE(differenceFromTheReference(editor), QString());
+    }
+
+    void caretOrSelectionOnAnyLineRevealsTheWholeParagraph() {
+        test::Fixture f;
+        constexpr auto kDoc =
+            "First *em* line\n"
+            "  Second **bold** line\n"
+            "  Third `code` line\n"
+            "\n"
+            "Outside\n";
+        QVERIFY(f.open(f.writeFile(QStringLiteral("reveal.md"), kDoc)));
+        f.placeCaret(4);
+        f.settle();
+
+        auto* editor = f.editor();
+        const auto* doc = editor->document();
+        const auto block = [&](int n) { return doc->findBlockByNumber(n); };
+        const auto rect = [&](int n) { return editor->blockLayout()->blockBoundingRect(block(n)); };
+
+        // While caret is outside: lines 0, 1, 2 flow together and leading spaces on 1, 2 are collapsed.
+        QCOMPARE(rect(0).top(), rect(1).top());
+        QVERIFY(test::isCollapsed(block(1), 0));
+        QVERIFY(test::isCollapsed(block(1), 1));
+        QVERIFY(test::isCollapsed(block(2), 0));
+        QVERIFY(test::isCollapsed(block(2), 1));
+        QVERIFY(test::isCollapsed(block(0), 6));  // '*' on line 0
+        QVERIFY(test::isCollapsed(block(1), 9));  // '**' on line 1
+        QVERIFY(test::isCollapsed(block(2), 8));  // '`' on line 2
+
+        // Place caret on line 1: all 3 lines reveal on separate visual lines; only line 1 reveals inline markers.
+        f.placeCaret(1, 3);
+        f.settle();
+        QVERIFY2(rect(0).top() < rect(1).top(), "line 0 and line 1 are on separate visual lines");
+        QVERIFY2(rect(1).top() < rect(2).top(), "line 1 and line 2 are on separate visual lines");
+        QVERIFY(!test::isCollapsed(block(1), 0));
+        QVERIFY(!test::isCollapsed(block(2), 0));
+        QVERIFY(test::isCollapsed(block(0), 6));   // '*' on line 0 stays concealed
+        QVERIFY(!test::isCollapsed(block(1), 9));  // '**' on line 1 is revealed
+        QVERIFY(test::isCollapsed(block(2), 8));   // '`' on line 2 stays concealed
+        QCOMPARE(differenceFromTheReference(editor), QString());
+
+        // Move caret back outside: paragraph flows again.
+        f.placeCaret(4);
+        f.settle();
+        QCOMPARE(rect(0).top(), rect(1).top());
+        QVERIFY(test::isCollapsed(block(1), 0));
+        QCOMPARE(differenceFromTheReference(editor), QString());
+    }
+
+    void hardLineBreaksWithBackslashAndTwoSpaces() {
+        test::Fixture f;
+        constexpr auto kDoc =
+            "Line one\\\n"
+            "Line two  \n"
+            "Line three\\\n"
+            "\n"
+            "Outside\n";
+        QVERIFY(f.open(f.writeFile(QStringLiteral("hard.md"), kDoc)));
+        f.placeCaret(4);
+        f.settle();
+
+        auto* editor = f.editor();
+        const auto* doc = editor->document();
+        const auto block = [&](int n) { return doc->findBlockByNumber(n); };
+        const auto rect = [&](int n) { return editor->blockLayout()->blockBoundingRect(block(n)); };
+
+        // While flowing: line 0 and line 1 have hard breaks; line 2 is the last line so trailing '\' is literal.
+        QVERIFY(editor->styler().renderFor(block(0)).hardBreak);
+        QVERIFY(!editor->styler().renderFor(block(0)).flowsToNext);
+        QVERIFY(editor->styler().renderFor(block(1)).hardBreak);
+        QVERIFY(!editor->styler().renderFor(block(1)).flowsToNext);
+        QVERIFY(!editor->styler().renderFor(block(2)).hardBreak);
+        QVERIFY(!editor->styler().renderFor(block(2)).flowsToNext);
+
+        QVERIFY(test::isCollapsed(block(0), 8));    // trailing '\' on line 0 concealed
+        QVERIFY(test::isCollapsed(block(1), 8));    // trailing ' ' on line 1 concealed
+        QVERIFY(test::isCollapsed(block(1), 9));    // trailing ' ' on line 1 concealed
+        QVERIFY(!test::isCollapsed(block(2), 10));  // trailing '\' on last line is literal
+
+        // Each hard-broken line starts on a new visual line at the left margin.
+        QVERIFY(rect(0).top() < rect(1).top());
+        QVERIFY(rect(1).top() < rect(2).top());
+        QCOMPARE(block(0).layout()->lineAt(0).x(), block(1).layout()->lineAt(0).x());
+        QCOMPARE(block(1).layout()->lineAt(0).x(), block(2).layout()->lineAt(0).x());
+
+        // Reveal the paragraph by placing the caret on line 2 (not even line 0 or 1!).
+        f.placeCaret(2, 0);
+        f.settle();
+        const auto theme = core::builtinTheme(core::ColorScheme::Light);
+        const auto escapeStyle = core::escapeStyle(theme);
+        QVERIFY(!test::isCollapsed(block(0), 8));
+        QCOMPARE(test::formatAt(block(0), 8).foreground().color(), qcolor(escapeStyle.marker));
+        QVERIFY(!test::isCollapsed(block(1), 8));
+        QVERIFY(!test::isCollapsed(block(1), 9));
+        QCOMPARE(differenceFromTheReference(editor), QString());
+    }
+
+    void bulletListContinuationLinesFlowAndIndent() {
+        test::Fixture f;
+        constexpr auto kDoc =
+            "- first part\n"
+            "  second part\\\n"
+            "  third part after hard break\n"
+            "\n"
+            "Outside\n";
+        QVERIFY(f.open(f.writeFile(QStringLiteral("bullet.md"), kDoc)));
+        f.placeCaret(4);
+        f.settle();
+
+        auto* editor = f.editor();
+        const auto* doc = editor->document();
+        const auto block = [&](int n) { return doc->findBlockByNumber(n); };
+        const auto rect = [&](int n) { return editor->blockLayout()->blockBoundingRect(block(n)); };
+
+        // Line 0 and line 1 flow onto the same visual line; line 2 starts on a new line at the hanging indent.
+        QCOMPARE(rect(0).top(), rect(1).top());
+        QVERIFY(rect(1).top() < rect(2).top());
+        QVERIFY(test::isCollapsed(block(1), 0));
+        QVERIFY(test::isCollapsed(block(1), 1));
+        QVERIFY(test::isCollapsed(block(2), 0));
+        QVERIFY(test::isCollapsed(block(2), 1));
+
+        const qreal itemTextX = block(0).layout()->lineAt(0).cursorToX(2);
+        QCOMPARE(block(2).layout()->lineAt(0).x(), itemTextX);
+        QCOMPARE(differenceFromTheReference(editor), QString());
+    }
+
+    void orderedListContinuationLinesFlowAndReveal() {
+        test::Fixture f;
+        f.window->resize(900, 700);
+        constexpr auto kDoc =
+            "1. Implement `LineElement` for blocks that\n"
+            "   span lines (fenced code) or `InlineElement` for inline constructs in\n"
+            "   `src/core/src/elements/<name>.cpp`, with a factory function. Inline code runs take precedence\n"
+            "   over other inline styles. A multi-line element keeps a non-zero number of its own as state;\n"
+            "   the registry wraps it in `BlockState`, which the UI caches per block without knowing the\n"
+            "   element.\n"
+            "\n"
+            "Outside\n";
+        QVERIFY(f.open(f.writeFile(QStringLiteral("ordered.md"), kDoc)));
+        f.placeCaret(7);
+        f.settle();
+
+        auto* editor = f.editor();
+        const auto* doc = editor->document();
+        const auto block = [&](int n) { return doc->findBlockByNumber(n); };
+        for (int i = 0; i <= 5; ++i) {
+            editor->blockLayout()->ensureBlockLayout(block(i));
+        }
+        // Concealed: continuation lines 1..5 conceal their 3 leading spaces and flow with the line above.
+        // (On line 2, column 3 is the opening backtick of `src/...`, which is also concealed.)
+        for (int i = 1; i <= 5; ++i) {
+            const int firstVisibleCol = (i == 2) ? 4 : 3;
+            QVERIFY2(test::isCollapsed(block(i), 0), qPrintable(QStringLiteral("line %1 col 0").arg(i)));
+            QVERIFY2(test::isCollapsed(block(i), 2), qPrintable(QStringLiteral("line %1 col 2").arg(i)));
+            QVERIFY2(!test::isCollapsed(block(i), firstVisibleCol),
+                     qPrintable(QStringLiteral("line %1 col %2").arg(i).arg(firstVisibleCol)));
+        }
+        // Line 1 ("   span lines...") shares the last visual line of line 0 ("... that"). Line 0 is
+        // short so that its line has room for "span" with any font (with Helvetica's metrics a longer
+        // line 0 ended too close to the right edge, and "span" rightly started a new line).
+        QVERIFY(editor->blockLayout()->sharesLineWithPrevious(block(1)));
+        QCOMPARE(differenceFromTheReference(editor), QString());
+
+        // Caret on any line of the ordered item reveals all 6 lines onto their own visual lines.
+        f.placeCaret(2);
+        f.settle();
+        for (int i = 1; i <= 5; ++i) {
+            QVERIFY(!editor->blockLayout()->sharesLineWithPrevious(block(i)));
+            QVERIFY(!test::isCollapsed(block(i), 0));
+        }
+        QCOMPARE(differenceFromTheReference(editor), QString());
+    }
+
+    // A continuation line flows onto the last visual line of the line above only if its first word
+    // fits in the rest of that line; otherwise it starts the next visual line of the same paragraph.
+    // The widths come from the editor's font, so the case holds with any font: line 0 and the first
+    // word of line 1 each take about 60 % of the text column.
+    void orderedListContinuationThatDoesNotFitStartsANewLine() {
+        test::Fixture f;
+        f.window->resize(900, 700);
+        auto* editor = f.editor();
+        const QFontMetricsF metrics(editor->document()->defaultFont());
+        const qreal column = editor->viewport()->width() - 2 * editor->document()->documentMargin();
+        const auto wordOfWidth = [&](qreal width) {
+            QString word;
+            while (metrics.horizontalAdvance(word) < width) {
+                word += QLatin1Char('m');
+            }
+            return word;
+        };
+        const QString lineZeroWord = wordOfWidth(0.6 * column);
+        const QString lineOneWord = wordOfWidth(0.6 * column);
+        const QByteArray markdown = "1. " + lineZeroWord.toLatin1() + "\n" + "   " + lineOneWord.toLatin1() + " and\n" +
+                                    "   more.\n"
+                                    "\n"
+                                    "Outside\n";
+        QVERIFY(f.open(f.writeFile(QStringLiteral("ordered_no_room.md"), markdown)));
+        f.placeCaret(4);
+        f.settle();
+
+        const auto* doc = editor->document();
+        const auto block = [&](int n) { return doc->findBlockByNumber(n); };
+        for (int i = 0; i <= 2; ++i) {
+            editor->blockLayout()->ensureBlockLayout(block(i));
+        }
+        QCOMPARE(block(0).layout()->lineCount(), 1);  // line 0 stays one visual line
+
+        // The first word of line 1 does not fit beside line 0: line 1 starts a new visual line, with
+        // its indentation concealed.
+        QVERIFY(!editor->blockLayout()->sharesLineWithPrevious(block(1)));
+        QVERIFY(test::isCollapsed(block(1), 0));
+        QVERIFY(test::isCollapsed(block(1), 2));
+        const QTextLine first = block(1).layout()->lineAt(0);
+        QVERIFY(first.naturalTextWidth() <= first.width() + 0.5);  // the word fits on a line of its own
+        // The paragraph still flows: line 2 shares the last visual line of line 1.
+        QVERIFY(editor->blockLayout()->sharesLineWithPrevious(block(2)));
+        QCOMPARE(differenceFromTheReference(editor), QString());
+    }
+
+    void multiLineSetextHeadingFlowsAndReveals() {
+        test::Fixture f;
+        constexpr auto kDoc =
+            "Heading one\n"
+            "heading two\n"
+            "===\n"
+            "\n"
+            "Outside\n";
+        QVERIFY(f.open(f.writeFile(QStringLiteral("setext.md"), kDoc)));
+        f.placeCaret(4);
+        f.settle();
+
+        auto* editor = f.editor();
+        const auto* doc = editor->document();
+        const auto block = [&](int n) { return doc->findBlockByNumber(n); };
+        const auto rect = [&](int n) { return editor->blockLayout()->blockBoundingRect(block(n)); };
+
+        // Concealed: lines 0 and 1 flow on one visual line at heading 1 size; underline is hidden.
+        QCOMPARE(rect(0).top(), rect(1).top());
+        QCOMPARE(test::formatAt(block(0), 0).fontPointSize(), editor->styler().formats().heading(1).fontPointSize());
+        QCOMPARE(test::formatAt(block(1), 0).fontPointSize(), editor->styler().formats().heading(1).fontPointSize());
+        QCOMPARE(test::formatAt(block(2), 0).foreground().color(), QColor(Qt::transparent));
+
+        // Caret on any of 0, 1, or 2 (the underline) reveals all lines of the heading and the underline.
+        for (const int caret : {0, 1, 2}) {
+            f.placeCaret(caret);
+            f.settle();
+            QVERIFY2(rect(0).top() < rect(1).top(), qPrintable(QStringLiteral("caret on %1").arg(caret)));
+            QCOMPARE(test::formatAt(block(2), 0).foreground().color(),
+                     qcolor(core::builtinTheme(core::ColorScheme::Light).marker));
+            QCOMPARE(differenceFromTheReference(editor), QString());
+        }
+    }
+
+    // CI of agents/s033-layout-cost on Windows: multiLineSetextHeadingFlowsAndReveals failed there only.
+    // MSVC evaluates rect(1) in "rect(0).top() < rect(1).top()" first. When the caret reveals the
+    // heading, line 1 stops sharing the line of line 0 while line 0 has no lines yet; the height of
+    // line 0 was still its advance with line 1 on its last line, so line 1 got the top of line 0.
+    // Line 1 must be below line 0 whichever is queried first (until line 0 is laid out, its height is
+    // an estimate).
+    void aBlockThatStopsSharingALineGetsItsTopWithoutTheBlockBeforeLaidOut() {
+        test::Fixture f;
+        constexpr auto kDoc =
+            "Heading one\n"
+            "heading two\n"
+            "===\n"
+            "\n"
+            "Outside\n";
+        QVERIFY(f.open(f.writeFile(QStringLiteral("setext_order.md"), kDoc)));
+        f.placeCaret(4);
+        f.settle();
+        auto* editor = f.editor();
+        const auto* doc = editor->document();
+        const auto rect = [&](int n) { return editor->blockLayout()->blockBoundingRect(doc->findBlockByNumber(n)); };
+        QCOMPARE(rect(0).top(), rect(1).top());
+
+        f.placeCaret(0);
+        f.settle();
+        const qreal top1 = rect(1).top();  // first, as MSVC does
+        const qreal top0 = rect(0).top();
+        QVERIFY2(top0 < top1, qPrintable(QStringLiteral("line 0 at %1, line 1 at %2").arg(top0).arg(top1)));
+    }
+
+    void clickingContinuationLinePlacesCaretAndRevealsParagraph() {
+        test::Fixture f;
+        constexpr auto kDoc =
+            "First line\n"
+            "  Second line\n"
+            "\n"
+            "Outside\n";
+        QVERIFY(f.open(f.writeFile(QStringLiteral("click.md"), kDoc)));
+        f.placeCaret(3);
+        f.settle();
+
+        auto* editor = f.editor();
+        const auto* doc = editor->document();
+        const QTextBlock b0 = doc->findBlockByNumber(0);
+        const QTextBlock b1 = doc->findBlockByNumber(1);
+        editor->blockLayout()->ensureBlockLayout(b0);
+        editor->blockLayout()->ensureBlockLayout(b1);
+
+        const QRectF r0 = editor->blockLayout()->blockBoundingRect(b0);
+        const QRectF r1 = editor->blockLayout()->blockBoundingRect(b1);
+        QCOMPARE(r0.top(), r1.top());
+        const QTextLine line0 = b1.layout()->lineAt(0);
+        QVERIFY(line0.x() > b0.layout()->lineAt(0).x());
+        // Click in the middle of "Second" on block 1 while it is flowing on block 0's visual line.
+        const qreal clickX = line0.cursorToX(4);
+        const qreal clickY = r1.top() + line0.y() + line0.height() / 2.0;
+        const QPoint viewportPt(static_cast<int>(clickX), static_cast<int>(clickY));
+
+        QTest::mouseClick(editor->viewport(), Qt::LeftButton, Qt::NoModifier, viewportPt);
+        f.settle();
+
+        const QTextCursor c = editor->textCursor();
+        QCOMPARE(c.blockNumber(), 1);
+        QVERIFY2(c.positionInBlock() >= 2 && c.positionInBlock() <= 8,
+                 qPrintable(QStringLiteral("column %1").arg(c.positionInBlock())));
+        QVERIFY(editor->blockLayout()->blockBoundingRect(b0).top() <
+                editor->blockLayout()->blockBoundingRect(b1).top());
+    }
+
+    void findMatchesAcrossSoftLineBreakAndEscapeSelects() {
+        test::Fixture f;
+        constexpr auto kDoc =
+            "Hello\n"
+            "  world today\n"
+            "\n"
+            "Outside\n";
+        QVERIFY(f.open(f.writeFile(QStringLiteral("find.md"), kDoc)));
+        f.placeCaret(3);
+        f.settle();
+
+        auto* editor = f.editor();
+        QCOMPARE(editor->blockLayout()->blockBoundingRect(editor->document()->findBlockByNumber(0)).top(),
+                 editor->blockLayout()->blockBoundingRect(editor->document()->findBlockByNumber(1)).top());
+        ui::FindController* find = f.window->findController();
+        ui::FindBar* bar = f.window->findBar();
+        find->open();
+        test::keyClicks(bar->searchField(), QStringLiteral("hello world"));
+        QVERIFY(QTest::qWaitFor([&] { return find->isComplete(); }, 30000));
+        QCOMPARE(find->matchCount(), 1);
+
+        test::keyClick(bar->searchField(), Qt::Key_Escape);
+        f.settle();
+        const QTextCursor c = editor->textCursor();
+        QVERIFY(c.hasSelection());
+        QCOMPARE(editor->document()->findBlock(c.selectionStart()).blockNumber(), 0);
+        QCOMPARE(editor->document()->findBlock(c.selectionEnd()).blockNumber(), 1);
+        // The paragraph is now revealed because the selection spans lines 0..1.
+        QVERIFY(editor->blockLayout()->blockBoundingRect(editor->document()->findBlockByNumber(0)).top() <
+                editor->blockLayout()->blockBoundingRect(editor->document()->findBlockByNumber(1)).top());
+    }
+
+    void savePreservesExactBytesAfterWalkingThroughFlowingParagraphs() {
+        test::Fixture f;
+        const QByteArray original =
+            "Paragraph line one\n"
+            "  line two with trailing space \n"
+            "  line three with hard break\\\n"
+            "  line four with two spaces  \n"
+            "  line five.\n"
+            "\n"
+            "- bullet one\n"
+            "  bullet two\n";
+        const QString path = f.writeFile(QStringLiteral("roundtrip.md"), original);
+        QVERIFY(f.open(path));
+        f.placeCaret(0);
+        f.settle();
+        for (int i = 0; i < 8; ++i) {
+            test::keyClick(f.editor(), Qt::Key_Down);
+            f.settle();
+            QCOMPARE(differenceFromTheReference(f.editor()), QString());
+        }
+        const QString saved = f.dir.filePath(QStringLiteral("saved.md"));
+        QVERIFY(f.saveAndWait(saved));
+        QCOMPARE(test::Fixture::readFile(saved), original);
+    }
+
+    // A new width re-estimates every block (S019 finding 2). In a flowing paragraph the line at the
+    // top of the view can start inside a block that shares its first line with the blocks before
+    // it; the reading position is that line, not the first block of the shared line.
+    void resizingKeepsTheTopLineInsideAFlowingParagraph() {
+        QByteArray markdown = "# Notes\n\n";
+        for (int p = 0; p < 40; ++p) {
+            for (int i = 0; i < 24; ++i) {
+                const QByteArray words = i % 5 == 0 ? QByteArray(120, 'a').replace("aaaa", "aa a") : QByteArray("aa a");
+                markdown += "word " + QByteArray::number(p * 100 + i) + ' ' + words + '\n';
+            }
+            markdown += '\n';
+        }
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("resize_flow.md"), markdown)));
+        f.placeCaret(0);
+        f.settle();
+
+        auto* editor = f.editor();
+        auto* bar = editor->verticalScrollBar();
+        const auto topBlock = [&] { return editor->cursorForPosition(QPoint(40, 2)).blockNumber(); };
+        // Page down until the top line belongs to a block well behind the first block of its shared
+        // lines (firstBlockOfLineAt), so that blocks between the two lie above the reading position.
+        bool inside = false;
+        for (int page = 0; page < 40 && !inside; ++page) {
+            bar->triggerAction(QAbstractSlider::SliderPageStepAdd);
+            f.settle();
+            const QTextBlock top = editor->document()->findBlockByNumber(topBlock());
+            inside = editor->blockLayout()->sharesLineWithPrevious(top) &&
+                     top.blockNumber() - editor->blockLayout()->firstBlockOfLineAt(bar->value()).blockNumber() >= 6;
+        }
+        if (!inside) {
+            // Which page starts where depends on the font; tst_s019 resizingKeepsTheReadingPosition
+            // covers the same case at the end of a document.
+            QSKIP("no page starts well inside a shared line with this font");
+        }
+        const int before = topBlock();
+
+        f.window->resize(f.window->width() - 40, f.window->height());
+        f.settle();
+        QCOMPARE(topBlock(), before);
+        f.window->resize(f.window->width() + 40, f.window->height());
+        f.settle();
+        QCOMPARE(topBlock(), before);
+    }
+
+    // A resize and back again shows the same line at the top (follow-up to PR #37: Windows CI red in
+    // tst_s019 resizingKeepsTheReadingPosition, 1451 instead of 1452). The top line of the view can be
+    // the second or a later line of a block that shares its first line with the blocks before it; a
+    // share of that block's height lands on another of its lines once the width changes, and taking
+    // the reading position anew at each resize lets the view drift. After the smaller width the text
+    // that started the top line is still in it; after the way back it is the same line again.
+    void aResizeAndBackShowsTheSameTopLine() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("resize_back.md"), flowingLines(1500))));
+        f.settle();
+        auto* editor = f.editor();
+        const auto* doc = editor->document();
+
+        QStringList failures;
+        int cases = 0;
+        for (int width = 700; width <= 1100; width += 20) {
+            f.window->resize(width, 700);
+            f.settle();
+            for (const int number : {603, 702, 801}) {
+                const QTextBlock block = doc->findBlockByNumber(number);
+                (void)editor->blockLayout()->blockBoundingRect(block);  // lays it out
+                if (!editor->blockLayout()->sharesLineWithPrevious(block)) {
+                    continue;
+                }
+                for (int line = 1; line < block.layout()->lineCount(); ++line) {
+                    showLineAtTop(editor, block, line);
+                    f.settle();
+                    const TopLine before = topLineOf(editor);
+                    if (before.block != number || before.line != line) {
+                        failures << QStringLiteral("width %1: block %2 line %3 not at the top (%4 line %5)")
+                                        .arg(width)
+                                        .arg(number)
+                                        .arg(line)
+                                        .arg(before.block)
+                                        .arg(before.line);
+                        continue;
+                    }
+                    ++cases;
+                    f.window->resize(width - 40, 700);
+                    f.settle();
+                    if (!inTopLine(editor, before.position)) {
+                        const TopLine narrow = topLineOf(editor);
+                        failures << QStringLiteral("width %1, block %2 line %3: narrower, top is %4 line %5")
+                                        .arg(width)
+                                        .arg(number)
+                                        .arg(line)
+                                        .arg(narrow.block)
+                                        .arg(narrow.line);
+                    }
+                    f.window->resize(width, 700);
+                    f.settle();
+                    const TopLine after = topLineOf(editor);
+                    if (after.block != before.block || after.line != before.line) {
+                        failures << QStringLiteral("width %1, block %2 line %3: back, top is %4 line %5")
+                                        .arg(width)
+                                        .arg(number)
+                                        .arg(line)
+                                        .arg(after.block)
+                                        .arg(after.line);
+                    }
+                }
+            }
+        }
+        QVERIFY(cases > 20);
+        QVERIFY2(failures.isEmpty(), qPrintable(QStringLiteral("%1 of %2 cases: %3")
+                                                    .arg(failures.size())
+                                                    .arg(cases)
+                                                    .arg(failures.mid(0, 8).join(QStringLiteral("; ")))));
+    }
+
+    // The same at the end of the document, where the view starts anywhere in its top line. Laying
+    // out the line to return to changes the document's height before the scroll range follows it,
+    // and scrolling there lays out the blocks that come into view, which can make the document
+    // shorter for a moment: neither may cut the scroll value short.
+    void aResizeAndBackAtTheEndShowsTheSameTopLine() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("resize_end.md"), flowingLines(1500))));
+        f.settle();
+        auto* editor = f.editor();
+        auto* bar = editor->verticalScrollBar();
+
+        QStringList failures;
+        for (int width = 700; width <= 1100; width += 10) {
+            f.window->resize(width, 700);
+            f.settle();
+            // A scroll lets go of the reading position held since the last width; already at the
+            // end, the view would keep it and return to it, which is not the line at the top now
+            // when the end of the document holds the view below it.
+            bar->setValue(0);
+            f.settle();
+            for (int i = 0; i < 3 && bar->value() < bar->maximum(); ++i) {
+                bar->setValue(bar->maximum());
+                f.settle();
+            }
+            const int before = editor->cursorForPosition(QPoint(0, 0)).position();
+            if (!reachesTopEdge(editor, before) || !startsLine(editor->document(), before)) {
+                failures << QStringLiteral("width %1: no line starts at the top").arg(width);
+                continue;
+            }
+            f.window->resize(width - 40, 700);
+            f.settle();
+            if (!reachesTopEdge(editor, before)) {
+                failures << QStringLiteral("width %1: narrower, %2 is not in the top line").arg(width).arg(before);
+            }
+            f.window->resize(width, 700);
+            f.settle();
+            if (!reachesTopEdge(editor, before) || !startsLine(editor->document(), before)) {
+                failures
+                    << QStringLiteral("width %1: back, the top line does not start with %2").arg(width).arg(before);
+            }
+        }
+        QVERIFY2(failures.isEmpty(), qPrintable(QStringLiteral("%1 of 41 widths: %2")
+                                                    .arg(failures.size())
+                                                    .arg(failures.mid(0, 8).join(QStringLiteral("; ")))));
+    }
+
+    // The reading position holds across consecutive resizes only until the view scrolls; the next
+    // resize keeps the line the reader scrolled to.
+    void scrollingAfterAResizeTakesTheNewTopLine() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("resize_scroll.md"), flowingLines(1500))));
+        f.settle();
+        auto* editor = f.editor();
+        showLineAtTop(editor, editor->document()->findBlockByNumber(702), 1);
+        f.settle();
+
+        f.window->resize(f.window->width() - 40, f.window->height());
+        f.settle();
+        editor->verticalScrollBar()->triggerAction(QAbstractSlider::SliderPageStepAdd);
+        f.settle();
+        const TopLine scrolled = topLineOf(editor);
+        QVERIFY(scrolled.block > 702);
+        f.window->resize(f.window->width() + 40, f.window->height());
+        f.settle();
+        QVERIFY(inTopLine(editor, scrolled.position));
+    }
+
+    // The new margins of a resize re-lay out the viewport, and Qt passes that resize on to the
+    // editor's resizeEvent while the first one still runs (S033 review O3). The nested call must
+    // not restore a reading position of its own, taken from the width in between: one resize of
+    // the editor restores the reading position once.
+    void aResizeRestoresTheReadingPositionOnce() {
+        QByteArray markdown;
+        for (int i = 0; i < 1500; ++i) {
+            markdown += "line " + QByteArray::number(i) + ' ' +
+                        QByteArray(i % 3 == 0 ? 180 : 10, 'a').replace("aaaa", "aa a") + '\n';
+        }
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("resize_once.md"), markdown)));
+        f.settle();
+        auto* editor = f.editor();
+        auto* bar = editor->verticalScrollBar();
+        for (int page = 0; page < 30; ++page) {
+            bar->triggerAction(QAbstractSlider::SliderPageStepAdd);
+            f.settle();
+        }
+        QVERIFY(bar->value() > 0);  // at the very top there is no reading position to restore
+
+        // The window is wider than the built-in theme's editor-max-width, so the side margins
+        // change with the width.
+        QVERIFY(editor->width() > 760 + 40);
+        ResizeCounter editorResizes(editor);
+        const quint64 before = editor->anchorRestores();
+        f.window->resize(f.window->width() - 40, f.window->height());
+        f.settle();
+        QVERIFY(editorResizes.count > 0);
+        QCOMPARE(editor->anchorRestores() - before, static_cast<quint64>(editorResizes.count));
+    }
+
+    // Benchmark of PR #37 (s031_paste_no_table_5000_lines_ms 29 -> 139 ms): an edit that adds many lines
+    // styles the lines on screen at once and the rest later, in slices. Qt reports the edit to the
+    // styler before the layout knows the new blocks; the visible range must not take every new block
+    // for visible then.
+    void insertingManyLinesStylesOnlyTheScreenAtOnce() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("empty.md"), QByteArray())));
+        f.settle();
+        auto* editor = f.editor();
+        QString text;
+        for (int i = 0; i < 5000; ++i) {
+            text += QStringLiteral("int value%1 = %1;\n").arg(i);
+        }
+        auto& styler = editor->styler();
+        const quint64 before = styler.styledCount();
+        QTextCursor(editor->document()).insertText(text);
+        const quint64 atOnce = styler.styledCount() - before;
+        // The screen holds a few hundred of these short lines when they flow; 5,000 means all of them.
+        QVERIFY2(atOnce < 1000, qPrintable(QStringLiteral("%1 lines styled at once").arg(atOnce)));
+        f.settle();
+        QCOMPARE(differenceFromTheReference(editor), QString());
+    }
+
+    // Benchmark of PR #37 (s031_paste_no_table_5000_lines_ms 29 -> 45 ms after the visible range was
+    // fixed): short lines flow, so a screen holds about three times as many blocks as on main, and
+    // each block found without lines on screen laid its paragraph out again from up to 64 blocks back,
+    // although those had lines already. The screen took about 20 layouts per block.
+    void layingOutTheScreenLaysOutEachBlockAboutOnce() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("empty.md"), QByteArray())));
+        f.settle();
+        auto* editor = f.editor();
+        QString text;
+        for (int i = 0; i < 5000; ++i) {
+            text += QStringLiteral("int value%1 = %1;\n").arg(i);
+        }
+        const quint64 before = editor->blockLayout()->blockLayouts();
+        QTextCursor(editor->document()).insertText(text);
+        f.settle();
+        editor->viewport()->repaint();
+        const quint64 layouts = editor->blockLayout()->blockLayouts() - before;
+        const int laidOut = laidOutBlocks(editor->document());
+        QVERIFY(laidOut > 0);
+        QVERIFY2(layouts <= static_cast<quint64>(3 * laidOut),
+                 qPrintable(QStringLiteral("%1 block layouts for %2 blocks with lines").arg(layouts).arg(laidOut)));
+        QCOMPARE(differenceFromTheReference(editor), QString());
+    }
+
+    // Review O2 (docs/reviews/033-soft-line-breaks-code-resize-anchor.md), fixed on the follow-up to
+    // PR #37: a block without lines was estimated at a line at least, but lines of a paragraph flow,
+    // so the scroll range of a document was too large until it was laid out (here about three times).
+    void theEstimatedHeightOfAFlowingParagraphIsCloseToItsLaidOutHeight() { estimateOfAFlowingParagraph({}); }
+
+    // The same with a font whose own average character width is far wider than running text set in
+    // it (macOS CI on 28cb865: estimated 11,868 px, laid out 9,393 px). The estimate takes the width of
+    // text as the font sets it.
+    void theEstimatedHeightHoldsWithAFontWhoseAverageWidthIsOff() {
+        const QString family = fontWithAverageWidthOff(QStringLiteral("short line 1234 "));
+        if (family.isEmpty()) {
+            QSKIP("no installed font whose average character width is off");
+        }
+        estimateOfAFlowingParagraph(family);
+    }
+
+    // Benchmark of PR #37 (s031_paste_no_table_5000_lines_ms): pasted at the caret, 5,000 short lines
+    // were estimated a line each; laid out at the end of the document they flow into far fewer lines,
+    // the document shrank, the view followed the caret again and laid out the next screen (13 scrolls
+    // during the paste, 2 on main).
+    void pastingManyShortLinesLaysOutTheScreenAtTheCaretAboutOnce() { pasteManyShortLines({}); }
+
+    // The same with a font whose own average character width is off (macOS CI on 28cb865: 800 block
+    // layouts for 135 blocks).
+    void pastingManyShortLinesWithAFontWhoseAverageWidthIsOff() {
+        const QString family = fontWithAverageWidthOff(QStringLiteral("int value1234 = 1234; "));
+        if (family.isEmpty()) {
+            QSKIP("no installed font whose average character width is off");
+        }
+        pasteManyShortLines(family);
+    }
+
+    // Typing "-" below a long paragraph turns it into a setext heading, deleting it lets it flow
+    // again; the styler restyles the paragraph in idle slices, and every slice changes the heights of
+    // blocks above the screen. The view stays at the caret through all of it, however the slices
+    // fall (tst_s033 changingTheFlowOfALongParagraphAgainLaysOutNoMoreOfIt failed at random: with
+    // slices of 512 blocks the caret ended 3,000 px below the view after the Backspace, with the
+    // slices by time 8,000 px below it after the "-").
+    void theCaretStaysOnScreenWhileALongParagraphIsRestyledInSlices() {
+        constexpr int kLines = 3000;
+        QByteArray document = "Outside top\n\n";
+        for (int i = 0; i < kLines; ++i) {
+            document += "hard-wrapped text of a long paragraph, line " + QByteArray::number(i) + "\n";
+        }
+        document += "\nOutside bottom\n";
+        QStringList failures;
+        for (const int slice : {0, 64, 512}) {
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("caret_on_screen.md"), document)));
+            auto* editor = f.editor();
+            editor->styler().setSliceBlocksForTests(slice);
+            const int below = kLines + 2;  // the blank line below the paragraph
+            f.placeCaret(below);
+            f.settle();
+            const auto check = [&](const char* after) {
+                const QRect caret = editor->cursorRect();
+                if (caret.top() < 0 || caret.bottom() > editor->viewport()->height()) {
+                    failures << QStringLiteral("slices of %1 blocks, after %2: caret at y %3, view %4 px high")
+                                    .arg(slice)
+                                    .arg(QString::fromLatin1(after))
+                                    .arg(caret.top())
+                                    .arg(editor->viewport()->height());
+                }
+            };
+            check("opening");
+            for (int round = 0; round < 2; ++round) {
+                f.placeCaret(below);
+                test::keyClick(editor, '-');
+                f.settle();
+                check("\"-\"");
+                test::keyClick(editor, Qt::Key_Backspace);
+                f.settle();
+                check("Backspace");
+            }
+        }
+        QVERIFY2(failures.isEmpty(), qPrintable(failures.join(QStringLiteral("; "))));
+    }
+
+    // Review O5: Undo and Redo from the Edit menu change the text at the caret as a key does; the view
+    // follows the caret through them, also while the paragraph they change is restyled in slices.
+    void theCaretStaysOnScreenThroughUndoAndRedoFromTheMenu() {
+        constexpr int kLines = 1000;
+        QByteArray document = "Outside top\n\n";
+        for (int i = 0; i < kLines; ++i) {
+            document += "hard-wrapped text of a long paragraph, line " + QByteArray::number(i) + "\n";
+        }
+        document += "\nOutside bottom\n";
+        QStringList failures;
+        for (const int slice : {64, 512}) {
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("undo_on_screen.md"), document)));
+            auto* editor = f.editor();
+            editor->styler().setSliceBlocksForTests(slice);
+            QAction* undo = nullptr;
+            QAction* redo = nullptr;
+            for (QAction* action : f.window->findChildren<QAction*>()) {
+                if (action->shortcut() == QKeySequence(QKeySequence::Undo)) {
+                    undo = action;
+                } else if (action->shortcut() == QKeySequence(QKeySequence::Redo)) {
+                    redo = action;
+                }
+            }
+            QVERIFY(undo != nullptr && redo != nullptr);
+            const int below = kLines + 2;  // the blank line below the paragraph
+            f.placeCaret(below);
+            f.settle();
+            test::keyClick(editor, '-');  // the paragraph becomes a setext heading
+            f.settle();
+            const auto check = [&](const char* after) {
+                const QRect caret = editor->cursorRect();
+                if (caret.top() < 0 || caret.bottom() > editor->viewport()->height()) {
+                    failures << QStringLiteral("slices of %1 blocks, after %2: caret at y %3, view %4 px high")
+                                    .arg(slice)
+                                    .arg(QString::fromLatin1(after))
+                                    .arg(caret.top())
+                                    .arg(editor->viewport()->height());
+                }
+            };
+            for (int round = 0; round < 2; ++round) {
+                undo->trigger();  // the paragraph flows again
+                f.settle();
+                check("Undo");
+                redo->trigger();
+                f.settle();
+                check("Redo");
+            }
+        }
+        QVERIFY2(failures.isEmpty(), qPrintable(failures.join(QStringLiteral("; "))));
+    }
+
+    // Benchmark of the follow-up to PR #37 (s023_underline_settled_ms 97, 127, 170 ... 496 ms over ten
+    // rounds): typing "-" below a long paragraph and deleting it again changes the flow of every line
+    // of it. Laying the paragraph out again must not lay out more of it each time; it grew by the
+    // lookback of a chain (64 blocks) per round, and restyling cost more with every round.
+    // The idle slices of the styler end after a fixed number of blocks here, so the test is the same
+    // on every machine: with slices by time it failed at random, because the view lost the caret in
+    // some of the slicings (theCaretStaysOnScreenWhileALongParagraphIsRestyledInSlices) and laid out a
+    // new part of the paragraph each round.
+    void changingTheFlowOfALongParagraphAgainLaysOutNoMoreOfIt() {
+        constexpr int kLines = 3000;
+        QByteArray document = "Outside top\n\n";
+        for (int i = 0; i < kLines; ++i) {
+            document += "hard-wrapped text of a long paragraph, line " + QByteArray::number(i) + "\n";
+        }
+        document += "\nOutside bottom\n";
+        for (const int slice : {384, 512, 768}) {
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("long_para_flow.md"), document)));
+            auto* editor = f.editor();
+            editor->styler().setSliceBlocksForTests(slice);
+            const int below = kLines + 2;  // the blank line below the paragraph
+            f.placeCaret(below);
+            f.settle();
+
+            const auto round = [&] {
+                f.placeCaret(below);
+                test::keyClick(editor, '-');  // the paragraph becomes a setext heading
+                f.settle();
+                test::keyClick(editor, Qt::Key_Backspace);  // and flows again
+                f.settle();
+            };
+            // A round may lay out the lookback before the first line on screen (64 blocks) or not,
+            // depending on where the slices end; what must not happen is that it is added again and
+            // again. The most laid out after rounds three to six is compared with the most after the
+            // first two (with walks that end after a number of lines, review O3, the count goes
+            // 121, 57, 58, 122, 121, 122 with slices of 384 blocks).
+            int firstTwo = 0;
+            for (int i = 0; i < 2; ++i) {
+                round();
+                firstTwo = std::max(firstTwo, laidOutBlocks(editor->document()));
+            }
+            int nextFour = 0;
+            for (int i = 0; i < 4; ++i) {
+                round();
+                nextFour = std::max(nextFour, laidOutBlocks(editor->document()));
+            }
+            QVERIFY2(
+                nextFour - firstTwo < 16,
+                qPrintable(QStringLiteral("slices of %1 blocks: at most %2 blocks laid out in the first two rounds, "
+                                          "%3 in the next four")
+                               .arg(slice)
+                               .arg(firstTwo)
+                               .arg(nextFour)));
+            QCOMPARE(differenceFromTheReference(editor), QString());
+        }
+    }
+
+    // Benchmark of the follow-up to PR #37 (s023_bullet_typing_median_ms 3.5 -> 5.9 ms): "- " before a
+    // paragraph of 20,000 lines changes the paragraph, and the reveal of the paragraph at the caret
+    // searched its extent for up to 2 ms on each key, far beyond the screen; the rest of the search
+    // goes on in idle slices anyway. A key walks a long paragraph about as far as the screen needs (and
+    // a few hundred lines at least, so that short paragraphs are found at once).
+    void aKeyBeforeALongParagraphSearchesItsExtentAboutAsFarAsTheScreen() {
+        QByteArray document;
+        for (int i = 0; i < 20000; ++i) {
+            document += (i == 0 ? "Long" : "long") + QByteArray(" paragraph line ") + QByteArray::number(i) +
+                        " of hard-wrapped text without a blank line\n";
+        }
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("long_extent.md"), document)));
+        auto* editor = f.editor();
+        f.placeCaret(0);
+        f.settle();
+        const auto [firstOnScreen, lastOnScreen] = editor->visibleBlockRange();
+        const auto onScreen = static_cast<quint64>(lastOnScreen - firstOnScreen) + 1;
+        for (const auto key : {Qt::Key_Minus, Qt::Key_Space, Qt::Key_Backspace, Qt::Key_Backspace}) {
+            const quint64 before = editor->styler().extentSteps();
+            test::keyClick(editor, key);  // QTest sends the key directly; no idle slice runs in between
+            const quint64 steps = editor->styler().extentSteps() - before;
+            // The walk stops past the screen once it has walked kWalkedAtOnce (512) lines (review O8).
+            QVERIFY2(
+                steps <= 512 + onScreen,
+                qPrintable(
+                    QStringLiteral("key %1: %2 lines walked, %3 on screen").arg(int(key)).arg(steps).arg(onScreen)));
+            f.settle();
+            QCOMPARE(differenceFromTheReference(editor), QString());
+        }
+    }
+
+    // The view keeps its content still before it takes in a new size (review O9): with the size
+    // first, a smaller document cut the scroll value short at its end and the view's shift moved it
+    // a second time, which made the caret and flow tests fail at random (S033).
+    void aHeightChangeIsReportedBeforeTheNewSize() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("order.md"), "First line\n\nSecond line\n\nThird line\n")));
+        f.settle();
+        auto* layout = f.editor()->blockLayout();
+        const QTextBlock second = f.editor()->document()->findBlockByNumber(2);
+        QStringList order;
+        QObject probe;
+        QObject::connect(layout, &ui::BlockLayout::blockHeightChanged, &probe,
+                         [&] { order << QStringLiteral("height"); });
+        QObject::connect(layout, &ui::BlockLayout::batchFinished, &probe, [&] { order << QStringLiteral("batch"); });
+        QObject::connect(layout, &QAbstractTextDocumentLayout::documentSizeChanged, &probe,
+                         [&] { order << QStringLiteral("size"); });
+
+        layout->setBlockSpacing(second, 30, 0);
+        QCOMPARE(order, QStringList({QStringLiteral("height"), QStringLiteral("size")}));
+
+        order.clear();
+        {
+            const ui::BlockLayout::Batch batch(layout);
+            layout->setBlockSpacing(second, 0, 0);
+        }
+        QCOMPARE(order, QStringList({QStringLiteral("height"), QStringLiteral("batch"), QStringLiteral("size")}));
+    }
+
+    // Opening inserts the text in chunks while the idle styler is still behind. The paragraph flow
+    // restyled the line above each chunk at once, and working out its block state walked back over
+    // every line not yet styled: about half of the extra time of opening 10 MB (callgrind,
+    // 2026-11-12). A line not yet styled is styled by the idle styler anyway.
+    void aChunkBelowLinesNotYetStyledLeavesThemToTheIdleStyler() {
+        QString chunk;  // 2,100 lines in short paragraphs, as in the benchmark's plain 10 MB file
+        for (int i = 0; i < 300; ++i) {
+            chunk += QStringLiteral(
+                         "## Section %1\n\nText of the section, with *emphasis*.\n\n- an item\n- another item\n\n")
+                         .arg(i);
+        }
+        test::Fixture f;
+        auto* editor = f.editor();
+        QTextCursor cursor(editor->document());
+        cursor.insertText(QStringLiteral("# Title\n"));
+        f.placeCaret(0);           // as while a file is opened, the caret stays at the top
+        cursor.insertText(chunk);  // no event is processed: the idle styler has not run yet
+        const quint64 before = editor->styler().stateSteps();
+        cursor.insertText(chunk);
+        const quint64 steps = editor->styler().stateSteps() - before;
+        QVERIFY2(steps <= 1, qPrintable(QStringLiteral("%1 block states worked out on their own").arg(steps)));
+        f.settle();
+        QCOMPARE(differenceFromTheReference(editor), QString());
+    }
+
+    // Review O3: with slices of a fixed number of blocks for tests, the walks of the styler end after
+    // that many lines too, not after a time, so that the tests that set it are the same on every
+    // machine. A key before a long paragraph walks its extent in steps of that size.
+    void withSlicesForTestsAKeyWalksALongParagraphInStepsOfThatSize() {
+        QByteArray document;
+        for (int i = 0; i < 3000; ++i) {
+            document += (i == 0 ? "Long" : "long") + QByteArray(" paragraph line ") + QByteArray::number(i) +
+                        " of hard-wrapped text without a blank line\n";
+        }
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("long_extent_slices.md"), document)));
+        auto* editor = f.editor();
+        editor->styler().setSliceBlocksForTests(64);
+        f.placeCaret(0);
+        f.settle();
+        const quint64 before = editor->styler().extentSteps();
+        test::keyClick(editor, Qt::Key_Minus);  // no idle slice runs in between
+        const quint64 steps = editor->styler().extentSteps() - before;
+        QVERIFY2(steps <= 64, qPrintable(QStringLiteral("%1 lines walked at once").arg(steps)));
+        f.settle();
+        QCOMPARE(differenceFromTheReference(editor), QString());
+    }
+
+    void longFlowingParagraphStaysWithinLatencyBudget() {
+        constexpr int kLines = 20000;
+        QByteArray document = "Outside top\n\n";
+        for (int i = 0; i < kLines; ++i) {
+            document += "hard-wrapped text of a long paragraph, line " + QByteArray::number(i) + "\n";
+        }
+        document += "\nOutside bottom\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("long_para.md"), document)));
+        f.placeCaret(0);
+        f.settle();
+
+        auto* editor = f.editor();
+        auto& styler = editor->styler();
+        QVERIFY(styler.renderFor(editor->document()->findBlockByNumber(2)).flowsToNext);
+
+        // Enter the 20,000-line paragraph from above: synchronous work is bounded.
+        QElapsedTimer timer;
+        timer.start();
+        f.placeCaret(2);
+        const qint64 enterMs = timer.elapsed();
+        QVERIFY2(enterMs < 50, qPrintable(QStringLiteral("enter paragraph took %1 ms").arg(enterMs)));
+        f.settle();
+
+        // Stepping inside the revealed 20,000-line paragraph restyles only the old and new caret lines.
+        const quint64 styledBefore = styler.styledCount();
+        timer.restart();
+        test::keyClick(editor, Qt::Key_Down);
+        const qint64 stepMs = timer.elapsed();
+        const quint64 styledOnStep = styler.styledCount() - styledBefore;
+        QVERIFY2(stepMs < 50, qPrintable(QStringLiteral("step inside paragraph took %1 ms").arg(stepMs)));
+        QVERIFY2(styledOnStep <= 4, qPrintable(QStringLiteral("styled %1 blocks on step").arg(styledOnStep)));
+    }
+
+private:
+    static void estimateOfAFlowingParagraph(const QString& family) {
+        QByteArray document = "Outside top\n\n";
+        for (int i = 0; i < 3000; ++i) {
+            document += "short line " + QByteArray::number(i) + "\n";
+        }
+        document += "\nOutside bottom\n";
+        test::Fixture f;
+        if (!family.isEmpty()) {
+            useEditorFont(f, family);
+        }
+        QVERIFY(f.open(f.writeFile(QStringLiteral("estimate.md"), document)));
+        f.placeCaret(0);
+        f.settle();
+        auto* editor = f.editor();
+        auto* layout = editor->blockLayout();
+        const qreal estimated = layout->documentSize().height();
+        for (QTextBlock b = editor->document()->begin(); b.isValid(); b = b.next()) {
+            layout->ensureBlockLayout(b);
+        }
+        const qreal laidOut = layout->documentSize().height();
+        QVERIFY(laidOut > 0);
+        QVERIFY2(std::abs(estimated - laidOut) < 0.15 * laidOut,
+                 qPrintable(QStringLiteral("estimated %1 px, laid out %2 px (font %3)")
+                                .arg(estimated)
+                                .arg(laidOut)
+                                .arg(QFontInfo(editor->document()->defaultFont()).family())));
+    }
+
+    static void pasteManyShortLines(const QString& family) {
+        test::Fixture f;
+        if (!family.isEmpty()) {
+            useEditorFont(f, family);
+        }
+        QVERIFY(f.open(f.writeFile(QStringLiteral("empty.md"), QByteArray())));
+        f.settle();
+        auto* editor = f.editor();
+        QString text;
+        for (int i = 0; i < 5000; ++i) {
+            text += QStringLiteral("int value%1 = %1;\n").arg(i);
+        }
+        QGuiApplication::clipboard()->setText(text);
+        QCoreApplication::processEvents();
+        const quint64 before = editor->blockLayout()->blockLayouts();
+        test::keyClick(editor, Qt::Key_V, Qt::ControlModifier);
+        f.settle();
+        editor->viewport()->repaint();
+        const quint64 layouts = editor->blockLayout()->blockLayouts() - before;
+        const int laidOut = laidOutBlocks(editor->document());
+        QVERIFY(laidOut > 0);
+        // The scroll bar appears once and narrows the text, so the screen is laid out twice; more
+        // than five layouts per block means the view went on following the caret.
+        QVERIFY2(layouts <= static_cast<quint64>(5 * laidOut),
+                 qPrintable(QStringLiteral("%1 block layouts for %2 blocks with lines (font %3)")
+                                .arg(layouts)
+                                .arg(laidOut)
+                                .arg(QFontInfo(editor->document()->defaultFont()).family())));
+    }
+};
+
+QTEST_MAIN(tst_s033_soft_line_breaks)
+#include "tst_s033_soft_line_breaks.moc"
