@@ -50,8 +50,9 @@ a recipe that does not build.
    reaches the AUR with the next version.
 4. **Built before published.** A build job, without access to the AUR key, prepares the three
    files (decision 3), builds and installs the package with `makepkg` as an unprivileged user in the
-   container `archlinux:base-devel`, against Arch's own Qt, and validates the desktop entry
-   (`desktop-file-validate`). It hands the three files on as an artifact. If any step fails, nothing
+   container `archlinux:base-devel`, against Arch's own Qt, validates the desktop entry
+   (`desktop-file-validate`) and checks that the installed `hitokoto --version` prints the version
+   (platform `offscreen`). It hands the three files on as an artifact. If any step fails, nothing
    is published and the run is red.
 5. **A separate publish job.** Only the publish job has the GitHub environment `aur`. It builds and
    runs nothing: it clones the AUR repository over SSH, reads its `pkgver` again and stops if the
@@ -71,8 +72,9 @@ a recipe that does not build.
 8. **Credentials.** The SSH private key of a key pair only for this workflow, whose public key is in
    Daniel's AUR account, is a secret of the environment `aur`, which only main may use; the commit
    author name and e-mail are variables of that environment, passed to the script as environment
-   variables. The AUR host keys are pinned in the workflow from the fingerprints the AUR publishes,
-   not fetched with `ssh-keyscan` at run time. The key is written where ssh reads it for the user
+   variables. The AUR host key is used only if its fingerprint equals the Ed25519 fingerprint the
+   AUR publishes, which is pinned in the workflow (a scanned key with another fingerprint stops the
+   run). The key is written where ssh reads it for the user
    that runs ssh, named explicitly in the ssh command together with the `known_hosts` file, and
    removed at the end of the job.
 9. **Checksum of the archive.** The SHA-256 is that of GitHub's archive of the tag
