@@ -15,6 +15,7 @@
 #include <QGuiApplication>
 #include <QLineEdit>
 #include <QScrollBar>
+#include <QStringList>
 
 #include <cmath>
 #include <vector>
@@ -1011,6 +1012,34 @@ private slots:
             f.settle();
             QCOMPARE(differenceFromTheReference(editor), QString());
         }
+    }
+
+    // The view keeps its content still before it takes in a new size (review O9): with the size
+    // first, a smaller document cut the scroll value short at its end and the view's shift moved it
+    // a second time, which made the caret and flow tests fail at random (S033).
+    void aHeightChangeIsReportedBeforeTheNewSize() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("order.md"), "First line\n\nSecond line\n\nThird line\n")));
+        f.settle();
+        auto* layout = f.editor()->blockLayout();
+        const QTextBlock second = f.editor()->document()->findBlockByNumber(2);
+        QStringList order;
+        QObject probe;
+        QObject::connect(layout, &ui::BlockLayout::blockHeightChanged, &probe,
+                         [&] { order << QStringLiteral("height"); });
+        QObject::connect(layout, &ui::BlockLayout::batchFinished, &probe, [&] { order << QStringLiteral("batch"); });
+        QObject::connect(layout, &QAbstractTextDocumentLayout::documentSizeChanged, &probe,
+                         [&] { order << QStringLiteral("size"); });
+
+        layout->setBlockSpacing(second, 30, 0);
+        QCOMPARE(order, QStringList({QStringLiteral("height"), QStringLiteral("size")}));
+
+        order.clear();
+        {
+            const ui::BlockLayout::Batch batch(layout);
+            layout->setBlockSpacing(second, 0, 0);
+        }
+        QCOMPARE(order, QStringList({QStringLiteral("height"), QStringLiteral("batch"), QStringLiteral("size")}));
     }
 
     // Opening inserts the text in chunks while the idle styler is still behind. The paragraph flow
