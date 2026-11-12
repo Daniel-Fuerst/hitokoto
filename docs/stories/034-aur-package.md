@@ -1,6 +1,7 @@
 # S034 — The AUR package follows every version
 
-- **Status:** Proposed · **Order:** 35 · **Size:** S · **Depends on:** S030
+- **Status:** Confirmed (Armin, 2026-11-12, after the review `docs/reviews/034-aur-package-spec.md`)
+  · **Order:** 35 · **Size:** S · **Depends on:** S030
 - **Basis:** Daniel's Arch Linux packaging (pull request 38, `packaging/archlinux`) and his workflow
   `.github/workflows/packaging.yml` (pull request 40, branch `packaging/aur-update-on-new-version`,
   877ef80), meant to update the AUR package `hitokoto` after every new version. The AUR holds only
