@@ -6,6 +6,8 @@ ninja-build
 g++
 qt6-base-dev
 qt6-svg-dev
+qt6-qpa-plugins
+qt6-svg-plugins
 libgtest-dev
 fonts-dejavu-core
 dpkg-dev

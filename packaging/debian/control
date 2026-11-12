@@ -3,7 +3,7 @@ Version: @VERSION@-1
 Architecture: amd64
 Maintainer: Daniel Fürst <daniel@fuerst.priv.at>
 Installed-Size: @INSTALLED_SIZE@
-Depends: @DEPENDS@
+Depends: @DEPENDS@, qt6-qpa-plugins, qt6-svg-plugins
 Section: editors
 Priority: optional
 Homepage: https://github.com/Daniel-Fuerst/hitokoto

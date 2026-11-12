@@ -59,7 +59,9 @@ manual step, and never a package that does not install and start.
    `PKGBUILD`, review O6). It installs the binary under `/usr/bin`, the desktop entry, the
    scalable icon under `/usr/share/icons/hicolor/scalable/apps`, `copyright` and
    `changelog.Debian.gz` under `/usr/share/doc/hitokoto`. `Depends` comes from `dpkg-shlibdeps`, so
-   it names the trixie libraries the binary links. Files owned by root, timestamps from the tagged
+   it names the trixie libraries the binary links, plus `qt6-qpa-plugins` and `qt6-svg-plugins`:
+   no library links the platform plugin or the SVG icon engine, and Debian has them only as
+   Recommends (assumption, 2026-11-12, not asked). Files owned by root, timestamps from the tagged
    commit (`SOURCE_DATE_EPOCH`), `lintian` without errors (warnings in the job summary).
 6. **Changelog from Git.** A script generates the changelog in Debian's format from 0.3.0 up to the
    version: one entry per version tag, listing the merges into main on the first-parent line since

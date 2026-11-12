@@ -466,7 +466,7 @@ elseif("${CASE}" STREQUAL "TheControlFileGetsVersionDependsAndSize")
     recipe_maintainer(maintainer)
     foreach(line IN ITEMS "Package: hitokoto" "Version: 0.5.1-1" "Architecture: amd64"
                           "Section: editors" "Maintainer: ${maintainer}" "Installed-Size: 1234"
-                          "Depends: libc6 (>= 2.38), libqt6core6t64 (>= 6.8.0), libqt6widgets6 (>= 6.8.0)")
+                          "Depends: libc6 (>= 2.38), libqt6core6t64 (>= 6.8.0), libqt6widgets6 (>= 6.8.0), qt6-qpa-plugins, qt6-svg-plugins")
         string(FIND "\n${control}" "\n${line}\n" at)
         if(at EQUAL -1)
             message(FATAL_ERROR "control lacks the line '${line}':\n${control}")
