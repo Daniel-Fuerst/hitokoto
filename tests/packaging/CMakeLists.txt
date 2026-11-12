@@ -28,3 +28,10 @@ foreach(name IN ITEMS
         COMMAND ${CMAKE_COMMAND} -DCASE=${name} -DSCRIPT=${s034_script} -DRECIPE_DIR=${s034_recipe}
                 -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/cases/${name} -P ${s034_cases})
 endforeach()
+
+# S035 (decision 5): in a dry run an unreachable AUR gives a warning, not a red run.
+add_test(NAME S035_AnUnreachableAurStillGivesTheVersion
+    COMMAND ${CMAKE_COMMAND} -DCASE=AnUnreachableAurStillGivesTheVersion -DSCRIPT=${s034_script}
+            -DRECIPE_DIR=${s034_recipe}
+            -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/cases/AnUnreachableAurStillGivesTheVersion
+            -P ${s034_cases})
