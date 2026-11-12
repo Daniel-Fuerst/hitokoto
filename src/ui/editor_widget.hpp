@@ -185,6 +185,10 @@ private:
     bool insideEdit_ = false;        ///< between contentsChange and contentsChanged of the document
     bool caretCheckQueued_ = false;  ///< a caret check waits for the event loop
     int settlePasses_ = 0;           ///< settleAnchor calls that moved the view since the last restore
+    /// settleAnchor shows the held reading position again at most this often after a restore. In the
+    /// tests, and in probes over several widths and fonts, it took at most one pass; the limit only
+    /// ends a back and forth if the layout does not come to rest. After it, the position may be off
+    /// by the last correction until the reader scrolls (review O10).
     static constexpr int kMaxSettlePasses = 4;
     quint64 anchorRestores_ = 0;  ///< reading positions restored by a resize or theme change
     BlockStyler* styler_ = nullptr;

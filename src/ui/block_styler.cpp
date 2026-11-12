@@ -1142,7 +1142,11 @@ bool BlockStyler::continueUnderlineSearch(qint64 nanoseconds, std::pair<int, int
     };
     // With a screen (first and last block on it), a long walk stops once it is past the screen in
     // both directions; idle slices walk on to the paragraph's ends (S033). Paragraphs of up to a few
-    // hundred lines are walked at once, as before.
+    // hundred lines are walked at once, as before: at least kWalkedAtOnce lines, so that a paragraph
+    // across the edge of the screen is revealed in one step (without it, tst_s002
+    // onlyAffectedLinesAreRestyled restyled 22 lines instead of at most 18: a paragraph of 9 lines
+    // was revealed in two). A longer paragraph is revealed beyond the screen in idle slices; what is
+    // on screen is right at once. At about 0.3 us per line, 512 lines take about 0.15 ms (review O7).
     constexpr int kWalkedAtOnce = 512;
     const bool toScreen = screen.first >= 0;
     bool backLeft = false;

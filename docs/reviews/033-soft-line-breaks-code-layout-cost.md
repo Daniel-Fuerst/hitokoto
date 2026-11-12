@@ -5,6 +5,7 @@ spec: docs/stories/033-soft-line-breaks.md
 commits: cd33bd5..24acd13 (pushed), 827602e..56471f7 (cloud copy, not yet applied)
 date: 2026-11-12
 reviewer: Advocatus Diaboli (same session as the rework, no independent subagent; night mode, no questions asked)
+dispositioned: 2026-11-12 (O2-O11 proposed by Claude, confirmed by Armin; O1 pending)
 objections:
   - id: O1
     category: cost
@@ -16,62 +17,62 @@ objections:
     category: failure
     severity: minor
     title: "A clamp nested inside another clamp consumes the flag, and the outer one counts as a reader's scroll"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "Confirmed by Armin. Rare: only a clamp of the scroll value nested inside another one; the consequence is the same as a scroll of the reader's (the held reading position, and the followed caret if it is off screen, are let go). A test that reproduces the nesting reliably would be costly. Known limit in the story's review section."
   - id: O3
     category: failure
     severity: minor
     title: "setSliceBlocksForTests fixes only the styling slices; level jobs and paragraph walks still end by time"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "Confirmed by Armin. BlockStyler::spent() and timeLeft() make every walk of the styler that otherwise ends after a time (setext walks, level jobs, the searches for a paragraph's extent, fences and front matter) end after the slice size set with setSliceBlocksForTests; without it the behaviour is unchanged. Red test withSlicesForTestsAKeyWalksALongParagraphInStepsOfThatSize (512 lines walked at once with slices of 64). changingTheFlowOfALongParagraphAgainLaysOutNoMoreOfIt then compares the most laid out after rounds three to six with the most after the first two: with walks that end after a number of lines a round lays out the lookback or not (121, 57, 58, 122, 121, 122 blocks with slices of 384), and the comparison of round six with round two was red although nothing grows."
   - id: O4
     category: design
     severity: minor
     title: "After a resize, the reading position and the followed caret can disagree, and nothing decides which wins"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "Confirmed by Armin. The story's rule Reading position now says which wins: if a resize puts the followed caret off screen, the view follows the caret and lets the reading position go. That is the behaviour of the code."
   - id: O5
     category: operational
     severity: minor
     title: "Undo and Redo from the Edit menu are not treated as typing, so their caret can be let go"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "Confirmed by Armin. EditorWidget::undoEdit and redoEdit run Undo and Redo inside the typing scope; the Edit menu calls them. Red test theCaretStaysOnScreenThroughUndoAndRedoFromTheMenu (after Redo the caret at y 669 with its bottom below the view of 678 px with slices of 64, at y 2,279 with slices of 512)."
   - id: O6
     category: design
     severity: minor
     title: "The width sample for estimates is Latin text; CJK documents are estimated far too short"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "Confirmed by Armin. Not new: averageCharWidth had the same Latin bias. Known limit in the story's review section; a sample per script would be a change of the estimate beyond this rework."
   - id: O7
     category: design
     severity: minor
     title: "kWalkedAtOnce = 512 is chosen to keep one test green, not from a measured need"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "Confirmed by Armin. The comment at kWalkedAtOnce now says why: a paragraph across the edge of the screen is revealed in one step (tst_s002 onlyAffectedLinesAreRestyled), a longer one beyond the screen in idle slices with what is on screen right at once, and 512 lines take about 0.15 ms."
   - id: O8
     category: failure
     severity: minor
     title: "The extent test allows 1,164 lines per key, more than twice what the code walks"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "Confirmed by Armin. The bound is 512 + onScreen instead of 4 * onScreen + 1024; with kWalkedAtOnce set to 1,000 the test is red (checked, not committed)."
   - id: O9
     category: operational
     severity: minor
     title: "The new order of the layout's signals is a contract change that no test pins"
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: "Confirmed by Armin. New test aHeightChangeIsReportedBeforeTheNewSize records the order outside a batch and inside one; red with either emission moved back to the old order (checked for both, not committed)."
   - id: O10
     category: operational
     severity: minor
     title: "settleAnchor stops after four passes; the number has no test and no reasoning"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "Confirmed by Armin. The comment at kMaxSettlePasses now says why: in the tests and in probes over several widths and fonts settleAnchor took at most one pass; the limit only ends a back and forth if the layout does not come to rest."
   - id: O11
     category: cost
     severity: minor
     title: "tst_s033 takes 10 s instead of 3 s"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "Confirmed by Armin. tst_s033 takes about 15 s in the cloud after O3 (13.6 s on Windows before it): the fixtures and the fixed slices make the tests the same on every machine, which Armin ranks above their time. Known limit in the story's review section."
 ---
 
 # S033 — Advocatus Diaboli, mode code (rework: layout cost, reading position, caret)

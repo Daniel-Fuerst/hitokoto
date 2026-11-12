@@ -163,7 +163,10 @@ All rules follow CommonMark 0.31.2 (sections 4.8 Paragraphs, 5.2 List items, 6.7
     scrolls; taken anew at each one, it would drift. At the end of the document the view returns to
     the same line as well, although the scroll range takes in new heights only later.
   - After the caret moved or text was typed at it, the caret stays on screen while blocks are laid
-    out and restyled in idle slices, until the reader scrolls it off screen.
+    out and restyled in idle slices, until the reader scrolls it off screen. Undo and Redo from the
+    Edit menu count as typing.
+  - A resize while the caret is followed: if the new width puts the caret off screen, the view
+    follows the caret and lets the reading position go (review O4 of the layout-cost review).
 
 ## Acceptance scenarios
 
@@ -371,9 +374,14 @@ No new theme tokens are required:
   `pastingManyShortLinesWithAFontWhoseAverageWidthIsOff`), the caret on screen while a long
   paragraph is restyled in slices (`theCaretStaysOnScreenWhileALongParagraphIsRestyledInSlices`),
   a long paragraph whose flow changes again laid out no further
-  (`changingTheFlowOfALongParagraphAgainLaysOutNoMoreOfIt`, with fixed slices), and a key before a
+  (`changingTheFlowOfALongParagraphAgainLaysOutNoMoreOfIt`, with fixed slices), a key before a
   long paragraph that searches its extent about as far as the screen
-  (`aKeyBeforeALongParagraphSearchesItsExtentAboutAsFarAsTheScreen`).
+  (`aKeyBeforeALongParagraphSearchesItsExtentAboutAsFarAsTheScreen`), and in steps of the slices
+  for tests when they are set (`withSlicesForTestsAKeyWalksALongParagraphInStepsOfThatSize`), a
+  chunk inserted below lines not yet styled that leaves them to the idle styler
+  (`aChunkBelowLinesNotYetStyledLeavesThemToTheIdleStyler`), the order of the layout's signals
+  (`aHeightChangeIsReportedBeforeTheNewSize`) and the caret on screen through Undo and Redo from the
+  Edit menu (`theCaretStaysOnScreenThroughUndoAndRedoFromTheMenu`).
 - S027: `tst_s027_smooth_scrolling::shiftDuringExternalSetValueUsesCurrentBarValue` – a shift while
   the program sets the scroll bar starts from the bar's value.
 - S009 & S023: update `tst_s009_concealment` and `tst_s023_thematic_breaks` where they previously
@@ -459,8 +467,41 @@ on the follow-up was red on Windows and macOS):
   resize is restored again when that happens, the view at other times is not.
 - Known limit: a scroll of the reader's that ends exactly on the maximum in the same turn of the
   event loop as a new, smaller scroll range counts as a clamp and keeps the held reading position.
-- Open (benchmark against main in the cloud, 2026-11-12, four rounds): `s023_open_10mb_styled_ms`
-  2,025 -> 2,602 ms and `s031_paste_no_table_5000_lines_ms` 24.7 -> 33.4 ms stay SLOW. In the
-  opening of the 10 MB file most of the difference is painting (callgrind: `BlockLayout::draw`
-  +27 %, 12 % more blocks per screen, each drawn at 13 % more cost), not layout or styling (styling
-  is cheaper than on main); flowing paragraphs put more, smaller blocks on a screen.
+- Opening a file in chunks no longer works out the block states of the lines not yet styled a
+  second time: a line above an edit that is not styled yet is left to the idle styler instead of
+  styled at once (f504457 on GitHub; the line came with the flow, ad6b6ec). In the cloud the plain
+  10 MB benchmark file loaded in 1.95-2.01 s before and 1.77-1.79 s after (main 1.73-1.80 s), and
+  was styled in 2.96-3.12 s before and 2.77-2.84 s after (main 2.58-2.66 s).
+  `BlockStyler::stateSteps()` counts the states worked out on their own, for tests.
+- Open (benchmark of the CI on a5e918e, two rounds each): `s023_open_10mb_styled_ms`
+  2.76-2.78 s on main against 3.57-3.64 s and `s031_paste_no_table_5000_lines_ms` 32.7-34.1 ms
+  against 42.6-42.8 ms stay SLOW; the first screen of the 10 MB file is shown after about 80 ms as
+  on main. In the opening most of the difference is painting (callgrind: 59 instead of 37 line
+  pieces per frame, each cheaper than on main, and the scroll bar painted again in almost every
+  frame because the styling lets paragraphs off screen flow anew); in the paste of 5,000 short
+  lines, which become one flowing paragraph, about 4.6 times as many source lines are on a screen.
+  Both follow from the flow; the decision on them is review O1 of
+  `docs/reviews/033-soft-line-breaks-code-layout-cost.md`.
+
+Review of the rework (`docs/reviews/033-soft-line-breaks-code-layout-cost.md`, 2026-11-12):
+
+- O3 fixed: `BlockStyler::setSliceBlocksForTests` ends every walk of the styler that otherwise ends
+  after a time (setext walks, level jobs, the searches for a paragraph's extent, fences and front
+  matter) after the given number of lines, not only the idle styling slices.
+- O5 fixed: Undo and Redo of the Edit menu (`EditorWidget::undoEdit`, `redoEdit`) count as typing.
+- O8 fixed: the extent test allows what the code may walk (512 lines past the screen, plus the
+  screen), not twice as much.
+- O9 fixed: a test pins that a height change, and the end of a batch, is reported before the new
+  size.
+- O7 and O10 documented in the code: why a walk takes at least 512 lines (`kWalkedAtOnce`), and why
+  `settleAnchor` stops after four passes (`kMaxSettlePasses`).
+- Known limit (O2): a clamp of the scroll value nested inside another clamp consumes the flag; the
+  outer one counts as a scroll of the reader's and lets the held reading position go, and the
+  followed caret if it is off screen. Rare; a test that reproduces the nesting reliably would be
+  costly.
+- Known limit (O6): estimates measure the width of a Latin sample; CJK characters are about twice as
+  wide, so CJK paragraphs not yet laid out are estimated at about half their height, and the scroll
+  bar moves until they are laid out. `averageCharWidth` before had the same bias.
+- Known limit (O11): `tst_s033` takes about 15 s in the cloud (3 s on 24acd13; 13.6 s on Windows
+  before O3): the fixtures of 3,000 and 20,000 lines and the fixed slices that make the tests the
+  same on every machine.
