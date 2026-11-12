@@ -1,6 +1,6 @@
 # S012 — Distributable builds for Linux, Windows and macOS
 
-- **Status:** Proposed · **Order:** 35 · **Depends on:** S000 (and the licence decision)
+- **Status:** Proposed · **Order:** 38 · **Depends on:** S000 (and the licence decision)
 
 ## Story
 
@@ -23,6 +23,8 @@ without building it.
 
 ## Notes
 
-- A Debian package (`.deb`) for the family's Debian machines is planned separately; its
-  packaging follows the existing Debian packaging conventions and is not part of this story.
+- S034 keeps the AUR package (a source recipe; users build hitokoto themselves) up to date with
+  every version. A Debian package (`.deb`) for trixie built by CI belongs to this project like any
+  vendor's package (Armin, 2026-10-28); whether it becomes part of this story or a story of its
+  own is open (`unrefined.md`, "Packages and installers for every version").
 - Flatpak (KDE runtime) is a possible later addition.
