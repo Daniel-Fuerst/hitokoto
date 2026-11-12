@@ -1013,6 +1013,31 @@ private slots:
         }
     }
 
+    // Opening inserts the text in chunks while the idle styler is still behind. The paragraph flow
+    // restyled the line above each chunk at once, and working out its block state walked back over
+    // every line not yet styled: about half of the extra time of opening 10 MB (callgrind,
+    // 2026-11-12). A line not yet styled is styled by the idle styler anyway.
+    void aChunkBelowLinesNotYetStyledLeavesThemToTheIdleStyler() {
+        QString chunk;  // 2,100 lines in short paragraphs, as in the benchmark's plain 10 MB file
+        for (int i = 0; i < 300; ++i) {
+            chunk += QStringLiteral(
+                         "## Section %1\n\nText of the section, with *emphasis*.\n\n- an item\n- another item\n\n")
+                         .arg(i);
+        }
+        test::Fixture f;
+        auto* editor = f.editor();
+        QTextCursor cursor(editor->document());
+        cursor.insertText(QStringLiteral("# Title\n"));
+        f.placeCaret(0);           // as while a file is opened, the caret stays at the top
+        cursor.insertText(chunk);  // no event is processed: the idle styler has not run yet
+        const quint64 before = editor->styler().stateSteps();
+        cursor.insertText(chunk);
+        const quint64 steps = editor->styler().stateSteps() - before;
+        QVERIFY2(steps <= 1, qPrintable(QStringLiteral("%1 block states worked out on their own").arg(steps)));
+        f.settle();
+        QCOMPARE(differenceFromTheReference(editor), QString());
+    }
+
     void longFlowingParagraphStaysWithinLatencyBudget() {
         constexpr int kLines = 20000;
         QByteArray document = "Outside top\n\n";

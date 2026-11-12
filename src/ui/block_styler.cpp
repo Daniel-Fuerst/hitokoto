@@ -197,6 +197,7 @@ core::BlockState BlockStyler::blockStateBefore(const QTextBlock& block) {
         const QString next = nextLineFor(*it, state, text);
         state = registry_.blockStateAfter(view(text), state, next.isEmpty() ? std::u16string_view{} : view(next));
         cacheBlockState(*it, state);
+        ++stateSteps_;
     }
     return state;
 }

@@ -89,6 +89,9 @@ public:
     /// Number of lines the search for the extent of a paragraph walked so far (instrumentation for
     /// tests, S033).
     [[nodiscard]] quint64 extentSteps() const noexcept { return extentSteps_; }
+    /// Number of lines whose block state was worked out on its own, outside the styling of the
+    /// line, so far (instrumentation for tests, S033).
+    [[nodiscard]] quint64 stateSteps() const noexcept { return stateSteps_; }
     /// Ends each idle slice after `blocks` blocks instead of after a time, so that tests see the same
     /// slices on every machine (0 = by time, the default; instrumentation for tests, S033).
     void setSliceBlocksForTests(int blocks) noexcept { sliceBlocks_ = blocks; }
@@ -284,6 +287,7 @@ private:
     quint64 renderCount_ = 0;
     quint64 levelSteps_ = 0;
     quint64 extentSteps_ = 0;
+    quint64 stateSteps_ = 0;
 };
 
 }  // namespace hitokoto::ui
