@@ -10,6 +10,11 @@
 # S034_*, S035_*).
 # A pull request that changes the recipe, and a manual run without "publish", run everything up to
 # the push (dry run).
+# S036: beside the AUR jobs and independent of them, every version from packaging/debian/versions.txt
+# on gets a GitHub release with a Debian package for trixie: debian-plan compares the version tags
+# with the published releases, debian-package builds, tests and checks the package of each missing
+# version in debian:trixie (packaging/debian), and debian-release, the only job that may write,
+# creates the releases. The decision logic is scripts/packaging/DebianPackage.cmake (tests: S036_*).
 name: Packaging
 
 on:
@@ -20,12 +25,13 @@ on:
   pull_request:
     paths:
       - packaging/archlinux/**
+      - packaging/debian/**
       - scripts/packaging/**
       - .github/workflows/packaging.yml
   workflow_dispatch:
     inputs:
       publish:
-        description: Push to the AUR if the AUR is behind (only on main)
+        description: Push to the AUR if it is behind and create missing releases (only on main)
         type: boolean
         default: false
 
@@ -318,3 +324,218 @@ jobs:
           git -c user.name="$AUR_NAME" -c user.email="$AUR_EMAIL" commit --quiet -m "Update to $VERSION"
           git push origin HEAD:master
           echo "- Pushed **$VERSION** to the AUR" >> "$GITHUB_STEP_SUMMARY"
+
+  debian-plan:
+    name: Plan the Debian releases
+    # S036 decision 1: like the AUR's build job, only after a successful CI run on a push to main;
+    # always for pull requests and manual runs.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      action: ${{ steps.plan.outputs.action }}
+      versions: ${{ steps.plan.outputs.versions }}
+      build: ${{ steps.plan.outputs.build }}
+      latest: ${{ steps.plan.outputs.latest }}
+      commit: ${{ steps.plan.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The commit the CI run passed; empty (the default) for other events.
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0  # the tags
+          persist-credentials: false
+
+      - name: Plan
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          # Decision 10: a dry run, unless after the CI on main or a manual run with "publish".
+          PUBLISH: >-
+            ${{ github.ref == 'refs/heads/main' && (github.event_name == 'workflow_run' ||
+            (github.event_name == 'workflow_dispatch' && inputs.publish)) }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/debian-plan"
+          mkdir -p "$work"
+          git tag --merged HEAD > "$work/tags.txt"
+          # Published releases with their assets; drafts are listed only with push access
+          # (review O4), the release job deals with them.
+          gh api --paginate "repos/$REPO/releases" \
+            --jq '.[] | select(.draft | not) | ([.tag_name] + [.assets[].name]) | join(" ")' \
+            > "$work/releases.txt"
+          dry_run=ON
+          if [ "$PUBLISH" = "true" ]; then
+            dry_run=OFF
+          fi
+          cmake -DMODE=plan -DDRY_RUN="$dry_run" -DVERSIONS_FILE=packaging/debian/versions.txt \
+                -DTAGS_FILE="$work/tags.txt" -DRELEASES_FILE="$work/releases.txt" \
+                -DOUTPUT="$work/plan.txt" -P scripts/packaging/DebianPackage.cmake
+          cat "$work/plan.txt" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Debian package and releases"
+            echo
+            if [ "$dry_run" = ON ]; then
+              echo "Dry run: the highest version is built and checked, nothing is released."
+              echo
+            fi
+            sed 's/^/- /' "$work/plan.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  debian-package:
+    name: Debian package ${{ matrix.version }}
+    # Decisions 4 and 7: one matrix entry per version (review O2: a failing version leaves the
+    # others alone). Built and tested in debian:trixie against Debian's Qt, then installed,
+    # started and purged in a second, fresh debian:trixie container.
+    needs: debian-plan
+    if: needs.debian-plan.outputs.build != '[]' && needs.debian-plan.outputs.build != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.debian-plan.outputs.build) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.debian-plan.outputs.commit }}
+          fetch-depth: 0  # the history and the tags for the changelog
+          persist-credentials: false
+
+      - name: Source, changelog and notes
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          work="$GITHUB_WORKSPACE/debian-work"
+          mkdir -p "$work/source" "$work/out"
+          # The source of the tag; the recipe is that of the checked-out commit (decision 3).
+          git archive "v$VERSION" | tar -x -C "$work/source"
+          cmake -DMODE=changelog -DREPO_DIR="$GITHUB_WORKSPACE" -DVERSION="$VERSION" \
+                -DVERSIONS_FILE=packaging/debian/versions.txt \
+                -DCONTROL_FILE=packaging/debian/control -DOUTPUT="$work/changelog" \
+                -DNOTES="$work/out/notes.md" -P scripts/packaging/DebianPackage.cmake
+          echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct "v$VERSION")" >> "$GITHUB_ENV"
+
+      - name: Build, test and assemble in debian:trixie
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          docker run --rm -e SOURCE_DATE_EPOCH -e VERSION -v "$GITHUB_WORKSPACE:/w" -w /w \
+            debian:trixie bash -euo pipefail -c '
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update -q
+              grep -v "^#" packaging/debian/build-depends |
+                xargs apt-get install -y -q --no-install-recommends
+              bash packaging/debian/build-package.sh debian-work/source "$VERSION" \
+                debian-work/changelog debian-work/out'
+
+      - name: Install, start and purge in a fresh debian:trixie
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          docker run --rm -e VERSION -v "$GITHUB_WORKSPACE:/w" -w /w debian:trixie \
+            bash packaging/debian/install-check.sh "debian-work/out/hitokoto_${VERSION}-1_amd64.deb" \
+            "$VERSION"
+
+      - name: Summary
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          set -uo pipefail
+          {
+            echo "### Debian package $VERSION"
+            echo
+            echo "lintian:"
+            echo
+            echo '```'
+            cat debian-work/out/lintian.txt
+            echo '```'
+            echo
+            echo "Release notes:"
+            echo
+            cat debian-work/out/notes.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Hand the package on
+        # Only a package that passed every step above reaches the release job.
+        uses: actions/upload-artifact@v7
+        with:
+          name: debian-${{ matrix.version }}
+          path: |
+            debian-work/out/hitokoto_${{ matrix.version }}-1_amd64.deb
+            debian-work/out/notes.md
+          if-no-files-found: error
+          retention-days: 7
+
+  debian-release:
+    name: Release
+    # Decision 8: the only job that may write. Only on main, after a CI run there or a manual run
+    # with "publish"; it releases the versions whose package passed, also if another version
+    # failed (review O2).
+    needs: [debian-plan, debian-package]
+    if: >-
+      !cancelled() && needs.debian-plan.result == 'success' &&
+      needs.debian-plan.outputs.action == 'release' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.publish))
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    concurrency:
+      group: releases
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: debian-*
+          path: ${{ runner.temp }}/debian
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSIONS: ${{ needs.debian-plan.outputs.versions }}
+          LATEST: ${{ needs.debian-plan.outputs.latest }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for version in $VERSIONS; do
+            tag="v$version"
+            dir="$RUNNER_TEMP/debian/debian-$version"
+            deb="hitokoto_${version}-1_amd64.deb"
+            if [ ! -f "$dir/$deb" ] || [ ! -f "$dir/notes.md" ]; then
+              echo "::error::$version has no checked package; it is not released"
+              failed=1
+              continue
+            fi
+            # Never change a published release (decision 2); another run may have made it.
+            if gh api "repos/$GH_REPO/releases/tags/$tag" > /dev/null 2>&1; then
+              echo "$tag has a release already"
+              continue
+            fi
+            # A draft left by a failed run (review O4: only this job sees drafts).
+            for id in $(gh api --paginate "repos/$GH_REPO/releases" \
+                          --jq ".[] | select(.draft and .tag_name == \"$tag\") | .id"); do
+              echo "deleting the draft $id of $tag"
+              gh api -X DELETE "repos/$GH_REPO/releases/$id"
+            done
+            (cd "$dir" && sha256sum "$deb" > SHA256SUMS)
+            latest=false
+            if [ "$version" = "$LATEST" ]; then
+              latest=true
+            fi
+            # Draft first, then publish: also works with immutable releases.
+            gh release create "$tag" --verify-tag --draft --title "hitokoto $version" \
+              --notes-file "$dir/notes.md" "$dir/$deb" "$dir/SHA256SUMS"
+            gh release edit "$tag" --draft=false --latest="$latest"
+            echo "- Released **$tag** (latest: $latest)" >> "$GITHUB_STEP_SUMMARY"
+          done
+          exit "$failed"
