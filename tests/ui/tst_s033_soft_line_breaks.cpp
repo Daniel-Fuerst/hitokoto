@@ -7,6 +7,7 @@
 #include "find_controller.hpp"
 #include "ui_test_support.hpp"
 
+#include <QAction>
 #include <QClipboard>
 #include <QElapsedTimer>
 #include <QFont>
@@ -928,6 +929,58 @@ private slots:
                 test::keyClick(editor, Qt::Key_Backspace);
                 f.settle();
                 check("Backspace");
+            }
+        }
+        QVERIFY2(failures.isEmpty(), qPrintable(failures.join(QStringLiteral("; "))));
+    }
+
+    // Review O5: Undo and Redo from the Edit menu change the text at the caret as a key does; the view
+    // follows the caret through them, also while the paragraph they change is restyled in slices.
+    void theCaretStaysOnScreenThroughUndoAndRedoFromTheMenu() {
+        constexpr int kLines = 1000;
+        QByteArray document = "Outside top\n\n";
+        for (int i = 0; i < kLines; ++i) {
+            document += "hard-wrapped text of a long paragraph, line " + QByteArray::number(i) + "\n";
+        }
+        document += "\nOutside bottom\n";
+        QStringList failures;
+        for (const int slice : {64, 512}) {
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("undo_on_screen.md"), document)));
+            auto* editor = f.editor();
+            editor->styler().setSliceBlocksForTests(slice);
+            QAction* undo = nullptr;
+            QAction* redo = nullptr;
+            for (QAction* action : f.window->findChildren<QAction*>()) {
+                if (action->shortcut() == QKeySequence(QKeySequence::Undo)) {
+                    undo = action;
+                } else if (action->shortcut() == QKeySequence(QKeySequence::Redo)) {
+                    redo = action;
+                }
+            }
+            QVERIFY(undo != nullptr && redo != nullptr);
+            const int below = kLines + 2;  // the blank line below the paragraph
+            f.placeCaret(below);
+            f.settle();
+            test::keyClick(editor, '-');  // the paragraph becomes a setext heading
+            f.settle();
+            const auto check = [&](const char* after) {
+                const QRect caret = editor->cursorRect();
+                if (caret.top() < 0 || caret.bottom() > editor->viewport()->height()) {
+                    failures << QStringLiteral("slices of %1 blocks, after %2: caret at y %3, view %4 px high")
+                                    .arg(slice)
+                                    .arg(QString::fromLatin1(after))
+                                    .arg(caret.top())
+                                    .arg(editor->viewport()->height());
+                }
+            };
+            for (int round = 0; round < 2; ++round) {
+                undo->trigger();  // the paragraph flows again
+                f.settle();
+                check("Undo");
+                redo->trigger();
+                f.settle();
+                check("Redo");
             }
         }
         QVERIFY2(failures.isEmpty(), qPrintable(failures.join(QStringLiteral("; "))));
