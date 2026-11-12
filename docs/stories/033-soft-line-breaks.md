@@ -473,15 +473,17 @@ on the follow-up was red on Windows and macOS):
   10 MB benchmark file loaded in 1.95-2.01 s before and 1.77-1.79 s after (main 1.73-1.80 s), and
   was styled in 2.96-3.12 s before and 2.77-2.84 s after (main 2.58-2.66 s).
   `BlockStyler::stateSteps()` counts the states worked out on their own, for tests.
-- Open (benchmark of the CI on a5e918e, two rounds each): `s023_open_10mb_styled_ms`
-  2.76-2.78 s on main against 3.57-3.64 s and `s031_paste_no_table_5000_lines_ms` 32.7-34.1 ms
-  against 42.6-42.8 ms stay SLOW; the first screen of the 10 MB file is shown after about 80 ms as
-  on main. In the opening most of the difference is painting (callgrind: 59 instead of 37 line
-  pieces per frame, each cheaper than on main, and the scroll bar painted again in almost every
-  frame because the styling lets paragraphs off screen flow anew); in the paste of 5,000 short
-  lines, which become one flowing paragraph, about 4.6 times as many source lines are on a screen.
-  Both follow from the flow; the decision on them is review O1 of
-  `docs/reviews/033-soft-line-breaks-code-layout-cost.md`.
+- Accepted (review O1, decision Armin 2026-11-12; the pull request carries the label
+  `bench-accepted`): `s023_open_10mb_styled_ms` and `s031_paste_no_table_5000_lines_ms` stay SLOW
+  against main. CI on f504457 (against main on the same runner): 2.34-2.37 s -> 2.96-2.99 s
+  (+26 %) and 28.8-29.3 ms -> 39.0-39.4 ms (+35 %); the first screen of the 10 MB file is shown
+  as on main, and the plain 10 MB file is within the gate (loaded +1 %, styled +10 %). In the
+  opening most of the difference is painting (callgrind: 59 instead of 37 line pieces per frame,
+  each cheaper than on main, and the scroll bar painted again in almost every frame because the
+  styling lets paragraphs off screen flow anew); in the paste of 5,000 short lines, which become
+  one flowing paragraph, about 4.6 times as many source lines are on a screen. Both follow from the
+  flow; only the scroll bar's share could be reduced, through an estimate that takes the flow into
+  account.
 
 Review of the rework (`docs/reviews/033-soft-line-breaks-code-layout-cost.md`, 2026-11-12):
 

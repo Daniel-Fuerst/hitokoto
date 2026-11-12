@@ -5,14 +5,14 @@ spec: docs/stories/033-soft-line-breaks.md
 commits: cd33bd5..24acd13 (pushed), 827602e..56471f7 (cloud copy, not yet applied)
 date: 2026-11-12
 reviewer: Advocatus Diaboli (same session as the rework, no independent subagent; night mode, no questions asked)
-dispositioned: 2026-11-12 (O2-O11 proposed by Claude, confirmed by Armin; O1 pending)
+dispositioned: 2026-11-12 (proposed by Claude, confirmed by Armin)
 objections:
   - id: O1
     category: cost
     severity: major
     title: "Two benchmark keys stay SLOW against main, so the pull request's benchmark job will be red"
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: "Decided by Armin: accepted, the pull request carries the label bench-accepted. Looked into first (callgrind, cloud): the plain 10 MB file was slower too, and half of its extra cost was a cheap fix (a line above an edit that is not styled yet is left to the idle styler; f504457). CI on f504457 (runner AMD EPYC 7763, against main on the same runner): plain 10 MB loaded +1 % (before +14 %), styled +10 % (before +18 %), both ok; s023_open_10mb_styled_ms 2.34-2.37 -> 2.96-2.99 s (+26 %) and s031_paste_no_table_5000_lines_ms 28.8-29.3 -> 39.0-39.4 ms (+35 %) stay SLOW; the first screen is shown as on main. Both follow from the flow: in the opening most of the difference is painting (59 instead of 37 line pieces per frame, each cheaper than on main, and the scroll bar painted again in almost every frame because the styling lets paragraphs off screen flow anew); in the paste the 5,000 short lines become one flowing paragraph, and about 4.6 times as many source lines are on a screen. Only the scroll bar's share could be reduced, through an estimate that takes the flow into account, which is not cheap."
   - id: O2
     category: failure
     severity: minor
