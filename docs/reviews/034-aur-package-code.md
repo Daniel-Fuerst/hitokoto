@@ -3,7 +3,8 @@ mode: code
 spec: none (no story; nearest are docs/stories/012-distributable-builds.md and the entry
   "Packages and installers for every version" in docs/stories/unrefined.md)
 branch: packaging/aur-update-on-new-version (pull request #40)
-commit_range: d6bed8e^..877ef80 (d6bed8e via pull request #38, already on main as cec1655;
+commit_range: >-
+  d6bed8e^..877ef80 (d6bed8e via pull request #38, already on main as cec1655;
   a45e92f, 877ef80 on the branch; net diff against main: .github/workflows/packaging.yml only)
 reviewer: Claude (same session, no independent subagent), 2026-11-11
 objections:
@@ -11,68 +12,92 @@ objections:
     category: design
     severity: major
     title: The job never moves the AUR package to the new version
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      The job takes PKGBUILD and hitokoto.desktop from the checkout, sets pkgver, pkgrel=1 and
+      the archive checksum (AurPackage.cmake, MODE=pkgbuild;
+      S034_ThePkgbuildGetsVersionReleaseAndChecksum), and commits only if something changed, with
+      the version in the message.
   - id: O2
     category: failure
     severity: major
     title: updpkgsums and makepkg refuse to run as root in the container
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      makepkg runs as the user builder (runuser); root installs the dependencies beforehand.
   - id: O3
     category: failure
     severity: major
     title: ssh reads /root/.ssh/known_hosts, the job writes $HOME/.ssh/known_hosts
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      The ssh command names the key and the known_hosts file explicitly (IdentitiesOnly,
+      UserKnownHostsFile, StrictHostKeyChecking=yes); the push runs on the runner, not in the
+      container.
   - id: O4
     category: design
     severity: major
     title: The tag check finds older tags and fires on version:none merges
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      No search over commits: the highest version tag reachable from the commit the Version
+      run built is compared with the pkgver in the AUR (MODE=plan; S034_* cases for higher, equal,
+      lower, several and inexact tags).
   - id: O5
     category: premise
     severity: major
     title: Publishing to the AUR is an undocumented project decision
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      Story S034 (confirmed by Armin, 2026-11-12) with its review (spec); no ADR: the AUR push
+      is cheap to reverse and touches no code of the program. S012 and unrefined.md updated.
   - id: O6
     category: operational
     severity: minor
     title: No dry run; the first real test publishes
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      Pull requests that change the recipe and manual runs without "publish" run everything up
+      to the push and show the plan and the diff in the job summary; the push only from main.
   - id: O7
     category: threat
     severity: minor
     title: The AUR key is available to every workflow on every branch
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      The secret is read only by the publish job, which uses the environment aur (deployment
+      branch main); the environment itself is set up by Daniel (story, notes).
   - id: O8
     category: threat
     severity: minor
     title: The AUR host key is trusted on first use
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      The scanned Ed25519 host key is used only with the fingerprint published by Arch (pinned
+      in the workflow).
   - id: O9
     category: operational
     severity: minor
     title: Two PKGBUILDs that drift apart
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      One recipe: packaging/archlinux; .SRCINFO is generated, not kept; SKIP stays only in the
+      repository copy for local builds, the AUR gets the real checksum (README).
   - id: O10
     category: failure
     severity: minor
     title: Exec=hitokoto %F passes several files, hitokoto opens only the first
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      Exec=hitokoto %f (S034_TheDesktopEntryPassesOneFile).
   - id: O11
     category: failure
     severity: minor
     title: The package is never built or tested against Arch's Qt
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      The build job builds and installs the package against Arch's Qt, validates the desktop
+      entry and checks hitokoto --version before anything is pushed.
 ---
 
 # Code review: AUR package updated on a new version
@@ -97,6 +122,11 @@ Expected: copy `PKGBUILD` and `hitokoto.desktop` from the checkout into the AUR 
 `pkgver` from the tag and `pkgrel=1`, then `updpkgsums`, `.SRCINFO`, and commit only if something
 changed, with the version in the message.
 
+
+**Disposition: fixed.** The job takes PKGBUILD and hitokoto.desktop from the checkout, sets pkgver,
+pkgrel=1 and the archive checksum (AurPackage.cmake, MODE=pkgbuild;
+S034_ThePkgbuildGetsVersionReleaseAndChecksum), and commits only if something changed, with the
+version in the message.
 ## O2 - failure - major
 
 **`updpkgsums` and `makepkg` refuse to run as root in the container.**
@@ -109,6 +139,9 @@ FS#70590, FS#67158; advice there: create a user in the container). The job fails
 Expected: `useradd -m builder`, hand the AUR clone to it and run `updpkgsums` and
 `makepkg --printsrcinfo` with `runuser -u builder --`.
 
+
+**Disposition: fixed.** makepkg runs as the user builder (runuser); root installs the dependencies
+beforehand.
 ## O3 - failure - major
 
 **ssh reads `/root/.ssh/known_hosts`, the job writes `$HOME/.ssh/known_hosts`.**
@@ -125,6 +158,10 @@ Expected: name both files in the command, e.g.
 `ssh -i "$HOME/.ssh/aur" -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes`.
 With O2, the user that runs ssh needs the files too.
 
+
+**Disposition: fixed.** The ssh command names the key and the known_hosts file explicitly
+(IdentitiesOnly, UserKnownHostsFile, StrictHostKeyChecking=yes); the push runs on the runner, not in
+the container.
 ## O4 - design - major
 
 **The tag check finds older tags and fires on version:none merges.**
@@ -142,6 +179,10 @@ and compare it with `pkgver` in the AUR's `.SRCINFO`; update only when they diff
 idempotent, catches up after a cancelled Version run (the tag job tags all untagged merges, so
 `head_sha` need not be the tagged commit) and makes the manual dispatch safe.
 
+
+**Disposition: fixed.** No search over commits: the highest version tag reachable from the commit
+the Version run built is compared with the pkgver in the AUR (MODE=plan; S034_* cases for higher,
+equal, lower, several and inexact tags).
 ## O5 - premise - major
 
 **Publishing to the AUR is an undocumented project decision.**
@@ -157,6 +198,9 @@ Expected: a story (or a refinement of S012) with scenarios for "new version", "v
 "dispatch", an ADR for the AUR as a distribution channel, and the `unrefined.md` entry brought up
 to date.
 
+
+**Disposition: fixed.** Story S034 (confirmed by Armin, 2026-11-12) with its review (spec); no ADR:
+the AUR push is cheap to reverse and touches no code of the program. S012 and unrefined.md updated.
 ## O6 - operational - minor
 
 **No dry run; the first real test publishes.**
@@ -168,6 +212,10 @@ suggest it would not pass), and every attempt is a push to a public package.
 Expected: an input `dry_run` (default true for dispatch) that runs everything up to the push and
 shows the diff of `PKGBUILD` and `.SRCINFO` in the job summary; push only on main.
 
+
+**Disposition: fixed.** Pull requests that change the recipe and manual runs without "publish" run
+everything up to the push and show the plan and the diff in the job summary; the push only from
+main.
 ## O7 - threat - minor
 
 **The AUR key is available to every workflow on every branch.**
@@ -179,6 +227,9 @@ a known target for injected code.
 Expected: put the secret in an environment (e.g. `aur`) with the deployment branch rule `main`
 and use `environment: aur` in the job.
 
+
+**Disposition: fixed.** The secret is read only by the publish job, which uses the environment aur
+(deployment branch main); the environment itself is set up by Daniel (story, notes).
 ## O8 - threat - minor
 
 **The AUR host key is trusted on first use.**
@@ -190,6 +241,9 @@ publishes its fingerprints on its home page (Ed25519
 Expected: a fixed `known_hosts` line in the workflow, or compare the scanned key with the
 fingerprint before use.
 
+
+**Disposition: fixed.** The scanned Ed25519 host key is used only with the fingerprint published by
+Arch (pinned in the workflow).
 ## O9 - operational - minor
 
 **Two PKGBUILDs that drift apart.**
@@ -203,6 +257,9 @@ Expected: one source of truth. Either the repository copy is the template (with 
 version, filled in by the workflow, see O1), or the repository keeps only the workflow and the
 AUR repository holds the PKGBUILD.
 
+
+**Disposition: fixed.** One recipe: packaging/archlinux; .SRCINFO is generated, not kept; SKIP stays
+only in the repository copy for local builds, the AUR gets the real checksum (README).
 ## O10 - failure - minor
 
 **`Exec=hitokoto %F` passes several files, hitokoto opens only the first.**
@@ -212,6 +269,8 @@ without a message. Selecting three files in a file manager opens one.
 
 Expected: `%f`, so the desktop starts one hitokoto per file.
 
+
+**Disposition: fixed.** Exec=hitokoto %f (S034_TheDesktopEntryPassesOneFile).
 ## O11 - failure - minor
 
 **The package is never built or tested against Arch's Qt.**
@@ -223,6 +282,9 @@ A break with the Qt version Arch ships shows up first at the users.
 Expected: at least a `makepkg` build in the job before the push (see O6), optionally `check()`
 with the core tests.
 
+
+**Disposition: fixed.** The build job builds and installs the package against Arch's Qt, validates
+the desktop entry and checks hitokoto --version before anything is pushed.
 ## Capped concerns
 
 - `secrets.AUR_NAME` and `secrets.AUR_EMAIL` are written into the script with `${{ }}` (lines 88-89);
@@ -230,6 +292,10 @@ with the core tests.
 - `arch=('x86_64' 'aarch64')`: aarch64 is not built anywhere.
 - The commit message "Update hitokoto" carries no version.
 
+
+Disposition of the capped concerns: name and e-mail are variables of the environment `aur`, passed
+as environment variables (fixed); `arch=('x86_64')` (fixed, review (spec) O8); the commit message is
+`Update to X.Y.Z` (fixed).
 ## Explicitly not objecting to
 
 - Moving the job out of `version.yml` into its own workflow with `workflow_run`: it leaves the

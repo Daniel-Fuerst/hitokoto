@@ -61,9 +61,9 @@ a recipe that does not build.
    concurrency group `aur` without cancelling, so two runs never push at the same time.
 6. **The decision logic is a script with tests.** Which version to publish (decision 2) and the
    values written into `PKGBUILD` (decision 3) come from a CMake script under `scripts/packaging/`,
-   run with `cmake -P`, like the version scripts of S030; `ctest` cases `S034_*` cover it on all three
-   CI platforms. The workflow only gathers the inputs (tags, the AUR's `.SRCINFO`, the archive) and
-   acts on the result.
+   run with `cmake -P`, like the version scripts of S030; `ctest` cases `S034_*` cover it on all
+   three CI platforms. The workflow only gathers the inputs (tags, the AUR's `.SRCINFO`, the
+   archive) and acts on the result.
 7. **Dry run.** The workflow can be started by hand (`workflow_dispatch`) with a switch "publish",
    off by default; a pull request that changes `packaging/archlinux`, `scripts/packaging` or the
    workflow also runs it, always without publishing and without the environment. A dry run runs the
