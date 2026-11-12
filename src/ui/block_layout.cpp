@@ -33,6 +33,28 @@ void setSharesPrevLine(const QTextBlock& block, bool shares) {
     }
 }
 
+/// Where a line of a block starts in its text and in the block (S033: whether laying a block out
+/// again changed what the next block continues from).
+struct LineShape {
+    int textStart = 0;
+    int textLength = 0;
+    qreal x = 0;
+    qreal y = 0;
+    qreal width = 0;
+    bool operator==(const LineShape&) const = default;
+};
+
+std::vector<LineShape> lineShapes(const QTextBlock& block) {
+    const QTextLayout* layout = block.layout();
+    std::vector<LineShape> shapes;
+    shapes.reserve(static_cast<std::size_t>(layout->lineCount()));
+    for (int i = 0; i < layout->lineCount(); ++i) {
+        const QTextLine line = layout->lineAt(i);
+        shapes.push_back({line.textStart(), line.textLength(), line.x(), line.y(), line.naturalTextWidth()});
+    }
+    return shapes;
+}
+
 }  // namespace
 
 BlockLayout::BlockLayout(QTextDocument* document) : QAbstractTextDocumentLayout(document) {
@@ -166,7 +188,7 @@ void BlockLayout::setWrapIndent(const QTextBlock& block, int columns) {
         batchNeedsRepaint_ = true;
         return;
     }
-    layoutParagraphChain(block, true);
+    layoutParagraphChain(block, true, ChainScope::LaidOutOnly);
     emit update();
 }
 
@@ -205,6 +227,16 @@ void BlockLayout::setParagraphFlow(const QTextBlock& block, bool flowsToNext, bo
         const_cast<QTextBlock&>(block).setUserState(updated);
     }
     const bool flowChanged = (oldFlows != flowsToNext) || (oldHard != hardBreak);
+    // The estimates of this block and of the next follow the flow (estimatedToFlowOn).
+    for (const QTextBlock& b : {block, block.next()}) {
+        if (b.isValid() && b.layout()->lineCount() == 0 && b.isVisible() && reservedHeight(b) <= 0) {
+            if (!inSync()) {
+                deferred_.push_back(b);
+            } else {
+                setHeight(b.blockNumber(), estimatedHeight(b), batch_ == 0);
+            }
+        }
+    }
     const bool inChain =
         flowsToNext || hardBreak || sharesLineWithPrevious(block) || continuesFlowFrom(block.previous(), block);
     if (!flowChanged && !(block.layout()->lineCount() > 0 && inChain)) {
@@ -217,9 +249,26 @@ void BlockLayout::setParagraphFlow(const QTextBlock& block, bool flowsToNext, bo
     if (!anyLaidOut) {
         return;
     }
-    dirtyBlocks_.push_back(block.blockNumber());
-    if (flowChanged && block.next().isValid()) {
-        dirtyBlocks_.push_back(block.next().blockNumber());
+    if (block.layout()->lineCount() > 0) {
+        dirtyBlocks_.push_back(block.blockNumber());
+        if (flowChanged && block.next().isValid()) {
+            dirtyBlocks_.push_back(block.next().blockNumber());
+        }
+    } else {
+        // Nothing of the block is drawn, so it shares no line, and it is laid out when it is needed.
+        // Laying it out here would grow the laid-out part of a long paragraph by it on every change
+        // of flow. Only laid-out neighbours change: the one before by its advance, the one after
+        // when it shared a line with this block.
+        if (sharesLineWithPrevious(block)) {
+            setSharesPrevLine(block, false);
+            if (block.previous().isValid() && block.previous().layout()->lineCount() > 0) {
+                dirtyBlocks_.push_back(block.previous().blockNumber());
+            }
+        }
+        const QTextBlock next = block.next();
+        if (next.isValid() && next.layout()->lineCount() > 0 && sharesLineWithPrevious(next)) {
+            dirtyBlocks_.push_back(next.blockNumber());
+        }
     }
     if (batch_ == 0) {
         flushDirtyChains(true);
@@ -254,6 +303,8 @@ BlockLayout::Batch::~Batch() {
         return;
     }
     layout_->flushDirtyChains(false);
+    // The view applies the height changes above it before the new size, as in setHeight.
+    emit layout_->batchFinished();
     if (layout_->batchChanged_) {
         // Blocks report their own repaints (updateBlock); only the size is still owed.
         layout_->batchChanged_ = false;
@@ -263,7 +314,6 @@ BlockLayout::Batch::~Batch() {
         layout_->batchNeedsRepaint_ = false;
         emit layout_->update();
     }
-    emit layout_->batchFinished();
 }
 
 void BlockLayout::setCursorWidth(int width) {
@@ -287,6 +337,11 @@ void BlockLayout::refreshMetrics() {
     lineSpacing_ = metrics.lineSpacing();
     averageCharWidth_ = metrics.averageCharWidth();
     spaceWidth_ = metrics.horizontalAdvance(QLatin1Char(' '));
+    // The width of running text for estimates, measured on a sample: the font's own average
+    // character width (xAvgCharWidth) is close for some fonts and 20-30 % too wide for others, such
+    // as Arial, Helvetica and their metric twins (S033).
+    const QString sample = QStringLiteral("The quick brown fox jumps over the lazy dog, 1234567890. ");
+    textCharWidth_ = metrics.horizontalAdvance(sample) / static_cast<qreal>(sample.size());
 }
 
 qreal BlockLayout::estimatedHeight(const QTextBlock& block) const {
@@ -296,9 +351,26 @@ qreal BlockLayout::estimatedHeight(const QTextBlock& block) const {
     if (const qreal reserved = reservedHeight(block); reserved > 0) {
         return reserved;
     }
-    const qreal textWidth = averageCharWidth_ * block.length();
-    const qreal lines = std::max<qreal>(1.0, std::ceil(textWidth / availableWidth()));
+    const qreal textWidth = textCharWidth_ * block.length();
+    // A block that goes on in the line of the block before takes its share of lines; one that starts a
+    // line takes that line at least (S033, review O2: a line each made the scroll range of flowing
+    // paragraphs far too large, and the view followed the caret again as they were laid out).
+    const qreal lines = estimatedToFlowOn(block) ? textWidth / availableWidth()
+                                                 : std::max<qreal>(1.0, std::ceil(textWidth / availableWidth()));
     return lines * lineSpacing_ + spaceAbove(block) + spaceBelow(block);
+}
+
+bool BlockLayout::estimatedToFlowOn(const QTextBlock& block) const {
+    const QTextBlock prev = block.previous();
+    if (!prev.isValid()) {
+        return false;
+    }
+    if (prev.userState() >= 0 && (prev.userState() & kStyleBits) != 0) {
+        return flowsToNext(prev) && continuesFlowFrom(prev, block);
+    }
+    // Not styled yet: only the lengths, which cost nothing; reading the text of every block would
+    // cost more than the estimate saves (the styler corrects it through setParagraphFlow).
+    return block.length() > 1 && prev.length() > 1;
 }
 
 qreal BlockLayout::layoutBlock(const QTextBlock& block) const {
@@ -308,6 +380,7 @@ qreal BlockLayout::layoutBlock(const QTextBlock& block) const {
 }
 
 qreal BlockLayout::layoutSingleBlock(const QTextBlock& block, qreal& subLeft, qreal& subWidth) const {
+    ++blockLayouts_;
     setSharesPrevLine(block, false);
     QTextLayout* layout = block.layout();
     layout->setTextOption(document()->defaultTextOption());
@@ -358,6 +431,7 @@ qreal BlockLayout::layoutSingleBlock(const QTextBlock& block, qreal& subLeft, qr
 
 void BlockLayout::layoutContinuationBlock(const QTextBlock& prev, const QTextBlock& cur, qreal subLeft,
                                           qreal subWidth) const {
+    ++blockLayouts_;
     QTextLayout* layout = cur.layout();
     const QTextLayout* prevLayout = prev.layout();
     bool placedOnPrev = false;
@@ -429,7 +503,7 @@ void BlockLayout::layoutContinuationBlock(const QTextBlock& prev, const QTextBlo
     }
 }
 
-int BlockLayout::layoutParagraphChain(const QTextBlock& target, bool emitNow) const {
+int BlockLayout::layoutParagraphChain(const QTextBlock& target, bool emitNow, ChainScope scope) const {
     if (!target.isValid()) {
         return -1;
     }
@@ -443,10 +517,40 @@ int BlockLayout::layoutParagraphChain(const QTextBlock& target, bool emitNow) co
         return target.blockNumber();
     }
 
+    const bool laidOutOnly = scope == ChainScope::LaidOutOnly;
+    if (laidOutOnly && target.layout()->lineCount() == 0 && continuesFlowFrom(target.previous(), target) &&
+        target.previous().layout()->lineCount() == 0) {
+        // The change dropped the block's lines, and those of the block it continues from too: it
+        // cannot be placed on that block's last line now, and laying the paragraph out from further
+        // back would grow its laid-out part. It is laid out when it is needed; until then it shares
+        // no line. Only laid-out neighbours change: the one before by its advance, the one after by
+        // no longer sharing a line with it.
+        if (sharesLineWithPrevious(target)) {
+            setSharesPrevLine(target, false);
+            const QTextBlock prev = target.previous();
+            if (prev.isValid()) {
+                if (!inSync()) {
+                    deferred_.push_back(prev);
+                } else {
+                    setHeight(prev.blockNumber(), advanceOf(prev), emitNow);
+                }
+            }
+        }
+        const QTextBlock next = target.next();
+        if (next.isValid() && next.layout()->lineCount() > 0 && sharesLineWithPrevious(next)) {
+            return layoutParagraphChain(next, emitNow, scope);
+        }
+        return target.blockNumber();
+    }
+
     constexpr int kMaxLookback = 64;
     QTextBlock start = target;
     int stepsBack = 0;
-    while (stepsBack < kMaxLookback && continuesFlowFrom(start.previous(), start) && !hardBreak(start.previous())) {
+    // Extend lays out the blocks before `target` that have no lines yet and goes on from the last one
+    // before them that has lines. LaidOutOnly starts at `target`: the lines before it stay as they
+    // are (a dirty block before it is laid out first, flushDirtyChains goes in block order).
+    while (!laidOutOnly && stepsBack < kMaxLookback && continuesFlowFrom(start.previous(), start) &&
+           !hardBreak(start.previous()) && start.previous().layout()->lineCount() == 0) {
         start = start.previous();
         ++stepsBack;
     }
@@ -482,13 +586,17 @@ int BlockLayout::layoutParagraphChain(const QTextBlock& target, bool emitNow) co
     }
 
     std::vector<QTextBlock> laidOut;
-    if (start.previous().isValid() && start.previous().layout()->lineCount() > 0) {
-        laidOut.push_back(start.previous());
-    }
+    const bool startWasSharing = sharesLineWithPrevious(start);
     if (!continuesFlowFrom(start.previous(), start)) {
         layoutSingleBlock(start, subLeft, subWidth);
     } else {
         layoutContinuationBlock(start.previous(), start, subLeft, subWidth);
+    }
+    // The block before `start` ends where `start` begins: its advance changes with whether `start`
+    // shares its last line. Without lines of its own it gets its estimate until it is laid out.
+    if (start.previous().isValid() &&
+        (start.previous().layout()->lineCount() > 0 || startWasSharing != sharesLineWithPrevious(start))) {
+        laidOut.push_back(start.previous());
     }
     laidOut.push_back(start);
 
@@ -514,9 +622,21 @@ int BlockLayout::layoutParagraphChain(const QTextBlock& target, bool emitNow) co
             break;
         }
         const bool curHadLayout = cur.layout()->lineCount() > 0;
+        if (laidOutOnly && !curHadLayout && cur.blockNumber() > targetNum) {
+            // Not drawn before, so not now either: it is laid out when it is needed.
+            if (wasSharing) {
+                setSharesPrevLine(cur, false);
+            }
+            break;
+        }
+        const std::vector<LineShape> before = curHadLayout ? lineShapes(cur) : std::vector<LineShape>{};
         layoutContinuationBlock(prev, cur, subLeft, subWidth);
         laidOut.push_back(cur);
         prev = cur;
+        if (curHadLayout && cur.blockNumber() > targetNum && sharesLineWithPrevious(cur) == wasSharing &&
+            lineShapes(cur) == before) {
+            break;  // the same lines as before: the blocks after it keep theirs
+        }
         if (cur.blockNumber() > targetNum && !curHadLayout &&
             (!sharesLineWithPrevious(cur) || cur.layout()->lineCount() > 1)) {
             break;
@@ -551,7 +671,7 @@ void BlockLayout::flushDirtyChains(bool emitNow) const {
         if (num <= lastLaidOut && continuesFlowFrom(b.previous(), b)) {
             continue;
         }
-        lastLaidOut = std::max(lastLaidOut, layoutParagraphChain(b, emitNow));
+        lastLaidOut = std::max(lastLaidOut, layoutParagraphChain(b, emitNow, ChainScope::LaidOutOnly));
     }
     flushingDirty_ = false;
     if (batch_ > 0) {
@@ -654,6 +774,10 @@ void BlockLayout::setHeight(int number, qreal height, bool emitNow) const {
     heights_.set(index, height);
     const qreal top = margin() + heights_.sumBefore(index);
     auto* self = const_cast<BlockLayout*>(this);
+    // The view keeps its content still first and takes in the new size after: the other way round,
+    // a smaller document cut the scroll value short at its end, and the view's shift then moved it a
+    // second time (S033).
+    emit self->blockHeightChanged(top, height - delta, height);
     if (batch_ > 0) {
         batchChanged_ = true;
     } else if (emitNow) {
@@ -661,7 +785,6 @@ void BlockLayout::setHeight(int number, qreal height, bool emitNow) const {
     } else {
         scheduleSizeChange();
     }
-    emit self->blockHeightChanged(top, height - delta, height);
 }
 
 void BlockLayout::scheduleSizeChange() const {

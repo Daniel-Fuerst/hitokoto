@@ -86,6 +86,17 @@ public:
     /// Number of lines whose setext level was passed up a paragraph so far (instrumentation for
     /// tests, S023 review O2).
     [[nodiscard]] quint64 levelSteps() const noexcept { return levelSteps_; }
+    /// Number of lines the search for the extent of a paragraph walked so far (instrumentation for
+    /// tests, S033).
+    [[nodiscard]] quint64 extentSteps() const noexcept { return extentSteps_; }
+    /// Number of lines whose block state was worked out on its own, outside the styling of the
+    /// line, so far (instrumentation for tests, S033).
+    [[nodiscard]] quint64 stateSteps() const noexcept { return stateSteps_; }
+    /// Ends each idle slice, and every walk that otherwise ends after a time (setext walks, level
+    /// jobs, the searches for a paragraph's extent, fences and front matter), after `blocks` blocks
+    /// or lines, so that tests see the same slices on every machine (0 = by time, the default;
+    /// instrumentation for tests, S033, review O3).
+    void setSliceBlocksForTests(int blocks) noexcept { sliceBlocks_ = blocks; }
 
     /// How a block is shown right now (used for drawing decorations and hit testing).
     [[nodiscard]] core::LineRender renderFor(const QTextBlock& block);
@@ -132,6 +143,11 @@ private:
     void updateExtentAfterEdit(int position, int charsAdded);
     void scheduleFrom(int blockNumber);
     void idleSlice();
+    /// Whether a walk has used up its budget after `steps` steps: more than `nanoseconds` since
+    /// `timer`, looked at every `every` steps; with slices for tests, `sliceBlocks_` steps.
+    [[nodiscard]] bool spent(int steps, const QElapsedTimer& timer, qint64 nanoseconds, int every) const;
+    /// Whether a slice that started at `timer` has time left; always with slices for tests.
+    [[nodiscard]] bool timeLeft(const QElapsedTimer& timer) const;
 
     // ---- S023 (ADR 0006): setext headings from below, front matter at the document start -------
     /// The setext level of the paragraph `block` belongs to, given the state after it; not
@@ -209,8 +225,9 @@ private:
     [[nodiscard]] int paragraphStartOf(const QTextBlock& block);
     [[nodiscard]] core::ParagraphLink paragraphLinkOf(const QTextBlock& block, core::BlockState inside);
     [[nodiscard]] bool paragraphContinues(const QTextBlock& block, core::BlockState inside);
-    /// Walks on towards the paragraph's ends and underline, at most `nanoseconds`; true when done.
-    bool continueUnderlineSearch(qint64 nanoseconds);
+    /// Walks on towards the paragraph's ends and underline, at most `nanoseconds` and, given a
+    /// `screen` (first and last block on screen), no further than past it; true when done.
+    bool continueUnderlineSearch(qint64 nanoseconds, std::pair<int, int> screen = {-1, -1});
     void underlineSearchSlice();
     /// After an edit of lines `first` to `last`: keeps the paragraph extent found last if the edit
     /// leaves its lines continuing the paragraph.
@@ -271,10 +288,13 @@ private:
     int blockCount_ = 1;  ///< block count after the last change seen
     QTimer idle_;
     int idleNext_ = 0;
+    int sliceBlocks_ = 0;  ///< blocks or lines per slice and walk for tests; 0 = by time
     bool busy_ = false;
     quint64 styledCount_ = 0;
     quint64 renderCount_ = 0;
     quint64 levelSteps_ = 0;
+    quint64 extentSteps_ = 0;
+    quint64 stateSteps_ = 0;
 };
 
 }  // namespace hitokoto::ui

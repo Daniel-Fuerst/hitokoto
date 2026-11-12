@@ -75,6 +75,9 @@ public:
     [[nodiscard]] QTextBlock blockOfTextAt(qreal y) const;
     /// Lays out `block` now unless it already has lines.
     void ensureBlockLayout(const QTextBlock& block) const;
+    /// How far the next block starts below the top of `block`: its height, or, when the next block
+    /// shares its last line (S033), the top of that line. Estimated while `block` has no lines.
+    [[nodiscard]] qreal advanceOf(const QTextBlock& block) const;
     /// Takes the block's height from the lines it has now; for callers that set the lines of a
     /// block's QTextLayout themselves (table rows, S018).
     void blockLayoutChanged(const QTextBlock& block);
@@ -93,6 +96,9 @@ public:
     };
     [[nodiscard]] bool inBatch() const noexcept { return batch_ > 0; }
 
+    /// How many times a block's lines were laid out so far (instrumentation for tests).
+    [[nodiscard]] quint64 blockLayouts() const noexcept { return blockLayouts_; }
+
     [[nodiscard]] int cursorWidth() const noexcept { return cursorWidth_; }
     void setCursorWidth(int width);
 
@@ -108,7 +114,8 @@ signals:
     /// A block at document y `top` changed from `oldHeight` to `newHeight`. Lets the view keep its
     /// content still when blocks above the viewport change height.
     void blockHeightChanged(qreal top, qreal oldHeight, qreal newHeight);
-    /// A batch ended after the document size was reported.
+    /// A batch ended; emitted before the document size of the batch is reported, so that the view
+    /// keeps its content still before the scroll range changes.
     void batchFinished();
     /// Blocks are gone although the change reports nothing removed: Qt lays out a cleared document
     /// (documentChanged 0, 0, 1) before it reports the removal through contentsChange. Emitted
@@ -126,15 +133,23 @@ private:
     void applyChange(int position, int charsRemoved, int charsAdded);
     void storeDeferredHeights();
     [[nodiscard]] qreal estimatedHeight(const QTextBlock& block) const;
+    /// Whether `block` is estimated to go on in the last line of the block before it (S033, review
+    /// O2): as the styler set it once the block before is styled; before that, when both blocks have
+    /// text, as most consecutive lines of Markdown are lines of one paragraph.
+    [[nodiscard]] bool estimatedToFlowOn(const QTextBlock& block) const;
     /// Lays out the lines of `block` (wrapping at the available width) and returns its height.
     qreal layoutBlock(const QTextBlock& block) const;
     qreal layoutSingleBlock(const QTextBlock& block, qreal& subLeft, qreal& subWidth) const;
     void layoutContinuationBlock(const QTextBlock& prev, const QTextBlock& cur, qreal subLeft, qreal subWidth) const;
-    int layoutParagraphChain(const QTextBlock& target, bool emitNow) const;
+    /// How far a chain is laid out: `Extend` lays out what `target` needs to be drawn (up to
+    /// kMaxLookback blocks before it, and blocks after it that share its last line); `LaidOutOnly`
+    /// lays out again only blocks that have lines (and `target`), for changes to blocks laid out
+    /// before, so that laying them out again does not grow the laid-out part of a long paragraph.
+    enum class ChainScope { Extend, LaidOutOnly };
+    int layoutParagraphChain(const QTextBlock& target, bool emitNow, ChainScope scope = ChainScope::Extend) const;
     void flushDirtyChains(bool emitNow) const;
     [[nodiscard]] bool continuesFlowFrom(const QTextBlock& prev, const QTextBlock& cur) const;
     [[nodiscard]] qreal heightOf(const QTextBlock& block) const;
-    [[nodiscard]] qreal advanceOf(const QTextBlock& block) const;
     /// Stores `height` for block `number`; emits the size and height signals when it changed.
     void setHeight(int number, qreal height, bool emitNow) const;
     /// Estimated heights for every block (loading, a new width).
@@ -150,9 +165,11 @@ private:
     mutable std::vector<QTextBlock> deferred_;  ///< laid out while heights_ was stale
     mutable std::vector<int> dirtyBlocks_;      ///< flowing chains to relayout at batch end
     mutable bool flushingDirty_ = false;
+    mutable quint64 blockLayouts_ = 0;
     qreal laidOutWidth_ = -1;
     qreal lineSpacing_ = 0;       ///< of the default font, for estimates
-    qreal averageCharWidth_ = 0;  ///< of the default font, for estimates
+    qreal averageCharWidth_ = 0;  ///< of the default font (the bullet indent)
+    qreal textCharWidth_ = 0;     ///< per character of running text in the default font, for estimates
     qreal spaceWidth_ = 0;        ///< width of a space in the default font (S032)
     int cursorWidth_ = 1;
     int batch_ = 0;
