@@ -432,7 +432,7 @@ jobs:
           cmake -DMODE=changelog -DREPO_DIR="$GITHUB_WORKSPACE" -DVERSION="$VERSION" \
                 -DVERSIONS_FILE=packaging/debian/versions.txt \
                 -DCONTROL_FILE=packaging/debian/control -DOUTPUT="$work/changelog" \
-                -DNOTES="$work/out/notes.md" -P scripts/packaging/DebianPackage.cmake
+                -DNOTES="$work/out/notes-$VERSION.md" -P scripts/packaging/DebianPackage.cmake
           echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct "v$VERSION")" >> "$GITHUB_ENV"
 
       - name: Build, test and assemble in debian:trixie
@@ -474,7 +474,7 @@ jobs:
             echo
             echo "Release notes:"
             echo
-            cat debian-work/out/notes.md
+            cat "debian-work/out/notes-$VERSION.md"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Hand the package on
@@ -484,7 +484,7 @@ jobs:
           name: debian-${{ matrix.version }}
           path: |
             debian-work/out/hitokoto_${{ matrix.version }}-1_amd64.deb
-            debian-work/out/notes.md
+            debian-work/out/notes-${{ matrix.version }}.md
           if-no-files-found: error
           retention-days: 7
 
@@ -505,9 +505,13 @@ jobs:
       group: releases
       cancel-in-progress: false
     steps:
+      # One flat directory, however many versions: a single matched artifact lands directly in the
+      # path, several in one directory each (first run on main, 2026-11-13); every file carries
+      # its version.
       - uses: actions/download-artifact@v8
         with:
           pattern: debian-*
+          merge-multiple: true
           path: ${{ runner.temp }}/debian
 
       - name: Release
@@ -521,9 +525,10 @@ jobs:
           failed=0
           for version in $VERSIONS; do
             tag="v$version"
-            dir="$RUNNER_TEMP/debian/debian-$version"
+            dir="$RUNNER_TEMP/debian"
             deb="hitokoto_${version}-1_amd64.deb"
-            if [ ! -f "$dir/$deb" ] || [ ! -f "$dir/notes.md" ]; then
+            notes="$dir/notes-$version.md"
+            if [ ! -f "$dir/$deb" ] || [ ! -f "$notes" ]; then
               echo "::error::$version has no checked package; it is not released"
               failed=1
               continue
@@ -547,7 +552,11 @@ jobs:
                 gh api -X DELETE "repos/$GH_REPO/releases/$id"
               fi
             done <<< "$existing"
-            (cd "$dir" && sha256sum "$deb" > SHA256SUMS)
+            # SHA256SUMS of this version only, in a directory of its own for the upload.
+            assets="$RUNNER_TEMP/assets-$version"
+            mkdir -p "$assets"
+            cp "$dir/$deb" "$assets/"
+            (cd "$assets" && sha256sum "$deb" > SHA256SUMS)
             latest=false
             if [ "$version" = "$LATEST" ]; then
               latest=true
@@ -555,7 +564,7 @@ jobs:
             # Draft first, then publish: also works with immutable releases. Published by its id,
             # not by the tag (code review O2).
             gh release create "$tag" --verify-tag --draft --title "hitokoto $version" \
-              --notes-file "$dir/notes.md" "$dir/$deb" "$dir/SHA256SUMS"
+              --notes-file "$notes" "$assets/$deb" "$assets/SHA256SUMS"
             drafts=$(releases_of | sed -n 's/ true$//p')
             if [ "$(wc -w <<< "$drafts")" -ne 1 ]; then
               echo "::error::expected one draft of $tag, found: $drafts"
