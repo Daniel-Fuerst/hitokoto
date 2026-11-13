@@ -252,6 +252,10 @@ cleanly.
   UI starts with `MSIINSTALLPERUSER=1`, and the dialog set only `MSIINSTALLPERUSER` (verbose log:
   the server got `ALLUSERS=""`). The dialog now sets `ALLUSERS` with its choice, and its texts
   (`hitokoto.wxl`) no longer promise a choice of folder (review (code) O1).
+- The check job hands the checked MSI on unzipped, as the artifact `hitokoto-X.Y.Z-x64.msi`
+  (`archive: false` of upload-artifact v7; Armin, 2026-11-13: a zip named `windows-X.Y.Z` hid what
+  it held). Since the release job runs only on main, the job `windows-handover` downloads the MSIs
+  exactly as it does, in every run including a dry run, and checks that each one arrives as an MSI.
 - `windeployqt` is called directly rather than through `qt_generate_deploy_app_script`: the tags'
   `CMakeLists.txt` has no deployment step, and the recipe must work on their source.
 - Translations (`--no-translations`) are left out because hitokoto has no localisation yet; the

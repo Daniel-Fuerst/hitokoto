@@ -599,7 +599,7 @@ jobs:
   windows-check:
     name: Install, upgrade and uninstall ${{ matrix.version }}
     # S037 decision 8: on a fresh runner without Qt, per user and per machine. Only an MSI that
-    # passed is handed on to the release job, as windows-<version>. Not skipped when another
+    # passed is handed on to the release job, as hitokoto-<version>-x64.msi. Not skipped when another
     # version's build failed (decision 2).
     needs: [debian-plan, windows-package]
     if: >-
@@ -650,12 +650,50 @@ jobs:
           retention-days: 7
 
       - name: Hand the checked MSI on
+        # The MSI itself, unzipped, as the artifact hitokoto-<version>-x64.msi (archive: false names
+        # the artifact after the file; Armin, 2026-11-13).
         uses: actions/upload-artifact@v7
         with:
-          name: windows-${{ matrix.version }}
+          archive: false
           path: ${{ runner.temp }}/msi/hitokoto-${{ matrix.version }}-x64.msi
           if-no-files-found: error
           retention-days: 7
+
+  windows-handover:
+    name: Check the hand-over of the MSIs
+    # The release job runs only on main; this job downloads the checked MSIs exactly as it does,
+    # also in a dry run, and checks that each arrives as a file of its own.
+    needs: [debian-plan, windows-check]
+    if: >-
+      !cancelled() && needs.debian-plan.result == 'success' &&
+      needs.debian-plan.outputs.windows_build != '[]' && needs.debian-plan.outputs.windows_build != ''
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: hitokoto-*-x64.msi
+          merge-multiple: true
+          path: ${{ runner.temp }}/debian
+
+      - name: Check the MSIs
+        env:
+          BUILD: ${{ needs.debian-plan.outputs.windows_build }}
+        run: |
+          set -euo pipefail
+          ls -l "$RUNNER_TEMP/debian"
+          for version in $(jq -r '.[]' <<< "$BUILD"); do
+            msi="$RUNNER_TEMP/debian/hitokoto-${version}-x64.msi"
+            if [ ! -f "$msi" ]; then
+              echo "::error::hitokoto-${version}-x64.msi did not arrive as a file"
+              exit 1
+            fi
+            # An MSI is an OLE compound file: D0 CF 11 E0 A1 B1 1A E1.
+            if [ "$(head -c 8 "$msi" | od -An -tx1 | tr -d ' \n')" != "d0cf11e0a1b11ae1" ]; then
+              echo "::error::hitokoto-${version}-x64.msi is not an MSI (still zipped?)"
+              exit 1
+            fi
+          done
 
   debian-release:
     name: Release
@@ -683,14 +721,15 @@ jobs:
           merge-multiple: true
           path: ${{ runner.temp }}/debian
 
-      # S037: the checked MSIs into the same directory (windows-check hands them on as windows-*).
+      # S037: the checked MSIs into the same directory (windows-check hands each on unzipped, as
+      # the artifact hitokoto-<version>-x64.msi; windows-handover checks this in every run).
       # It may find none (review (code) O3): the release step checks every file a version needs,
       # and a version skipped for Windows is released without one.
       - uses: actions/download-artifact@v8
         if: needs.debian-plan.outputs.windows_build != '[]'
         continue-on-error: true
         with:
-          pattern: windows-*
+          pattern: hitokoto-*-x64.msi
           merge-multiple: true
           path: ${{ runner.temp }}/debian
 
