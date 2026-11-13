@@ -385,6 +385,18 @@ jobs:
               echo
             fi
             sed 's/^/- /' "$work/plan.txt"
+            # Decision 10 (code review O3): the notes of every version to release.
+            read -ra versions <<< "$(sed -n 's/^versions=//p' "$work/plan.txt")"
+            for version in "${versions[@]}"; do
+              cmake -DMODE=changelog -DREPO_DIR="$GITHUB_WORKSPACE" -DVERSION="$version" \
+                    -DVERSIONS_FILE=packaging/debian/versions.txt \
+                    -DCONTROL_FILE=packaging/debian/control -DOUTPUT="$work/changelog-$version" \
+                    -DNOTES="$work/notes-$version.md" -P scripts/packaging/DebianPackage.cmake
+              echo
+              echo "#### Release notes of v$version"
+              echo
+              cat "$work/notes-$version.md"
+            done
           } >> "$GITHUB_STEP_SUMMARY"
 
   debian-package:
@@ -516,26 +528,41 @@ jobs:
               failed=1
               continue
             fi
+            # The releases of the tag, published or draft (review O4 of the spec: only this job
+            # sees drafts). A failing API call stops the job (code review O1).
+            releases_of() {
+              gh api --paginate "repos/$GH_REPO/releases" \
+                --jq ".[] | select(.tag_name == \"$tag\") | \"\\(.id) \\(.draft)\""
+            }
+            existing=$(releases_of)
             # Never change a published release (decision 2); another run may have made it.
-            if gh api "repos/$GH_REPO/releases/tags/$tag" > /dev/null 2>&1; then
+            if grep -q ' false$' <<< "$existing"; then
               echo "$tag has a release already"
               continue
             fi
-            # A draft left by a failed run (review O4: only this job sees drafts).
-            for id in $(gh api --paginate "repos/$GH_REPO/releases" \
-                          --jq ".[] | select(.draft and .tag_name == \"$tag\") | .id"); do
-              echo "deleting the draft $id of $tag"
-              gh api -X DELETE "repos/$GH_REPO/releases/$id"
-            done
+            # A draft left by a failed run.
+            while read -r id draft; do
+              if [ "$draft" = "true" ]; then
+                echo "deleting the draft $id of $tag"
+                gh api -X DELETE "repos/$GH_REPO/releases/$id"
+              fi
+            done <<< "$existing"
             (cd "$dir" && sha256sum "$deb" > SHA256SUMS)
             latest=false
             if [ "$version" = "$LATEST" ]; then
               latest=true
             fi
-            # Draft first, then publish: also works with immutable releases.
+            # Draft first, then publish: also works with immutable releases. Published by its id,
+            # not by the tag (code review O2).
             gh release create "$tag" --verify-tag --draft --title "hitokoto $version" \
               --notes-file "$dir/notes.md" "$dir/$deb" "$dir/SHA256SUMS"
-            gh release edit "$tag" --draft=false --latest="$latest"
+            drafts=$(releases_of | sed -n 's/ true$//p')
+            if [ "$(wc -w <<< "$drafts")" -ne 1 ]; then
+              echo "::error::expected one draft of $tag, found: $drafts"
+              exit 1
+            fi
+            gh api -X PATCH "repos/$GH_REPO/releases/$drafts" -F draft=false -f make_latest="$latest" \
+              > /dev/null
             echo "- Released **$tag** (latest: $latest)" >> "$GITHUB_STEP_SUMMARY"
           done
           exit "$failed"
