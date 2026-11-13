@@ -6,7 +6,8 @@
 
     wix build hitokoto.wxs -loc hitokoto.wxl -arch x64 -ext WixToolset.UI.wixext -acceptEula wix<major>
               -d Version=X.Y.Z -bindpath stage=<installed files> -bindpath source=<tag's source>
-              -bindpath work=<license.rtf> -o hitokoto-X.Y.Z-x64.msi
+              -bindpath work=<license.rtf> -bindpath recipe=<this directory>
+              -o hitokoto-X.Y.Z-x64.msi
 
   One MSI for both scopes (perUserOrMachine: ALLUSERS=2, MSIINSTALLPERUSER=1): per user into
   %LOCALAPPDATA%\Programs\hitokoto, per machine into C:\Program Files\hitokoto. The dialogs show the
@@ -77,6 +78,10 @@
     <WixVariable Id="WixUISupportPerUser" Value="1" />
     <WixVariable Id="WixUISupportPerMachine" Value="1" />
     <WixVariable Id="WixUILicenseRtf" Value="!(bindpath.work)\license.rtf" />
+    <!-- S037 decision 14: the hitokoto logo instead of WiX's pictures
+         (scripts/generate-installer-bitmaps.sh). -->
+    <WixVariable Id="WixUIBannerBmp" Value="!(bindpath.recipe)\installer-banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="!(bindpath.recipe)\installer-dialog.bmp" />
 
     <UI Id="HitokotoUI">
       <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />

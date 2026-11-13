@@ -145,6 +145,13 @@ cleanly.
     moving an installation from one scope to the other; an update check in hitokoto
     (`unrefined.md`); arm64; an installer for macOS (S012); the build of the MSI in the CI of every
     pull request; a version resource in `hitokoto.exe` (`unrefined.md`).
+14. **The logo in the dialogs.** (Armin, 2026-11-13, after his test of the dialogs; here rather
+    than in a story of its own, too small for one.) The dialogs show the hitokoto logo instead of
+    WiX's red pictures: Welcome and Finish the logo on its colour (`#393266`) in the left part,
+    the other dialogs a white banner with the logo on the right. Both bitmaps belong to the recipe
+    (`packaging/windows`), so the MSI of every version shows them;
+    `scripts/generate-installer-bitmaps.sh` makes them from `icons/hitokoto.svg`, like the icons of
+    Windows and macOS are made from it.
 
 ## Acceptance scenarios
 

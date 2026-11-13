@@ -100,7 +100,7 @@ function Build-Msi([string] $staged, [string] $productVersion, [string] $msi) {
     wix build (Join-Path $recipe 'hitokoto.wxs') -loc (Join-Path $recipe 'hitokoto.wxl') `
         -arch x64 -ext WixToolset.UI.wixext `
         -acceptEula $eula -d "Version=$productVersion" -bindpath "stage=$staged" `
-        -bindpath "source=$Source" -bindpath "work=$work" -o $msi
+        -bindpath "source=$Source" -bindpath "work=$work" -bindpath "recipe=$recipe" -o $msi
     $suppress = @()
     foreach ($id in $Ice) { if ($id) { $suppress += @('-sice', $id) } }
     wix msi validate @suppress $msi

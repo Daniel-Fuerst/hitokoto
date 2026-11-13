@@ -14,6 +14,9 @@ MSI. This directory holds the recipe, applied to the source of each version tag:
   runtime's part follows the Visual Studio of the runner image: when an image update adds or drops
   a DLL there, every MSI is red until the list follows; the build prints the installed list.
 - `hitokoto.wxl`: texts of WiX's dialogs that hitokoto overrides.
+- `installer-dialog.bmp`, `installer-banner.bmp`: the hitokoto logo in the dialogs, made from
+  `icons/hitokoto.svg` by `scripts/generate-installer-bitmaps.sh` (ImageMagick); after a change of
+  the logo, run it and commit both files.
 - `third-party.txt.in`, `LGPL-3.0.txt`: the notice for Qt and the C++ runtime, and Qt's licence.
 - `build-package.ps1`: builds, tests and assembles the MSI of one version.
 - `install-check.ps1`: installs, upgrades, starts and uninstalls it, per user and per machine.
