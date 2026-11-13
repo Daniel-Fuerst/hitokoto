@@ -1,6 +1,6 @@
 # S012 — Distributable builds for Linux, Windows and macOS
 
-- **Status:** Proposed · **Order:** 40 · **Depends on:** S000 (and the licence decision)
+- **Status:** Proposed · **Order:** 41 · **Depends on:** S000 (and the licence decision)
 
 ## Story
 
@@ -28,4 +28,7 @@ without building it.
   vendor's package (Armin, 2026-10-28); S036 builds it for every version and attaches it to the
   version's GitHub release, from its own recipe in `packaging/debian`, and drops `DEB` from the
   CPack configuration in `CMakeLists.txt`; `TGZ` is left to this story.
+- S037 builds a Windows installer (MSI, per user, unsigned) for every version from its own recipe in
+  `packaging/windows` and attaches it to the same release as the Debian package; for Windows this
+  story keeps only a zip, if one is still wanted, and signing.
 - Flatpak (KDE runtime) is a possible later addition.

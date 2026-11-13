@@ -175,6 +175,9 @@ manual step, and never a package that does not install and start.
   (`notes-X.Y.Z.md`), the release job downloads into one flat directory (`merge-multiple: true`),
   and the lint `S036_TheReleaseFindsEveryPackage` keeps it so.
 
+- S037 (Proposed, 2026-11-13) adds a Windows installer to the same releases: the release job then
+  waits for both packages of a version, because an immutable release takes no asset after
+  publishing.
 - Label of this story's pull request: `version:none` (nothing changes in the program, and the
   CPack change touches no published artefact); the run after its merge releases 0.5.1, so the
   release path is exercised right away and is to be watched.
