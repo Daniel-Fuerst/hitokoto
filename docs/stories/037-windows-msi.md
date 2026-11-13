@@ -1,6 +1,7 @@
 # S037 — Every version gets a Windows installer (MSI)
 
-- **Status:** Proposed, with ADR 0012 (Proposed) · **Order:** 38 · **Size:** L · **Depends on:**
+- **Status:** Confirmed (Armin, 2026-11-13, after the review `docs/reviews/037-windows-msi-spec.md`
+  and its dispositions; ADR 0012 accepted with it) · **Order:** 38 · **Size:** L · **Depends on:**
   S030, S035, S036
 - **Basis:** Armin wants a Windows installer for every version (2026-11-12, `unrefined.md`,
   "Packages and installers for every version"), as an MSI (2026-11-13; Inno Setup was considered

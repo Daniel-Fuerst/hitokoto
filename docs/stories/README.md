@@ -43,7 +43,7 @@ story ID (see "Conventions").
 | 35 | [S034](034-aur-package.md) | The AUR package follows every version | S030 | S | Done |
 | 36 | [S035](035-version-after-ci.md) | A version only after the CI on main is green | S030, S034 | S | Done |
 | 37 | [S036](036-debian-package.md) | Every version gets a Debian package for trixie | S030, S034, S035 | M | In review |
-| 38 | [S037](037-windows-msi.md) | Every version gets a Windows installer (MSI) | S030, S035, S036 | L | Open |
+| 38 | [S037](037-windows-msi.md) | Every version gets a Windows installer (MSI) | S030, S035, S036 | L | Confirmed |
 | 39 | [S007](007-large-files.md) | 10 MB files open within budget and type without lag | S006 | L | Partly done |
 | 40 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
 | 41 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |

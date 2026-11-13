@@ -1,6 +1,7 @@
 # ADR 0012: The Windows installer is an MSI, built with WiX from a recipe of its own
 
-- **Status:** Proposed by Claude on 2026-11-13, to be accepted with the confirmation of S037
+- **Status:** Accepted (Armin, 2026-11-13, with the confirmation of S037); proposed by Claude on
+  2026-11-13
 - **Date:** 2026-11-13
 - **Deciders:** Armin (Daniel knows of the work; his consent is not needed, Armin, 2026-11-13)
 
