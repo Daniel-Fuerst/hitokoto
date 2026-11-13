@@ -576,9 +576,15 @@ jobs:
           WIX: ${{ needs.debian-plan.outputs.windows_wix }}
           ICE: ${{ needs.debian-plan.outputs.windows_ice }}
         run: |
+          # In this session with splatting: a child pwsh would get -Ice without a value when the
+          # recipe accepts no ICE finding (second dry run on pull request 45).
           $ice = @($env:ICE -split ' ' | Where-Object { $_ })
-          pwsh packaging/windows/build-package.ps1 -Source msi-work/source -Version $env:VERSION `
-            -Out msi-work/out -WixVersion $env:WIX -Ice $ice
+          $arguments = @{
+            Source = 'msi-work/source'; Version = $env:VERSION; Out = 'msi-work/out'
+            WixVersion = $env:WIX
+          }
+          if ($ice.Count -gt 0) { $arguments.Ice = $ice }
+          & ./packaging/windows/build-package.ps1 @arguments
 
       - name: Hand the MSIs to the check
         uses: actions/upload-artifact@v7
