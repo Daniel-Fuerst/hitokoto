@@ -139,9 +139,13 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   are decided after S034 (Armin, 2026-11-12).
 - **Refined so far (3):** S036 builds a Debian package for trixie for every version from 0.5.1 on
   and attaches it to a GitHub release per version, with notes generated from Git (Armin,
-  2026-11-12). Open here: the Windows installer, and a build and test against Debian's Qt in the
-  CI of every pull request, so that a break on trixie shows before the merge, not only in
-  "Packaging" after the tag (S036 review O3, Armin, 2026-11-12).
+  2026-11-12). Open here: a build and test against Debian's Qt in the CI of every pull request, so
+  that a break on trixie shows before the merge, not only in "Packaging" after the tag (S036 review
+  O3, Armin, 2026-11-12).
+- **Refined so far (4):** S037 builds a Windows installer (MSI) for every version and attaches it to
+  the same release as the Debian package (Armin, 2026-11-13). Open here: signing, a version
+  resource in `hitokoto.exe` (Explorer's file properties show no version), and the MSI build in the
+  CI of every pull request.
 - **Open:** the formats per platform and whether this refines S012 or becomes a story of its own
   (S012 still says the `.deb` follows separate Debian packaging conventions; for Armin, a `.deb`
   built by CI belongs to this project); signing (Windows certificate, macOS notarisation); where the
@@ -154,6 +158,20 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   full version from S030 (`0.4.0+3.gabc1234`); DEB and TGZ take it. Windows installers (WiX, Inno
   Setup) and version resources need a numeric version: they take `HITOKOTO_VERSION_CORE`, not
   `CPACK_PACKAGE_VERSION`.
+
+## Update check in the app
+
+- **Seen:** 2026-11-13 (Armin, while refining S037): it would be good if hitokoto asked the GitHub
+  repository whether a newer release exists and offered the update.
+- **Now:** S036 and S037 publish every version as a GitHub release with the Debian package and the
+  MSI; `https://api.github.com/repos/Daniel-Fuerst/hitokoto/releases/latest` names the newest
+  without a token. hitokoto itself makes no network request at all.
+- **Open:** whether and when hitokoto may go online (the brief says nothing about network access;
+  a first request needs the user's consent or at least a setting); what is offered per platform
+  (Windows: download the MSI and start it, which a per-machine installation needs administrator
+  rights for; Debian: the package manager's job, so perhaps only a notice); where the address comes
+  from, so that a move away from GitHub needs no new program; checking the download against
+  `SHA256SUMS`; theme tokens for a notice (brief, section 8).
 
 ## Showing the version to the user
 
