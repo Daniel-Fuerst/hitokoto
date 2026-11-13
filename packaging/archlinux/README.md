@@ -49,7 +49,8 @@ still builds. After a CI run on main an unreachable AUR makes only "Packaging" r
 later with "Re-run failed jobs".
 
 When `hitokoto.desktop` changes, its checksum in `PKGBUILD` has to change with it; the test
-`S034_TheDesktopEntryChecksumMatches` checks that.
+`S034_TheDesktopEntryChecksumMatches` checks that. The Debian package takes the same desktop entry
+(`packaging/debian`, S036), so a change here reaches both.
 
 ## Setting up the push (once)
 

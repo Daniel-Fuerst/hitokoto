@@ -1,7 +1,8 @@
 # S036 — Every version gets a Debian package for trixie
 
 - **Status:** Confirmed (Armin, 2026-11-12, after the review
-  `docs/reviews/036-debian-package-spec.md` and its dispositions) · **Order:** 37 · **Size:** M · **Depends on:** S030, S034, S035
+  `docs/reviews/036-debian-package-spec.md` and its dispositions) · **Order:** 37 · **Size:** M ·
+  **Depends on:** S030, S034, S035
 - **Basis:** Armin wants a Debian package for trixie built by CI for every version (2026-11-08,
   `unrefined.md`, "Packages and installers for every version"); after S034 and S035 (2026-11-12)
   it comes as the asset of a GitHub release per version, and Armin's server fetches it from there.
