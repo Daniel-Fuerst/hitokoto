@@ -82,6 +82,38 @@ function(run_plan)
     endif()
 endfunction()
 
+# A little-endian unsigned integer of <size> bytes at <offset> of a file.
+function(read_le file offset size out)
+    file(READ "${file}" hex OFFSET ${offset} LIMIT ${size} HEX)
+    set(be "")
+    string(LENGTH "${hex}" len)
+    while(len GREATER 0)
+        math(EXPR last "${len} - 2")
+        string(SUBSTRING "${hex}" ${last} 2 byte)
+        string(APPEND be "${byte}")
+        string(SUBSTRING "${hex}" 0 ${last} hex)
+        set(len ${last})
+    endwhile()
+    math(EXPR value "0x${be}")
+    set(${out} ${value} PARENT_SCOPE)
+endfunction()
+
+# A bitmap as WiX's dialogs take it: BMP, 24 bits, uncompressed, of the given size.
+function(expect_bmp file width height)
+    if(NOT EXISTS "${file}")
+        message(FATAL_ERROR "missing: ${file}")
+    endif()
+    file(READ "${file}" magic LIMIT 2 HEX)
+    expect_eq("${magic}" "424d" "${file}: BMP signature")
+    read_le("${file}" 18 4 w)
+    read_le("${file}" 22 4 h)
+    read_le("${file}" 28 2 bits)
+    read_le("${file}" 30 4 compression)
+    expect_eq("${w}x${h}" "${width}x${height}" "${file}: size")
+    expect_eq("${bits}" "24" "${file}: bits per pixel")
+    expect_eq("${compression}" "0" "${file}: compression")
+endfunction()
+
 function(expect_ok result messages what)
     if(NOT result EQUAL 0)
         message(FATAL_ERROR "${what} failed (${result}):\n${messages}")
@@ -374,6 +406,29 @@ elseif("${CASE}" STREQUAL "TheInstallerAsksForTheLicence")
         "the launch condition")
     expect_contains("${wxs}" "<WixVariable Id=\"WixUILicenseRtf\"" "the licence text")
     expect_contains("${wxs}" "Condition=\"LicenseAccepted = &quot;1&quot;" "the checkbox")
+
+elseif("${CASE}" STREQUAL "TheInstallerShowsTheLogo")
+    # Decision 14 (Armin, 2026-11-13): the dialogs show the hitokoto logo instead of WiX's
+    # pictures; the bitmaps belong to the recipe, so they reach the MSI of every version.
+    file(READ "${RECIPE_DIR}/hitokoto.wxs" wxs)
+    expect_contains("${wxs}"
+        "<WixVariable Id=\"WixUIBannerBmp\" Value=\"!(bindpath.recipe)\\installer-banner.bmp\" />"
+        "the banner")
+    expect_contains("${wxs}"
+        "<WixVariable Id=\"WixUIDialogBmp\" Value=\"!(bindpath.recipe)\\installer-dialog.bmp\" />"
+        "the picture of Welcome and Finish")
+    file(READ "${RECIPE_DIR}/build-package.ps1" build)
+    expect_contains("${build}" "-bindpath \"recipe=$recipe\"" "the recipe in the build")
+    expect_bmp("${RECIPE_DIR}/installer-banner.bmp" 493 58)
+    expect_bmp("${RECIPE_DIR}/installer-dialog.bmp" 493 312)
+    # Made from icons/hitokoto.svg, like the icons of Windows and macOS.
+    if(NOT EXISTS "${SOURCE_DIR}/scripts/generate-installer-bitmaps.sh")
+        message(FATAL_ERROR "missing: scripts/generate-installer-bitmaps.sh")
+    endif()
+    file(READ "${RECIPE_DIR}/README.md" readme)
+    expect_contains("${readme}" "scripts/generate-installer-bitmaps.sh" "the README on the bitmaps")
+    file(READ "${SOURCE_DIR}/.gitattributes" attributes)
+    expect_contains("${attributes}" "*.bmp binary" "bitmaps stay byte-exact")
 
 elseif("${CASE}" STREQUAL "TheDebianReadmeIgnoresMissingFiles")
     # Review O5: SHA256SUMS lists both packages; a check of one download ignores the other.
