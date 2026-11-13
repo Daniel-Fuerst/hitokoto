@@ -1,6 +1,10 @@
 # S036 — Every version gets a Debian package for trixie
 
-- **Status:** Confirmed (Armin, 2026-11-12, after the review
+- **Status:** In review since 2026-11-13 (CI green on Linux, Windows and macOS on pull request 43;
+  the dry run of "Packaging" built the package of 0.5.1 in `debian:trixie`, ran its 416 tests
+  against Debian's Qt 6.8.2, found only the lintian warning `no-manual-page`, and installed,
+  started and purged it in a fresh `debian:trixie`; the release itself runs only on main, so the
+  first release after the merge is to be watched); Confirmed (Armin, 2026-11-12, after the review
   `docs/reviews/036-debian-package-spec.md` and its dispositions) · **Order:** 37 · **Size:** M ·
   **Depends on:** S030, S034, S035
 - **Basis:** Armin wants a Debian package for trixie built by CI for every version (2026-11-08,
