@@ -4,9 +4,10 @@
   S037, ADR 0012: the Windows installer of hitokoto, built by packaging/windows/build-package.ps1
   with the WiX .NET tool:
 
-    wix build hitokoto.wxs -arch x64 -ext WixToolset.UI.wixext -acceptEula wix<major>
+    wix build hitokoto.wxs -loc hitokoto.wxl -arch x64 -ext WixToolset.UI.wixext -acceptEula wix<major>
               -d Version=X.Y.Z -bindpath stage=<installed files> -bindpath source=<tag's source>
-              -bindpath work=<license.rtf> -o hitokoto-X.Y.Z-x64.msi
+              -bindpath work=<license.rtf> -bindpath recipe=<this directory>
+              -o hitokoto-X.Y.Z-x64.msi
 
   One MSI for both scopes (perUserOrMachine: ALLUSERS=2, MSIINSTALLPERUSER=1): per user into
   %LOCALAPPDATA%\Programs\hitokoto, per machine into C:\Program Files\hitokoto. The dialogs show the
@@ -77,6 +78,10 @@
     <WixVariable Id="WixUISupportPerUser" Value="1" />
     <WixVariable Id="WixUISupportPerMachine" Value="1" />
     <WixVariable Id="WixUILicenseRtf" Value="!(bindpath.work)\license.rtf" />
+    <!-- S037 decision 14: the hitokoto logo instead of WiX's pictures
+         (scripts/generate-installer-bitmaps.sh). -->
+    <WixVariable Id="WixUIBannerBmp" Value="!(bindpath.recipe)\installer-banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="!(bindpath.recipe)\installer-dialog.bmp" />
 
     <UI Id="HitokotoUI">
       <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
@@ -103,9 +108,14 @@
       <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Condition="LicenseAccepted = &quot;1&quot; AND NOT Privileged" />
 
       <Publish Dialog="InstallScopeDlg" Control="Back" Event="NewDialog" Value="LicenseAgreementDlg" />
-      <Publish Dialog="InstallScopeDlg" Control="Next" Property="MSIINSTALLPERUSER" Value="1" Order="1" Condition="WixAppFolder = &quot;WixPerUserFolder&quot;" />
-      <Publish Dialog="InstallScopeDlg" Control="Next" Property="MSIINSTALLPERUSER" Value="{}" Order="2" Condition="WixAppFolder = &quot;WixPerMachineFolder&quot;" />
-      <Publish Dialog="InstallScopeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="3" />
+      <!-- The choice sets ALLUSERS too: Windows deletes ALLUSERS=2 when the UI starts with
+           MSIINSTALLPERUSER=1, and without ALLUSERS=1 the Start menu entry and the Open with entry
+           of an installation for everyone went to the user (review (code) O1, Armin's test). -->
+      <Publish Dialog="InstallScopeDlg" Control="Next" Property="ALLUSERS" Value="{}" Order="1" Condition="WixAppFolder = &quot;WixPerUserFolder&quot;" />
+      <Publish Dialog="InstallScopeDlg" Control="Next" Property="MSIINSTALLPERUSER" Value="1" Order="2" Condition="WixAppFolder = &quot;WixPerUserFolder&quot;" />
+      <Publish Dialog="InstallScopeDlg" Control="Next" Property="ALLUSERS" Value="1" Order="3" Condition="WixAppFolder = &quot;WixPerMachineFolder&quot;" />
+      <Publish Dialog="InstallScopeDlg" Control="Next" Property="MSIINSTALLPERUSER" Value="{}" Order="4" Condition="WixAppFolder = &quot;WixPerMachineFolder&quot;" />
+      <Publish Dialog="InstallScopeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="5" />
 
       <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="InstallScopeDlg" Order="1" Condition="NOT Installed AND Privileged" />
       <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="LicenseAgreementDlg" Order="1" Condition="NOT Installed AND NOT Privileged" />

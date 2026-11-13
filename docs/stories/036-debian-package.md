@@ -1,6 +1,10 @@
 # S036 — Every version gets a Debian package for trixie
 
-- **Status:** In review since 2026-11-13 (CI green on Linux, Windows and macOS on pull request 43;
+- **Status:** Done (accepted by Armin, 2026-11-13, after the first release `v0.5.1` on main, made
+  by "Packaging" after the merge of pull request 44 with the package and `SHA256SUMS`, and after a
+  test in a minimal trixie VM with MATE: installed with `--no-install-recommends`, the menu entry
+  with its icon, start, opening a Markdown file by double click, saving); In review since
+  2026-11-13 (CI green on Linux, Windows and macOS on pull request 43;
   the dry run of "Packaging" built the package of 0.5.1 in `debian:trixie`, ran its 416 tests
   against Debian's Qt 6.8.2, found only the lintian warning `no-manual-page`, and installed,
   started and purged it in a fresh `debian:trixie`; the release itself runs only on main, so the

@@ -1,8 +1,13 @@
 # S037 — Every version gets a Windows installer (MSI)
 
-- **Status:** Confirmed (Armin, 2026-11-13, after the review `docs/reviews/037-windows-msi-spec.md`
-  and its dispositions; ADR 0012 accepted with it) · **Order:** 38 · **Size:** L · **Depends on:**
-  S030, S035, S036
+- **Status:** In review since 2026-11-13 (CI green on Linux, Windows and macOS on pull request 46;
+  the dry run of "Packaging" built the MSI of 0.5.1 on `windows-2022`, ran its 416 tests, validated
+  it, installed, upgraded, started and uninstalled it per user and per machine, and handed it on
+  unzipped as `hitokoto-0.5.1-x64.msi`; Armin installed that MSI through its dialogs as an
+  administrator, for everyone, with the logo of decision 14; the release itself runs only on main,
+  so the first release with an MSI is to be watched); Confirmed (Armin, 2026-11-13, after the
+  review `docs/reviews/037-windows-msi-spec.md` and its dispositions; ADR 0012 accepted with it) ·
+  **Order:** 38 · **Size:** L · **Depends on:** S030, S035, S036
 - **Basis:** Armin wants a Windows installer for every version (2026-11-12, `unrefined.md`,
   "Packages and installers for every version"), as an MSI (2026-11-13; Inno Setup was considered
   before), attached to the same GitHub release as the Debian package of S036. Today every update on
@@ -145,6 +150,13 @@ cleanly.
     moving an installation from one scope to the other; an update check in hitokoto
     (`unrefined.md`); arm64; an installer for macOS (S012); the build of the MSI in the CI of every
     pull request; a version resource in `hitokoto.exe` (`unrefined.md`).
+14. **The logo in the dialogs.** (Armin, 2026-11-13, after his test of the dialogs; here rather
+    than in a story of its own, too small for one.) The dialogs show the hitokoto logo instead of
+    WiX's red pictures: Welcome and Finish the logo on its colour (`#393266`) in the left part,
+    the other dialogs a white banner with the logo on the right. Both bitmaps belong to the recipe
+    (`packaging/windows`), so the MSI of every version shows them;
+    `scripts/generate-installer-bitmaps.sh` makes them from `icons/hitokoto.svg`, like the icons of
+    Windows and macOS are made from it.
 
 ## Acceptance scenarios
 
@@ -242,11 +254,20 @@ cleanly.
   asks: its `InstallScopeDlg` shows the choice between the scopes only when Windows Installer sets
   `Privileged`, preselecting what the package sets in `WixAppFolder` (here `WixPerMachineFolder`,
   "Everyone", as in WiX's own test of that set), and sends a user without it to "Just for me".
-  Microsoft documents `Privileged` as set "if the user has administrator privileges"; whether an
-  administrator under UAC, starting the MSI by double click without elevation, gets it in the
-  dialogs is checked in the implementation (verbose log) and by Armin on his machine. If not, the
-  README names `ALLUSERS=1` and the story records the gap. Its first page shows the licence (an RTF
-  file in the recipe, made from `LICENSE`) with the checkbox to accept it, as decision 6 asks.
+  Microsoft documents `Privileged` as set "if the user has administrator privileges"; Armin's test
+  (2026-11-13, MSI of 0.5.1 from the dry run on pull request 45, double click as an administrator
+  under UAC) confirmed it: welcome, the GPL with the checkbox ("Next" only after ticking it), the
+  scope with "Install for all users of this machine" preselected, ready, UAC prompt after "Install",
+  finish. The recipe's dialog sequence shows the licence (an RTF file made from `LICENSE`) on a page
+  of its own. The same test found that choosing "Everyone" installed the files for the machine but
+  the Start menu entry and the "Open with" entry for the user: Windows deletes `ALLUSERS=2` when the
+  UI starts with `MSIINSTALLPERUSER=1`, and the dialog set only `MSIINSTALLPERUSER` (verbose log:
+  the server got `ALLUSERS=""`). The dialog now sets `ALLUSERS` with its choice, and its texts
+  (`hitokoto.wxl`) no longer promise a choice of folder (review (code) O1).
+- The check job hands the checked MSI on unzipped, as the artifact `hitokoto-X.Y.Z-x64.msi`
+  (`archive: false` of upload-artifact v7; Armin, 2026-11-13: a zip named `windows-X.Y.Z` hid what
+  it held). Since the release job runs only on main, the job `windows-handover` downloads the MSIs
+  exactly as it does, in every run including a dry run, and checks that each one arrives as an MSI.
 - `windeployqt` is called directly rather than through `qt_generate_deploy_app_script`: the tags'
   `CMakeLists.txt` has no deployment step, and the recipe must work on their source.
 - Translations (`--no-translations`) are left out because hitokoto has no localisation yet; the

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  S037: texts of WixToolset.UI.wixext that hitokoto's dialogs override. The scope dialog offers no
+  choice of where to install (decision 6), so its texts promise none. Passed to wix build with
+  -loc.
+-->
+<WixLocalization Culture="en-US" Codepage="1252" xmlns="http://wixtoolset.org/schemas/v4/wxl">
+  <String Id="InstallScopeDlgDescription" Value="Choose who can use [ProductName]" />
+  <String Id="InstallScopeDlgPerMachineDescription" Value="[ProductName] will be installed under Program Files and be available for all users. You must have local Administrator privileges." />
+</WixLocalization>
