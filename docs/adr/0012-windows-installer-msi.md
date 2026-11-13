@@ -24,9 +24,9 @@ Facts as checked on 2026-11-13:
   the `wix` .NET tool, installed with `dotnet tool install`. Its source is under the Microsoft
   Reciprocal License (MS-RL). Its binaries (from v6) come under the Open Source Maintenance Fee
   EULA: "The Fee applies only to Users that generate revenue by the Software. Non-revenue-generating
-  use of the Software is exempt" (OSMF v1.1 adds a threshold of US$10,000 a year). WiX 7 asks for
-  the acceptance of that EULA once per build, with `-acceptEula wix7`. The EULA concerns building
-  the MSI, not the people who install hitokoto.
+  use of the Software is exempt" (OSMF v1.1 adds a threshold of US$10,000 a year). WiX 7 runs no
+  command before that EULA is accepted (`wix eula accept wix7` once per user, or `-acceptEula wix7`
+  per build). The EULA concerns building the MSI, not the people who install hitokoto.
 - CPack's WIX generator writes for WiX v3 by default and for the WiX .NET tool with
   `CPACK_WIX_VERSION 4` (CMake 3.30 or newer, documented with `wix` 4.0.4). Its settings come from
   the `CMakeLists.txt` of the source being packaged; the version tags carry none.
@@ -84,7 +84,7 @@ Option 3, with WiX 7.0.1 (the version is a setting of the recipe), and:
   code.
 - WiX publishes a major version about once a year and fixes security problems only in the current
   and the previous one, so the recipe's version is raised at least every second major version; each
-  new major version may ask for its own EULA acceptance (`-acceptEula wix8`).
+  new major version may ask for its own EULA acceptance (`wix eula accept wix8`).
 - No fee is due while hitokoto is developed without revenue (OSMF EULA section 1). If that ever
   changes, the fee applies to whoever generates the revenue; the EULA also allows building WiX from
   its MS-RL source.

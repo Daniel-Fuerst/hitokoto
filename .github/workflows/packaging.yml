@@ -563,7 +563,11 @@ jobs:
         run: |
           dotnet tool install --global wix --version $env:WIX
           Add-Content $env:GITHUB_PATH (Join-Path $env:USERPROFILE '.dotnet\tools')
-          & (Join-Path $env:USERPROFILE '.dotnet\tools\wix.exe') extension add --global "WixToolset.UI.wixext/$env:WIX"
+          $wix = Join-Path $env:USERPROFILE '.dotnet\tools\wix.exe'
+          # ADR 0012: WiX 7 refuses every command until its OSMF EULA is accepted (WIX7015); no
+          # fee is due without revenue. Accepted for the runner's user, before the first command.
+          & $wix eula accept "wix$($env:WIX.Split('.')[0])"
+          & $wix extension add --global "WixToolset.UI.wixext/$env:WIX"
 
       - name: Build, test and make the MSI
         shell: pwsh

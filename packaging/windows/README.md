@@ -57,8 +57,9 @@ version of hitokoto brings newer ones), `LICENSE.txt`, `LGPL-3.0.txt` and `THIRD
 ## Building locally
 
 In a "x64 Native Tools Command Prompt for VS 2022" with PowerShell 7, Qt 6.8.3 for MSVC 2022 64-bit
-and the WiX tool (`dotnet tool install --global wix --version 7.0.1`, then
-`wix extension add --global WixToolset.UI.wixext/7.0.1`), from the root of a checkout with the tags:
+and the WiX tool (`dotnet tool install --global wix --version 7.0.1`, then `wix eula accept wix7`
+and `wix extension add --global WixToolset.UI.wixext/7.0.1`), from the root of a checkout with the
+tags:
 
 ```bat
 set QT_ROOT_DIR=C:\Dev\Qt\6.8.3\msvc2022_64
@@ -68,6 +69,7 @@ git archive v0.5.1 | tar -x -C msi-work\source
 pwsh packaging\windows\build-package.ps1 -Source msi-work\source -Version 0.5.1 -Out msi-work\out -WixVersion 7.0.1
 ```
 
-Building with WiX 7 accepts its EULA (`-acceptEula wix7`): WiX's binaries come under the Open
+WiX 7 runs no command before its EULA is accepted (`wix eula accept wix7`, or `-acceptEula wix7`
+per build): WiX's binaries come under the Open
 Source Maintenance Fee EULA, whose fee applies only to those who generate revenue with WiX
 (ADR 0012).

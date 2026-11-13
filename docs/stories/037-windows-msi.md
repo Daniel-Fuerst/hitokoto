@@ -104,9 +104,11 @@ cleanly.
    with `dotnet tool install` and builds with `wix build`; the recipe's source harvests the
    installed tree with the `Files` element. The build job validates the MSI with `wix msi validate`;
    ICE findings accepted on purpose are listed in the recipe with their reason, any other is red
-   (review O3). The OSMF EULA is accepted in the build with `-acceptEula wix7`: hitokoto earns no
-   revenue, so no fee is due. Not CPack: CPack's WIX settings would come from the tag's
-   `CMakeLists.txt`, which has none, and the WiX v3 on the image gets no security fixes any more.
+   (review O3). The OSMF EULA is accepted with `wix eula accept wix7` before the first `wix` command
+   (WiX 7 runs none before, first dry run on pull request 45), and in the build with `-acceptEula
+   wix7`: hitokoto earns no revenue, so no fee is due. Not CPack: CPack's WIX settings would come
+   from the tag's `CMakeLists.txt`, which has none, and the WiX v3 on the image gets no security
+   fixes any more.
 8. **Installed, upgraded, started and uninstalled before it is released.** A second job, on a fresh
    `windows-2022` runner without Qt, gets the MSI of `X.Y.Z` and a second MSI that the build job
    made from the same files plus one marker file, with the product version `0.0.0` (never released);
