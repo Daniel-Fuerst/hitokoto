@@ -352,6 +352,18 @@ elseif("${CASE}" STREQUAL "TheInstallerOffersBothScopes")
                     "the scope dialog only for administrators")
     expect_contains("${wxs}" "Property=\"MSIINSTALLPERUSER\" Value=\"{}\"" "per machine chosen")
     expect_contains("${wxs}" "Property=\"MSIINSTALLPERUSER\" Value=\"1\"" "per user chosen")
+    # Review (code) O1, Armin's test of the dialogs (2026-11-13): Windows deletes ALLUSERS=2 when
+    # the UI starts with MSIINSTALLPERUSER=1; a choice of "Everyone" that sets only
+    # MSIINSTALLPERUSER installed the files under Program Files, but the Start menu entry and the
+    # Open with entry for the user alone. The dialog sets ALLUSERS with its choice.
+    expect_contains("${wxs}" "Control=\"Next\" Property=\"ALLUSERS\" Value=\"1\"" "ALLUSERS for everyone")
+    expect_contains("${wxs}" "Control=\"Next\" Property=\"ALLUSERS\" Value=\"{}\"" "ALLUSERS for the user")
+    # The scope dialog offers no folder, so its texts do not promise one (hitokoto.wxl).
+    file(READ "${RECIPE_DIR}/hitokoto.wxl" wxl)
+    expect_contains("${wxl}" "Id=\"InstallScopeDlgPerMachineDescription\"" "the text for everyone")
+    expect_not_contains("${wxl}" "folder" "a folder in the texts of the scope dialog")
+    file(READ "${RECIPE_DIR}/build-package.ps1" build)
+    expect_contains("${build}" "-loc (Join-Path $recipe 'hitokoto.wxl')" "the texts in the build")
     expect_contains("${wxs}" "<StandardDirectory Id=\"ProgramFiles64Folder\">" "the program folder")
 
 elseif("${CASE}" STREQUAL "TheInstallerAsksForTheLicence")

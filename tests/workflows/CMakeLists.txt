@@ -34,7 +34,9 @@ foreach(name IN ITEMS
         TheReleaseWaitsForBothPackages
         TheWindowsRecipeStartsADryRun
         TheEulaIsAcceptedBeforeWixRuns
-        AnEmptyIceListReachesTheBuild)
+        AnEmptyIceListReachesTheBuild
+        AFailedBuildDoesNotSkipTheOtherChecks
+        AReleaseWithoutAnyMsiIsNotStopped)
     add_test(NAME S037_${name}
         COMMAND ${CMAKE_COMMAND} -DCASE=${name}
                 -DWORKFLOWS_DIR=${PROJECT_SOURCE_DIR}/.github/workflows -P ${s037_cases})

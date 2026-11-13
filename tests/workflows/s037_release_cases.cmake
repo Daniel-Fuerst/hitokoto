@@ -152,6 +152,25 @@ elseif("${CASE}" STREQUAL "AnEmptyIceListReachesTheBuild")
         message(FATAL_ERROR "windows-package passes -Ice also without accepted ICE findings")
     endif()
 
+elseif("${CASE}" STREQUAL "AFailedBuildDoesNotSkipTheOtherChecks")
+    # Review (code) O4: windows-check needs every leg of windows-package; without !cancelled() the
+    # default success() would skip the checks of every version when one build failed.
+    job_condition("${job_windows-check}" condition)
+    foreach(part IN ITEMS "!cancelled()" "needs.debian-plan.result == 'success'")
+        string(FIND "${condition}" "${part}" at)
+        if(at EQUAL -1)
+            message(FATAL_ERROR "the condition of windows-check lacks ${part}: '${condition}'")
+        endif()
+    endforeach()
+
+elseif("${CASE}" STREQUAL "AReleaseWithoutAnyMsiIsNotStopped")
+    # Review (code) O3: when no Windows check passed, the download of windows-* finds nothing; a
+    # version skipped for Windows is still released. The release step checks every file it needs.
+    list(JOIN job_debian-release "\n" release)
+    if(NOT release MATCHES "\n      - uses: actions/download-artifact@v8\n        if: [^\n]*\n        continue-on-error: true\n        with:\n          pattern: windows-\\*\n")
+        message(FATAL_ERROR "the download of windows-* in debian-release may stop the release")
+    endif()
+
 else()
     message(FATAL_ERROR "unknown case '${CASE}'")
 endif()
