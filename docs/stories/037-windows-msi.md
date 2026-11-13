@@ -1,8 +1,13 @@
 # S037 — Every version gets a Windows installer (MSI)
 
-- **Status:** Confirmed (Armin, 2026-11-13, after the review `docs/reviews/037-windows-msi-spec.md`
-  and its dispositions; ADR 0012 accepted with it) · **Order:** 38 · **Size:** L · **Depends on:**
-  S030, S035, S036
+- **Status:** In review since 2026-11-13 (CI green on Linux, Windows and macOS on pull request 46;
+  the dry run of "Packaging" built the MSI of 0.5.1 on `windows-2022`, ran its 416 tests, validated
+  it, installed, upgraded, started and uninstalled it per user and per machine, and handed it on
+  unzipped as `hitokoto-0.5.1-x64.msi`; Armin installed that MSI through its dialogs as an
+  administrator, for everyone, with the logo of decision 14; the release itself runs only on main,
+  so the first release with an MSI is to be watched); Confirmed (Armin, 2026-11-13, after the
+  review `docs/reviews/037-windows-msi-spec.md` and its dispositions; ADR 0012 accepted with it) ·
+  **Order:** 38 · **Size:** L · **Depends on:** S030, S035, S036
 - **Basis:** Armin wants a Windows installer for every version (2026-11-12, `unrefined.md`,
   "Packages and installers for every version"), as an MSI (2026-11-13; Inno Setup was considered
   before), attached to the same GitHub release as the Debian package of S036. Today every update on

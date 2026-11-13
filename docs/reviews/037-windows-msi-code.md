@@ -10,38 +10,57 @@ objections:
     category: failure
     severity: major
     title: The dialogs never ran; every check installs without them
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      Armin ran the dialogs (2026-11-13, MSI of 0.5.1 from the dry run on pull request 45, double
+      click as an administrator under UAC): they advance, the GPL needs its checkbox, "Everyone" is
+      preselected for an administrator. The test found that "Everyone" put the Start menu entry and
+      "Open with" under the user; the dialog now sets ALLUSERS with its choice (0d414be red,
+      d6c1e41). Armin's test of the fixed MSI (dry run on pull request 46, 543c15b) installed
+      everything for the machine alone, and showed the logo of decision 14.
   - id: O2
     category: failure
     severity: minor
     title: Completing a release with "Re-run failed jobs" is untested
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: >-
+      The path runs only on main; it is watched at the first release with an MSI. If a re-run
+      does not find the first attempt's package, the next run of "Packaging" or a manual run with
+      "publish" catches the version up (decision 2).
   - id: O3
     category: failure
     severity: minor
     title: A download of windows-* that matches nothing may stop a release that needs no MSI
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      The release job's download of the MSIs may find nothing (continue-on-error); the release
+      step checks every file it needs. Lint S037_AReleaseWithoutAnyMsiIsNotStopped (0d414be red,
+      d6c1e41); the pattern is hitokoto-*-x64.msi since the MSI is handed on unzipped (e154dce).
   - id: O4
     category: failure
     severity: minor
     title: No lint keeps the check of one version running when another version's build failed
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      Lint S037_AFailedBuildDoesNotSkipTheOtherChecks keeps !cancelled() and the plan's success
+      in the condition of windows-check (0d414be; the workflow already met it).
   - id: O5
     category: operational
     severity: minor
     title: The file list pins the C++ runtime of the image's Visual Studio
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: >-
+      The red is intended (decision 5); packaging/windows/README.md now says that an image
+      update adding or dropping a DLL of the C++ runtime makes every MSI red until files.txt
+      follows, and that the build prints the installed list (d6c1e41).
   - id: O6
     category: design
     severity: minor
     title: The Windows logic lives in jobs named after Debian
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: >-
+      The ids debian-plan and debian-release stay: the S036 lints and the history use them, and
+      the jobs' names ("Plan the Debian releases", "Release") are what a reader sees in the run.
 ---
 
 # Review (code) of S037 — Every version gets a Windows installer (MSI)
