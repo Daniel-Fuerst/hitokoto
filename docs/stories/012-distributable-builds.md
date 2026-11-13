@@ -1,6 +1,6 @@
 # S012 — Distributable builds for Linux, Windows and macOS
 
-- **Status:** Proposed · **Order:** 39 · **Depends on:** S000 (and the licence decision)
+- **Status:** Proposed · **Order:** 40 · **Depends on:** S000 (and the licence decision)
 
 ## Story
 
@@ -25,6 +25,7 @@ without building it.
 
 - S034 keeps the AUR package (a source recipe; users build hitokoto themselves) up to date with
   every version. A Debian package (`.deb`) for trixie built by CI belongs to this project like any
-  vendor's package (Armin, 2026-10-28); whether it becomes part of this story or a story of its
-  own is open (`unrefined.md`, "Packages and installers for every version").
+  vendor's package (Armin, 2026-10-28); S036 builds it for every version and attaches it to the
+  version's GitHub release, from its own recipe in `packaging/debian`, and drops `DEB` from the
+  CPack configuration in `CMakeLists.txt`; `TGZ` is left to this story.
 - Flatpak (KDE runtime) is a possible later addition.

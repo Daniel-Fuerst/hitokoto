@@ -10,3 +10,15 @@ foreach(name IN ITEMS
         COMMAND ${CMAKE_COMMAND} -DCASE=${name}
                 -DWORKFLOWS_DIR=${PROJECT_SOURCE_DIR}/.github/workflows -P ${s035_cases})
 endforeach()
+
+# S036: lints over packaging.yml (the Debian package and the GitHub releases).
+set(s036_cases "${CMAKE_CURRENT_SOURCE_DIR}/s036_release_cases.cmake")
+foreach(name IN ITEMS
+        OnlyTheReleaseJobMayWrite
+        TheReleaseJobRunsOnlyOnMain
+        TheDebianJobsDoNotWaitForTheAur
+        OneVersionDoesNotStopTheOthers)
+    add_test(NAME S036_${name}
+        COMMAND ${CMAKE_COMMAND} -DCASE=${name}
+                -DWORKFLOWS_DIR=${PROJECT_SOURCE_DIR}/.github/workflows -P ${s036_cases})
+endforeach()

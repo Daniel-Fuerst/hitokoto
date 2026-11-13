@@ -8,3 +8,5 @@ tests/data/s031/samples/** -text
 # S034: the Arch Linux recipe goes to the AUR byte for byte, and the PKGBUILD pins the checksum of
 # the desktop entry.
 packaging/archlinux/** text eol=lf
+# S036: the Debian recipe holds shell scripts run with bash, also from a checkout on Windows.
+packaging/debian/** text eol=lf

@@ -1,8 +1,9 @@
 # S031 — Pasting a table from Outlook, Excel or a web page as a Markdown table
 
-- **Status:** In review (since 2026-11-10: CI green on Linux, Windows and macOS on 1096c0b, the
-  benchmark on the slower runner class, AMD EPYC 7763, after the code review
-  `docs/reviews/031-paste-tables-code.md`); confirmed by Armin, 2026-11-09, after review
+- **Status:** Done (accepted by Armin, 2026-11-10, after the merge of pull request 35; the tag job
+  set `v0.4.0` on its merge commit 10a60bf); In review since 2026-11-10 (CI green on Linux, Windows
+  and macOS on 1096c0b, the benchmark on the slower runner class, AMD EPYC 7763, after the code
+  review `docs/reviews/031-paste-tables-code.md`); confirmed by Armin, 2026-11-09, after review
   `docs/reviews/031-paste-tables-spec.md` ·
   **Order:** 32 · **Size:** M · **Depends on:** S018, S019, S020 · **Decision:** ADR 0011
 - **Basis:** Armin's feature request and decisions of 2026-11-09. A table copied in Outlook and

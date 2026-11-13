@@ -1,6 +1,9 @@
 # S034 — The AUR package follows every version
 
-- **Status:** In review since 2026-11-12 (CI green on Linux, Windows and macOS on pull request 40;
+- **Status:** Done (accepted by Armin, 2026-11-12, after the merge of pull request 42: the run of
+  "Packaging" after the green CI on main published 0.5.1 to the AUR; the first publish after
+  pull request 40 had failed on the hand-over of the files, fixed in pull request 42); In review
+  since 2026-11-12 (CI green on Linux, Windows and macOS on pull request 40;
   the dry run of "Packaging" built, installed and started the package for v0.5.0); Confirmed
   (Armin, 2026-11-12, after the review `docs/reviews/034-aur-package-spec.md`)
   · **Order:** 35 · **Size:** S · **Depends on:** S030

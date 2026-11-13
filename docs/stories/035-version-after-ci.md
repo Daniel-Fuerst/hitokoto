@@ -1,6 +1,9 @@
 # S035 — A version only after the CI on main is green
 
-- **Status:** Confirmed (Armin approved the design in conversation, 2026-11-12; review
+- **Status:** Done (accepted by Armin, 2026-11-12, after the merge of pull request 42 with
+  `version:none`: the CI on main ran "Version" as its last job without a new tag, and "Packaging"
+  after it published 0.5.1 to the AUR; merged without the step In review, because the chain runs
+  only on main); Confirmed (Armin approved the design in conversation, 2026-11-12; review
   `docs/reviews/035-version-after-ci-spec.md`) · **Order:** 36 ·
   **Size:** S · **Depends on:** S030, S034 · **Decision:** ADR 0010 (amended)
 - **Basis:** On a push to main, "Version" (S030) and "CI" start side by side, and "Packaging"

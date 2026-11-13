@@ -137,6 +137,11 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
 - **Refined so far (2):** S034 keeps the AUR package `hitokoto` (Daniel's source recipe, pull
   requests 38 and 40) up to date with every version. The Debian package and the Windows installer
   are decided after S034 (Armin, 2026-11-12).
+- **Refined so far (3):** S036 builds a Debian package for trixie for every version from 0.5.1 on
+  and attaches it to a GitHub release per version, with notes generated from Git (Armin,
+  2026-11-12). Open here: the Windows installer, and a build and test against Debian's Qt in the
+  CI of every pull request, so that a break on trixie shows before the merge, not only in
+  "Packaging" after the tag (S036 review O3, Armin, 2026-11-12).
 - **Open:** the formats per platform and whether this refines S012 or becomes a story of its own
   (S012 still says the `.deb` follows separate Debian packaging conventions; for Armin, a `.deb`
   built by CI belongs to this project); signing (Windows certificate, macOS notarisation); where the

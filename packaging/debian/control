@@ -1,0 +1,15 @@
+Package: hitokoto
+Version: @VERSION@-1
+Architecture: amd64
+Maintainer: Daniel Fürst <daniel@fuerst.priv.at>
+Installed-Size: @INSTALLED_SIZE@
+Depends: @DEPENDS@, qt6-qpa-plugins, qt6-svg-plugins
+Section: editors
+Priority: optional
+Homepage: https://github.com/Daniel-Fuerst/hitokoto
+Description: native single-file hybrid Markdown editor
+ hitokoto edits one Markdown file at a time with a hybrid live preview: the
+ syntax of headings, emphasis, lists, links, code blocks and tables is hidden
+ and shown again where the cursor is.
+ .
+ It is a native Qt 6 Widgets application and saves the file byte for byte.

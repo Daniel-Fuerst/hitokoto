@@ -41,6 +41,10 @@ configuring. On Debian 13+, install `build-essential cmake ninja-build qt6-base-
 
 For packaging/distributable builds, see [`docs/stories/012-distributable-builds.md`](docs/stories/012-distributable-builds.md) (`windeployqt` on Windows, `macdeployqt` on macOS, `linuxdeploy` on Linux).
 
+Packages: every version from 0.5.1 on has a GitHub release with a Debian package for trixie
+([`packaging/debian/README.md`](packaging/debian/README.md)); the AUR package `hitokoto` follows
+every version ([`packaging/archlinux/README.md`](packaging/archlinux/README.md)).
+
 ## Versions
 
 Every pull request merged into main gives hitokoto its version step (story S030,
