@@ -1,7 +1,8 @@
 # S037 (decision 5): the files of the installation, relative to the installation folder. A file
 # more or less makes the build and the check red. windeployqt decides the Qt part and the Visual
 # Studio of the image the C++ runtime part; when either changes on purpose, this list follows.
-# The job summary of every build prints the installed list.
+# The job summary of every build prints the installed list. Confirmed by the dry run of 0.5.1 on
+# pull request 45 (Qt 6.8.3, Visual C++ runtime 14.44.35112, 2026-11-13).
 hitokoto.exe
 LICENSE.txt
 LGPL-3.0.txt

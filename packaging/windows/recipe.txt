@@ -9,3 +9,4 @@
 qt 6.8.3
 qt-arch win64_msvc2022_64
 wix 7.0.1
+ice ICE57 the Start menu entry lies in ProgramMenuFolder with an HKMU key path; in a package for both scopes (perUserOrMachine) both follow the scope being installed, which ICE57 does not know (first dry run that reached the validation, pull request 45)
