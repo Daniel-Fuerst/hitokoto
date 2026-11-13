@@ -15,6 +15,13 @@
 # with the published releases, debian-package builds, tests and checks the package of each missing
 # version in debian:trixie (packaging/debian), and debian-release, the only job that may write,
 # creates the releases. The decision logic is scripts/packaging/DebianPackage.cmake (tests: S036_*).
+# S037: every version released gets an MSI for Windows in the same release: debian-plan also plans
+# the Windows installers (versions skipped for Windows in packaging/windows/recipe.txt are released
+# with the Debian package alone), windows-package builds and tests each on windows-2022, and
+# windows-check installs, upgrades, starts and uninstalls it on a fresh runner before it hands the
+# MSI on. A release with immutable assets takes no asset later, so debian-release publishes a
+# version only with every package it needs; a failed package job is completed with "Re-run failed
+# jobs". The decision logic is scripts/packaging/WindowsPackage.cmake (tests: S037_*).
 name: Packaging
 
 on:
@@ -26,6 +33,7 @@ on:
     paths:
       - packaging/archlinux/**
       - packaging/debian/**
+      - packaging/windows/**
       - scripts/packaging/**
       - .github/workflows/packaging.yml
   workflow_dispatch:
@@ -341,6 +349,12 @@ jobs:
       build: ${{ steps.plan.outputs.build }}
       latest: ${{ steps.plan.outputs.latest }}
       commit: ${{ steps.plan.outputs.commit }}
+      windows_build: ${{ steps.windows.outputs.windows_build }}
+      windows_skipped: ${{ steps.windows.outputs.windows_skipped }}
+      windows_qt: ${{ steps.windows.outputs.windows_qt }}
+      windows_qt_arch: ${{ steps.windows.outputs.windows_qt_arch }}
+      windows_wix: ${{ steps.windows.outputs.windows_wix }}
+      windows_ice: ${{ steps.windows.outputs.windows_ice }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -397,6 +411,23 @@ jobs:
               echo
               cat "$work/notes-$version.md"
             done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Plan the Windows installers
+        id: windows
+        # S037 decision 2: an MSI for every version the release needs, unless skipped for Windows.
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/debian-plan"
+          cmake -DMODE=plan -DRECIPE_FILE=packaging/windows/recipe.txt -DPLAN_FILE="$work/plan.txt" \
+                -DRELEASES_FILE="$work/releases.txt" -DOUTPUT="$work/windows-plan.txt" \
+                -P scripts/packaging/WindowsPackage.cmake
+          sed 's/^/windows_/' "$work/windows-plan.txt" >> "$GITHUB_OUTPUT"
+          {
+            echo
+            echo "### Windows installer"
+            echo
+            sed 's/^/- /' "$work/windows-plan.txt"
           } >> "$GITHUB_STEP_SUMMARY"
 
   debian-package:
@@ -488,12 +519,140 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  windows-package:
+    name: Windows installer ${{ matrix.version }}
+    # S037 decisions 4, 5 and 7: one matrix entry per version (decision 2), built and tested like
+    # the Windows CI, assembled and made into an MSI (and the 0.0.0 MSI of the upgrade test).
+    needs: debian-plan
+    if: needs.debian-plan.outputs.windows_build != '[]' && needs.debian-plan.outputs.windows_build != ''
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.debian-plan.outputs.windows_build) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.debian-plan.outputs.commit }}
+          fetch-depth: 0  # the tags
+          persist-credentials: false
+
+      - name: Source of the tag
+        shell: bash
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          # The source of the tag; the recipe is that of the checked-out commit (decision 3).
+          mkdir -p msi-work/source msi-work/out
+          git archive "v$VERSION" | tar -x -C msi-work/source
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ needs.debian-plan.outputs.windows_qt }}
+          arch: ${{ needs.debian-plan.outputs.windows_qt_arch }}
+          cache: true
+
+      - name: Install WiX
+        shell: pwsh
+        env:
+          WIX: ${{ needs.debian-plan.outputs.windows_wix }}
+        run: |
+          dotnet tool install --global wix --version $env:WIX
+          Add-Content $env:GITHUB_PATH (Join-Path $env:USERPROFILE '.dotnet\tools')
+          & (Join-Path $env:USERPROFILE '.dotnet\tools\wix.exe') extension add --global "WixToolset.UI.wixext/$env:WIX"
+
+      - name: Build, test and make the MSI
+        shell: pwsh
+        env:
+          VERSION: ${{ matrix.version }}
+          WIX: ${{ needs.debian-plan.outputs.windows_wix }}
+          ICE: ${{ needs.debian-plan.outputs.windows_ice }}
+        run: |
+          $ice = @($env:ICE -split ' ' | Where-Object { $_ })
+          pwsh packaging/windows/build-package.ps1 -Source msi-work/source -Version $env:VERSION `
+            -Out msi-work/out -WixVersion $env:WIX -Ice $ice
+
+      - name: Hand the MSIs to the check
+        uses: actions/upload-artifact@v7
+        with:
+          name: msi-build-${{ matrix.version }}
+          path: |
+            msi-work/out/hitokoto-${{ matrix.version }}-x64.msi
+            msi-work/out/upgrade-test-0.0.0.msi
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-check:
+    name: Install, upgrade and uninstall ${{ matrix.version }}
+    # S037 decision 8: on a fresh runner without Qt, per user and per machine. Only an MSI that
+    # passed is handed on to the release job, as windows-<version>. Not skipped when another
+    # version's build failed (decision 2).
+    needs: [debian-plan, windows-package]
+    if: >-
+      !cancelled() && needs.debian-plan.result == 'success' &&
+      needs.debian-plan.outputs.windows_build != '[]' && needs.debian-plan.outputs.windows_build != ''
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.debian-plan.outputs.windows_build) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.debian-plan.outputs.commit }}
+          sparse-checkout: |
+            packaging/windows
+            scripts/packaging
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: msi-build-${{ matrix.version }}
+          path: ${{ runner.temp }}/msi
+
+      - name: Install, upgrade, start and uninstall
+        shell: pwsh
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          $msi = Join-Path $env:RUNNER_TEMP "msi\hitokoto-$env:VERSION-x64.msi"
+          $test = Join-Path $env:RUNNER_TEMP 'msi\upgrade-test-0.0.0.msi'
+          foreach ($scope in 'user', 'machine') {
+            pwsh packaging/windows/install-check.ps1 -Msi $msi -TestMsi $test -Version $env:VERSION -Scope $scope
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+
+      - name: Logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: msi-logs-${{ matrix.version }}
+          path: |
+            ${{ runner.temp }}/msi/*.log
+            ${{ runner.temp }}/msi/*.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Hand the checked MSI on
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-${{ matrix.version }}
+          path: ${{ runner.temp }}/msi/hitokoto-${{ matrix.version }}-x64.msi
+          if-no-files-found: error
+          retention-days: 7
+
   debian-release:
     name: Release
     # Decision 8: the only job that may write. Only on main, after a CI run there or a manual run
     # with "publish"; it releases the versions whose package passed, also if another version
     # failed (review O2).
-    needs: [debian-plan, debian-package]
+    needs: [debian-plan, debian-package, windows-check]
     if: >-
       !cancelled() && needs.debian-plan.result == 'success' &&
       needs.debian-plan.outputs.action == 'release' && github.ref == 'refs/heads/main' &&
@@ -514,12 +673,21 @@ jobs:
           merge-multiple: true
           path: ${{ runner.temp }}/debian
 
+      # S037: the checked MSIs into the same directory (windows-check hands them on as windows-*).
+      - uses: actions/download-artifact@v8
+        if: needs.debian-plan.outputs.windows_build != '[]'
+        with:
+          pattern: windows-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/debian
+
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           VERSIONS: ${{ needs.debian-plan.outputs.versions }}
           LATEST: ${{ needs.debian-plan.outputs.latest }}
+          WINDOWS_SKIPPED: ${{ needs.debian-plan.outputs.windows_skipped }}
         run: |
           set -euo pipefail
           failed=0
@@ -530,6 +698,20 @@ jobs:
             notes="$dir/notes-$version.md"
             if [ ! -f "$dir/$deb" ] || [ ! -f "$notes" ]; then
               echo "::error::$version has no checked package; it is not released"
+              failed=1
+              continue
+            fi
+            # S037 decision 2: the MSI too, unless the version is skipped for Windows; immutable
+            # releases take no asset later, so a version waits for every package it needs.
+            msi="hitokoto-${version}-x64.msi"
+            with_msi=true
+            for skipped in $WINDOWS_SKIPPED; do
+              if [ "$skipped" = "$version" ]; then
+                with_msi=false
+              fi
+            done
+            if [ "$with_msi" = true ] && [ ! -f "$dir/$msi" ]; then
+              echo "::error::$version has no checked installer; it is not released (re-run the failed jobs)"
               failed=1
               continue
             fi
@@ -552,11 +734,21 @@ jobs:
                 gh api -X DELETE "repos/$GH_REPO/releases/$id"
               fi
             done <<< "$existing"
-            # SHA256SUMS of this version only, in a directory of its own for the upload.
+            # SHA256SUMS of this version's packages, in a directory of its own for the upload.
             assets="$RUNNER_TEMP/assets-$version"
             mkdir -p "$assets"
-            cp "$dir/$deb" "$assets/"
-            (cd "$assets" && sha256sum "$deb" > SHA256SUMS)
+            packages=("$deb")
+            if [ "$with_msi" = true ]; then
+              packages+=("$msi")
+            fi
+            for package in "${packages[@]}"; do
+              cp "$dir/$package" "$assets/"
+            done
+            (cd "$assets" && sha256sum "${packages[@]}" > SHA256SUMS)
+            uploads=()
+            for package in "${packages[@]}" SHA256SUMS; do
+              uploads+=("$assets/$package")
+            done
             latest=false
             if [ "$version" = "$LATEST" ]; then
               latest=true
@@ -564,7 +756,7 @@ jobs:
             # Draft first, then publish: also works with immutable releases. Published by its id,
             # not by the tag (code review O2).
             gh release create "$tag" --verify-tag --draft --title "hitokoto $version" \
-              --notes-file "$notes" "$assets/$deb" "$assets/SHA256SUMS"
+              --notes-file "$notes" "${uploads[@]}"
             drafts=$(releases_of | sed -n 's/ true$//p')
             if [ "$(wc -w <<< "$drafts")" -ne 1 ]; then
               echo "::error::expected one draft of $tag, found: $drafts"

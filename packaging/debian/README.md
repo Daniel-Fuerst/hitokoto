@@ -25,10 +25,12 @@ The package installs:
 
 ## Installing
 
-Download `hitokoto_X.Y.Z-1_amd64.deb` from the release and check it against `SHA256SUMS`:
+Download `hitokoto_X.Y.Z-1_amd64.deb` from the release and check it against `SHA256SUMS`, which
+lists every package of the release (since S037 also the Windows installer), so files not
+downloaded are left out:
 
 ```sh
-sha256sum -c SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS
 sudo apt install ./hitokoto_X.Y.Z-1_amd64.deb
 ```
 
@@ -40,7 +42,8 @@ curl -fsSL https://api.github.com/repos/Daniel-Fuerst/hitokoto/releases/latest |
   jq -r '.assets[] | select(.name | endswith("_amd64.deb") or . == "SHA256SUMS") | .browser_download_url'
 ```
 
-The tag name (`.tag_name`, `vX.Y.Z`) says whether there is something new. Only the highest
+A script that fetches only the Debian package checks it with `sha256sum -c --ignore-missing`
+as well. The tag name (`.tag_name`, `vX.Y.Z`) says whether there is something new. Only the highest
 version is marked as latest; a version released later to catch up never is.
 
 ## Building locally

@@ -1,0 +1,11 @@
+# S037: the settings of the Windows installer; read by scripts/packaging/WindowsPackage.cmake.
+# qt X.Y.Z, qt-arch <arch>: the Qt the MSI is built with and ships; the same as the Windows row of
+#   .github/workflows/ci.yml (review O9, checked by S037_TheRecipeBuildsWithTheCiQt).
+# wix X.Y.Z: the WiX .NET tool and its UI extension (ADR 0012); the EULA is accepted per build
+#   with -acceptEula wix<major>.
+# skip X.Y.Z <reason>: a version that cannot get an MSI for good; it is released with the Debian
+#   package alone and named in the job summary.
+# ice ICEnn <reason>: a finding of wix msi validate that is accepted on purpose (review O3).
+qt 6.8.3
+qt-arch win64_msvc2022_64
+wix 7.0.1

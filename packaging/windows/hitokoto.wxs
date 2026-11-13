@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  S037, ADR 0012: the Windows installer of hitokoto, built by packaging/windows/build-package.ps1
+  with the WiX .NET tool:
+
+    wix build hitokoto.wxs -arch x64 -ext WixToolset.UI.wixext -acceptEula wix<major>
+              -d Version=X.Y.Z -bindpath stage=<installed files> -bindpath source=<tag's source>
+              -bindpath work=<license.rtf> -o hitokoto-X.Y.Z-x64.msi
+
+  One MSI for both scopes (perUserOrMachine: ALLUSERS=2, MSIINSTALLPERUSER=1): per user into
+  %LOCALAPPDATA%\Programs\hitokoto, per machine into C:\Program Files\hitokoto. The dialogs show the
+  GPL to accept and, to an administrator, the choice of the scope with Everyone preselected; without
+  dialogs MSIINSTALLPERUSER=1 (the default) or ALLUSERS=1 decide, and ACCEPT_LICENSE=yes is needed.
+  The upgrade code identifies hitokoto for good; to change it, list the old one in an Upgrade
+  element (ADR 0012).
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="hitokoto" Manufacturer="Daniel Fürst" Version="$(var.Version)"
+           UpgradeCode="68D14AF8-3060-418B-842B-8C36500B7803" Scope="perUserOrMachine"
+           Language="1033" Codepage="1252" Compressed="yes">
+    <SummaryInformation Description="hitokoto $(var.Version), a hybrid Markdown editor" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of hitokoto is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Launch Condition="Installed OR UILevel = 5 OR ACCEPT_LICENSE = &quot;yes&quot;"
+            Message="hitokoto is free software under the GNU General Public License, version 3 or later. To install it without the dialogs, accept the licence with ACCEPT_LICENSE=yes." />
+
+    <Icon Id="hitokoto.ico" SourceFile="!(bindpath.source)\icons\hitokoto.ico" />
+    <Property Id="ARPPRODUCTICON" Value="hitokoto.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/Daniel-Fuerst/hitokoto" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="hitokoto" />
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="hitokoto">
+      <ComponentGroupRef Id="Program" />
+      <ComponentRef Id="StartMenu" />
+      <ComponentRef Id="OpenWith" />
+    </Feature>
+
+    <!-- Everything build-package.ps1 put into the staging folder (packaging/windows/files.txt). -->
+    <ComponentGroup Id="Program" Directory="INSTALLFOLDER">
+      <Files Include="!(bindpath.stage)\**" />
+    </ComponentGroup>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenu">
+        <Shortcut Id="StartMenuShortcut" Name="hitokoto" Description="Hybrid Markdown editor"
+                  Target="[INSTALLFOLDER]hitokoto.exe" WorkingDirectory="INSTALLFOLDER"
+                  Icon="hitokoto.ico" />
+        <RegistryValue Root="HKMU" Key="Software\hitokoto\Installer" Name="StartMenuShortcut"
+                       Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <!-- .md offers hitokoto under "Open with", never as the default (decision 6). -->
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="OpenWith">
+        <RegistryKey Root="HKMU" Key="Software\Classes\hitokoto.md" ForceDeleteOnUninstall="yes">
+          <RegistryValue Type="string" Value="Markdown document" KeyPath="yes" />
+          <RegistryValue Key="DefaultIcon" Type="string" Value="&quot;[INSTALLFOLDER]hitokoto.exe&quot;,0" />
+          <RegistryValue Key="shell\open\command" Type="string"
+                         Value="&quot;[INSTALLFOLDER]hitokoto.exe&quot; &quot;%1&quot;" />
+        </RegistryKey>
+        <RegistryValue Root="HKMU" Key="Software\Classes\.md\OpenWithProgids" Name="hitokoto.md"
+                       Type="string" Value="hitokoto" />
+      </Component>
+    </DirectoryRef>
+
+    <!-- The dialogs: welcome, the GPL to accept, the scope (administrators only), ready, progress.
+         InstallScopeDlg of WixToolset.UI.wixext shows its choice only when Privileged is set and
+         preselects WixAppFolder. -->
+    <Property Id="WixAppFolder" Value="WixPerMachineFolder" />
+    <WixVariable Id="WixUISupportPerUser" Value="1" />
+    <WixVariable Id="WixUISupportPerMachine" Value="1" />
+    <WixVariable Id="WixUILicenseRtf" Value="!(bindpath.work)\license.rtf" />
+
+    <UI Id="HitokotoUI">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999" />
+
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="LicenseAgreementDlg" Condition="NOT Installed" />
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Condition="Installed AND PATCH" />
+
+      <Publish Dialog="LicenseAgreementDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" />
+      <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="NewDialog" Value="InstallScopeDlg" Condition="LicenseAccepted = &quot;1&quot; AND Privileged" />
+      <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Condition="LicenseAccepted = &quot;1&quot; AND NOT Privileged" />
+
+      <Publish Dialog="InstallScopeDlg" Control="Back" Event="NewDialog" Value="LicenseAgreementDlg" />
+      <Publish Dialog="InstallScopeDlg" Control="Next" Property="MSIINSTALLPERUSER" Value="1" Order="1" Condition="WixAppFolder = &quot;WixPerUserFolder&quot;" />
+      <Publish Dialog="InstallScopeDlg" Control="Next" Property="MSIINSTALLPERUSER" Value="{}" Order="2" Condition="WixAppFolder = &quot;WixPerMachineFolder&quot;" />
+      <Publish Dialog="InstallScopeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="3" />
+
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="InstallScopeDlg" Order="1" Condition="NOT Installed AND Privileged" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="LicenseAgreementDlg" Order="1" Condition="NOT Installed AND NOT Privileged" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="2" Condition="Installed AND NOT PATCH" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2" Condition="Installed AND PATCH" />
+
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg" />
+
+      <Property Id="ARPNOMODIFY" Value="1" />
+    </UI>
+    <UIRef Id="WixUI_Common" />
+  </Package>
+</Wix>
