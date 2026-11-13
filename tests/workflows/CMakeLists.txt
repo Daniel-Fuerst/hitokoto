@@ -36,7 +36,8 @@ foreach(name IN ITEMS
         TheEulaIsAcceptedBeforeWixRuns
         AnEmptyIceListReachesTheBuild
         AFailedBuildDoesNotSkipTheOtherChecks
-        AReleaseWithoutAnyMsiIsNotStopped)
+        AReleaseWithoutAnyMsiIsNotStopped
+        TheHandOverOfTheMsiIsCheckedInADryRun)
     add_test(NAME S037_${name}
         COMMAND ${CMAKE_COMMAND} -DCASE=${name}
                 -DWORKFLOWS_DIR=${PROJECT_SOURCE_DIR}/.github/workflows -P ${s037_cases})
