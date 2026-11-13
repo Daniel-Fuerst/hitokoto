@@ -134,6 +134,24 @@ elseif("${CASE}" STREQUAL "TheEulaIsAcceptedBeforeWixRuns")
         message(FATAL_ERROR "windows-package does not accept the EULA of the recipe's major version")
     endif()
 
+elseif("${CASE}" STREQUAL "AnEmptyIceListReachesTheBuild")
+    # Second dry run (pull request 45): "pwsh build-package.ps1 … -Ice $ice" with no accepted ICE
+    # passes -Ice without a value to the child process ("Missing an argument for parameter
+    # 'Ice'"). The step runs the script in its own session with splatting, -Ice only if the recipe
+    # lists any.
+    list(JOIN job_windows-package "\n" package)
+    if(package MATCHES "pwsh packaging/windows/build-package.ps1")
+        message(FATAL_ERROR "windows-package runs build-package.ps1 in a child pwsh")
+    endif()
+    string(FIND "${package}" "& ./packaging/windows/build-package.ps1 @arguments" call)
+    if(call EQUAL -1)
+        message(FATAL_ERROR "windows-package does not call build-package.ps1 with splatted arguments")
+    endif()
+    string(FIND "${package}" "if ($ice.Count -gt 0) { $arguments.Ice = $ice }" optional)
+    if(optional EQUAL -1)
+        message(FATAL_ERROR "windows-package passes -Ice also without accepted ICE findings")
+    endif()
+
 else()
     message(FATAL_ERROR "unknown case '${CASE}'")
 endif()
