@@ -242,11 +242,16 @@ cleanly.
   asks: its `InstallScopeDlg` shows the choice between the scopes only when Windows Installer sets
   `Privileged`, preselecting what the package sets in `WixAppFolder` (here `WixPerMachineFolder`,
   "Everyone", as in WiX's own test of that set), and sends a user without it to "Just for me".
-  Microsoft documents `Privileged` as set "if the user has administrator privileges"; whether an
-  administrator under UAC, starting the MSI by double click without elevation, gets it in the
-  dialogs is checked in the implementation (verbose log) and by Armin on his machine. If not, the
-  README names `ALLUSERS=1` and the story records the gap. Its first page shows the licence (an RTF
-  file in the recipe, made from `LICENSE`) with the checkbox to accept it, as decision 6 asks.
+  Microsoft documents `Privileged` as set "if the user has administrator privileges"; Armin's test
+  (2026-11-13, MSI of 0.5.1 from the dry run on pull request 45, double click as an administrator
+  under UAC) confirmed it: welcome, the GPL with the checkbox ("Next" only after ticking it), the
+  scope with "Install for all users of this machine" preselected, ready, UAC prompt after "Install",
+  finish. The recipe's dialog sequence shows the licence (an RTF file made from `LICENSE`) on a page
+  of its own. The same test found that choosing "Everyone" installed the files for the machine but
+  the Start menu entry and the "Open with" entry for the user: Windows deletes `ALLUSERS=2` when the
+  UI starts with `MSIINSTALLPERUSER=1`, and the dialog set only `MSIINSTALLPERUSER` (verbose log:
+  the server got `ALLUSERS=""`). The dialog now sets `ALLUSERS` with its choice, and its texts
+  (`hitokoto.wxl`) no longer promise a choice of folder (review (code) O1).
 - `windeployqt` is called directly rather than through `qt_generate_deploy_app_script`: the tags'
   `CMakeLists.txt` has no deployment step, and the recipe must work on their source.
 - Translations (`--no-translations`) are left out because hitokoto has no localisation yet; the

@@ -97,7 +97,8 @@ cmake -DMODE=rtf "-DINPUT=$Source\LICENSE" "-DOUTPUT=$work\license.rtf" -P $scri
 
 $eula = 'wix' + $WixVersion.Split('.')[0]
 function Build-Msi([string] $staged, [string] $productVersion, [string] $msi) {
-    wix build (Join-Path $recipe 'hitokoto.wxs') -arch x64 -ext WixToolset.UI.wixext `
+    wix build (Join-Path $recipe 'hitokoto.wxs') -loc (Join-Path $recipe 'hitokoto.wxl') `
+        -arch x64 -ext WixToolset.UI.wixext `
         -acceptEula $eula -d "Version=$productVersion" -bindpath "stage=$staged" `
         -bindpath "source=$Source" -bindpath "work=$work" -o $msi
     $suppress = @()

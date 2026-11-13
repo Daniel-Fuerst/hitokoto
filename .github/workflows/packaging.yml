@@ -684,8 +684,11 @@ jobs:
           path: ${{ runner.temp }}/debian
 
       # S037: the checked MSIs into the same directory (windows-check hands them on as windows-*).
+      # It may find none (review (code) O3): the release step checks every file a version needs,
+      # and a version skipped for Windows is released without one.
       - uses: actions/download-artifact@v8
         if: needs.debian-plan.outputs.windows_build != '[]'
+        continue-on-error: true
         with:
           pattern: windows-*
           merge-multiple: true
