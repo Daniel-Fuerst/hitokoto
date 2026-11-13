@@ -23,3 +23,17 @@ foreach(name IN ITEMS
         COMMAND ${CMAKE_COMMAND} -DCASE=${name}
                 -DWORKFLOWS_DIR=${PROJECT_SOURCE_DIR}/.github/workflows -P ${s036_cases})
 endforeach()
+
+# S037: lints over packaging.yml (the Windows installer in the same releases).
+set(s037_cases "${CMAKE_CURRENT_SOURCE_DIR}/s037_release_cases.cmake")
+foreach(name IN ITEMS
+        TheWindowsJobsOnlyRead
+        TheWindowsJobsRunOnTheCiImage
+        OneWindowsVersionDoesNotStopTheOthers
+        OnlyACheckedInstallerIsReleased
+        TheReleaseWaitsForBothPackages
+        TheWindowsRecipeStartsADryRun)
+    add_test(NAME S037_${name}
+        COMMAND ${CMAKE_COMMAND} -DCASE=${name}
+                -DWORKFLOWS_DIR=${PROJECT_SOURCE_DIR}/.github/workflows -P ${s037_cases})
+endforeach()

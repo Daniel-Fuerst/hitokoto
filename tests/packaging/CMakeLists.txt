@@ -72,3 +72,34 @@ foreach(name IN ITEMS
                 -DRECIPE_DIR=${PROJECT_SOURCE_DIR}/packaging/debian -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
                 -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/cases/s036/${name} -P ${s036_cases})
 endforeach()
+
+# S037: the decision logic of the Windows installer (scripts/packaging) and the recipe in
+# packaging/windows.
+set(s037_script "${PROJECT_SOURCE_DIR}/scripts/packaging/WindowsPackage.cmake")
+set(s037_cases "${CMAKE_CURRENT_SOURCE_DIR}/s037_windows_cases.cmake")
+foreach(name IN ITEMS
+        TheVersionsToReleaseGetAnMsi
+        ADryRunBuildsTheHighestVersion
+        NothingToBuildBuildsNothing
+        SkippedVersionsAreLeftOutAndNamed
+        AllVersionsSkippedBuildNothing
+        AReleaseWithoutTheMsiIsReported
+        VersionsBeyondWindowsInstallerFail
+        TheToolVersionsComeFromTheRecipe
+        BadRecipesFail
+        CarriageReturnsAreIgnored
+        TheFileListMatches
+        AMissingOrExtraFileFails
+        TheLicenceBecomesRtf
+        TheRealLicenceBecomesRtf
+        TheNoticeNamesTheQtVersion
+        TheRecipeBuildsWithTheCiQt
+        TheInstallerKeepsItsUpgradeCode
+        TheInstallerOffersBothScopes
+        TheInstallerAsksForTheLicence
+        TheDebianReadmeIgnoresMissingFiles)
+    add_test(NAME S037_${name}
+        COMMAND ${CMAKE_COMMAND} -DCASE=${name} -DSCRIPT=${s037_script}
+                -DRECIPE_DIR=${PROJECT_SOURCE_DIR}/packaging/windows -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
+                -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/cases/s037/${name} -P ${s037_cases})
+endforeach()
