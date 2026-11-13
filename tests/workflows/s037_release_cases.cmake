@@ -115,6 +115,25 @@ elseif("${CASE}" STREQUAL "TheWindowsRecipeStartsADryRun")
         message(FATAL_ERROR "a pull request that changes packaging/windows starts no dry run")
     endif()
 
+elseif("${CASE}" STREQUAL "TheEulaIsAcceptedBeforeWixRuns")
+    # Decision 7, first dry run (pull request 45): WiX 7 refuses every command, also
+    # "wix extension add", until its OSMF EULA is accepted (WIX7015). The job accepts it for the
+    # major version of the recipe's wix before the first wix command.
+    list(JOIN job_windows-package "\n" package)
+    string(FIND "${package}" "eula accept" accept)
+    string(FIND "${package}" "extension add" extension)
+    if(accept EQUAL -1)
+        message(FATAL_ERROR "windows-package does not accept WiX's EULA")
+    endif()
+    if(extension EQUAL -1 OR extension LESS accept)
+        message(FATAL_ERROR "windows-package runs wix extension add before accepting the EULA")
+    endif()
+    # read_workflow stores square brackets as @LB@ and @RB@.
+    string(FIND "${package}" "eula accept \"wix$($env:WIX.Split('.')@LB@0@RB@)\"" major)
+    if(major EQUAL -1)
+        message(FATAL_ERROR "windows-package does not accept the EULA of the recipe's major version")
+    endif()
+
 else()
     message(FATAL_ERROR "unknown case '${CASE}'")
 endif()

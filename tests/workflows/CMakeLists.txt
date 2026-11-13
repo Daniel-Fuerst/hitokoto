@@ -32,7 +32,8 @@ foreach(name IN ITEMS
         OneWindowsVersionDoesNotStopTheOthers
         OnlyACheckedInstallerIsReleased
         TheReleaseWaitsForBothPackages
-        TheWindowsRecipeStartsADryRun)
+        TheWindowsRecipeStartsADryRun
+        TheEulaIsAcceptedBeforeWixRuns)
     add_test(NAME S037_${name}
         COMMAND ${CMAKE_COMMAND} -DCASE=${name}
                 -DWORKFLOWS_DIR=${PROJECT_SOURCE_DIR}/.github/workflows -P ${s037_cases})
