@@ -168,6 +168,13 @@ manual step, and never a package that does not install and start.
 
 ## Notes
 
+- Hand-over to the release job (fix, 2026-11-13): the first run on main after pull request 43
+  released nothing ("0.5.1 has no checked package"). `download-artifact` puts a single artifact
+  matched by a pattern directly into its path and several into one directory each, while the
+  release step looked in a directory per version. Every file now carries its version
+  (`notes-X.Y.Z.md`), the release job downloads into one flat directory (`merge-multiple: true`),
+  and the lint `S036_TheReleaseFindsEveryPackage` keeps it so.
+
 - Label of this story's pull request: `version:none` (nothing changes in the program, and the
   CPack change touches no published artefact); the run after its merge releases 0.5.1, so the
   release path is exercised right away and is to be watched.

@@ -53,7 +53,7 @@ mkdir -p debian-work/source debian-work/out
 git archive "v$v" | tar -x -C debian-work/source
 cmake -DMODE=changelog -DREPO_DIR=. -DVERSION=$v -DVERSIONS_FILE=packaging/debian/versions.txt \
       -DCONTROL_FILE=packaging/debian/control -DOUTPUT=debian-work/changelog \
-      -DNOTES=debian-work/out/notes.md -P scripts/packaging/DebianPackage.cmake
+      -DNOTES=debian-work/out/notes-$v.md -P scripts/packaging/DebianPackage.cmake
 docker run --rm -e VERSION=$v -v "$PWD:/w" -w /w debian:trixie bash -euo pipefail -c '
   apt-get update -q
   grep -v "^#" packaging/debian/build-depends | xargs apt-get install -y -q --no-install-recommends
