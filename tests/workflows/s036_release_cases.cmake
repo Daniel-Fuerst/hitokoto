@@ -98,6 +98,22 @@ elseif("${CASE}" STREQUAL "OneVersionDoesNotStopTheOthers")
         message(FATAL_ERROR "debian-release waits for every version: '${condition}'")
     endif()
 
+elseif("${CASE}" STREQUAL "TheReleaseFindsEveryPackage")
+    # Fix of 2026-11-13: download-artifact puts a single matched artifact directly into its path,
+    # several into one directory each (run on main after pull request 43: "0.5.1 has no checked
+    # package"). Every file carries its version and all land in one flat directory.
+    list(JOIN job_debian-package "\n" package)
+    if(NOT package MATCHES "debian-work/out/notes-\\$\\{\\{ matrix.version \\}\\}.md")
+        message(FATAL_ERROR "debian-package does not hand on notes-<version>.md")
+    endif()
+    list(JOIN job_debian-release "\n" release)
+    if(NOT release MATCHES "\n          pattern: debian-\\*\n          merge-multiple: true\n")
+        message(FATAL_ERROR "debian-release does not download the packages into one directory")
+    endif()
+    if(release MATCHES "debian-\\$version" OR NOT release MATCHES "notes-\\$version.md")
+        message(FATAL_ERROR "debian-release looks for the files of a version in a directory of its own")
+    endif()
+
 else()
     message(FATAL_ERROR "unknown case '${CASE}'")
 endif()
