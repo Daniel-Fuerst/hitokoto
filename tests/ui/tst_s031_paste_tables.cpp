@@ -286,6 +286,31 @@ private:
     int* fetched_;
 };
 
+/// Data whose first format is text/markdown, then the plain text: Qt's text widgets read such
+/// data as Markdown and insert what they show of it. Without `plain`, the Markdown alone.
+QMimeData* markdownFirst(const QString& markdown, const QString& plain) {
+    auto* data = new QMimeData;
+    data->setData(QStringLiteral("text/markdown"), markdown.toUtf8());
+    if (!plain.isNull()) {
+        data->setText(plain);
+    }
+    return data;
+}
+
+/// The pastes of the rework of S031: Markdown that Qt's import shows differently, and a text that
+/// Qt 6.8.0 to 6.8.3 take for front matter (CVE-2025-3512). The last row offers a plain text that
+/// differs from the Markdown: the plain text is what is pasted.
+void markdownFirstRows() {
+    QTest::addColumn<QString>("markdown");
+    QTest::addColumn<QString>("plain");
+    const auto same = [](const char* name, const QString& both) { QTest::newRow(name) << both << both; };
+    same("emphasis", QStringLiteral("a **b** c"));
+    same("image", QStringLiteral("![x](/path/red.png)"));
+    same("HTML and a link", QStringLiteral("<span style=\"color:red\">x</span> [l](http://x)"));
+    same("between two runs of hyphens", QStringLiteral("---ab---"));
+    QTest::newRow("another plain text") << QStringLiteral("a **b** c") << QStringLiteral("a b c");
+}
+
 /// `depth` tables, each in the first cell of the one around it (review O1).
 QString nestedTables(int depth) {
     QString html;
@@ -1015,6 +1040,119 @@ private slots:
         QVERIFY(cursor.waitCursorThroughout());
         QVERIFY(shown.waitCursorEachTime());
         QVERIFY(QGuiApplication::overrideCursor() == nullptr);
+    }
+
+    // Rework of S031: a paste whose first format is text/markdown. Qt's text widgets then read the
+    // Markdown themselves and insert what they show of it, whether or not they take rich text
+    // (QWidgetTextControl::insertFromMimeData): `a **b** c` arrived as `a b c`, an image as an
+    // object character, a link without its destination, and Qt 6.8.0 to 6.8.3 ended the program
+    // on `---ab---`. What does not convert is pasted as its plain text, character for character.
+    void markdownFirstIsPastedAsItsPlainText_data() { markdownFirstRows(); }
+
+    void markdownFirstIsPastedAsItsPlainText() {
+        QFETCH(QString, markdown);
+        QFETCH(QString, plain);
+        const QString document = QStringLiteral("Para one.\n\nPara two.\n");
+        for (const bool plainKeys : {false, true}) {  // Ctrl+V, Paste as Plain Text
+            test::Fixture f;
+            QVERIFY(openText(f, document));
+            f.placeCaret(1);
+            QApplication::clipboard()->setMimeData(markdownFirst(markdown, plain));
+            QCOMPARE(QApplication::clipboard()->mimeData()->formats().constFirst(), QStringLiteral("text/markdown"));
+            if (plainKeys) {
+                pressPastePlain(f.editor());
+            } else {
+                pressPaste(f.editor());
+            }
+            f.settle();
+            QCOMPARE(text(f), inserted(document, 10, plain));
+        }
+    }
+
+    void markdownFirstIsPastedAsItsPlainTextInACell_data() { markdownFirstRows(); }
+
+    void markdownFirstIsPastedAsItsPlainTextInACell() {
+        QFETCH(QString, markdown);
+        QFETCH(QString, plain);
+        const QString document = QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2 |\n");
+        for (const bool plainKeys : {false, true}) {  // Ctrl+V, Paste as Plain Text
+            test::Fixture f;
+            QVERIFY(openText(f, document));
+            QTableView* view = f.editor()->tableViewAt(0);
+            QVERIFY(view != nullptr);
+            view->setCurrentIndex(view->model()->index(1, 0));
+            view->edit(view->model()->index(1, 0));
+            QCoreApplication::processEvents();
+            auto* cell = qobject_cast<QPlainTextEdit*>(QApplication::focusWidget());
+            QVERIFY(cell != nullptr);
+            test::keyClick(cell, Qt::Key_A, Qt::ControlModifier);
+            QApplication::clipboard()->setMimeData(markdownFirst(markdown, plain));
+            if (plainKeys) {
+                pressPastePlain(cell);
+            } else {
+                pressPaste(cell);
+            }
+            QCOMPARE(cell->toPlainText(), plain);
+            test::keyClick(cell, Qt::Key_Backtab);  // commits, as in S018
+            f.settle();
+            const std::u16string row =
+                core::replaceTableCell(u"| 1 | 2 |", 0, core::tableCellFromText(plain.toStdU16String()));
+            QCOMPARE(text(f), QStringLiteral("| a | b |\n| --- | --- |\n") + QString::fromStdU16String(row) +
+                                  QStringLiteral("\n"));
+        }
+    }
+
+    void aDropOfMarkdownFirstIsItsPlainText_data() { markdownFirstRows(); }
+
+    void aDropOfMarkdownFirstIsItsPlainText() {
+        QFETCH(QString, markdown);
+        QFETCH(QString, plain);
+        const QString document = QStringLiteral("Para one.\n\nPara two.\n");
+        test::Fixture f;
+        QVERIFY(openText(f, document));
+        const std::unique_ptr<QMimeData> data(markdownFirst(markdown, plain));
+        QTextCursor c(f.editor()->document()->findBlockByNumber(1));
+        const QPoint at = f.editor()->cursorRect(c).center();
+        QWidget* viewport = f.editor()->viewport();
+        QDragEnterEvent enter = dragEvent<QDragEnterEvent>(QPointF(at), data.get());
+        QCoreApplication::sendEvent(viewport, &enter);
+        QDragMoveEvent move = dragEvent<QDragMoveEvent>(QPointF(at), data.get());
+        QCoreApplication::sendEvent(viewport, &move);
+        QDropEvent drop(QPointF(at), Qt::CopyAction, data.get(), Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(viewport, &drop);
+        f.settle();
+        QCOMPARE(text(f), inserted(document, 10, plain));
+    }
+
+    // A paste that holds Markdown and no plain text: the Markdown is the text.
+    void markdownAloneIsPastedAsItsSource() {
+        const QString markdown = QStringLiteral("a **b** [l](http://x)");
+        {
+            const QString document = QStringLiteral("Para one.\n\nPara two.\n");
+            test::Fixture f;
+            QVERIFY(openText(f, document));
+            f.placeCaret(1);
+            QApplication::clipboard()->setMimeData(markdownFirst(markdown, QString()));
+            QVERIFY(!QApplication::clipboard()->mimeData()->hasText());
+            pressPaste(f.editor());
+            f.settle();
+            QCOMPARE(text(f), inserted(document, 10, markdown));
+        }
+        {
+            test::Fixture f;
+            QVERIFY(openText(f, QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2 |\n")));
+            QTableView* view = f.editor()->tableViewAt(0);
+            QVERIFY(view != nullptr);
+            view->setCurrentIndex(view->model()->index(1, 0));
+            view->edit(view->model()->index(1, 0));
+            QCoreApplication::processEvents();
+            auto* cell = qobject_cast<QPlainTextEdit*>(QApplication::focusWidget());
+            QVERIFY(cell != nullptr);
+            test::keyClick(cell, Qt::Key_A, Qt::ControlModifier);
+            QApplication::clipboard()->setMimeData(markdownFirst(markdown, QString()));
+            pressPaste(cell);
+            QCOMPARE(cell->toPlainText(), markdown);
+        }
     }
 };
 
