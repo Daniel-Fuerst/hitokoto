@@ -58,6 +58,15 @@ third cell becomes
   practice needs tables in lists). Drag and drop is not converted. A middle-click paste of the
   primary selection (Linux) converts like `Ctrl+V`: it is a paste from the second buffer, as in Qt
   and LibreOffice (review (code) O5). `Paste as Plain Text` never converts (decision 5).
+- **The plain text of a paste** (rework of 2026-11-14, `agents/sec-o1-cell-front-matter`).
+  Wherever a paste or a drop does not convert, the plain text of the data is inserted character
+  for character, in the editor and in a cell of a shown table; Qt is handed that text alone.
+  Before, Qt chose the format: when the first format of the data was `text/markdown`, it read the
+  Markdown and inserted what it shows of it (`a **b** c` arrived as `a b c`, an image as the
+  object character U+FFFC, a link without its destination), and Qt 6.8.0 to 6.8.3 ended the
+  program on a text like `---ab---` (CVE-2025-3512 in Qt). Data that holds Markdown and no plain
+  text is pasted as the Markdown is written, by `Ctrl+V` and Edit › Paste; the context menu's
+  Paste and a drop still need plain text in the data, as before (what Qt accepts is not touched).
 - **What counts as a table, HTML.** A table of the HTML flavour with at least two rows and two
   columns. A smaller table counts as text: its cells' lines, row by row, one line each. Without
   any table that counts, the whole paste is plain text as today.
@@ -270,6 +279,9 @@ No new visible element: the pasted table is an S018 table with its tokens. No ne
   placement.
 - UI: `tst_s031_paste_tables` for every scenario above, pasting through `QMimeData` with the
   samples from `tests/data/s031/`.
+- UI, for the rework of 2026-11-14: data with `text/markdown` before `text/plain` pasted with
+  `Ctrl+V` and Paste as Plain Text in the editor and in a cell, and dropped on the editor; data
+  with Markdown alone.
 - Fuzzing (review O6): a target `fuzz_paste` in `fuzz/` over the plain-text parser, the Markdown
   of a random cell model and the placement; a run without findings is one of the S031 gates. Qt's
   HTML import is not fuzzed (Qt's code; it would need Qt in the fuzz build).

@@ -98,6 +98,11 @@ public:
     /// S031 review (code) O9: the format that marks a copy made in hitokoto, whose paste skips the
     /// HTML (it holds Markdown source, never a table).
     [[nodiscard]] static QString ownCopyFormat();
+    /// S031: the text of a paste or drop that does not convert: its plain text, or its Markdown
+    /// as it is written if it holds no plain text; null without either. The editor and the cell
+    /// editors insert this and never hand Qt the data itself: Qt reads data whose first format is
+    /// text/markdown as Markdown and inserts what it shows of it.
+    [[nodiscard]] static QString pastedText(const QMimeData* source);
 
 signals:
     void painted();

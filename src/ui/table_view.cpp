@@ -14,6 +14,7 @@
 #include <QHeaderView>
 #include <QKeyEvent>
 #include <QMenu>
+#include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QRegularExpression>
@@ -102,6 +103,15 @@ void CellEditor::contextMenuEvent(QContextMenuEvent* event) {
         menu->addActions(view_->actions());
     }
     menu->exec(event->globalPos());
+}
+
+void CellEditor::insertFromMimeData(const QMimeData* source) {
+    // As in the editor (S031): the text alone, so that Qt never chooses a format.
+    QMimeData plain;
+    if (const QString text = EditorWidget::pastedText(source); !text.isNull()) {
+        plain.setText(text);
+    }
+    QPlainTextEdit::insertFromMimeData(&plain);
 }
 
 namespace {
