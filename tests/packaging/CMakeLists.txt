@@ -97,6 +97,7 @@ foreach(name IN ITEMS
         TheInstallerKeepsItsUpgradeCode
         TheInstallerOffersBothScopes
         TheInstallerAsksForTheLicence
+        TheInstallerShowsTheLogo
         TheDebianReadmeIgnoresMissingFiles)
     add_test(NAME S037_${name}
         COMMAND ${CMAKE_COMMAND} -DCASE=${name} -DSCRIPT=${s037_script}

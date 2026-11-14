@@ -1,6 +1,7 @@
 # Normalise text files in the repository, check out with native line endings.
 * text=auto
 *.png binary
+*.bmp binary
 # Test fixtures must stay byte-exact (CRLF, BOM, invalid UTF-8 on purpose).
 tests/fixtures/** -text
 # S031: clipboard samples stay byte-exact as Qt delivers them.
