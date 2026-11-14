@@ -264,6 +264,14 @@ Accepted by the user on 2026-10-28; defects found later are handled separately. 
 benchmark baseline holds the `s018_*` values since 9ddc0be (CI run on e5ae913); Windows and macOS
 run with the pull request to `main`.
 
+Rework on 2026-11-14 (`agents/sec-o1-cell-front-matter`): the delegate hands a cell to Qt's
+Markdown import without the front matter feature. With it, Qt 6.8.0 to 6.8.3 took a cell that
+starts with `---` and holds a second `---` from its sixth character on for front matter: the
+program ended when the cell ended with the second `---` (CVE-2025-3512 in Qt, fixed in Qt 6.8.4),
+on opening such a file and on typing such a cell, and otherwise the cell showed only what follows
+the second `---`. Qt 6.8.4 and later, 6.12 among them, never did either, and show every cell as
+before.
+
 ## Tests
 
 - Core: `S018_Tables` for the GFM rules (checked against cmark-gfm), cell text with `<br>` and
@@ -277,3 +285,6 @@ run with the pull request to `main`.
   it; `Backspace` on a line with text and on an empty line; the source view shows it; the file is
   unchanged.
 - Benchmark: `s018_table_typing_*` and `s018_table_open_ms` in `hitokoto-bench`.
+- UI, for the rework of 2026-11-14: cells between two runs of `---` open, in a body row and in
+  the header row, are painted and can be typed key by key; text after the second `---` stays in
+  the cell.

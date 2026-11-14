@@ -1751,6 +1751,113 @@ private slots:
         QVERIFY(editor->tableViewAt(2) != nullptr);
         layout->removeClaimant(&other);
     }
+
+    // Rework of S018: a cell that starts with `---` and holds a second `---` further on. GFM shows
+    // it as its characters with its inline formatting, in the header row too (cmark-gfm). Qt 6.8.0
+    // to 6.8.3 take such a text for front matter when they import Markdown and crash if it ends
+    // with the second `---` (CVE-2025-3512): opening the file ended the program.
+    void aCellBetweenTwoRunsOfHyphensShowsAsText_data() {
+        QTest::addColumn<QString>("cell");
+        QTest::addColumn<QString>("shown");
+        QTest::newRow("letters") << QStringLiteral("---ab---") << QStringLiteral("---ab---");
+        QTest::newRow("blanks") << QStringLiteral("--- a ---") << QStringLiteral("--- a ---");
+        QTest::newRow("emphasis") << QStringLiteral("---**b**---") << QStringLiteral("---b---");
+        QTest::newRow("line break") << QStringLiteral("---ab<br>---") << QStringLiteral("---ab\n---");
+        QTest::newRow("four hyphens") << QStringLiteral("----a---") << QStringLiteral("----a---");
+        QTest::newRow("link") << QStringLiteral("--- [l](u) ---") << QStringLiteral("--- l ---");
+    }
+
+    void aCellBetweenTwoRunsOfHyphensShowsAsText() {
+        QFETCH(QString, cell);
+        QFETCH(QString, shown);
+        for (const bool header : {false, true}) {
+            const QString markdown = header ? QStringLiteral("| %1 | h |\n| --- | --- |\n| x | y |\n").arg(cell)
+                                            : QStringLiteral("| A | B |\n| --- | --- |\n| %1 | x |\n").arg(cell);
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("hyphens.md"), markdown.toUtf8())));
+            f.settle();
+            QTableView* view = f.editor()->tableViewAt(0);
+            QVERIFY(view != nullptr);
+            (void)view->viewport()->grab();  // the cells are painted
+            QAbstractItemModel* model = view->model();
+            const QModelIndex index = model->index(header ? 0 : 1, 0);
+            QCOMPARE(model->data(index, ui::TableModel::MarkdownRole).toString(), cell);
+            auto* delegate = qobject_cast<ui::TableDelegate*>(view->itemDelegate());
+            QVERIFY(delegate != nullptr);
+            QTextDocument document;
+            delegate->prepare(document, index);
+            QCOMPARE(document.toPlainText(), shown);
+            QCOMPARE(document.blockCount(), 1);
+            QCOMPARE(text(f), markdown);
+            QVERIFY(!f.editor()->document()->isModified());
+        }
+    }
+
+    // The same while typing: every keystroke lays the cell out again, and the last hyphen ended the
+    // program with everything unsaved.
+    void aCellBetweenTwoRunsOfHyphensCanBeTyped() {
+        for (const int row : {1, 0}) {
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("typed-hyphens.md"), "|  | h |\n| --- | --- |\n|  | x |\n")));
+            f.settle();
+            QTableView* view = f.editor()->tableViewAt(0);
+            QVERIFY(view != nullptr);
+            const QString typed = row == 0 ? QStringLiteral("| ---ab--- | h |\n| --- | --- |\n|  | x |\n")
+                                           : QStringLiteral("|  | h |\n| --- | --- |\n| ---ab--- | x |\n");
+            QVERIFY(clickCell(view, row, 0) != nullptr);
+            typeAsUser(QStringLiteral("---ab---"));
+            f.settle();
+            QCOMPARE(text(f), typed);
+            typeAsUser(QStringLiteral("x"));
+            press(Qt::Key_Backspace);
+            f.settle();
+            QCOMPARE(text(f), typed);
+            QCOMPARE(focusedCell()->toPlainText(), QStringLiteral("---ab---"));
+
+            // Without its editor the cell shows what was typed.
+            press(Qt::Key_Tab);
+            f.settle();
+            QCOMPARE(current(view), QStringLiteral("%1,1").arg(row));
+            (void)view->viewport()->grab();
+            auto* delegate = qobject_cast<ui::TableDelegate*>(view->itemDelegate());
+            QVERIFY(delegate != nullptr);
+            QTextDocument document;
+            delegate->prepare(document, view->model()->index(row, 0));
+            QCOMPARE(document.toPlainText(), QStringLiteral("---ab---"));
+            QCOMPARE(text(f), typed);
+        }
+    }
+
+    // With text after the second `---` those versions of Qt do not crash: they take the cell's
+    // start for front matter and show only what follows the character after the second `---`.
+    void textAfterASecondRunOfHyphensStaysInTheCell_data() {
+        QTest::addColumn<QString>("cell");
+        QTest::addColumn<QString>("shown");
+        QTest::newRow("letters") << QStringLiteral("---ab---xyz") << QStringLiteral("---ab---xyz");
+        QTest::newRow("one letter") << QStringLiteral("---ab---x") << QStringLiteral("---ab---x");
+        QTest::newRow("blanks") << QStringLiteral("--- a --- b") << QStringLiteral("--- a --- b");
+        QTest::newRow("emphasis") << QStringLiteral("---ab--- **c**") << QStringLiteral("---ab--- c");
+    }
+
+    void textAfterASecondRunOfHyphensStaysInTheCell() {
+        QFETCH(QString, cell);
+        QFETCH(QString, shown);
+        const QString markdown = QStringLiteral("| %1 | h |\n| --- | --- |\n| %1 | x |\n").arg(cell);
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("after-hyphens.md"), markdown.toUtf8())));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        auto* delegate = qobject_cast<ui::TableDelegate*>(view->itemDelegate());
+        QVERIFY(delegate != nullptr);
+        for (const int row : {0, 1}) {
+            QTextDocument document;
+            delegate->prepare(document, view->model()->index(row, 0));
+            QCOMPARE(document.toPlainText(), shown);
+            QCOMPARE(document.blockCount(), 1);
+        }
+        QCOMPARE(text(f), markdown);
+    }
 };
 
 QTEST_MAIN(tst_s018_tables)

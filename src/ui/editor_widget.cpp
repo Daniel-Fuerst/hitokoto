@@ -709,7 +709,23 @@ void EditorWidget::insertFromMimeData(const QMimeData* source) {
     }
     const TableEmbedder::Typing typing(tables_.get());
     tables_->beforeWritingBelow();
-    QTextEdit::insertFromMimeData(source);
+    // Qt gets the text alone and so never chooses a format (pastedText).
+    QMimeData plain;
+    if (const QString text = pastedText(source); !text.isNull()) {
+        plain.setText(text);
+    }
+    QTextEdit::insertFromMimeData(&plain);
+}
+
+QString EditorWidget::pastedText(const QMimeData* source) {
+    if (source == nullptr) {
+        return {};
+    }
+    if (source->hasText()) {
+        return source->text();
+    }
+    const QString markdown = QStringLiteral("text/markdown");
+    return source->hasFormat(markdown) ? QString::fromUtf8(source->data(markdown)) : QString();
 }
 
 void EditorWidget::dropEvent(QDropEvent* event) {

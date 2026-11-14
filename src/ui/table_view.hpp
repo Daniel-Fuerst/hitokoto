@@ -32,6 +32,7 @@ public:
 protected:
     void keyPressEvent(QKeyEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
+    void insertFromMimeData(const QMimeData* source) override;
     void scrollContentsBy(int dx, int dy) override;
     void wheelEvent(QWheelEvent* event) override;
 
