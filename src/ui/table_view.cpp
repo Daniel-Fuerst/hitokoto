@@ -119,6 +119,18 @@ QString withoutPadding(const QString& text) {
     return text.mid(start, end - start);
 }
 
+/// The features for Qt's Markdown import of a cell: the GitHub dialect without front matter. A
+/// cell is never front matter, but Qt 6.8.0 to 6.8.3 take a text that starts with `---` and holds
+/// a second `---` for it: they show only what follows the second one, and read outside the text
+/// when it ends there (CVE-2025-3512; opening or typing such a cell ended the program). Later
+/// versions want each `---` on a line of its own, which a cell does not have. QTextDocument has
+/// no name for the feature: the value is QTextMarkdownImporter::FeatureFrontMatter
+/// (qtextmarkdownimporter_p.h, the same from Qt 6.8 to 6.12); the import reads it nowhere else.
+QTextDocument::MarkdownFeatures cellMarkdownFeatures() {
+    constexpr int kQtFrontMatter = 0x100000;
+    return QTextDocument::MarkdownFeatures::fromInt(int(QTextDocument::MarkdownDialectGitHub) & ~kQtFrontMatter);
+}
+
 }  // namespace
 
 // --- TableDelegate ----------------------------------------------------------------------------
@@ -175,7 +187,7 @@ void TableDelegate::prepare(QTextDocument& document, const QModelIndex& index, Q
         done = match.capturedEnd();
     }
     markdown += QStringView(source).mid(done);
-    document.setMarkdown(markdown, QTextDocument::MarkdownDialectGitHub);
+    document.setMarkdown(markdown, cellMarkdownFeatures());
     formatBlocks(document, index);
 }
 
