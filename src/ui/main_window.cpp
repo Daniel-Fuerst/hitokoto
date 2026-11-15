@@ -71,6 +71,7 @@ MainWindow::MainWindow(const core::ElementRegistry& registry, QWidget* parent)
     };
     message_ = [this](const QString& title, const QString& text) {
         auto* box = new QMessageBox(QMessageBox::Warning, title, text, QMessageBox::Ok, this);
+        box->setTextFormat(Qt::PlainText);
         box->setAttribute(Qt::WA_DeleteOnClose);
         box->open();
     };
