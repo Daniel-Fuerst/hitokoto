@@ -6,6 +6,7 @@
 #include "editor_widget.hpp"
 #include "find_bar.hpp"
 #include "find_controller.hpp"
+#include "floating_toolbar.hpp"
 
 #include <QAction>
 #include <QApplication>
@@ -15,7 +16,6 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QLineEdit>
-#include <QMenuBar>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QScreen>
@@ -45,7 +45,13 @@ MainWindow::MainWindow(const core::ElementRegistry& registry, QWidget* parent)
     column->addWidget(findBar_);
     setCentralWidget(central);
     find_ = new FindController(editor_, findBar_, registry, this);
-    createMenus();
+    createActions();
+
+    FloatingToolbar* toolbar = editor_->floatingToolbar();
+    connect(toolbar, &FloatingToolbar::newFileRequested, this, &MainWindow::newFile);
+    connect(toolbar, &FloatingToolbar::openFileRequested, this, &MainWindow::open);
+    connect(toolbar, &FloatingToolbar::saveFileRequested, this, &MainWindow::save);
+    connect(toolbar, &FloatingToolbar::findRequested, find_, &FindController::open);
 
     askSave_ = [this](const QString& name) {
         const auto answer =
@@ -94,30 +100,25 @@ MainWindow::MainWindow(const core::ElementRegistry& registry, QWidget* parent)
 
 MainWindow::~MainWindow() = default;
 
-void MainWindow::createMenus() {
-    QMenu* file = menuBar()->addMenu(tr("&File"));
-    file->addAction(tr("&New"), QKeySequence::New, this, &MainWindow::newFile);
-    file->addAction(tr("&Open…"), QKeySequence::Open, this, &MainWindow::open);
-    file->addSeparator();
-    file->addAction(tr("&Save"), QKeySequence::Save, this, &MainWindow::save);
-    file->addAction(tr("Save &As…"), QKeySequence::SaveAs, this, &MainWindow::saveAs);
-    file->addSeparator();
-    QAction* quit = file->addAction(tr("&Quit"), QKeySequence::Quit, this, &QWidget::close);
+void MainWindow::createActions() {
+    addAction(tr("&New"), QKeySequence::New, this, &MainWindow::newFile);
+    addAction(tr("&Open…"), QKeySequence::Open, this, &MainWindow::open);
+    addAction(tr("&Save"), QKeySequence::Save, this, &MainWindow::save);
+    addAction(tr("Save &As…"), QKeySequence::SaveAs, this, &MainWindow::saveAs);
+    QAction* quit = addAction(tr("&Quit"), QKeySequence::Quit, this, &QWidget::close);
     quit->setMenuRole(QAction::QuitRole);
 
-    QMenu* edit = menuBar()->addMenu(tr("&Edit"));
-    edit->addAction(tr("&Undo"), QKeySequence::Undo, editor_, &EditorWidget::undoEdit);
-    edit->addAction(tr("&Redo"), QKeySequence::Redo, editor_, &EditorWidget::redoEdit);
-    edit->addSeparator();
-    edit->addAction(tr("Cu&t"), QKeySequence::Cut, editor_, &QTextEdit::cut);
-    edit->addAction(tr("&Copy"), QKeySequence::Copy, editor_, &QTextEdit::copy);
-    edit->addAction(tr("&Paste"), QKeySequence::Paste, editor_, &QTextEdit::paste);
+    addAction(tr("&Undo"), QKeySequence::Undo, editor_, &EditorWidget::undoEdit);
+    addAction(tr("&Redo"), QKeySequence::Redo, editor_, &EditorWidget::redoEdit);
+    addAction(tr("Cu&t"), QKeySequence::Cut, editor_, &QTextEdit::cut);
+    addAction(tr("&Copy"), QKeySequence::Copy, editor_, &QTextEdit::copy);
+    addAction(tr("&Paste"), QKeySequence::Paste, editor_, &QTextEdit::paste);
     // S031: paste the clipboard's plain text without converting tables (decision 5).
     // The key reaches the window from every widget: it acts where the focus is (review O2), in a
     // cell editor or a text field as Ctrl+V there (both take plain text only), in the editor
     // without converting tables, elsewhere not at all.
     QAction* pastePlain =
-        edit->addAction(tr("Paste as &Plain Text"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V), this, [this] {
+        addAction(tr("Paste as &Plain Text"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V), this, [this] {
             QWidget* focus = QApplication::focusWidget();
             if (focus == nullptr || focus == editor_ || focus == editor_->viewport()) {
                 editor_->pasteAsPlainText();
@@ -131,12 +132,11 @@ void MainWindow::createMenus() {
     const auto updatePastePlain = [pastePlain] { pastePlain->setEnabled(EditorWidget::canPastePlainText()); };
     connect(QApplication::clipboard(), &QClipboard::dataChanged, pastePlain, updatePastePlain);
     updatePastePlain();
-    edit->addAction(tr("Select &All"), QKeySequence::SelectAll, editor_, &QTextEdit::selectAll);
+    addAction(tr("Select &All"), QKeySequence::SelectAll, editor_, &QTextEdit::selectAll);
     // S028: find in the file (decision 7; review O10: the platform's find-next keys plus F3).
-    edit->addSeparator();
-    edit->addAction(tr("&Find…"), QKeySequence::Find, find_, &FindController::open);
-    QAction* findNext = edit->addAction(tr("Find &Next"), find_, &FindController::next);
-    QAction* findPrevious = edit->addAction(tr("Find Pre&vious"), find_, &FindController::previous);
+    addAction(tr("&Find…"), QKeySequence::Find, find_, &FindController::open);
+    QAction* findNext = addAction(tr("Find &Next"), find_, &FindController::next);
+    QAction* findPrevious = addAction(tr("Find Pre&vious"), find_, &FindController::previous);
     QList<QKeySequence> nextKeys = QKeySequence::keyBindings(QKeySequence::FindNext);
     QList<QKeySequence> previousKeys = QKeySequence::keyBindings(QKeySequence::FindPrevious);
     if (!nextKeys.contains(QKeySequence(Qt::Key_F3))) {
@@ -148,9 +148,8 @@ void MainWindow::createMenus() {
     findNext->setShortcuts(nextKeys);
     findPrevious->setShortcuts(previousKeys);
 
-    QMenu* view = menuBar()->addMenu(tr("&View"));
-    view->addAction(tr("&Reload Theme"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R), this,
-                    &MainWindow::reloadThemeRequested);
+    addAction(tr("&Reload Theme"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R), this,
+              &MainWindow::reloadThemeRequested);
 }
 
 void MainWindow::applyTheme(const core::Theme& theme) {

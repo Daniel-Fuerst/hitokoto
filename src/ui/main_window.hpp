@@ -65,7 +65,7 @@ protected:
     void closeEvent(QCloseEvent* event) override;
 
 private:
-    void createMenus();
+    void createActions();
     void updateTitle();
     [[nodiscard]] QString documentName() const;
     bool saveBlocking(const QString& path);

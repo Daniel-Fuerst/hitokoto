@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S026: floating toolbar on the right-hand side of the editor.
+// S026: floating navigator toolbar on the right-hand side of the editor.
+#include "find_bar.hpp"
 #include "floating_toolbar.hpp"
 #include "ui_test_support.hpp"
 
 #include <QAbstractItemModel>
+#include <QLineEdit>
+#include <QMenuBar>
 #include <QPlainTextEdit>
 #include <QScrollBar>
 #include <QTableView>
@@ -36,20 +39,53 @@ private slots:
         ui::FloatingToolbar* bar = f.editor()->floatingToolbar();
         QVERIFY(bar != nullptr);
         QVERIFY(bar->isVisible());
+        QCOMPARE(f.window->findChild<QMenuBar*>(), nullptr);
 
+        QToolButton* newBtn = toolbarButton(f.editor(), "newFileButton");
+        QToolButton* openBtn = toolbarButton(f.editor(), "openFileButton");
+        QToolButton* saveBtn = toolbarButton(f.editor(), "saveFileButton");
+        QToolButton* findBtn = toolbarButton(f.editor(), "findButton");
         QToolButton* tableBtn = toolbarButton(f.editor(), "createTableButton");
         QToolButton* codeBtn = toolbarButton(f.editor(), "createInlineCodeButton");
+        QVERIFY(newBtn != nullptr);
+        QVERIFY(openBtn != nullptr);
+        QVERIFY(saveBtn != nullptr);
+        QVERIFY(findBtn != nullptr);
         QVERIFY(tableBtn != nullptr);
         QVERIFY(codeBtn != nullptr);
+        QVERIFY(newBtn->isVisible());
+        QVERIFY(openBtn->isVisible());
+        QVERIFY(saveBtn->isVisible());
+        QVERIFY(findBtn->isVisible());
         QVERIFY(tableBtn->isVisible());
         QVERIFY(codeBtn->isVisible());
+        QCOMPARE(newBtn->focusPolicy(), Qt::NoFocus);
+        QCOMPARE(openBtn->focusPolicy(), Qt::NoFocus);
+        QCOMPARE(saveBtn->focusPolicy(), Qt::NoFocus);
+        QCOMPARE(findBtn->focusPolicy(), Qt::NoFocus);
         QCOMPARE(tableBtn->focusPolicy(), Qt::NoFocus);
         QCOMPARE(codeBtn->focusPolicy(), Qt::NoFocus);
+        QVERIFY(!newBtn->toolTip().isEmpty());
+        QVERIFY(!openBtn->toolTip().isEmpty());
+        QVERIFY(!saveBtn->toolTip().isEmpty());
+        QVERIFY(!findBtn->toolTip().isEmpty());
         QVERIFY(!tableBtn->toolTip().isEmpty());
         QVERIFY(!codeBtn->toolTip().isEmpty());
+        QVERIFY(!newBtn->accessibleName().isEmpty());
+        QVERIFY(!openBtn->accessibleName().isEmpty());
+        QVERIFY(!saveBtn->accessibleName().isEmpty());
+        QVERIFY(!findBtn->accessibleName().isEmpty());
         QVERIFY(!tableBtn->accessibleName().isEmpty());
         QVERIFY(!codeBtn->accessibleName().isEmpty());
-        // Vertical layout: inline-code button sits below table button.
+        // Vertical layout: buttons are stacked top-to-bottom at the same x coordinate.
+        QVERIFY(openBtn->y() > newBtn->y());
+        QCOMPARE(openBtn->x(), newBtn->x());
+        QVERIFY(saveBtn->y() > openBtn->y());
+        QCOMPARE(saveBtn->x(), newBtn->x());
+        QVERIFY(findBtn->y() > saveBtn->y());
+        QCOMPARE(findBtn->x(), newBtn->x());
+        QVERIFY(tableBtn->y() > findBtn->y());
+        QCOMPARE(tableBtn->x(), newBtn->x());
         QVERIFY(codeBtn->y() > tableBtn->y());
         QCOMPARE(codeBtn->x(), tableBtn->x());
 
@@ -195,19 +231,112 @@ private slots:
         QVERIFY(bar != nullptr);
         QCOMPARE(bar->toolbarStyle(), core::toolbarStyle(theme));
 
+        QToolButton* newBtn = toolbarButton(f.editor(), "newFileButton");
+        QToolButton* openBtn = toolbarButton(f.editor(), "openFileButton");
+        QToolButton* saveBtn = toolbarButton(f.editor(), "saveFileButton");
+        QToolButton* findBtn = toolbarButton(f.editor(), "findButton");
         QToolButton* tableBtn = toolbarButton(f.editor(), "createTableButton");
         QToolButton* codeBtn = toolbarButton(f.editor(), "createInlineCodeButton");
+        QVERIFY(newBtn != nullptr);
+        QVERIFY(openBtn != nullptr);
+        QVERIFY(saveBtn != nullptr);
+        QVERIFY(findBtn != nullptr);
         QVERIFY(tableBtn != nullptr);
         QVERIFY(codeBtn != nullptr);
+        QCOMPARE(newBtn->size(), QSize(34, 34));
+        QCOMPARE(openBtn->size(), QSize(34, 34));
+        QCOMPARE(saveBtn->size(), QSize(34, 34));
+        QCOMPARE(findBtn->size(), QSize(34, 34));
         QCOMPARE(tableBtn->size(), QSize(34, 34));
         QCOMPARE(codeBtn->size(), QSize(34, 34));
         QCOMPARE(bar->width(), 34 + 2 * 6);
-        QCOMPARE(bar->height(), 2 * 34 + 8 + 2 * 6);
+        QCOMPARE(bar->height(), 6 * 34 + 5 * 8 + 2 * 6);
+        QCOMPARE(openBtn->y() - newBtn->y() - newBtn->height(), 8);
+        QCOMPARE(saveBtn->y() - openBtn->y() - openBtn->height(), 8);
+        QCOMPARE(findBtn->y() - saveBtn->y() - saveBtn->height(), 8);
+        QCOMPARE(tableBtn->y() - findBtn->y() - findBtn->height(), 8);
         QCOMPARE(codeBtn->y() - tableBtn->y() - tableBtn->height(), 8);
 
         const QImage img = bar->grab().toImage();
         QCOMPARE(img.pixelColor(bar->width() / 2, 4), QColor(background.r, background.g, background.b, background.a));
         QCOMPARE(img.pixelColor(bar->width() / 2, 0), QColor(border.r, border.g, border.b, border.a));
+    }
+
+    void newFileFromToolbarStartsEmptyDocumentAndPromptsWhenModified() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("existing.md"), "existing")));
+        f.settle();
+        test::keyClicks(f.editor(), QStringLiteral(" edited"));
+        QVERIFY(f.editor()->document()->isModified());
+
+        int asked = 0;
+        ui::SaveChoice choice = ui::SaveChoice::Cancel;
+        f.window->setAskSave([&](const QString&) {
+            ++asked;
+            return choice;
+        });
+
+        QToolButton* newBtn = toolbarButton(f.editor(), "newFileButton");
+        QVERIFY(newBtn != nullptr);
+        QTest::mouseClick(newBtn, Qt::LeftButton);
+        f.settle();
+        QCOMPARE(asked, 1);
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral(" editedexisting"));
+
+        choice = ui::SaveChoice::Discard;
+        QTest::mouseClick(newBtn, Qt::LeftButton);
+        f.settle();
+        QCOMPARE(asked, 2);
+        QVERIFY(f.editor()->document()->isEmpty());
+        QVERIFY(f.session()->path().isEmpty());
+        QVERIFY(f.window->windowTitle().startsWith(QStringLiteral("Untitled")));
+    }
+
+    void openFileFromToolbarOpensSelectedFile() {
+        test::Fixture f;
+        const QString path = f.writeFile(QStringLiteral("picked.md"), "# Picked\nHello\n");
+        f.window->setPathPicker([&](bool forSaving, const QString&) { return forSaving ? QString() : path; });
+
+        QSignalSpy done(f.session(), &ui::DocumentSession::loadFinished);
+        QToolButton* openBtn = toolbarButton(f.editor(), "openFileButton");
+        QVERIFY(openBtn != nullptr);
+        QTest::mouseClick(openBtn, Qt::LeftButton);
+        QTRY_COMPARE(done.size(), 1);
+        f.settle();
+
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("# Picked\nHello\n"));
+        QCOMPARE(f.session()->path(), path);
+    }
+
+    void saveFileFromToolbarSavesDocument() {
+        test::Fixture f;
+        const QString path = f.writeFile(QStringLiteral("doc.md"), "initial");
+        QVERIFY(f.open(path));
+        f.settle();
+        test::keyClick(f.editor(), Qt::Key_End);
+        test::keyClicks(f.editor(), QStringLiteral(" edited"));
+
+        QSignalSpy done(f.session(), &ui::DocumentSession::saveFinished);
+        QToolButton* saveBtn = toolbarButton(f.editor(), "saveFileButton");
+        QVERIFY(saveBtn != nullptr);
+        QTest::mouseClick(saveBtn, Qt::LeftButton);
+        QTRY_COMPARE(done.size(), 1);
+
+        QCOMPARE(test::Fixture::readFile(path), QByteArray("initial edited"));
+        QVERIFY(!f.editor()->document()->isModified());
+    }
+
+    void findFromToolbarOpensFindBarAndFocusesSearchField() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("search.md"), "alpha beta\n")));
+        f.settle();
+        QVERIFY(!f.window->findBar()->isVisible());
+
+        QToolButton* findBtn = toolbarButton(f.editor(), "findButton");
+        QVERIFY(findBtn != nullptr);
+        QTest::mouseClick(findBtn, Qt::LeftButton);
+        QTRY_VERIFY(f.window->findBar()->isVisible());
+        QCOMPARE(QApplication::focusWidget(), static_cast<QWidget*>(f.window->findBar()->searchField()));
     }
 };
 

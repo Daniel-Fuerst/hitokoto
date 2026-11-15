@@ -18,7 +18,6 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
-#include <QMenuBar>
 #include <QPlainTextEdit>
 #include <QRandomGenerator>
 #include <QSignalSpy>
@@ -265,14 +264,9 @@ QString placeOf(const test::Fixture& f) {
 }
 
 QAction* findMenuAction(const test::Fixture& f) {
-    for (QAction* menu : f.window->menuBar()->actions()) {
-        if (menu->menu() == nullptr || !menu->text().contains(QStringLiteral("Edit"))) {
-            continue;
-        }
-        for (QAction* a : menu->menu()->actions()) {
-            if (a->shortcut() == QKeySequence(QKeySequence::Find)) {
-                return a;
-            }
+    for (QAction* a : f.window->actions()) {
+        if (a->shortcut() == QKeySequence(QKeySequence::Find)) {
+            return a;
         }
     }
     return nullptr;

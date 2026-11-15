@@ -5,22 +5,38 @@
   the right edge of the editor with two entries: "Create new Table" (inserts a 2-column × 1-body-row
   table and focuses the first header cell) and "Create inline-codeblock" (wraps the selection in
   backticks or inserts `` `` `` with the caret inside).
+  Extended on 2026-11-15: replaces the top menu bar (`File`, `Edit`, `View`) with navigator entries
+  for **New**, **Open**, **Save**, and **Find** on the floating toolbar, while standard shortcuts
+  remain active as window actions on `MainWindow`.
 
 ## Story
 
-As a writer, I want a floating toolbar on the right-hand side of the editor with buttons to create a
-new table and an inline code span, so that I can insert them with one click without leaving the
-editor.
+As a writer, I want a floating navigator toolbar on the right-hand side of the editor with buttons
+for New, Open, Save, Find, creating a new table, and creating an inline code span, so that I can
+navigate and insert without a top menu bar and without leaving the editor.
 
 ## Acceptance scenarios
 
 **Scenario: floating toolbar is shown on the right-hand side**
 - Given an open editor window
-- Then a vertical floating toolbar is visible, centered vertically along the right edge of the
+- Then no top menu bar (`QMenuBar`) is shown
+- And a vertical floating toolbar is visible, centered vertically along the right edge of the
   editor at `toolbar.margin` from the edge
 - And it stays in place when the document is scrolled or the window is resized
-- And its buttons have tooltips and accessible names ("Create new table", "Create inline code") and
-  do not steal keyboard focus from the editor when clicked
+- And its buttons have tooltips and accessible names ("New", "Open", "Save", "Find",
+  "Create new table", "Create inline code") and do not steal keyboard focus from the editor when
+  clicked
+
+**Scenario: New, Open, Save, and Find from the toolbar**
+- Given an open editor window
+- When I click "New", "Open", "Save", or "Find" in the floating toolbar
+- Then "New" starts an empty untitled document (asking to save unsaved changes first)
+- And "Open" picks a file and opens it (asking to save unsaved changes first)
+- And "Save" saves the document (or asks for a path when untitled)
+- And "Find" opens the find bar below the editor and focuses the search field
+- And all standard keyboard shortcuts (`New`, `Open`, `Save`, `Save As`, `Quit`, `Undo`, `Redo`,
+  `Cut`, `Copy`, `Paste`, `Paste as Plain Text`, `Select All`, `Find`, `Find Next`,
+  `Find Previous`, `Reload Theme`) remain active on `MainWindow`
 
 **Scenario: creating a new table from the toolbar**
 - Given the caret on an empty line in the editor

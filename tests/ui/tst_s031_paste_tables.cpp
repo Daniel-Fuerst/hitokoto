@@ -18,7 +18,6 @@
 #include <QGuiApplication>
 #include <QLineEdit>
 #include <QMenu>
-#include <QMenuBar>
 #include <QMimeData>
 #include <QPlainTextEdit>
 #include <QTableView>
@@ -149,16 +148,11 @@ void pressStandardKey(QWidget* target, QKeySequence::StandardKey key) {
     QCoreApplication::processEvents();
 }
 
-/// The action of the main window's menus whose text without mnemonics is `name`.
+/// The action on the main window whose text without mnemonics is `name`.
 QAction* menuAction(const test::Fixture& f, const QString& name) {
-    for (QAction* menu : f.window->menuBar()->actions()) {
-        if (menu->menu() == nullptr) {
-            continue;
-        }
-        for (QAction* a : menu->menu()->actions()) {
-            if (a->text().remove(u'&') == name) {
-                return a;
-            }
+    for (QAction* a : f.window->actions()) {
+        if (a->text().remove(u'&') == name) {
+            return a;
         }
     }
     return nullptr;
