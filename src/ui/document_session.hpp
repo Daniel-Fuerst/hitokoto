@@ -64,6 +64,7 @@ public:
     /// throw, standing in for a failure at that point (such as running out of memory).
     struct WorkerHooks {
         std::function<void()> beforeDecode;  ///< a file was read and is about to be decoded
+        std::function<void()> beforeEncode;  ///< a save is about to encode its copy of the text
     };
     /// Applies to loads and saves started afterwards.
     void setWorkerHooksForTesting(WorkerHooks hooks) { hooks_ = std::move(hooks); }
@@ -121,7 +122,7 @@ private:
     void cancelCopy();
     void onContentsChange(int position, int charsRemoved, int charsAdded);
     void startWrite(Snapshot s, const QString& path);
-    static WriteOutcome write(Snapshot snapshot, const QString& path);
+    static WriteOutcome write(Snapshot snapshot, const QString& path, const std::function<void()>& beforeEncode);
     void finishSave(const QString& path, const WriteOutcome& outcome, quint64 editCount, quint64 documentId);
     /// Worker thread: reads and decodes `path`, then queues the insertion or the failure. May throw.
     void readAndDecode(const QString& path, quint64 generation, const std::function<void()>& beforeDecode);

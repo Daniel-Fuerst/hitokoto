@@ -369,7 +369,11 @@ void DocumentSession::copySlice() {
     startWrite(takeSnapshot(), path);
 }
 
-DocumentSession::WriteOutcome DocumentSession::write(Snapshot s, const QString& path) {
+DocumentSession::WriteOutcome DocumentSession::write(Snapshot s, const QString& path,
+                                                     const std::function<void()>& beforeEncode) {
+    if (beforeEncode) {
+        beforeEncode();
+    }
     const auto bytes = core::encodeUtf8(view(s.text), s.format.hasBom, s.format.ending, s.perBreak);
     if (!bytes) {
         return {false, QStringLiteral("internal error: text could not be encoded")};
@@ -384,8 +388,8 @@ void DocumentSession::startWrite(Snapshot s, const QString& path) {
     const quint64 editCount = s.editCount;
     const quint64 documentId = documentId_;
     ++savesInFlight_;
-    pool_.start([this, s = std::move(s), path, editCount, documentId]() mutable {
-        const WriteOutcome outcome = write(std::move(s), path);
+    pool_.start([this, s = std::move(s), path, editCount, documentId, beforeEncode = hooks_.beforeEncode]() mutable {
+        const WriteOutcome outcome = write(std::move(s), path, beforeEncode);
         QMetaObject::invokeMethod(
             this, [this, path, outcome, editCount, documentId] { finishSave(path, outcome, editCount, documentId); },
             Qt::QueuedConnection);
@@ -414,7 +418,7 @@ bool DocumentSession::saveNow(const QString& path, QString* error) {
     Snapshot s = takeSnapshot();
     const quint64 editCount = s.editCount;
     ++savesInFlight_;
-    const WriteOutcome outcome = write(std::move(s), path);
+    const WriteOutcome outcome = write(std::move(s), path, hooks_.beforeEncode);
     finishSave(path, outcome, editCount, documentId_);
     if (!outcome.ok && error) {
         *error = outcome.message;
