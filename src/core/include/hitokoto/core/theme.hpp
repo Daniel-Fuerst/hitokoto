@@ -102,6 +102,15 @@ struct FindTokens {
     friend bool operator==(const FindTokens&, const FindTokens&) = default;
 };
 
+/// Tokens of `[menu-bar]` (S038); resolved by menuBarStyle().
+struct MenuBarTokens {
+    std::optional<Color> background, border, text, hoverText, activeText, hoverBackground, activeBackground;
+    std::optional<double> borderWidth, padding, spacing, itemRadius, itemPaddingHorizontal, itemPaddingVertical,
+        fontScale;
+    std::optional<std::string> fontFamily;
+    friend bool operator==(const MenuBarTokens&, const MenuBarTokens&) = default;
+};
+
 /// Every value the UI uses for colours, fonts, radii and spacing. Hard-coded styling values
 /// in UI code are bugs; add a token instead.
 struct Theme {
@@ -142,6 +151,7 @@ struct Theme {
     PropertiesTokens properties;
     ToolbarTokens toolbar;
     FindTokens find;
+    MenuBarTokens menuBar;
 
     friend bool operator==(const Theme&, const Theme&) = default;
 };
@@ -269,6 +279,20 @@ struct FindStyle {
     friend bool operator==(const FindStyle&, const FindStyle&) = default;
 };
 
+/// Resolved look of the top menu bar (S038).
+struct MenuBarStyle {
+    Color background, border, text, hoverText, activeText, hoverBackground, activeBackground;
+    double borderWidth = 0;
+    double padding = 6;
+    double spacing = 4;
+    double itemRadius = 0;
+    double itemPaddingHorizontal = 8;
+    double itemPaddingVertical = 4;
+    double fontScale = 1;
+    std::string fontFamily;  ///< empty = UI font
+    friend bool operator==(const MenuBarStyle&, const MenuBarStyle&) = default;
+};
+
 [[nodiscard]] CodeStyle codeBlockStyle(const Theme& theme);
 [[nodiscard]] CodeStyle inlineCodeStyle(const Theme& theme);
 [[nodiscard]] EmphasisStyle emphasisStyle(const Theme& theme);
@@ -279,6 +303,7 @@ struct FindStyle {
 [[nodiscard]] PropertiesStyle propertiesStyle(const Theme& theme);
 [[nodiscard]] ToolbarStyle toolbarStyle(const Theme& theme);
 [[nodiscard]] FindStyle findStyle(const Theme& theme);
+[[nodiscard]] MenuBarStyle menuBarStyle(const Theme& theme);
 
 /// All tokens of the theme format, in documentation order.
 std::span<const ThemeTokenInfo> themeTokens();
