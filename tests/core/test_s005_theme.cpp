@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <random>
@@ -186,4 +187,25 @@ TEST(S005_Theme, DocumentationCoversAllTokensAndExamplesParse) {
         pos = end + 3;
     }
     EXPECT_GE(examples, 2u);
+}
+
+TEST(S005_Theme, ShippedThemesParseWithoutDiagnostics) {
+    const std::filesystem::path themesDir = std::filesystem::path(HITOKOTO_SOURCE_DIR) / "themes";
+    ASSERT_TRUE(std::filesystem::exists(themesDir));
+    std::size_t count = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(themesDir)) {
+        if (!entry.is_regular_file() || entry.path().extension() != ".toml") {
+            continue;
+        }
+        std::ifstream in(entry.path(), std::ios::binary);
+        ASSERT_TRUE(in) << entry.path().string();
+        const std::string src{std::istreambuf_iterator<char>(in), {}};
+        const auto r = loadTheme(src, ColorScheme::Light);
+        EXPECT_FALSE(r.usedFallback) << entry.path().filename().string()
+                                     << (r.diagnostics.empty() ? "" : ": " + r.diagnostics.front().toString());
+        EXPECT_TRUE(r.diagnostics.empty()) << entry.path().filename().string();
+        EXPECT_FALSE(r.theme.name.empty()) << entry.path().filename().string();
+        ++count;
+    }
+    EXPECT_GE(count, 6u);
 }
