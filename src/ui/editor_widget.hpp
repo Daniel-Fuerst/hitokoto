@@ -175,7 +175,6 @@ private:
     void updateReveal();
     void updateMargins();
     void positionToolbar();
-    void updateSettingsDebugInfo();
     [[nodiscard]] int availableTableWidth() const;
     void paintCodeBlockPanels();
     void paintInlineCodeBoxes(QPainter& painter, const QTextBlock& block, const core::LineRender& render,

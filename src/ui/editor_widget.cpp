@@ -158,11 +158,6 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
         activeThemePath_ = entry.builtinScheme.has_value() ? QString() : entry.path;
         emit themeEntrySelected(entry);
     });
-    connect(document(), &QTextDocument::contentsChanged, this, [this] {
-        if (settingsMenu_->isVisible()) {
-            updateSettingsDebugInfo();
-        }
-    });
     positionToolbar();
 }
 
@@ -467,19 +462,11 @@ void EditorWidget::setSettingsMenuOpen(bool open) {
     toolbar_->setSettingsOpen(open);
     if (open) {
         refreshAvailableThemes();
-        updateSettingsDebugInfo();
         settingsMenu_->show();
         positionToolbar();
     } else {
         settingsMenu_->hide();
     }
-}
-
-void EditorWidget::updateSettingsDebugInfo() {
-    const int lines = document()->blockCount();
-    const int chars = std::max(0, document()->characterCount() - 1);
-    settingsMenu_->setDocumentStats(lines, chars);
-    positionToolbar();
 }
 
 void EditorWidget::setThemeConfigDir(const QString& dir) {

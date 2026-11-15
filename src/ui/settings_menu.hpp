@@ -8,8 +8,6 @@
 #include <QList>
 #include <QWidget>
 
-#include <array>
-
 class QComboBox;
 class QGridLayout;
 class QLabel;
@@ -26,7 +24,6 @@ public:
     SettingsMenu& operator=(const SettingsMenu&) = delete;
 
     void applyTheme(const core::Theme& theme);
-    void setDocumentStats(int lineCount, int charCount);
     void setAvailableThemes(const QList<ThemeEntry>& entries, const QString& activePath,
                             const core::Theme& activeTheme);
     [[nodiscard]] QComboBox* themeSelector() const noexcept { return themeCombo_; }
@@ -43,19 +40,12 @@ private:
     core::ToolbarStyle style_{core::toolbarStyle(core::builtinTheme(core::ColorScheme::Light))};
     QVBoxLayout* mainLayout_ = nullptr;
     QGridLayout* appearanceLayout_ = nullptr;
-    QGridLayout* gridLayout_ = nullptr;
     QLabel* titleLabel_ = nullptr;
     QLabel* appearanceLabel_ = nullptr;
     QLabel* themeKeyLabel_ = nullptr;
-    QLabel* sectionLabel_ = nullptr;
     QComboBox* themeCombo_ = nullptr;
+    QLabel* versionLabel_ = nullptr;
     QList<ThemeEntry> entries_;
-    std::array<QLabel*, 5> keyLabels_{};
-    QLabel* appValue_ = nullptr;
-    QLabel* qtValue_ = nullptr;
-    QLabel* platformValue_ = nullptr;
-    QLabel* themeValue_ = nullptr;
-    QLabel* documentValue_ = nullptr;
 };
 
 }  // namespace hitokoto::ui

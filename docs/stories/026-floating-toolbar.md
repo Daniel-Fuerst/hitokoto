@@ -7,7 +7,7 @@
   backticks or inserts `` `` `` with the caret inside). Extended on `feature/settings` (2026-11-15)
   with an "Open settings" entry with a settings icon that toggles a non-modal floating `SettingsMenu`
   flyout displaying theme selection controls (built-in themes plus `.toml` themes from the config
-  folder) and app debug info.
+  folder) and a subtle version hint.
 
 ## Story
 
@@ -51,8 +51,8 @@ without leaving the editor.
 - Given an open editor window
 - When I click "Open settings" in the floating toolbar
 - Then a non-modal floating `SettingsMenu` flyout opens to the left of the floating toolbar, showing
-  an **Appearance** section with a theme selector (`themeSelector` `QComboBox`) and **Debug info**
-  (application, Qt, platform, theme, document stats)
+  an **Appearance** section with a theme selector (`themeSelector` `QComboBox`) and a subtle
+  version hint (`settingsVersionLabel`) at the bottom
 - And the theme selector lists the built-in `hitokoto Light` and `hitokoto Dark` themes plus `.toml`
   themes discovered from the configuration folder (and its `themes/` subfolder); picking one applies
   the theme immediately across the application

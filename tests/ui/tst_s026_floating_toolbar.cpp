@@ -264,34 +264,26 @@ private slots:
         QVERIFY(menu->geometry().right() < bar->x());
         QVERIFY(f.editor()->rect().contains(menu->geometry()));
 
-        auto* appValue = menu->findChild<QLabel*>(QStringLiteral("debugAppValue"));
-        auto* qtValue = menu->findChild<QLabel*>(QStringLiteral("debugQtValue"));
-        auto* platformValue = menu->findChild<QLabel*>(QStringLiteral("debugPlatformValue"));
-        auto* themeValue = menu->findChild<QLabel*>(QStringLiteral("debugThemeValue"));
-        auto* docValue = menu->findChild<QLabel*>(QStringLiteral("debugDocumentValue"));
-        QVERIFY(appValue != nullptr);
-        QVERIFY(qtValue != nullptr);
-        QVERIFY(platformValue != nullptr);
-        QVERIFY(themeValue != nullptr);
-        QVERIFY(docValue != nullptr);
-        QVERIFY(!appValue->text().isEmpty());
-        QVERIFY(qtValue->text().contains(QString::fromLatin1(qVersion())));
-        QVERIFY(platformValue->text().contains(QGuiApplication::platformName()));
-        QVERIFY(themeValue->text().contains(QStringLiteral("hitokoto Light")));
-        QVERIFY(docValue->text().contains(QString::number(f.editor()->document()->blockCount())));
+        QCOMPARE(menu->findChild<QLabel*>(QStringLiteral("debugAppValue")), nullptr);
+        QCOMPARE(menu->findChild<QLabel*>(QStringLiteral("debugQtValue")), nullptr);
+        QCOMPARE(menu->findChild<QLabel*>(QStringLiteral("debugPlatformValue")), nullptr);
+        QCOMPARE(menu->findChild<QLabel*>(QStringLiteral("debugThemeValue")), nullptr);
+        QCOMPARE(menu->findChild<QLabel*>(QStringLiteral("debugDocumentValue")), nullptr);
 
-        // Theme updates live while the menu is open.
-        f.window->applyTheme(core::builtinTheme(core::ColorScheme::Dark));
-        f.settle();
-        QVERIFY(themeValue->text().contains(QStringLiteral("hitokoto Dark")));
+        auto* versionLabel = menu->findChild<QLabel*>(QStringLiteral("settingsVersionLabel"));
+        auto* titleLabel = menu->findChild<QLabel*>(QStringLiteral("settingsTitleLabel"));
+        QVERIFY(versionLabel != nullptr);
+        QVERIFY(titleLabel != nullptr);
+        QVERIFY(!versionLabel->text().isEmpty());
+        QVERIFY(versionLabel->text().startsWith(QLatin1Char('v')));
+        QVERIFY(versionLabel->font().pointSizeF() < titleLabel->font().pointSizeF());
 
-        // Typing continues uninterrupted while the menu is open and updates document stats.
+        // Typing continues uninterrupted while the menu is open.
         f.placeCaret(2, 5);
         test::keyClick(f.editor(), Qt::Key_Return);
         test::keyClicks(f.editor(), QStringLiteral("four"));
         f.settle();
         QCOMPARE(f.editor()->document()->blockCount(), 4);
-        QVERIFY(docValue->text().contains(QStringLiteral("4")));
 
         // Escape closes the menu without stealing focus.
         test::keyClick(f.editor(), Qt::Key_Escape);
@@ -358,22 +350,19 @@ private slots:
         QVERIFY2(berryIdx >= 0, "Berry Crush from config folder should appear in themeSelector");
         QVERIFY2(emberIdx >= 0, "Ember from config folder should appear in themeSelector");
 
-        auto* themeLabel = menu->findChild<QLabel*>(QStringLiteral("debugThemeValue"));
-        QVERIFY(themeLabel != nullptr);
-
         // Selecting Ember applies its light colors immediately.
         combo->setCurrentIndex(emberIdx);
         f.settle();
         QCOMPARE(QApplication::palette().color(QPalette::Base), QColor(QStringLiteral("#fdf3e7")));
         QCOMPARE(QApplication::palette().color(QPalette::Accent), QColor(QStringLiteral("#d9480f")));
-        QVERIFY(themeLabel->text().contains(QStringLiteral("Ember")));
+        QCOMPARE(QString::fromStdString(f.editor()->currentTheme().name), QStringLiteral("Ember"));
 
         // Selecting Berry Crush switches to its dark colors immediately.
         combo->setCurrentIndex(berryIdx);
         f.settle();
         QCOMPARE(QApplication::palette().color(QPalette::Base), QColor(QStringLiteral("#2a1220")));
         QCOMPARE(QApplication::palette().color(QPalette::Accent), QColor(QStringLiteral("#f06292")));
-        QVERIFY(themeLabel->text().contains(QStringLiteral("Berry Crush")));
+        QCOMPARE(QString::fromStdString(f.editor()->currentTheme().name), QStringLiteral("Berry Crush"));
 
         // Selecting built-in Dark restores builtinTheme(ColorScheme::Dark).
         const auto builtinDark = hitokoto::core::builtinTheme(hitokoto::core::ColorScheme::Dark);
@@ -384,7 +373,7 @@ private slots:
                         builtinDark.background.a));
         QCOMPARE(QApplication::palette().color(QPalette::Accent),
                  QColor(builtinDark.accent.r, builtinDark.accent.g, builtinDark.accent.b, builtinDark.accent.a));
-        QVERIFY(themeLabel->text().contains(QStringLiteral("hitokoto Dark")));
+        QCOMPARE(QString::fromStdString(f.editor()->currentTheme().name), QStringLiteral("hitokoto Dark"));
     }
 };
 
