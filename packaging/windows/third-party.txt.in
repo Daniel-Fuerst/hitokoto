@@ -1,0 +1,23 @@
+hitokoto for Windows: third-party components
+============================================
+
+hitokoto is free software under the GNU General Public License, version 3 or (at your option)
+any later version; see LICENSE.txt. This installation also contains:
+
+Qt @QT_VERSION@ (Qt6Core.dll, Qt6Gui.dll, Qt6Svg.dll, Qt6Widgets.dll and the plugins in the
+folders iconengines, imageformats, platforms and styles)
+  Copyright (C) The Qt Company Ltd. and other contributors.
+  Used under the GNU Lesser General Public License version 3 (LGPL-3.0.txt), which builds on the
+  GNU General Public License version 3 (LICENSE.txt). The libraries are linked dynamically and can
+  be replaced by your own build of the same Qt version. The complete source code of Qt
+  @QT_VERSION@ is available at https://download.qt.io/archive/qt/@QT_SERIES@/@QT_VERSION@/ and
+  at https://code.qt.io/.
+
+Microsoft Visual C++ runtime (concrt140.dll, msvcp140*.dll, vccorlib140.dll, vcruntime140*.dll)
+  Copyright (C) Microsoft Corporation.
+  Redistributable files of Microsoft Visual Studio, deployed beside the program as the Visual
+  Studio licence terms allow. Windows Update does not update these copies; a newer version of
+  hitokoto brings newer ones.
+
+The source code of hitokoto, and the recipe this installer was built with, are at
+https://github.com/Daniel-Fuerst/hitokoto.

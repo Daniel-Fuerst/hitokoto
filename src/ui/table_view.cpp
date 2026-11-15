@@ -14,9 +14,9 @@
 #include <QHeaderView>
 #include <QKeyEvent>
 #include <QMenu>
+#include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
-#include <QRegularExpression>
 #include <QScrollBar>
 #include <QSignalBlocker>
 #include <QTextBlock>
@@ -104,6 +104,15 @@ void CellEditor::contextMenuEvent(QContextMenuEvent* event) {
     menu->exec(event->globalPos());
 }
 
+void CellEditor::insertFromMimeData(const QMimeData* source) {
+    // As in the editor (S031): the text alone, so that Qt never chooses a format.
+    QMimeData plain;
+    if (const QString text = EditorWidget::pastedText(source); !text.isNull()) {
+        plain.setText(text);
+    }
+    QPlainTextEdit::insertFromMimeData(&plain);
+}
+
 namespace {
 
 /// Text without the spaces and tabs at its edges, which GFM treats as a cell's padding.
@@ -117,6 +126,33 @@ QString withoutPadding(const QString& text) {
         --end;
     }
     return text.mid(start, end - start);
+}
+
+/// The features for Qt's Markdown import of a cell: the GitHub dialect without front matter. A
+/// cell is never front matter, but Qt 6.8.0 to 6.8.3 take a text that starts with `---` and holds
+/// a second `---` for it: they show only what follows the second one, and read outside the text
+/// when it ends there (CVE-2025-3512; opening or typing such a cell ended the program). Later
+/// versions want each `---` on a line of its own, which a cell does not have. QTextDocument has
+/// no name for the feature: the value is QTextMarkdownImporter::FeatureFrontMatter
+/// (qtextmarkdownimporter_p.h, the same from Qt 6.8 to 6.12); the import reads it nowhere else.
+/// Raw HTML is off as well: it shows as its characters, as in the editor outside tables (a line
+/// break comes from core::tableCellImport instead of `<br/>`).
+QTextDocument::MarkdownFeatures cellMarkdownFeatures() {
+    constexpr int kQtFrontMatter = 0x100000;
+    return QTextDocument::MarkdownFeatures::fromInt((int(QTextDocument::MarkdownDialectGitHub) & ~kQtFrontMatter) |
+                                                    int(QTextDocument::MarkdownNoHTML));
+}
+
+/// Whether the import made an image anywhere in `document`.
+bool holdsImage(const QTextDocument& document) {
+    for (QTextBlock block = document.begin(); block.isValid(); block = block.next()) {
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            if (it.fragment().charFormat().isImageFormat()) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 }  // namespace
@@ -141,7 +177,7 @@ void TableDelegate::prepare(QTextDocument& document, const QModelIndex& index) c
     prepare(document, index, index.data(TableModel::MarkdownRole).toString());
 }
 
-void TableDelegate::prepare(QTextDocument& document, const QModelIndex& index, QString source) const {
+void TableDelegate::prepare(QTextDocument& document, const QModelIndex& index, const QString& source) const {
     document.setDocumentMargin(0);
     const QVariant font = index.data(Qt::FontRole);
     if (font.isValid()) {
@@ -157,25 +193,24 @@ void TableDelegate::prepare(QTextDocument& document, const QModelIndex& index, Q
     }
     // GFM reads a cell as inline text: a block marker at its start shows as its characters there,
     // so it is escaped for this document of its own; the file keeps it (S031 review O3).
-    source = toQString(core::escapeTableCellBlockStart(view(source)));
-    // GFM shows an escaped pipe as a pipe, also in code; Qt 6.12 drops everything after a <br>
-    // without slash, so every spelling becomes <br/> (ADR 0005). A <br> after an odd number of
-    // backslashes is text and stays as it is (S031 review O3).
-    source.replace(QStringLiteral("\\|"), QStringLiteral("|"));
-    static const QRegularExpression br(QStringLiteral("<br\\s*/?>"), QRegularExpression::CaseInsensitiveOption);
-    QString markdown;
-    markdown.reserve(source.size());
-    qsizetype done = 0;
-    for (auto it = br.globalMatch(source); it.hasNext();) {
-        const QRegularExpressionMatch match = it.next();
-        const qsizetype at = match.capturedStart();
-        markdown += QStringView(source).mid(done, at - done);
-        markdown +=
-            core::escapedAt(view(source), static_cast<std::size_t>(at)) ? match.captured() : QStringLiteral("<br/>");
-        done = match.capturedEnd();
+    QString markdown = toQString(core::escapeTableCellBlockStart(view(source)));
+    // GFM shows an escaped pipe as a pipe, also in code.
+    markdown.replace(QStringLiteral("\\|"), QStringLiteral("|"));
+    // An image shows as its characters and a <br> that is not escaped as a line break: the import
+    // gets a space for it, which becomes U+2028 here (ADR 0005).
+    const core::TableCellImport cell = core::tableCellImport(view(markdown));
+    document.setMarkdown(toQString(cell.markdown), cellMarkdownFeatures());
+    if (cell.lineBreak != QChar::LineSeparator) {
+        const QString space(QChar(cell.lineBreak));
+        for (QTextCursor at = document.find(space); !at.isNull(); at = document.find(space, at)) {
+            at.insertText(QString(QChar::LineSeparator));
+        }
     }
-    markdown += QStringView(source).mid(done);
-    document.setMarkdown(markdown, QTextDocument::MarkdownDialectGitHub);
+    if (holdsImage(document)) {
+        // Where Qt reads the Markdown otherwise than CommonMark and makes an image after all, the
+        // cell shows its characters, as its editor does.
+        document.setPlainText(toQString(core::tableCellToText(view(source))).replace(u'\n', QChar::LineSeparator));
+    }
     formatBlocks(document, index);
 }
 

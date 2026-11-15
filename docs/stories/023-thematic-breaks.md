@@ -12,6 +12,10 @@
   (Armin): front matter is recognised and left as text; showing it as properties is S024.
 - **Changes accepted behaviour of S003**, which kept `---` as plain text while breaks were out of
   scope (`docs/stories/003-bullets.md`, scope).
+- **Updated by S033** (`docs/stories/033-soft-line-breaks.md`): a multi-line setext heading now
+  flows as a single wrapped heading paragraph while the caret is outside the heading and its
+  underline, and reveals its individual source lines when the caret or selection touches any line of
+  the heading or its underline.
 
 ## Story
 

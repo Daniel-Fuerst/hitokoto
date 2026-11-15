@@ -12,3 +12,10 @@ CMakeUserPresets.json
 # there for Claude (CI artefacts, logs)
 /Claude outputs/
 /Claude inputs/
+
+# Arch Linux packaging artifacts
+/packaging/archlinux/pkg/
+/packaging/archlinux/src/
+/packaging/archlinux/*.pkg.tar.*
+/packaging/archlinux/*.tar.gz
+

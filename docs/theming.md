@@ -223,6 +223,22 @@ follows the general tokens above.
 | `find.current-text` | color | Text of the current match | #1a1a1a |
 | `find.match-background` | color | Other matches (highlight all); cells, property keys and values, and chips with a match | #fff3bf (light), #5c4a12 (dark) |
 | `find.match-text` | color | Text of other matches | #1a1a1a (light), #f1f1f1 (dark) |
+| `menu-bar.background` | color | Background of the top menu bar | `colors.background` |
+| `menu-bar.border` | color | Line below the top menu bar | `colors.border` |
+| `menu-bar.border-width` | number (px) | Width of the line below the top menu bar, 0 to 8 | 0 |
+| `menu-bar.padding` | number (px) | Space around the menu bar items, 0 to 32 | 6 |
+| `menu-bar.spacing` | number (px) | Space between menu bar items, 0 to 32 | 4 |
+| `menu-bar.text` | color | Text colour of idle menu bar items | `colors.text-muted` |
+| `menu-bar.hover-text` | color | Text colour of a hovered menu bar item | `colors.text` |
+| `menu-bar.active-text` | color | Text colour of an open or pressed menu bar item | `colors.text` |
+| `menu-bar.hover-background` | color | Pill background of a hovered menu bar item | `colors.surface` |
+| `menu-bar.active-background` | color | Pill background of an open or pressed menu bar item | `colors.border` |
+| `menu-bar.mnemonic` | color | Access-key hint (letter and short underline) shown while Alt is held | `colors.accent` |
+| `menu-bar.item-radius` | number (px) | Corner radius of menu bar item pills, 0 to 32 | `layout.radius` |
+| `menu-bar.item-padding-horizontal` | number (px) | Horizontal space inside each menu bar item pill, 0 to 32 | `layout.spacing` |
+| `menu-bar.item-padding-vertical` | number (px) | Vertical space inside each menu bar item pill, 0 to 32 | 4 |
+| `menu-bar.font-family` | string | Font family of the menu bar; "" = UI font | "" |
+| `menu-bar.font-scale` | number | Size of the menu bar relative to the UI font, 0.5 to 2 | 1 |
 
 A thematic break (`---`, `***`, `___`) is a line across the text column, centred vertically in its block.
 Setext headings (text underlined with `===` or `---`) add no tokens: their lines use the heading

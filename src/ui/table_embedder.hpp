@@ -99,7 +99,8 @@ public:
     bool handleEditorClick(QPoint position);
     /// S028 review O8: a table with lines in [first, last] shows its lines while it holds the
     /// current match of the find bar; `untilCaretLeaves` (after Escape): until the caret and the
-    /// anchor have both left it. first < 0: no table is held.
+    /// anchor have both left it. first < 0: no table is held. Inside a change of the document the
+    /// tables are found again after it (queued), otherwise at once.
     void setFindHold(int first, int last, bool untilCaretLeaves);
 
 private:
@@ -123,6 +124,9 @@ private:
     [[nodiscard]] Table* tableAt(int blockNumber);
     [[nodiscard]] const Table* tableAt(int blockNumber) const;
     [[nodiscard]] Table* tableOf(const TableWidget* widget);
+    /// The table whose header line is `header`, also while it is stale (a change of its own lines
+    /// made it so); one that is not stale first.
+    [[nodiscard]] Table* tableWithHeader(const QTextBlock& header);
     [[nodiscard]] QTextBlock lastLineOf(const QTextBlock& header) const;
     /// The table view is showing the table.
     [[nodiscard]] static bool shows(const Table& table);
@@ -155,7 +159,10 @@ private:
     TableWidget* createWidget();
     void focusCell(Table& table, int row, int column, bool atEnd = false);
 
-    // Changes to the Markdown lines; each is one undo step.
+    // Changes to the Markdown lines; each is one undo step. They do not count on `tables_` staying
+    // as it is while the document changes (the find bar moves its hold then; setFindHold finds the
+    // tables again only after the change, S028): after the change they use only what they copied
+    // before it and the table looked up again by its header line, never `table`.
     void appendRow(Table& table, int column);
     void deleteRow(Table& table, int row, bool preferPrevious);
     void addColumn(Table& table);
@@ -165,13 +172,15 @@ private:
     void leaveAbove(Table& table, bool atEnd);
     /// To the line below, if any.
     void leaveDown(Table& table);
-    /// Below the table, adding lines at the end of the document (see the .cpp).
-    void leaveBelow(Table& table);
+    /// Below the table whose last line is line `lastLine`, adding lines at the end of the document
+    /// (see the .cpp). Takes the number, not the table: its change may replace `tables_`.
+    void leaveBelow(int lastLine);
     /// From the table view: `rowOrBlock`/`columnOrPosition` are the current cell; from the source
     /// view: the caret's block number and position in its line.
     void toggleSource(Table& table, int rowOrBlock, int columnOrPosition);
-    /// Re-reads one table right after its lines changed, so the view can go on at once.
-    void update(Table& table);
+    /// Re-reads the table with header line `header` right after its lines changed, so the view
+    /// can go on at once. Returns it, or null if there is none.
+    Table* update(const QTextBlock& header);
 
     EditorWidget* editor_;
     BlockStyler* styler_;

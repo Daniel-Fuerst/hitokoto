@@ -41,6 +41,11 @@ configuring. On Debian 13+, install `build-essential cmake ninja-build qt6-base-
 
 For packaging/distributable builds, see [`docs/stories/012-distributable-builds.md`](docs/stories/012-distributable-builds.md) (`windeployqt` on Windows, `macdeployqt` on macOS, `linuxdeploy` on Linux).
 
+Packages: every version from 0.5.1 on has a GitHub release with a Debian package for trixie
+([`packaging/debian/README.md`](packaging/debian/README.md)), and every version after 0.5.1 also
+an MSI for Windows ([`packaging/windows/README.md`](packaging/windows/README.md)); the AUR package
+`hitokoto` follows every version ([`packaging/archlinux/README.md`](packaging/archlinux/README.md)).
+
 ## Versions
 
 Every pull request merged into main gives hitokoto its version step (story S030,
@@ -63,8 +68,10 @@ Every pull request merged into main gives hitokoto its version step (story S030,
   with main's rules, and its own apply from the next pull request on. Moving the script or changing
   how it is called therefore takes two pull requests: first the new interface beside the old one,
   then the switch in `version.yml`.
-- **The tag is the only source of the version.** After the merge, the workflow `version.yml` puts
-  an annotated tag `vMAJOR.MINOR.PATCH` on the merge commit. `project()` in `CMakeLists.txt`
+- **The tag is the only source of the version.** After the merge, once the CI on main is green
+  (all jobs, benchmarks included; S035), its last job "Version" (`version.yml`) puts an annotated
+  tag `vMAJOR.MINOR.PATCH` on the merge commit. A red CI on main gives no tag until "Re-run failed
+  jobs" turns it green. `project()` in `CMakeLists.txt`
   carries no `VERSION`, and nobody sets a `v*` tag by hand (apart from the starting tag `v0.3.0`):
   a tag set by hand would become the base of every later version.
 - **Builds** take the version from `git describe` when CMake configures: `0.4.0` on the tagged

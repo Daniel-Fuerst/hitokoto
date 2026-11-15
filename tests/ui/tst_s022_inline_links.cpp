@@ -69,7 +69,7 @@ private slots:
             QCOMPARE(fmt.foreground().color(), qcolor(theme.accent));
             QVERIFY(fmt.isAnchor());
             QCOMPARE(fmt.anchorHref(), QStringLiteral("https://example.com"));
-            QCOMPARE(fmt.toolTip(), QStringLiteral("Hover over me to see the title!"));
+            QCOMPARE(test::shownText(fmt.toolTip()), QStringLiteral("Hover over me to see the title!"));
             // Tail is collapsed
             QVERIFY(test::isCollapsed(block, 18));
         }
@@ -248,11 +248,11 @@ private slots:
         c.setPosition(2);
         const QPoint linkPt = f.editor()->cursorRect(c).center();
         const auto fmt = f.editor()->formatAt(linkPt);
-        QCOMPARE(fmt.toolTip(), QStringLiteral("My Title"));
+        QCOMPARE(test::shownText(fmt.toolTip()), QStringLiteral("My Title"));
 
         QHelpEvent help(QEvent::ToolTip, linkPt, f.editor()->viewport()->mapToGlobal(linkPt));
         QVERIFY(QCoreApplication::sendEvent(f.editor()->viewport(), &help));
-        QCOMPARE(QToolTip::text(), QStringLiteral("My Title"));
+        QCOMPARE(test::shownText(QToolTip::text()), QStringLiteral("My Title"));
 
         // 2. Link without title has empty tooltip
         const auto block1 = f.editor()->document()->findBlockByNumber(1);
@@ -260,6 +260,32 @@ private slots:
         c1.setPosition(block1.position() + 2);
         const QPoint noTipPt = f.editor()->cursorRect(c1).center();
         QCOMPARE(f.editor()->formatAt(noTipPt).toolTip(), QString{});
+    }
+
+    // A link's title shows as its characters, its spaces too, also when it holds tags: the tooltip
+    // shows no image and no formatting of the title's own.
+    void aTitleWithTagsShowsAsItsCharacters() {
+        test::Fixture f;
+        const QString image = f.dir.filePath(QStringLiteral("red.png"));
+        QVERIFY(test::writeRedImage(image));
+        const QString title = QStringLiteral("<img src='%1'> <b>bold</b>  two spaces").arg(image);
+        const QString markdown = QStringLiteral("[Link](https://example.com/ \"%1\")\nsecond\n").arg(title);
+        QVERIFY(f.open(f.writeFile(QStringLiteral("title.md"), markdown.toUtf8())));
+        f.placeCaret(1);
+        f.settle();
+
+        QTextCursor c(f.editor()->document());
+        c.setPosition(2);
+        const QPoint linkPt = f.editor()->cursorRect(c).center();
+        QHelpEvent help(QEvent::ToolTip, linkPt, f.editor()->viewport()->mapToGlobal(linkPt));
+        QVERIFY(QCoreApplication::sendEvent(f.editor()->viewport(), &help));
+        QWidget* tip = test::toolTipWindow();
+        QVERIFY(tip != nullptr);
+        QCOMPARE(test::redPixels(tip->grab().toImage()), 0);
+        QCOMPARE(test::shownText(QToolTip::text()), title);
+        QCOMPARE(test::shownText(f.editor()->formatAt(linkPt).toolTip()), title);
+        QToolTip::hideText();
+        QCOMPARE(f.editor()->toPlainText(), markdown);
     }
 
     void clickOnActiveLinePlacesCaretWhileCtrlClickOpensLink() {

@@ -11,6 +11,7 @@
 #include <QHeaderView>
 #include <QInputMethodEvent>
 #include <QMenu>
+#include <QPainter>
 #include <QPlainTextEdit>
 #include <QRegularExpression>
 #include <QScrollBar>
@@ -19,8 +20,10 @@
 #include <QTextBlockFormat>
 #include <QTextCursor>
 #include <QTextDocument>
+#include <QTextFragment>
 #include <QTimer>
 #include <QToolButton>
+#include <QUrl>
 
 #include <cstdlib>
 #include <memory>
@@ -144,6 +147,72 @@ QStringList contextMenuOf(QWidget* widget, QPoint point) {
     QCoreApplication::sendEvent(widget, &event);
     QCoreApplication::processEvents();
     return *texts;
+}
+
+/// A document that notes each resource Qt asks it for, and gives none.
+class ResourceLog : public QTextDocument {
+public:
+    QStringList requested;
+
+protected:
+    QVariant loadResource(int type, const QUrl& name) override {
+        requested << QStringLiteral("%1 %2").arg(type).arg(name.toString());
+        return {};
+    }
+};
+
+/// Lays `document` out unwrapped and paints it, as the delegate does with a cell.
+QImage painted(QTextDocument& document) {
+    document.setTextWidth(-1);
+    QImage image(document.size().toSize().expandedTo(QSize(1, 1)), QImage::Format_RGB32);
+    image.fill(Qt::white);
+    QPainter painter(&image);
+    document.drawContents(&painter);
+    return image;
+}
+
+/// What a shown cell formats, in order: "image:<name>", "link:<href>", and for the text of a run
+/// "code:", "bold:", "italic:", "underline:", "strike:" and "colour:"; separated by spaces.
+QString formatsOf(const QTextDocument& document) {
+    QStringList formats;
+    const auto add = [&formats](const QString& entry) {
+        if (formats.isEmpty() || formats.last() != entry) {
+            formats << entry;
+        }
+    };
+    for (QTextBlock block = document.begin(); block.isValid(); block = block.next()) {
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            const QTextFragment fragment = it.fragment();
+            const QTextCharFormat format = fragment.charFormat();
+            const QString text = fragment.text().replace(QChar::LineSeparator, u'\n');
+            if (format.isImageFormat()) {
+                add(QStringLiteral("image:") + format.toImageFormat().name());
+                continue;
+            }
+            if (format.isAnchor()) {
+                add(QStringLiteral("link:") + format.anchorHref());
+            }
+            if (format.fontFixedPitch()) {
+                add(QStringLiteral("code:") + text);
+            }
+            if (format.hasProperty(QTextFormat::FontWeight) && format.fontWeight() >= QFont::DemiBold) {
+                add(QStringLiteral("bold:") + text);
+            }
+            if (format.fontItalic()) {
+                add(QStringLiteral("italic:") + text);
+            }
+            if (format.fontUnderline() && !format.isAnchor()) {
+                add(QStringLiteral("underline:") + text);
+            }
+            if (format.fontStrikeOut()) {
+                add(QStringLiteral("strike:") + text);
+            }
+            if (format.hasProperty(QTextFormat::ForegroundBrush) && !format.isAnchor()) {
+                add(QStringLiteral("colour:") + text);
+            }
+        }
+    }
+    return formats.join(u' ');
 }
 }  // namespace
 
@@ -1750,6 +1819,283 @@ private slots:
         QVERIFY(!hidden.isVisible());
         QVERIFY(editor->tableViewAt(2) != nullptr);
         layout->removeClaimant(&other);
+    }
+
+    // Rework of S018: a cell that starts with `---` and holds a second `---` further on. GFM shows
+    // it as its characters with its inline formatting, in the header row too (cmark-gfm). Qt 6.8.0
+    // to 6.8.3 take such a text for front matter when they import Markdown and crash if it ends
+    // with the second `---` (CVE-2025-3512): opening the file ended the program.
+    void aCellBetweenTwoRunsOfHyphensShowsAsText_data() {
+        QTest::addColumn<QString>("cell");
+        QTest::addColumn<QString>("shown");
+        QTest::newRow("letters") << QStringLiteral("---ab---") << QStringLiteral("---ab---");
+        QTest::newRow("blanks") << QStringLiteral("--- a ---") << QStringLiteral("--- a ---");
+        QTest::newRow("emphasis") << QStringLiteral("---**b**---") << QStringLiteral("---b---");
+        QTest::newRow("line break") << QStringLiteral("---ab<br>---") << QStringLiteral("---ab\n---");
+        QTest::newRow("four hyphens") << QStringLiteral("----a---") << QStringLiteral("----a---");
+        QTest::newRow("link") << QStringLiteral("--- [l](u) ---") << QStringLiteral("--- l ---");
+    }
+
+    void aCellBetweenTwoRunsOfHyphensShowsAsText() {
+        QFETCH(QString, cell);
+        QFETCH(QString, shown);
+        for (const bool header : {false, true}) {
+            const QString markdown = header ? QStringLiteral("| %1 | h |\n| --- | --- |\n| x | y |\n").arg(cell)
+                                            : QStringLiteral("| A | B |\n| --- | --- |\n| %1 | x |\n").arg(cell);
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("hyphens.md"), markdown.toUtf8())));
+            f.settle();
+            QTableView* view = f.editor()->tableViewAt(0);
+            QVERIFY(view != nullptr);
+            (void)view->viewport()->grab();  // the cells are painted
+            QAbstractItemModel* model = view->model();
+            const QModelIndex index = model->index(header ? 0 : 1, 0);
+            QCOMPARE(model->data(index, ui::TableModel::MarkdownRole).toString(), cell);
+            auto* delegate = qobject_cast<ui::TableDelegate*>(view->itemDelegate());
+            QVERIFY(delegate != nullptr);
+            QTextDocument document;
+            delegate->prepare(document, index);
+            QCOMPARE(document.toPlainText(), shown);
+            QCOMPARE(document.blockCount(), 1);
+            QCOMPARE(text(f), markdown);
+            QVERIFY(!f.editor()->document()->isModified());
+        }
+    }
+
+    // The same while typing: every keystroke lays the cell out again, and the last hyphen ended the
+    // program with everything unsaved.
+    void aCellBetweenTwoRunsOfHyphensCanBeTyped() {
+        for (const int row : {1, 0}) {
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("typed-hyphens.md"), "|  | h |\n| --- | --- |\n|  | x |\n")));
+            f.settle();
+            QTableView* view = f.editor()->tableViewAt(0);
+            QVERIFY(view != nullptr);
+            const QString typed = row == 0 ? QStringLiteral("| ---ab--- | h |\n| --- | --- |\n|  | x |\n")
+                                           : QStringLiteral("|  | h |\n| --- | --- |\n| ---ab--- | x |\n");
+            QVERIFY(clickCell(view, row, 0) != nullptr);
+            typeAsUser(QStringLiteral("---ab---"));
+            f.settle();
+            QCOMPARE(text(f), typed);
+            typeAsUser(QStringLiteral("x"));
+            press(Qt::Key_Backspace);
+            f.settle();
+            QCOMPARE(text(f), typed);
+            QCOMPARE(focusedCell()->toPlainText(), QStringLiteral("---ab---"));
+
+            // Without its editor the cell shows what was typed.
+            press(Qt::Key_Tab);
+            f.settle();
+            QCOMPARE(current(view), QStringLiteral("%1,1").arg(row));
+            (void)view->viewport()->grab();
+            auto* delegate = qobject_cast<ui::TableDelegate*>(view->itemDelegate());
+            QVERIFY(delegate != nullptr);
+            QTextDocument document;
+            delegate->prepare(document, view->model()->index(row, 0));
+            QCOMPARE(document.toPlainText(), QStringLiteral("---ab---"));
+            QCOMPARE(text(f), typed);
+        }
+    }
+
+    // With text after the second `---` those versions of Qt do not crash: they take the cell's
+    // start for front matter and show only what follows the character after the second `---`.
+    void textAfterASecondRunOfHyphensStaysInTheCell_data() {
+        QTest::addColumn<QString>("cell");
+        QTest::addColumn<QString>("shown");
+        QTest::newRow("letters") << QStringLiteral("---ab---xyz") << QStringLiteral("---ab---xyz");
+        QTest::newRow("one letter") << QStringLiteral("---ab---x") << QStringLiteral("---ab---x");
+        QTest::newRow("blanks") << QStringLiteral("--- a --- b") << QStringLiteral("--- a --- b");
+        QTest::newRow("emphasis") << QStringLiteral("---ab--- **c**") << QStringLiteral("---ab--- c");
+    }
+
+    void textAfterASecondRunOfHyphensStaysInTheCell() {
+        QFETCH(QString, cell);
+        QFETCH(QString, shown);
+        const QString markdown = QStringLiteral("| %1 | h |\n| --- | --- |\n| %1 | x |\n").arg(cell);
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("after-hyphens.md"), markdown.toUtf8())));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        auto* delegate = qobject_cast<ui::TableDelegate*>(view->itemDelegate());
+        QVERIFY(delegate != nullptr);
+        for (const int row : {0, 1}) {
+            QTextDocument document;
+            delegate->prepare(document, view->model()->index(row, 0));
+            QCOMPARE(document.toPlainText(), shown);
+            QCOMPARE(document.blockCount(), 1);
+        }
+        QCOMPARE(text(f), markdown);
+    }
+
+    // A cell shows an image's Markdown as its characters, as the editor does outside tables, in a
+    // link too: the image file is not read and nothing of it is drawn; the file keeps the Markdown.
+    // IMAGE stands for the path of a red image, URL for its file URL.
+    void anImageInACellShowsItsCharacters_data() {
+        QTest::addColumn<QString>("cell");
+        QTest::addColumn<QString>("shown");
+        QTest::addColumn<QString>("formats");
+        QTest::newRow("path") << QStringLiteral("![red](IMAGE)") << QStringLiteral("![red](IMAGE)") << QString();
+        QTest::newRow("file URL") << QStringLiteral("![red](URL)") << QStringLiteral("![red](URL)") << QString();
+        QTest::newRow("title") << QStringLiteral("![red](IMAGE \"t\")") << QStringLiteral("![red](IMAGE \"t\")")
+                               << QString();
+        QTest::newRow("angle brackets") << QStringLiteral("![red](<IMAGE>)") << QStringLiteral("![red](<IMAGE>)")
+                                        << QString();
+        QTest::newRow("link around it") << QStringLiteral("[![red](IMAGE)](https://example.com/)")
+                                        << QStringLiteral("![red](IMAGE)")
+                                        << QStringLiteral("link:https://example.com/");
+        QTest::newRow("between emphasis") << QStringLiteral("**a** ![red](IMAGE) *b*")
+                                          << QStringLiteral("a ![red](IMAGE) b") << QStringLiteral("bold:a italic:b");
+        QTest::newRow("after a line break")
+            << QStringLiteral("a<br>![red](IMAGE)") << QStringLiteral("a\n![red](IMAGE)") << QString();
+        QTest::newRow("after an autolink with a backtick")
+            << QStringLiteral("<https://example.com/`>![red](IMAGE)`")
+            << QStringLiteral("https://example.com/`![red](IMAGE)`") << QStringLiteral("link:https://example.com/`");
+        // CommonMark reads a scheme of 32 letters as an autolink, Qt reads text and an image there;
+        // such a cell shows its characters as the cell editor does.
+        QTest::newRow("autolink Qt reads otherwise")
+            << QStringLiteral("<abcdefghijklmnopqrstuvwxyzabcdef:![red](IMAGE)>")
+            << QStringLiteral("<abcdefghijklmnopqrstuvwxyzabcdef:![red](IMAGE)>") << QString();
+    }
+
+    void anImageInACellShowsItsCharacters() {
+        QFETCH(QString, cell);
+        QFETCH(QString, shown);
+        QFETCH(QString, formats);
+        for (const bool header : {false, true}) {
+            test::Fixture f;
+            const QString image = f.dir.filePath(QStringLiteral("red.png"));
+            QVERIFY(test::writeRedImage(image));
+            const QString url = QUrl::fromLocalFile(image).toString();
+            const auto fill = [&](QString text) {
+                return text.replace(QStringLiteral("IMAGE"), image).replace(QStringLiteral("URL"), url);
+            };
+            const QString source = fill(cell);
+            const QString markdown = header ? QStringLiteral("| %1 | h |\n| --- | --- |\n| x | y |\n").arg(source)
+                                            : QStringLiteral("| A | B |\n| --- | --- |\n| %1 | x |\n").arg(source);
+            QVERIFY(f.open(f.writeFile(QStringLiteral("image.md"), markdown.toUtf8())));
+            f.settle();
+            QTableView* view = f.editor()->tableViewAt(0);
+            QVERIFY(view != nullptr);
+            QCOMPARE(test::redPixels(view->viewport()->grab().toImage()), 0);
+            QAbstractItemModel* model = view->model();
+            const QModelIndex index = model->index(header ? 0 : 1, 0);
+            QCOMPARE(model->data(index, ui::TableModel::MarkdownRole).toString(), source);
+            QCOMPARE(model->data(index, Qt::EditRole).toString(),
+                     QString(source).replace(QStringLiteral("<br>"), QStringLiteral("\n")));
+            auto* delegate = qobject_cast<ui::TableDelegate*>(view->itemDelegate());
+            QVERIFY(delegate != nullptr);
+            ResourceLog document;
+            delegate->prepare(document, index);
+            QCOMPARE(formatsOf(document), formats);
+            QCOMPARE(document.toPlainText(), fill(shown));
+            QCOMPARE(test::redPixels(painted(document)), 0);
+            QVERIFY2(document.requested.isEmpty(), qPrintable(document.requested.join(u' ')));
+            QCOMPARE(text(f), markdown);
+            QVERIFY(!f.editor()->document()->isModified());
+        }
+    }
+
+    // Raw HTML in a cell shows as its characters, as in the editor outside tables: no colour, link,
+    // emphasis or image of its own, nothing read; the file keeps it.
+    void rawHtmlInACellShowsItsCharacters_data() {
+        QTest::addColumn<QString>("cell");
+        QTest::newRow("span with a colour") << QStringLiteral("<span style=\"color:#ff0000\">red</span>");
+        QTest::newRow("image") << QStringLiteral("<img src=\"IMAGE\">");
+        QTest::newRow("closed image") << QStringLiteral("<img src=\"IMAGE\"/>");
+        QTest::newRow("image with a size") << QStringLiteral("<img src=\"IMAGE\" width=\"120\" height=\"80\">");
+        QTest::newRow("link") << QStringLiteral("<a href=\"https://example.com/\">z</a>");
+        QTest::newRow("bold and italic") << QStringLiteral("<b>b</b> and <i>i</i>");
+        QTest::newRow("block at the start") << QStringLiteral("<div>d</div>");
+        QTest::newRow("background image") << QStringLiteral("<span style=\"background-image:url(IMAGE)\">x</span>");
+        QTest::newRow("table background") << QStringLiteral("<table background=\"IMAGE\"><tr><td>x</td></tr></table>");
+        QTest::newRow("comment") << QStringLiteral("<!-- c --> x");
+    }
+
+    void rawHtmlInACellShowsItsCharacters() {
+        QFETCH(QString, cell);
+        test::Fixture f;
+        const QString image = f.dir.filePath(QStringLiteral("red.png"));
+        QVERIFY(test::writeRedImage(image));
+        const QString source = QString(cell).replace(QStringLiteral("IMAGE"), image);
+        const QString markdown = QStringLiteral("| A | B |\n| --- | --- |\n| %1 | x |\n").arg(source);
+        QVERIFY(f.open(f.writeFile(QStringLiteral("html.md"), markdown.toUtf8())));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QCOMPARE(test::redPixels(view->viewport()->grab().toImage()), 0);
+        auto* delegate = qobject_cast<ui::TableDelegate*>(view->itemDelegate());
+        QVERIFY(delegate != nullptr);
+        ResourceLog document;
+        delegate->prepare(document, view->model()->index(1, 0));
+        QCOMPARE(formatsOf(document), QString());
+        QCOMPARE(document.toPlainText(), source);
+        QCOMPARE(test::redPixels(painted(document)), 0);
+        QVERIFY2(document.requested.isEmpty(), qPrintable(document.requested.join(u' ')));
+        QCOMPARE(text(f), markdown);
+    }
+
+    // What a cell formats stays: emphasis, code, links, autolinks and line breaks, also beside
+    // emphasis. Code shows `![`, tags and `<br>` as their characters; escapes and entities show the
+    // character they stand for. Checked with commonmark.js 0.31.2 and markdown-it-py 4.2.0
+    // (commonmark, HTML off); Qt draws `_x_` underlined and `~~x~~` struck out.
+    void aCellKeepsItsInlineFormatting_data() {
+        QTest::addColumn<QString>("cell");
+        QTest::addColumn<QString>("shown");
+        QTest::addColumn<QString>("formats");
+        QTest::newRow("code with an image")
+            << QStringLiteral("`![x](IMAGE)`") << QStringLiteral("![x](IMAGE)") << QStringLiteral("code:![x](IMAGE)");
+        QTest::newRow("code with tags") << QStringLiteral("`<b>x</b>`") << QStringLiteral("<b>x</b>")
+                                        << QStringLiteral("code:<b>x</b>");
+        QTest::newRow("code with a break")
+            << QStringLiteral("`a<br>b`") << QStringLiteral("a<br>b") << QStringLiteral("code:a<br>b");
+        QTest::newRow("autolink") << QStringLiteral("<https://example.com/>") << QStringLiteral("https://example.com/")
+                                  << QStringLiteral("link:https://example.com/");
+        QTest::newRow("e-mail autolink") << QStringLiteral("<a@example.com>") << QStringLiteral("a@example.com")
+                                         << QStringLiteral("link:mailto:a@example.com");
+        QTest::newRow("escaped exclamation mark")
+            << QStringLiteral("\\![x](https://example.com/)") << QStringLiteral("!x")
+            << QStringLiteral("link:https://example.com/");
+        QTest::newRow("escaped bracket") << QStringLiteral("!\\[x](IMAGE)") << QStringLiteral("![x](IMAGE)")
+                                         << QString();
+        QTest::newRow("escaped backslash")
+            << QStringLiteral("\\\\![x](IMAGE)") << QStringLiteral("\\![x](IMAGE)") << QString();
+        QTest::newRow("escaped tags") << QStringLiteral("\\<b>x\\</b>") << QStringLiteral("<b>x</b>") << QString();
+        QTest::newRow("entities") << QStringLiteral("&lt;b&gt; &#33;[x](https://example.com/)")
+                                  << QStringLiteral("<b> !x") << QStringLiteral("link:https://example.com/");
+        QTest::newRow("exclamation marks") << QStringLiteral("a! !(x) b!") << QStringLiteral("a! !(x) b!") << QString();
+        QTest::newRow("emphasis and a link")
+            << QStringLiteral("**b** *i* ~~s~~ [l](https://example.com/)") << QStringLiteral("b i s l")
+            << QStringLiteral("bold:b italic:i strike:s link:https://example.com/");
+        QTest::newRow("breaks beside emphasis") << QStringLiteral("**b**<br>_u_<br>*i*") << QStringLiteral("b\nu\ni")
+                                                << QStringLiteral("bold:b underline:u italic:i");
+    }
+
+    void aCellKeepsItsInlineFormatting() {
+        QFETCH(QString, cell);
+        QFETCH(QString, shown);
+        QFETCH(QString, formats);
+        test::Fixture f;
+        const QString image = f.dir.filePath(QStringLiteral("red.png"));
+        QVERIFY(test::writeRedImage(image));
+        const auto fill = [&image](QString text) { return text.replace(QStringLiteral("IMAGE"), image); };
+        const QString source = fill(cell);
+        const QString markdown = QStringLiteral("| A | B |\n| --- | --- |\n| %1 | x |\n").arg(source);
+        QVERIFY(f.open(f.writeFile(QStringLiteral("inline.md"), markdown.toUtf8())));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        (void)view->viewport()->grab();
+        auto* delegate = qobject_cast<ui::TableDelegate*>(view->itemDelegate());
+        QVERIFY(delegate != nullptr);
+        ResourceLog document;
+        delegate->prepare(document, view->model()->index(1, 0));
+        QCOMPARE(document.toPlainText(), fill(shown));
+        QCOMPARE(formatsOf(document), fill(formats));
+        QCOMPARE(document.blockCount(), 1);
+        QCOMPARE(test::redPixels(painted(document)), 0);
+        QVERIFY2(document.requested.isEmpty(), qPrintable(document.requested.join(u' ')));
+        QCOMPARE(text(f), markdown);
     }
 };
 

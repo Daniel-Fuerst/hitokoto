@@ -391,6 +391,36 @@ private slots:
         QVERIFY(anim.stepUntil([&] { return !scroller->isRunning(); }));
         QCOMPARE(bar->value(), jump);
     }
+
+    void shiftDuringExternalSetValueUsesCurrentBarValue() {
+        // When the scroll bar's value is changed programmatically (e.g. restoreAnchor),
+        // a layout pass triggered by that change can call shift() before SmoothScroller's
+        // own valueChanged slot has run. Without a running animation, shift() must base its
+        // new target on the scroll bar's current value rather than the stale target_.
+        QScrollBar bar;
+        bar.setRange(0, 1000);
+        bar.setValue(100);
+
+        ui::SmoothScroller* scroller = nullptr;
+        double pendingShift = 0.0;
+        // Connecting before SmoothScroller connects simulates a receiver (like
+        // QAbstractScrollArea) that processes valueChanged before SmoothScroller.
+        QObject::connect(&bar, &QScrollBar::valueChanged, [&scroller, &pendingShift](int /*val*/) {
+            if (scroller != nullptr && std::abs(pendingShift) > 0.001) {
+                const double d = pendingShift;
+                pendingShift = 0.0;
+                scroller->shift(d);
+            }
+        });
+
+        ui::SmoothScroller s(&bar);
+        scroller = &s;
+
+        pendingShift = -10.0;
+        bar.setValue(500);
+        QCOMPARE(bar.value(), 490);
+        QCOMPARE(s.target(), 490.0);
+    }
 };
 
 QTEST_MAIN(tst_s027_smooth_scrolling)

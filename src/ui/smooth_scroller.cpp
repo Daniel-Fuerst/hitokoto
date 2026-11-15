@@ -32,12 +32,12 @@ SmoothScroller::SmoothScroller(QScrollBar* scrollBar, QObject* parent)
         });
         // A value the scroller did not set comes from the program or the user (find, the scroll
         // anchor, caret moves): it wins over a running animation (review O1).
-        connect(scrollBar_, &QAbstractSlider::valueChanged, this, [this](int val) {
+        connect(scrollBar_, &QAbstractSlider::valueChanged, this, [this](int /*val*/) {
             if (updating_) {
                 return;
             }
             stop();
-            target_ = static_cast<double>(val);
+            target_ = static_cast<double>(scrollBar_->value());
         });
         connect(scrollBar_, &QAbstractSlider::rangeChanged, this, [this](int min, int max) {
             if (animation_.state() == QAbstractAnimation::Running) {
@@ -84,14 +84,18 @@ void SmoothScroller::shift(double delta) {
     }
     const auto min = static_cast<double>(scrollBar_->minimum());
     const auto max = static_cast<double>(scrollBar_->maximum());
-    target_ = std::clamp(target_ + delta, min, max);
     if (animation_.state() == QAbstractAnimation::Running) {
+        target_ = std::clamp(target_ + delta, min, max);
         // Moving both ends moves the current value with them; onValueChanged sets the bar.
         const qreal curStart = animation_.startValue().toReal();
         const qreal curEnd = animation_.endValue().toReal();
         animation_.setStartValue(curStart + delta);
         animation_.setEndValue(curEnd + delta);
     } else {
+        // Without an animation, the shift adjusts the current scroll bar position directly.
+        // Reading scrollBar_->value() rather than target_ prevents jumping back when shift()
+        // re-enters during an external setValue() before our valueChanged slot has updated target_.
+        target_ = std::clamp(static_cast<double>(scrollBar_->value()) + delta, min, max);
         setBarValue(static_cast<int>(std::lround(target_)));
     }
 }

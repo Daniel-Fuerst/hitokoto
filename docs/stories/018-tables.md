@@ -64,6 +64,9 @@ Markdown that GitHub shows the same way.
 - When the table is shown
 - Then each cell shows the formatted text (escaped pipes as `|`, also in code), `<br>` as a line
   break, and long text wraps inside its column
+- And an image (`![x](y)`, also as the text of a link) and raw HTML show as their characters, as
+  in the editor outside tables, and a cell loads nothing they name; in code, `<br>` shows as its
+  characters
 
 **Scenario: editing a cell changes only that cell**
 - Given a table
@@ -264,6 +267,26 @@ Accepted by the user on 2026-10-28; defects found later are handled separately. 
 benchmark baseline holds the `s018_*` values since 9ddc0be (CI run on e5ae913); Windows and macOS
 run with the pull request to `main`.
 
+Rework on 2026-11-14 (`agents/sec-o1-cell-front-matter`): the delegate hands a cell to Qt's
+Markdown import without the front matter feature. With it, Qt 6.8.0 to 6.8.3 took a cell that
+starts with `---` and holds a second `---` from its sixth character on for front matter: the
+program ended when the cell ended with the second `---` (CVE-2025-3512 in Qt, fixed in Qt 6.8.4),
+on opening such a file and on typing such a cell, and otherwise the cell showed only what follows
+the second `---`. Qt 6.8.4 and later, 6.12 among them, never did either, and show every cell as
+before.
+
+Rework on 2026-11-15 (`agents/s018-table-cell-content`): Qt's Markdown import of a cell runs
+without raw HTML, so tags show as their characters, as in the editor outside tables.
+`core::tableCellImport` prepares the cell's Markdown for it: it escapes the brackets of an image,
+so `![x](y)` shows as its characters (as the text of a link too, which stays a link, as outside
+tables), and gives a space (U+2000) for each `<br>`, which the delegate turns into a line break
+(U+2028) after the import; beside emphasis, Markdown reads that space as it read the `<br/>` tag,
+and U+2028 not. Code spans and autolinks stay as they are; in code, `<br>` shows as its characters
+(before: as `<br/>`). Should the import still hold an image, where Qt reads the Markdown otherwise
+than CommonMark (an autolink with a scheme of 32 letters, which Qt reads as text), the cell shows
+its characters as its editor does. Cells that are plain text, the cell editor, find and saving are
+unchanged.
+
 ## Tests
 
 - Core: `S018_Tables` for the GFM rules (checked against cmark-gfm), cell text with `<br>` and
@@ -277,3 +300,13 @@ run with the pull request to `main`.
   it; `Backspace` on a line with text and on an empty line; the source view shows it; the file is
   unchanged.
 - Benchmark: `s018_table_typing_*` and `s018_table_open_ms` in `hitokoto-bench`.
+- UI, for the rework of 2026-11-14: cells between two runs of `---` open, in a body row and in
+  the header row, are painted and can be typed key by key; text after the second `---` stays in
+  the cell.
+- UI, for the rework of 2026-11-15: an image in a body or header cell, in each spelling and as the
+  text of a link, shows its characters, nothing of it is painted and the cell's document asks for no
+  resource; raw HTML (a span with a colour, images, a link, emphasis, a block, backgrounds, a
+  comment) shows its characters; emphasis, code, links, autolinks, escapes, entities and line breaks
+  beside emphasis keep their look (checked with commonmark.js 0.31.2 and markdown-it-py 4.2.0); the
+  file and the cell editor's text stay as they were. Core: `tableCellImport` for images, code spans,
+  autolinks, escapes and `<br>`.

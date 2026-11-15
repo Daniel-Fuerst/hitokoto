@@ -1,0 +1,9 @@
+# S036: which versions get a Debian package and a GitHub release; read by
+# scripts/packaging/DebianPackage.cmake.
+# changelog-from <version>: the first version in the changelog (the first version tag, S030).
+# first <version>: the first version that gets a package; lowering it makes the next run of
+#   "Packaging" release the older versions too.
+# skip <version> <reason>: a version that cannot be built or tested with Debian's Qt for good; the
+#   plan leaves it out and names it with the reason.
+changelog-from 0.3.0
+first 0.5.1

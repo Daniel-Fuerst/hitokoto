@@ -358,7 +358,11 @@ bool FindController::aheadWork(qint64 nanoseconds) {
         const int b = block.blockNumber();
         const QTextBlock nextBlock = block.next();
         const std::u16string next = nextBlock.isValid() ? textOf(nextBlock) : std::u16string{};
-        const core::LineRender render = registry_.render(text, core::LineContext{false, ahead_.state, next});
+        const std::u16string nextNext = next.find(u'|') != std::u16string::npos && nextBlock.next().isValid()
+                                            ? textOf(nextBlock.next())
+                                            : std::u16string{};
+        const core::LineRender render =
+            registry_.render(text, core::LineContext{false, ahead_.state, next, 0, false, nextNext});
         ahead_.state = render.blockState;
         ahead_.next = b + 1;
         const bool skip = ahead_.units.empty() && !render.table && !ahead_.lastWasTable && !mayMatch(text);
@@ -592,7 +596,11 @@ bool FindController::work(qint64 nanoseconds) {
         }
         const QTextBlock nextBlock = block.next();
         const std::u16string next = nextBlock.isValid() ? textOf(nextBlock) : std::u16string{};
-        const core::LineRender render = registry_.render(text, core::LineContext{false, pass_.state, next});
+        const std::u16string nextNext = next.find(u'|') != std::u16string::npos && nextBlock.next().isValid()
+                                            ? textOf(nextBlock.next())
+                                            : std::u16string{};
+        const core::LineRender render =
+            registry_.render(text, core::LineContext{false, pass_.state, next, 0, false, nextNext});
         info.entering = pass_.state;
         info.count = 0;
         info.crossed = false;
@@ -800,7 +808,11 @@ FindController::BlockMatches FindController::matchesOfBlock(int block) const {
         const QTextBlock nextBlock = b.next();
         const std::u16string text = textOf(b);
         const std::u16string next = nextBlock.isValid() ? textOf(nextBlock) : std::u16string{};
-        const core::LineRender render = registry_.render(text, core::LineContext{false, state, next});
+        const std::u16string nextNext = next.find(u'|') != std::u16string::npos && nextBlock.next().isValid()
+                                            ? textOf(nextBlock.next())
+                                            : std::u16string{};
+        const core::LineRender render =
+            registry_.render(text, core::LineContext{false, state, next, 0, false, nextNext});
         ++lookupRenders_;
         builder.addLine(text, static_cast<std::size_t>(b.blockNumber()), render, out.units);
         state = render.blockState;
@@ -837,8 +849,12 @@ bool FindController::hasWord(int line, const core::BlockState& entering) const {
     }
     const std::u16string text = textOf(b);
     const QTextBlock nextBlock = b.next();
-    const core::LineRender render = registry_.render(
-        text, core::LineContext{false, entering, nextBlock.isValid() ? textOf(nextBlock) : std::u16string{}});
+    const std::u16string next = nextBlock.isValid() ? textOf(nextBlock) : std::u16string{};
+    const std::u16string nextNext = next.find(u'|') != std::u16string::npos && nextBlock.next().isValid()
+                                        ? textOf(nextBlock.next())
+                                        : std::u16string{};
+    const core::LineRender render =
+        registry_.render(text, core::LineContext{false, entering, next, 0, false, nextNext});
     ++lookupRenders_;
     std::vector<core::FindUnit> units;
     if (render.table) {
@@ -922,7 +938,14 @@ void FindController::onContentsChange(int position, int charsRemoved, int charsA
     const int newCount = doc->blockCount();
     const int delta = newCount - blockCount_;
     const int first = doc->findBlock(position).blockNumber();
-    const int lastNew = std::max(first, doc->findBlock(position + charsAdded).blockNumber());
+    // A change that reaches the end of the document (select all and paste, its undo and redo)
+    // reports one character more than the document holds; it ends in the last line, as in
+    // BlockStyler and BlockLayout.
+    QTextBlock end = doc->findBlock(position + charsAdded);
+    if (!end.isValid()) {
+        end = doc->lastBlock();
+    }
+    const int lastNew = std::max(first, end.blockNumber());
     const int lastOld = lastNew - delta;
     // Code review O6: the front matter changes with line 0, with a line of the block or the line
     // after it, and, while it is not closed, with any line that could close it.

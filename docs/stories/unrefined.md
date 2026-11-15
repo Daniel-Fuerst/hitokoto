@@ -7,20 +7,6 @@ this folder and is removed here, with the story ID in the commit message. This f
 on any branch; it needs no branch of its own (Armin, 2026-10-30). Expectations are checked against
 commonmark.js or markdown-it-py (mode `commonmark`) before they are written here.
 
-## Soft line breaks: paragraphs flow
-
-- **Seen:** 2026-10-30 (Armin, `docs/adr/0006-context-beyond-one-line.md` on Windows). A paragraph
-  that is hard-wrapped in the source shows each source line as its own line; a source line wider
-  than the window wraps, so its last word can stand alone, and the next source line starts anew.
-- **CommonMark:** a line ending inside a paragraph is a soft line break and renders as a space; the
-  paragraph flows (`a` / `b` gives `<p>a\nb</p>`). A hard line break needs two trailing spaces or a
-  backslash before the line ending (`a  ` / `b` gives `a<br />b`).
-- **hitokoto:** every source line is a line on screen (S001–S003); a soft break is not concealed.
-- **Open:** whether paragraphs flow as in the rendered document while the caret is elsewhere, and
-  what happens on the caret line (show the source lines again, like revealed markers); how a hard
-  line break is shown; how the caret moves over a flowing paragraph; the cost for long hard-wrapped
-  paragraphs (S007 budgets). Related: bullet list indentation below, ADR 0003 (editor surface).
-
 ## Emphasis across a line break
 
 - **Seen:** 2026-11-04 (Armin, Windows release on main 6c67e67, a bullet list with hard-wrapped
@@ -147,7 +133,19 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   AppImage, with the licences.
 - **Wanted (Armin):** for every new version, packages and installers built automatically; on
   2026-11-08 first of all a Debian package for trixie, built by CI on main against Debian's Qt
-  (6.8.2), once versions exist.
+  (6.8.2), once versions exist. On 2026-11-12 Armin added a Windows installer for every version.
+- **Refined so far (2):** S034 keeps the AUR package `hitokoto` (Daniel's source recipe, pull
+  requests 38 and 40) up to date with every version. The Debian package and the Windows installer
+  are decided after S034 (Armin, 2026-11-12).
+- **Refined so far (3):** S036 builds a Debian package for trixie for every version from 0.5.1 on
+  and attaches it to a GitHub release per version, with notes generated from Git (Armin,
+  2026-11-12). Open here: a build and test against Debian's Qt in the CI of every pull request, so
+  that a break on trixie shows before the merge, not only in "Packaging" after the tag (S036 review
+  O3, Armin, 2026-11-12).
+- **Refined so far (4):** S037 builds a Windows installer (MSI) for every version and attaches it to
+  the same release as the Debian package (Armin, 2026-11-13). Open here: signing, a version
+  resource in `hitokoto.exe` (Explorer's file properties show no version), and the MSI build in the
+  CI of every pull request.
 - **Open:** the formats per platform and whether this refines S012 or becomes a story of its own
   (S012 still says the `.deb` follows separate Debian packaging conventions; for Armin, a `.deb`
   built by CI belongs to this project); signing (Windows certificate, macOS notarisation); where the
@@ -160,6 +158,20 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   full version from S030 (`0.4.0+3.gabc1234`); DEB and TGZ take it. Windows installers (WiX, Inno
   Setup) and version resources need a numeric version: they take `HITOKOTO_VERSION_CORE`, not
   `CPACK_PACKAGE_VERSION`.
+
+## Update check in the app
+
+- **Seen:** 2026-11-13 (Armin, while refining S037): it would be good if hitokoto asked the GitHub
+  repository whether a newer release exists and offered the update.
+- **Now:** S036 and S037 publish every version as a GitHub release with the Debian package and the
+  MSI; `https://api.github.com/repos/Daniel-Fuerst/hitokoto/releases/latest` names the newest
+  without a token. hitokoto itself makes no network request at all.
+- **Open:** whether and when hitokoto may go online (the brief says nothing about network access;
+  a first request needs the user's consent or at least a setting); what is offered per platform
+  (Windows: download the MSI and start it, which a per-machine installation needs administrator
+  rights for; Debian: the package manager's job, so perhaps only a notice); where the address comes
+  from, so that a move away from GitHub needs no new program; checking the download against
+  `SHA256SUMS`; theme tokens for a notice (brief, section 8).
 
 ## Showing the version to the user
 

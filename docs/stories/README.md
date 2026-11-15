@@ -40,10 +40,16 @@ story ID (see "Conventions").
 | 31 | [S030](030-automatic-versions.md) | A defined version step for every merge into main | S000 | M | Done |
 | 32 | [S031](031-paste-tables.md) | Pasting a table from Outlook, Excel or a web page as a Markdown table | S018, S019, S020 | M | Done |
 | 33 | [S032](032-version-label-script-from-main.md) | The check "Version label" takes its script from main | S030 | S | In progress |
-| 34 | [S007](007-large-files.md) | 10 MB files open within budget and type without lag | S006 | L | Partly done |
-| 35 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
-| 36 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |
-| 37 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | Open |
+| 34 | [S033](033-soft-line-breaks.md) | Soft line breaks: paragraphs flow | S003, S009, S019, S020, S023, S028 | L | In review |
+| 35 | [S034](034-aur-package.md) | The AUR package follows every version | S030 | S | Done |
+| 36 | [S035](035-version-after-ci.md) | A version only after the CI on main is green | S030, S034 | S | Done |
+| 37 | [S036](036-debian-package.md) | Every version gets a Debian package for trixie | S030, S034, S035 | M | Done |
+| 38 | [S037](037-windows-msi.md) | Every version gets a Windows installer (MSI) | S030, S035, S036 | L | In review |
+| 39 | [S038](038-subtle-menu-bar.md) | Subtle top menu bar without a dividing line | S005 | S | In review |
+| 40 | [S007](007-large-files.md) | 10 MB files open within budget and type without lag | S006 | L | Partly done |
+| 41 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
+| 42 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |
+| 43 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | Open |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 

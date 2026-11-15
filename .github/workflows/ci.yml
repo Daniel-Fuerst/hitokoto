@@ -7,9 +7,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Pull requests: a new push cancels the running CI. Main (S035): every push has its own group and
+# is never cancelled, because its last job Version tags it.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Qt versions: 6.12 (ADR 0001) where possible. Windows uses 6.8.3, the oldest supported Qt, until
 # an aqtinstall release supports the Qt 6.11+ repository layout for Windows x64 (aqtinstall 3.3.0
@@ -276,3 +278,18 @@ jobs:
             pr-*.json
             changed-paths.txt
             gate-report.md
+
+  # S035: the version tag only after every other job of this run is green on a push to main
+  # (version.yml, tag job). A skipped job does not stop it (review O1); a failed or cancelled one
+  # does, until "Re-run failed jobs" turns the run green. The lint S035_TheVersionJobNeedsEveryCiJob
+  # keeps the needs complete. Packaging (packaging.yml) follows this workflow by workflow_run.
+  version:
+    name: Version
+    needs: [format, core-sanitizers, fuzz, build-test, tidy, bench]
+    if: >-
+      always() && github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    permissions:
+      contents: write       # push the tags
+      pull-requests: read   # the pull request of a merge commit and its labels
+    uses: ./.github/workflows/version.yml

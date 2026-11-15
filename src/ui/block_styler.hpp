@@ -46,6 +46,9 @@ public:
         return revealed_.contains(blockNumber) || blockNumber == revealedOpen_ || blockNumber == revealedClose_ ||
                blockNumber == revealedUnderline_;
     }
+    [[nodiscard]] bool isParagraphRevealed(int blockNumber) const noexcept {
+        return isRevealed(blockNumber) || revealedParagraph_.contains(blockNumber);
+    }
 
     /// Style the blocks on screen that are not styled yet (call after scrolling/resizing).
     void styleVisible();
@@ -83,6 +86,17 @@ public:
     /// Number of lines whose setext level was passed up a paragraph so far (instrumentation for
     /// tests, S023 review O2).
     [[nodiscard]] quint64 levelSteps() const noexcept { return levelSteps_; }
+    /// Number of lines the search for the extent of a paragraph walked so far (instrumentation for
+    /// tests, S033).
+    [[nodiscard]] quint64 extentSteps() const noexcept { return extentSteps_; }
+    /// Number of lines whose block state was worked out on its own, outside the styling of the
+    /// line, so far (instrumentation for tests, S033).
+    [[nodiscard]] quint64 stateSteps() const noexcept { return stateSteps_; }
+    /// Ends each idle slice, and every walk that otherwise ends after a time (setext walks, level
+    /// jobs, the searches for a paragraph's extent, fences and front matter), after `blocks` blocks
+    /// or lines, so that tests see the same slices on every machine (0 = by time, the default;
+    /// instrumentation for tests, S033, review O3).
+    void setSliceBlocksForTests(int blocks) noexcept { sliceBlocks_ = blocks; }
 
     /// How a block is shown right now (used for drawing decorations and hit testing).
     [[nodiscard]] core::LineRender renderFor(const QTextBlock& block);
@@ -101,13 +115,16 @@ private:
     /// level the line is shown with.
     [[nodiscard]] core::LineRender renderLine(const QTextBlock& block, core::ParagraphLink* link, bool walk);
     void styleRange(int first, int last);
+    void restyleRevealRange(int first, int last);
     void styleBlock(const QTextBlock& block);
     /// Space above and below a block (ADR 0003): a code block panel's margin (S021), a thematic
     /// break's margin (S023), the same concealed and revealed.
     void applyBlockSpacing(const QTextBlock& block, const core::LineRender& render);
     void applyWrapIndent(const QTextBlock& block, const core::LineRender& render);
+    void applyParagraphFlow(const QTextBlock& block, const core::LineRender& render);
     /// The line after `block` when the table element needs it as lookahead, else empty.
     [[nodiscard]] static QString nextLineFor(const QTextBlock& block, core::BlockState state, const QString& text);
+    [[nodiscard]] int expectedStyle(int blockNumber) const noexcept;
     [[nodiscard]] bool isStyled(const QTextBlock& block) const;
     [[nodiscard]] core::BlockState blockStateAfter(const QTextBlock& block);
     /// Opening and closing fence of the code block that holds `block` (S021); open -1 if `block` is
@@ -126,6 +143,11 @@ private:
     void updateExtentAfterEdit(int position, int charsAdded);
     void scheduleFrom(int blockNumber);
     void idleSlice();
+    /// Whether a walk has used up its budget after `steps` steps: more than `nanoseconds` since
+    /// `timer`, looked at every `every` steps; with slices for tests, `sliceBlocks_` steps.
+    [[nodiscard]] bool spent(int steps, const QElapsedTimer& timer, qint64 nanoseconds, int every) const;
+    /// Whether a slice that started at `timer` has time left; always with slices for tests.
+    [[nodiscard]] bool timeLeft(const QElapsedTimer& timer) const;
 
     // ---- S023 (ADR 0006): setext headings from below, front matter at the document start -------
     /// The setext level of the paragraph `block` belongs to, given the state after it; not
@@ -180,14 +202,35 @@ private:
     /// After styling `block`: how it relates to the paragraph above, and the level that follows for
     /// the line above.
     void updateParagraphAbove(const QTextBlock& block, const core::LineRender& render, core::ParagraphLink link);
-    /// The setext underline of the heading that holds `block`, or -1 (also while it is searched for
-    /// in idle slices; setRevealed() is called again when it is found).
-    [[nodiscard]] int underlineOf(const QTextBlock& block);
-    /// Walks on towards the underline, at most `nanoseconds`; true when the walk has ended.
-    bool continueUnderlineSearch(qint64 nanoseconds);
+    /// S023/S032: the extent of the paragraph (and any setext underline) that holds `block`; walked
+    /// within the synchronous budget and continued in idle slices when longer.
+    struct ParagraphExtent {
+        core::BlockState inside;
+        int from = -1;       ///< a line known to be inside the paragraph
+        int first = -1;      ///< first line of the paragraph, once known
+        int last = -1;       ///< last line of the paragraph, once known
+        int underline = -1;  ///< setext underline at last + 1, or -1
+        int back = -1;       ///< next line to check in backward walk; -1 = first is known
+        int forward = -1;    ///< next line to check in forward walk; -1 = last and underline are known
+        bool valid = false;
+
+        [[nodiscard]] int knownFirst() const noexcept { return back >= 0 ? back : first; }
+        [[nodiscard]] int knownLast() const noexcept { return forward >= 0 ? std::max(forward - 1, from) : last; }
+        [[nodiscard]] bool contains(int number) const noexcept {
+            return valid &&
+                   ((number >= knownFirst() && number <= knownLast()) || (underline >= 0 && number == underline));
+        }
+    };
+    [[nodiscard]] ParagraphExtent paragraphExtentOf(const QTextBlock& block);
+    [[nodiscard]] int paragraphStartOf(const QTextBlock& block);
+    [[nodiscard]] core::ParagraphLink paragraphLinkOf(const QTextBlock& block, core::BlockState inside);
+    [[nodiscard]] bool paragraphContinues(const QTextBlock& block, core::BlockState inside);
+    /// Walks on towards the paragraph's ends and underline, at most `nanoseconds` and, given a
+    /// `screen` (first and last block on screen), no further than past it; true when done.
+    bool continueUnderlineSearch(qint64 nanoseconds, std::pair<int, int> screen = {-1, -1});
     void underlineSearchSlice();
-    /// After an edit of lines `first` to `last`: keeps the underline found last if the edit leaves
-    /// its heading's lines continuing the paragraph.
+    /// After an edit of lines `first` to `last`: keeps the paragraph extent found last if the edit
+    /// leaves its lines continuing the paragraph.
     void updateUnderlineAfterEdit(int first, int last, int delta);
     /// After an edit: searches that walked over the edited lines start again.
     void restartParagraphSearchesAfterEdit(int firstEdited, int delta);
@@ -205,9 +248,10 @@ private:
     std::function<std::pair<int, int>()> visibleBlocks_;
     EditorFormats formats_;
     core::LineRange revealed_{0, 0};
-    int revealedOpen_ = -1;       ///< fence revealed besides revealed_ (S021), -1 = none
-    int revealedClose_ = -1;      ///< likewise
-    int revealedUnderline_ = -1;  ///< setext underline revealed besides revealed_ (S023), -1 = none
+    core::LineRange revealedParagraph_;  ///< paragraph lines revealed for revealed_ (S032)
+    int revealedOpen_ = -1;              ///< fence revealed besides revealed_ (S021), -1 = none
+    int revealedClose_ = -1;             ///< likewise
+    int revealedUnderline_ = -1;         ///< setext underline revealed besides revealed_ (S023), -1 = none
     // The extent of the code block last looked up. A caret step inside a block, and typing in it,
     // reuse it, so their cost does not depend on the size of the block (review O2).
     // The code block searched last, and while a search runs, how far it got. A caret step inside
@@ -230,19 +274,7 @@ private:
     std::vector<ParagraphSearch> paragraphSearches_;  ///< walks going on in idle slices, oldest first
     std::vector<LevelJob> levelJobs_;                 ///< done before the walks, oldest first
     QTimer paragraphSearch_;
-    /// The heading whose underline was found last (S023): a caret step inside it costs nothing.
-    struct UnderlineCache {
-        core::BlockState inside;  ///< the state after every line of the heading
-        int first = -1;           ///< a line of the heading
-        int underline = -1;       ///< its underline
-    };
-    UnderlineCache underline_;
-    struct UnderlineSearch {
-        core::BlockState inside;
-        int from = -1;  ///< the line the search started from, -1 = none
-        int next = -1;
-    };
-    UnderlineSearch underlineSearch_;
+    ParagraphExtent underline_;
     QTimer underlineSearchTimer_;
     core::BlockState startState_;  ///< the state the first line is entered with (front matter)
     int frontMatterClose_ = -1;    ///< closing line of the front matter confirmed last, -1 = none
@@ -256,10 +288,13 @@ private:
     int blockCount_ = 1;  ///< block count after the last change seen
     QTimer idle_;
     int idleNext_ = 0;
+    int sliceBlocks_ = 0;  ///< blocks or lines per slice and walk for tests; 0 = by time
     bool busy_ = false;
     quint64 styledCount_ = 0;
     quint64 renderCount_ = 0;
     quint64 levelSteps_ = 0;
+    quint64 extentSteps_ = 0;
+    quint64 stateSteps_ = 0;
 };
 
 }  // namespace hitokoto::ui

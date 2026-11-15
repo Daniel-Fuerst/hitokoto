@@ -6,6 +6,7 @@
 #include "editor_widget.hpp"
 #include "find_bar.hpp"
 #include "find_controller.hpp"
+#include "menu_bar.hpp"
 
 #include <QAction>
 #include <QApplication>
@@ -45,6 +46,8 @@ MainWindow::MainWindow(const core::ElementRegistry& registry, QWidget* parent)
     column->addWidget(findBar_);
     setCentralWidget(central);
     find_ = new FindController(editor_, findBar_, registry, this);
+    menuBar_ = new MenuBar(this);
+    setMenuBar(menuBar_);
     createMenus();
 
     askSave_ = [this](const QString& name) {
@@ -106,8 +109,8 @@ void MainWindow::createMenus() {
     quit->setMenuRole(QAction::QuitRole);
 
     QMenu* edit = menuBar()->addMenu(tr("&Edit"));
-    edit->addAction(tr("&Undo"), QKeySequence::Undo, editor_, &QTextEdit::undo);
-    edit->addAction(tr("&Redo"), QKeySequence::Redo, editor_, &QTextEdit::redo);
+    edit->addAction(tr("&Undo"), QKeySequence::Undo, editor_, &EditorWidget::undoEdit);
+    edit->addAction(tr("&Redo"), QKeySequence::Redo, editor_, &EditorWidget::redoEdit);
     edit->addSeparator();
     edit->addAction(tr("Cu&t"), QKeySequence::Cut, editor_, &QTextEdit::cut);
     edit->addAction(tr("&Copy"), QKeySequence::Copy, editor_, &QTextEdit::copy);
@@ -154,6 +157,7 @@ void MainWindow::createMenus() {
 }
 
 void MainWindow::applyTheme(const core::Theme& theme) {
+    menuBar_->applyStyle(core::menuBarStyle(theme));
     editor_->applyTheme(theme);
     find_->applyTheme(theme);
 }

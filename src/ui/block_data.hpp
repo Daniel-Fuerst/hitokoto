@@ -31,7 +31,7 @@ public:
 };
 
 // QTextBlock::userState() bit layout:
-// Bits 0-1 (0x3): style (0 = unstyled, 1 = concealed, 2 = revealed)
+// Bits 0-1 (0x3): style (0 = unstyled, 1 = concealed, 2 = revealed, 3 = paragraph-revealed)
 // Bit 2 (0x4): block state after line is known
 // Bit 3 (0x8): block state is active (block carries BlockData)
 // Bits 4-19 (0xFFFF0): paragraph of block state (S023, ADR 0006)
@@ -39,8 +39,16 @@ public:
 // Bits 21-22 (0x600000): setext level
 // Bit 23 (0x800000): link to paragraph above is known
 // Bits 24-25 (0x3000000): link (none, continues, underline)
-// Bits 26-30 (0x7C000000): wrapIndent columns for hanging indent (S003); 0 = none
+// Bits 26-27 (0xC000000): wrapIndent columns for hanging indent (S003); 0 = none, 3 = in BlockData
+// Bit 28 (0x10000000): flowsToNext (S032)
+// Bit 29 (0x20000000): hardBreak (S032)
+// Bit 30 (0x40000000): sharesLineWithPrevious (S032)
+constexpr int kStyleBits = 0x3;
 constexpr int kWrapIndentShift = 26;
-constexpr int kWrapIndentMask = 0x1F << kWrapIndentShift;
+constexpr int kWrapIndentMax = 3;
+constexpr int kWrapIndentMask = kWrapIndentMax << kWrapIndentShift;
+constexpr int kFlowsToNextBit = 1 << 28;
+constexpr int kHardBreakBit = 1 << 29;
+constexpr int kSharesPrevLineBit = 1 << 30;
 
 }  // namespace hitokoto::ui

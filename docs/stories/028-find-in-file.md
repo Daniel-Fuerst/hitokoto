@@ -422,6 +422,17 @@ fallbacks keep the contrast whatever a theme sets for `colors.text`.
   - S009: geometry after every step and no hidden range under a highlight's text colour (O11).
   - Benchmarks: `s028_step_incomplete_*` (O9), `s028_table_field_typing_*` and
     `s028_table_step_*` on the 1,000-row table with "Highlight all" (O8).
+- Added with the rework after 0.5.2: UI `changingATableWhileAMatchBelowItIsCurrent` (keys that
+  change a table's rows or columns or the lines below it while the current match is below the
+  table: the same document, caret and cell as with the bar closed, the table view kept, the count
+  as a fresh search).
+- Added with the rework after 0.5.4: UI `replacingTheWholeDocumentUpdatesTheMatches` (select all
+  and paste a text with as many lines, fewer, more or no match, then undo and redo: after each step
+  the count, the current match and the highlights on screen as a fresh search);
+  `anEditAboveTheMatchLeavesEveryLineWhereAFreshWindowDrawsIt` (an edit above the current match
+  that removes lines and makes a table text, shows a table's source or makes a new table: every
+  line and table view where a fresh window with the same text, caret and search draws it, with
+  the bar open and closed).
 
 ## Implementation
 
@@ -468,6 +479,29 @@ After the code review (`docs/reviews/028-find-in-file-code.md`, all twelve objec
 
 CI of pull request #27 green on Linux, Windows and macOS (2026-11-07); the `s028_*` Linux baselines
 come from that run.
+
+Rework after 0.5.2 (`agents/s028-table-rows-during-find`, 2026-11-14): with the current match below
+a table, a key in the table that adds or removes a line (Enter or Tab in the last row, deleting a
+row, Enter in an empty last row, Escape above a line that is no row, Backspace on the empty line
+below the table) moves the match. The bar moves its hold at once, inside the change, and
+`TableEmbedder::setFindHold` finds the tables again; the change then went on with a reference into
+the list of tables it had replaced. The changes to rows and columns, `leaveBelow` and Backspace
+below a table now copy what they need before the change and look the table up again by its header
+line after it (`tableWithHeader`, `update(header)`).
+
+Rework after 0.5.4 (`agents/s028-find-during-document-change`, 2026-11-15): a change that replaces
+the whole document (select all and paste, its undo and redo) is read again to its last line. Qt
+reports such a change with one character more than the document holds, so the line at its end is
+not a valid block; `FindController::onContentsChange` now takes the last line then, as
+`BlockStyler` and `BlockLayout` do, and the results of the old lines no longer stay.
+
+In the same rework: an edit above the current match that adds or removes lines moves the bar's
+hold while the document changes, before the layout knows the new lines. Tables that then showed,
+hid or resized lines below the edit left those lines with the heights they had before, so they were
+drawn over each other or with a gap. Now `TableEmbedder::setFindHold` finds the tables again after
+the change (queued) when it is called inside one, and at once otherwise, as after Escape; and
+`BlockLayout::setHidden` and `setReservedHeight` remember a block they get inside a change and
+record its height once the change is applied, as the layout already did for blocks laid out then.
 
 Next: Armin's test of the functionality in practice; changes become stories of their own. Then
 acceptance (Done).

@@ -18,6 +18,8 @@ add_executable(hitokoto_core_tests
     core/test_s026_floating_toolbar.cpp
     core/test_s028_find_in_file.cpp
     core/test_s031_paste_tables.cpp
+    core/test_s033_soft_line_breaks.cpp
+    core/test_s038_subtle_menu_bar.cpp
     core/test_s004_save.cpp
     core/test_s005_theme.cpp
     core/test_s007_large_files.cpp
@@ -53,6 +55,12 @@ add_subdirectory(bench)
 
 # S030: versions.
 add_subdirectory(version)
+
+# S034: the AUR package.
+add_subdirectory(packaging)
+
+# S035: a version only after a green CI on main (the wiring of the workflows).
+add_subdirectory(workflows)
 
 if(HITOKOTO_BUILD_UI)
     add_subdirectory(ui)

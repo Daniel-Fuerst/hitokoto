@@ -32,6 +32,7 @@ public:
 protected:
     void keyPressEvent(QKeyEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
+    void insertFromMimeData(const QMimeData* source) override;
     void scrollContentsBy(int dx, int dy) override;
     void wheelEvent(QWheelEvent* event) override;
 
@@ -68,7 +69,7 @@ protected:
     bool eventFilter(QObject* object, QEvent* event) override;
 
 private:
-    void prepare(QTextDocument& document, const QModelIndex& index, QString source) const;
+    void prepare(QTextDocument& document, const QModelIndex& index, const QString& source) const;
     [[nodiscard]] QSizeF naturalSize(const QModelIndex& index, const QString& markdown) const;
     /// No block margins, the column's alignment.
     static void formatBlocks(QTextDocument& document, const QModelIndex& index);

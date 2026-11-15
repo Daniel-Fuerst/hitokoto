@@ -448,6 +448,75 @@ LineRender ElementRegistry::render(std::u16string_view line, const LineContext& 
             }
             const std::size_t firstInlineRun = out.runs.size();
             runInlineElements(line, context, out);
+            if (out.blockState.inParagraph()) {
+                const bool nextContinues =
+                    !context.nextLine.empty() &&
+                    paragraphLink(context.nextLine, out.blockState, context.nextNextLine).continues;
+                if (c.continues && !context.paragraphRevealed && out.blockState.underlinable()) {
+                    out.wrapIndent = static_cast<std::uint32_t>(out.blockState.paragraph - 1U);
+                }
+                if ((c.continues || nextContinues) && !context.paragraphRevealed && c.kind == Kind::Text) {
+                    const auto firstNb = static_cast<std::uint32_t>(blocks::firstNonBlank(line));
+                    if (firstNb > 0) {
+                        out.hidden.push_back({{0, firstNb}, HideMode::Collapse});
+                    }
+                }
+                if (nextContinues) {
+                    const auto contentFirst =
+                        std::max<std::uint32_t>(c.textStart, static_cast<std::uint32_t>(blocks::firstNonBlank(line)));
+                    const auto inSpan = [](const std::vector<Span>& spans, std::uint32_t pos) {
+                        return std::any_of(spans.begin(), spans.end(),
+                                           [pos](const Span& s) { return pos >= s.start && pos < s.end(); });
+                    };
+                    const auto inHidden = [](const std::vector<HiddenRange>& ranges, std::uint32_t pos) {
+                        return std::any_of(ranges.begin(), ranges.end(), [pos](const HiddenRange& h) {
+                            return pos >= h.span.start && pos < h.span.end();
+                        });
+                    };
+                    bool backslashHardBreak = false;
+                    if (length > contentFirst && line[length - 1] == u'\\') {
+                        const std::uint32_t last = length - 1;
+                        if (!inSpan(out.opaqueSpans, last) && !inHidden(out.hidden, last)) {
+                            std::uint32_t bsRun = 0;
+                            for (std::uint32_t p = length; p > contentFirst && line[p - 1] == u'\\'; --p) {
+                                if (inSpan(out.opaqueSpans, p - 1)) {
+                                    break;
+                                }
+                                ++bsRun;
+                            }
+                            backslashHardBreak = (bsRun % 2U) == 1U;
+                        }
+                    }
+                    if (backslashHardBreak) {
+                        const Span bsSpan{length - 1, 1};
+                        out.runs.push_back({bsSpan, Role::EscapeMarker, 0});
+                        if (!context.paragraphRevealed) {
+                            out.hardBreak = true;
+                            out.hidden.push_back({bsSpan, HideMode::Collapse});
+                        }
+                    } else if (!context.paragraphRevealed) {
+                        std::uint32_t spaceStart = length;
+                        while (spaceStart > contentFirst && line[spaceStart - 1] == u' ') {
+                            --spaceStart;
+                        }
+                        const std::uint32_t trailingSpaces = length - spaceStart;
+                        if (trailingSpaces >= 2) {
+                            out.hardBreak = true;
+                            out.hidden.push_back({{spaceStart, trailingSpaces}, HideMode::Collapse});
+                        } else {
+                            out.flowsToNext = true;
+                            std::uint32_t blankStart = spaceStart;
+                            while (blankStart > contentFirst &&
+                                   (line[blankStart - 1] == u' ' || line[blankStart - 1] == u'\t')) {
+                                --blankStart;
+                            }
+                            if (blankStart < length) {
+                                out.hidden.push_back({{blankStart, length - blankStart}, HideMode::Collapse});
+                            }
+                        }
+                    }
+                }
+            }
             splitAroundInlineRuns(out, firstInlineRun);
             carveLinkTextAroundOtherRuns(out);
             break;
@@ -506,24 +575,33 @@ std::vector<LineRender> ElementRegistry::renderDocument(std::span<const std::u16
                                                     : 0;
         }
     }
+    const auto nextNextOf = [&](std::size_t i) {
+        return i + 2 < count ? std::u16string_view{lines[i + 2]} : std::u16string_view{};
+    };
     std::vector<bool> shown(count, false);
+    std::vector<bool> paraShown(count, false);
     std::size_t paragraphStart = 0;
     for (std::size_t i = 0; i < count; ++i) {
         if (!links[i].continues && links[i].underline == 0) {
             paragraphStart = i;
         }
         shown[i] = revealed.contains(static_cast<std::int64_t>(i));
-        if (links[i].underline != 0) {
-            // The underline is revealed while the caret is on any line of its heading.
-            for (std::size_t k = paragraphStart; k < i && !shown[i]; ++k) {
-                shown[i] = revealed.contains(static_cast<std::int64_t>(k));
+        if (shown[i]) {
+            for (std::size_t k = paragraphStart; k <= i; ++k) {
+                paraShown[k] = true;
             }
+        } else if (paraShown[paragraphStart]) {
+            paraShown[i] = true;
+        }
+        if (links[i].underline != 0 && paraShown[paragraphStart]) {
+            // The underline is revealed while the caret is on any line of its heading.
+            shown[i] = true;
         }
     }
     std::vector<LineRender> out;
     out.reserve(count);
     for (std::size_t i = 0; i < count; ++i) {
-        out.push_back(render(lines[i], {shown[i], before[i], nextOf(i), levels[i]}));
+        out.push_back(render(lines[i], {shown[i], before[i], nextOf(i), levels[i], paraShown[i], nextNextOf(i)}));
     }
     // S021: a range in a code block reveals the opening fence of the block that holds its first
     // line and the closing fence of the block that holds its last line. Every line of a block

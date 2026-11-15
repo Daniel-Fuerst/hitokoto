@@ -1,0 +1,832 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# S034: the AUR package hitokoto follows every version. After every successful run of "CI" on a
+# push to main (S035: its last job Version has set the version tag), the highest version tag is
+# compared with the pkgver in the AUR; if the tag is higher, the recipe of packaging/archlinux is
+# filled in, built and installed against Arch's Qt, and pushed to the AUR. A workflow of its own,
+# so that an unreachable AUR makes only this workflow red, never the CI, and it can be run again on
+# its own. One workflow_run step only: the CI run belongs to the merge commit, so
+# github.event.workflow_run.head_sha is the commit the CI passed (a second step would get the
+# newest commit of main instead). The decision logic is scripts/packaging/AurPackage.cmake (tests:
+# S034_*, S035_*).
+# A pull request that changes the recipe, and a manual run without "publish", run everything up to
+# the push (dry run).
+# S036: beside the AUR jobs and independent of them, every version from packaging/debian/versions.txt
+# on gets a GitHub release with a Debian package for trixie: debian-plan compares the version tags
+# with the published releases, debian-package builds, tests and checks the package of each missing
+# version in debian:trixie (packaging/debian), and debian-release, the only job that may write,
+# creates the releases. The decision logic is scripts/packaging/DebianPackage.cmake (tests: S036_*).
+# S037: every version released gets an MSI for Windows in the same release: debian-plan also plans
+# the Windows installers (versions skipped for Windows in packaging/windows/recipe.txt are released
+# with the Debian package alone), windows-package builds and tests each on windows-2022, and
+# windows-check installs, upgrades, starts and uninstalls it on a fresh runner before it hands the
+# MSI on. A release with immutable assets takes no asset later, so debian-release publishes a
+# version only with every package it needs; a failed package job is completed with "Re-run failed
+# jobs". The decision logic is scripts/packaging/WindowsPackage.cmake (tests: S037_*).
+name: Packaging
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  pull_request:
+    paths:
+      - packaging/archlinux/**
+      - packaging/debian/**
+      - packaging/windows/**
+      - scripts/packaging/**
+      - .github/workflows/packaging.yml
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Push to the AUR if it is behind and create missing releases (only on main)
+        type: boolean
+        default: false
+
+permissions: {}
+
+env:
+  AUR_GIT_HTTPS: https://aur.archlinux.org/hitokoto.git
+  AUR_GIT_SSH: ssh://aur@aur.archlinux.org/hitokoto.git
+  # The Ed25519 host key of aur.archlinux.org, as published on the AUR home page and in
+  # https://archlinux.org/news/aur-migration-new-ssh-hostkeys/ (review O8 of the code review).
+  AUR_HOST_KEY_FINGERPRINT: SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4
+
+jobs:
+  build:
+    name: Build the AUR package
+    # S034 decision 1, S035 decision 4: only after a successful CI run on a push to main; always
+    # for pull requests and manual runs.
+    # and manual runs.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:base-devel
+    permissions:
+      contents: read
+    outputs:
+      action: ${{ steps.plan.outputs.action }}
+      version: ${{ steps.plan.outputs.version }}
+      commit: ${{ steps.commit.outputs.sha }}
+    steps:
+      - name: Install the tools
+        # git before the checkout, so that it is a repository with tags, not an archive.
+        run: pacman -Syu --noconfirm --needed git cmake desktop-file-utils
+
+      - uses: actions/checkout@v7
+        with:
+          # The commit the CI run passed; empty (the default) for other events.
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0  # the tags
+          persist-credentials: false
+
+      - name: Commit
+        id: commit
+        # In the container git runs as root, the workspace belongs to the runner's user, and
+        # actions/checkout trusts the directory only for its own git calls ("dubious ownership").
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Plan
+        id: plan
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/plan"
+          mkdir -p "$work"
+          git tag --merged HEAD > "$work/tags.txt"
+          unreachable=OFF
+          if ! git clone --quiet --depth 1 "$AUR_GIT_HTTPS" "$work/aur"; then
+            # S035 decision 5: a dry run builds anyway; after a CI run on main the run is red.
+            if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+              echo "::error::The AUR cannot be reached; run this workflow again later."
+              exit 1
+            fi
+            echo "::warning::The AUR cannot be reached; the comparison with the AUR is left out."
+            unreachable=ON
+          fi
+          cmake -DMODE=plan -DAUR_UNREACHABLE="$unreachable" -DTAGS_FILE="$work/tags.txt" \
+                -DSRCINFO_FILE="$work/aur/.SRCINFO" -DOUTPUT="$work/plan.txt" \
+                -P scripts/packaging/AurPackage.cmake
+          cat "$work/plan.txt" >> "$GITHUB_OUTPUT"
+          {
+            echo "### AUR package"
+            echo
+            sed 's/^/- /' "$work/plan.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check the checksum in the AUR
+        if: steps.plan.outputs.action != 'unreachable'
+        # Decision 9: GitHub's tag archives are stable by policy only; warn if the AUR's checksum
+        # no longer matches the archive of the AUR's version. Never fails the run.
+        env:
+          AUR_VERSION: ${{ steps.plan.outputs.aur_version }}
+          AUR_SHA256: ${{ steps.plan.outputs.aur_sha256 }}
+          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -uo pipefail
+          if [ "$AUR_SHA256" = "SKIP" ] || [ -z "$AUR_SHA256" ]; then
+            echo "::notice::The AUR's PKGBUILD has no checksum for the archive of $AUR_VERSION."
+            exit 0
+          fi
+          archive="$RUNNER_TEMP/aur-version.tar.gz"
+          if ! curl -fsSL -o "$archive" "$REPOSITORY_URL/archive/refs/tags/v$AUR_VERSION.tar.gz"; then
+            echo "::warning::The archive of v$AUR_VERSION could not be downloaded."
+            exit 0
+          fi
+          actual=$(sha256sum "$archive" | cut -d' ' -f1)
+          if [ "$actual" != "$AUR_SHA256" ]; then
+            echo "::warning::The checksum of v$AUR_VERSION in the AUR ($AUR_SHA256) no longer matches GitHub's archive ($actual)."
+            echo "- **Warning:** the AUR's checksum of v$AUR_VERSION no longer matches GitHub's archive" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Fill in the recipe
+        # Decision 3. A run after the CI that has nothing to publish stops here.
+        if: steps.plan.outputs.action == 'publish' || github.event_name != 'workflow_run'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # The files for the AUR live in the workspace: in this container job ${{ runner.temp }}
+          # does not name the directory that $RUNNER_TEMP names, and the first upload took 1 of
+          # the 3 files from the root "/" (run 43292098955).
+          out="$GITHUB_WORKSPACE/aur-files"
+          mkdir -p "$out"
+          curl -fsSL -o "$RUNNER_TEMP/source.tar.gz" "$REPOSITORY_URL/archive/refs/tags/v$VERSION.tar.gz"
+          sha=$(sha256sum "$RUNNER_TEMP/source.tar.gz" | cut -d' ' -f1)
+          cmake -DMODE=pkgbuild -DPKGBUILD_FILE=packaging/archlinux/PKGBUILD -DVERSION="$VERSION" \
+                -DSHA256="$sha" -DOUTPUT="$out/PKGBUILD" -P scripts/packaging/AurPackage.cmake
+          cp packaging/archlinux/hitokoto.desktop "$out/"
+          # Code review O2: makepkg refuses to run as root.
+          useradd --create-home builder
+          chown -R builder "$out"
+          (cd "$out" && runuser -u builder -- makepkg --printsrcinfo > .SRCINFO)
+
+      - name: Build, install and start the package
+        # Decision 4 (code review O11): against Arch's own Qt, as an unprivileged user.
+        if: steps.plan.outputs.action == 'publish' || github.event_name != 'workflow_run'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          out="$GITHUB_WORKSPACE/aur-files"
+          build=/home/builder/build
+          runuser -u builder -- mkdir -p "$build"
+          cp "$out/PKGBUILD" "$out/hitokoto.desktop" "$build/"
+          chown -R builder "$build"
+          # makepkg --syncdeps would need sudo; root installs what the recipe needs.
+          mapfile -t deps < <(sed -n 's/^\t\(make\)\?depends = //p' "$out/.SRCINFO")
+          pacman -S --noconfirm --needed "${deps[@]}"
+          (cd "$build" && runuser -u builder -- makepkg --noconfirm)
+          pacman -U --noconfirm "$build"/hitokoto-"$VERSION"-1-*.pkg.tar.zst
+          desktop-file-validate /usr/share/applications/hitokoto.desktop
+          printed=$(QT_QPA_PLATFORM=offscreen hitokoto --version)
+          if [ "$printed" != "hitokoto $VERSION" ]; then
+            echo "::error::hitokoto --version printed '$printed', expected 'hitokoto $VERSION'"
+            exit 1
+          fi
+
+      - name: Diff against the AUR
+        if: >-
+          steps.plan.outputs.action != 'unreachable' &&
+          (steps.plan.outputs.action == 'publish' || github.event_name != 'workflow_run')
+        run: |
+          set -uo pipefail
+          {
+            echo
+            echo "Diff of the files for the AUR against the AUR repository:"
+            echo
+            echo '```diff'
+            for f in PKGBUILD .SRCINFO hitokoto.desktop; do
+              diff -u "$RUNNER_TEMP/plan/aur/$f" "$GITHUB_WORKSPACE/aur-files/$f" || true
+            done
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check the files for the AUR
+        if: steps.plan.outputs.action == 'publish' || github.event_name != 'workflow_run'
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/aur-files"
+          find . -mindepth 1 -maxdepth 1 -printf '%f\n' | sort > "$RUNNER_TEMP/files.txt"
+          printf '%s\n' .SRCINFO PKGBUILD hitokoto.desktop | sort | diff - "$RUNNER_TEMP/files.txt"
+
+      - name: Hand the files on
+        if: steps.plan.outputs.action == 'publish'
+        uses: actions/upload-artifact@v7
+        with:
+          name: aur-files
+          # A directory relative to the workspace: its content becomes the root of the artifact.
+          path: aur-files
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+  handover:
+    name: Check the hand-over
+    # The artifact the publish job gets, checked without the environment, also in a dry run (the
+    # first publish failed because the artifact held 1 of the 3 files, run 43292098955).
+    needs: build
+    if: needs.build.outputs.action == 'publish'
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: aur-files
+          path: ${{ runner.temp }}/aur-files
+
+      - name: Check the files
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/aur-files"
+          find . -mindepth 1 -printf '%P\n' | sort > "$RUNNER_TEMP/files.txt"
+          printf '%s\n' .SRCINFO PKGBUILD hitokoto.desktop | sort | diff - "$RUNNER_TEMP/files.txt"
+
+  publish:
+    name: Push to the AUR
+    # Decision 5: only on main, after a CI run or a manual run with "publish"; never for a
+    # pull request. The only job with the environment aur (code review O7).
+    needs: [build, handover]
+    if: >-
+      needs.build.outputs.action == 'publish' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.publish))
+    runs-on: ubuntu-24.04
+    environment: aur
+    permissions:
+      contents: read
+    concurrency:
+      group: aur
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.build.outputs.commit }}
+          sparse-checkout: scripts/packaging
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: aur-files
+          path: ${{ runner.temp }}/aur-files
+
+      - name: Push
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          AUR_NAME: ${{ vars.AUR_NAME }}
+          AUR_EMAIL: ${{ vars.AUR_EMAIL }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          for v in AUR_SSH_PRIVATE_KEY AUR_NAME AUR_EMAIL; do
+            if [ -z "${!v}" ]; then
+              echo "::error::$v is not set in the environment aur"
+              exit 1
+            fi
+          done
+          ssh_dir="$RUNNER_TEMP/ssh"
+          mkdir -m 700 "$ssh_dir"
+          trap 'rm -rf "$ssh_dir"' EXIT
+          (umask 077 && printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > "$ssh_dir/aur")
+          # Code review O8: the scanned host key is used only if it has the published fingerprint.
+          ssh-keyscan -t ed25519 aur.archlinux.org > "$ssh_dir/scanned" 2> /dev/null
+          fingerprint=$(ssh-keygen -lf "$ssh_dir/scanned" | awk '{print $2}')
+          if [ "$fingerprint" != "$AUR_HOST_KEY_FINGERPRINT" ]; then
+            echo "::error::aur.archlinux.org presented $fingerprint, expected $AUR_HOST_KEY_FINGERPRINT"
+            exit 1
+          fi
+          mv "$ssh_dir/scanned" "$ssh_dir/known_hosts"
+          # Code review O3: both files named explicitly, independent of HOME.
+          export GIT_SSH_COMMAND="ssh -i $ssh_dir/aur -o IdentitiesOnly=yes -o UserKnownHostsFile=$ssh_dir/known_hosts -o StrictHostKeyChecking=yes"
+
+          aur="$RUNNER_TEMP/aur"
+          git clone --quiet "$AUR_GIT_SSH" "$aur"
+          # Review (spec) O5: read the AUR again; another run may have published in the meantime.
+          echo "v$VERSION" > "$RUNNER_TEMP/tags.txt"
+          cmake -DMODE=plan -DTAGS_FILE="$RUNNER_TEMP/tags.txt" -DSRCINFO_FILE="$aur/.SRCINFO" \
+                -DOUTPUT="$RUNNER_TEMP/plan.txt" -P scripts/packaging/AurPackage.cmake
+          if ! grep -qx 'action=publish' "$RUNNER_TEMP/plan.txt"; then
+            echo "The AUR is no longer behind $VERSION; nothing to push."
+            exit 0
+          fi
+          files="$RUNNER_TEMP/aur-files"
+          for f in PKGBUILD .SRCINFO hitokoto.desktop; do
+            if [ ! -f "$files/$f" ]; then
+              echo "::error::$f is missing in the artifact aur-files"
+              ls -lAR "$files" || true
+              exit 1
+            fi
+          done
+          cp "$RUNNER_TEMP/aur-files/PKGBUILD" "$RUNNER_TEMP/aur-files/.SRCINFO" \
+             "$RUNNER_TEMP/aur-files/hitokoto.desktop" "$aur/"
+          cd "$aur"
+          git add PKGBUILD .SRCINFO hitokoto.desktop
+          if git diff --cached --quiet; then
+            echo "Nothing changed; nothing to push."
+            exit 0
+          fi
+          git -c user.name="$AUR_NAME" -c user.email="$AUR_EMAIL" commit --quiet -m "Update to $VERSION"
+          git push origin HEAD:master
+          echo "- Pushed **$VERSION** to the AUR" >> "$GITHUB_STEP_SUMMARY"
+
+  debian-plan:
+    name: Plan the Debian releases
+    # S036 decision 1: like the AUR's build job, only after a successful CI run on a push to main;
+    # always for pull requests and manual runs.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      action: ${{ steps.plan.outputs.action }}
+      versions: ${{ steps.plan.outputs.versions }}
+      build: ${{ steps.plan.outputs.build }}
+      latest: ${{ steps.plan.outputs.latest }}
+      commit: ${{ steps.plan.outputs.commit }}
+      windows_build: ${{ steps.windows.outputs.windows_build }}
+      windows_skipped: ${{ steps.windows.outputs.windows_skipped }}
+      windows_qt: ${{ steps.windows.outputs.windows_qt }}
+      windows_qt_arch: ${{ steps.windows.outputs.windows_qt_arch }}
+      windows_wix: ${{ steps.windows.outputs.windows_wix }}
+      windows_ice: ${{ steps.windows.outputs.windows_ice }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The commit the CI run passed; empty (the default) for other events.
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0  # the tags
+          persist-credentials: false
+
+      - name: Plan
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          # Decision 10: a dry run, unless after the CI on main or a manual run with "publish".
+          PUBLISH: >-
+            ${{ github.ref == 'refs/heads/main' && (github.event_name == 'workflow_run' ||
+            (github.event_name == 'workflow_dispatch' && inputs.publish)) }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/debian-plan"
+          mkdir -p "$work"
+          git tag --merged HEAD > "$work/tags.txt"
+          # Published releases with their assets; drafts are listed only with push access
+          # (review O4), the release job deals with them.
+          gh api --paginate "repos/$REPO/releases" \
+            --jq '.[] | select(.draft | not) | ([.tag_name] + [.assets[].name]) | join(" ")' \
+            > "$work/releases.txt"
+          dry_run=ON
+          if [ "$PUBLISH" = "true" ]; then
+            dry_run=OFF
+          fi
+          cmake -DMODE=plan -DDRY_RUN="$dry_run" -DVERSIONS_FILE=packaging/debian/versions.txt \
+                -DTAGS_FILE="$work/tags.txt" -DRELEASES_FILE="$work/releases.txt" \
+                -DOUTPUT="$work/plan.txt" -P scripts/packaging/DebianPackage.cmake
+          cat "$work/plan.txt" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Debian package and releases"
+            echo
+            if [ "$dry_run" = ON ]; then
+              echo "Dry run: the highest version is built and checked, nothing is released."
+              echo
+            fi
+            sed 's/^/- /' "$work/plan.txt"
+            # Decision 10 (code review O3): the notes of every version to release.
+            read -ra versions <<< "$(sed -n 's/^versions=//p' "$work/plan.txt")"
+            for version in "${versions[@]}"; do
+              cmake -DMODE=changelog -DREPO_DIR="$GITHUB_WORKSPACE" -DVERSION="$version" \
+                    -DVERSIONS_FILE=packaging/debian/versions.txt \
+                    -DCONTROL_FILE=packaging/debian/control -DOUTPUT="$work/changelog-$version" \
+                    -DNOTES="$work/notes-$version.md" -P scripts/packaging/DebianPackage.cmake
+              echo
+              echo "#### Release notes of v$version"
+              echo
+              cat "$work/notes-$version.md"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Plan the Windows installers
+        id: windows
+        # S037 decision 2: an MSI for every version the release needs, unless skipped for Windows.
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/debian-plan"
+          cmake -DMODE=plan -DRECIPE_FILE=packaging/windows/recipe.txt -DPLAN_FILE="$work/plan.txt" \
+                -DRELEASES_FILE="$work/releases.txt" -DOUTPUT="$work/windows-plan.txt" \
+                -P scripts/packaging/WindowsPackage.cmake
+          sed 's/^/windows_/' "$work/windows-plan.txt" >> "$GITHUB_OUTPUT"
+          {
+            echo
+            echo "### Windows installer"
+            echo
+            sed 's/^/- /' "$work/windows-plan.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  debian-package:
+    name: Debian package ${{ matrix.version }}
+    # Decisions 4 and 7: one matrix entry per version (review O2: a failing version leaves the
+    # others alone). Built and tested in debian:trixie against Debian's Qt, then installed,
+    # started and purged in a second, fresh debian:trixie container.
+    needs: debian-plan
+    if: needs.debian-plan.outputs.build != '[]' && needs.debian-plan.outputs.build != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.debian-plan.outputs.build) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.debian-plan.outputs.commit }}
+          fetch-depth: 0  # the history and the tags for the changelog
+          persist-credentials: false
+
+      - name: Source, changelog and notes
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          work="$GITHUB_WORKSPACE/debian-work"
+          mkdir -p "$work/source" "$work/out"
+          # The source of the tag; the recipe is that of the checked-out commit (decision 3).
+          git archive "v$VERSION" | tar -x -C "$work/source"
+          cmake -DMODE=changelog -DREPO_DIR="$GITHUB_WORKSPACE" -DVERSION="$VERSION" \
+                -DVERSIONS_FILE=packaging/debian/versions.txt \
+                -DCONTROL_FILE=packaging/debian/control -DOUTPUT="$work/changelog" \
+                -DNOTES="$work/out/notes-$VERSION.md" -P scripts/packaging/DebianPackage.cmake
+          echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct "v$VERSION")" >> "$GITHUB_ENV"
+
+      - name: Build, test and assemble in debian:trixie
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          docker run --rm -e SOURCE_DATE_EPOCH -e VERSION -v "$GITHUB_WORKSPACE:/w" -w /w \
+            debian:trixie bash -euo pipefail -c '
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update -q
+              grep -v "^#" packaging/debian/build-depends |
+                xargs apt-get install -y -q --no-install-recommends
+              bash packaging/debian/build-package.sh debian-work/source "$VERSION" \
+                debian-work/changelog debian-work/out'
+
+      - name: Install, start and purge in a fresh debian:trixie
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          docker run --rm -e VERSION -v "$GITHUB_WORKSPACE:/w" -w /w debian:trixie \
+            bash packaging/debian/install-check.sh "debian-work/out/hitokoto_${VERSION}-1_amd64.deb" \
+            "$VERSION"
+
+      - name: Summary
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          set -uo pipefail
+          {
+            echo "### Debian package $VERSION"
+            echo
+            echo "lintian:"
+            echo
+            echo '```'
+            cat debian-work/out/lintian.txt
+            echo '```'
+            echo
+            echo "Release notes:"
+            echo
+            cat "debian-work/out/notes-$VERSION.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Hand the package on
+        # Only a package that passed every step above reaches the release job.
+        uses: actions/upload-artifact@v7
+        with:
+          name: debian-${{ matrix.version }}
+          path: |
+            debian-work/out/hitokoto_${{ matrix.version }}-1_amd64.deb
+            debian-work/out/notes-${{ matrix.version }}.md
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-package:
+    name: Windows installer ${{ matrix.version }}
+    # S037 decisions 4, 5 and 7: one matrix entry per version (decision 2), built and tested like
+    # the Windows CI, assembled and made into an MSI (and the 0.0.0 MSI of the upgrade test).
+    needs: debian-plan
+    if: needs.debian-plan.outputs.windows_build != '[]' && needs.debian-plan.outputs.windows_build != ''
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.debian-plan.outputs.windows_build) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.debian-plan.outputs.commit }}
+          fetch-depth: 0  # the tags
+          persist-credentials: false
+
+      - name: Source of the tag
+        shell: bash
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          # The source of the tag; the recipe is that of the checked-out commit (decision 3).
+          mkdir -p msi-work/source msi-work/out
+          git archive "v$VERSION" | tar -x -C msi-work/source
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ needs.debian-plan.outputs.windows_qt }}
+          arch: ${{ needs.debian-plan.outputs.windows_qt_arch }}
+          cache: true
+
+      - name: Install WiX
+        shell: pwsh
+        env:
+          WIX: ${{ needs.debian-plan.outputs.windows_wix }}
+        run: |
+          dotnet tool install --global wix --version $env:WIX
+          Add-Content $env:GITHUB_PATH (Join-Path $env:USERPROFILE '.dotnet\tools')
+          $wix = Join-Path $env:USERPROFILE '.dotnet\tools\wix.exe'
+          # ADR 0012: WiX 7 refuses every command until its OSMF EULA is accepted (WIX7015); no
+          # fee is due without revenue. Accepted for the runner's user, before the first command.
+          & $wix eula accept "wix$($env:WIX.Split('.')[0])"
+          & $wix extension add --global "WixToolset.UI.wixext/$env:WIX"
+
+      - name: Build, test and make the MSI
+        shell: pwsh
+        env:
+          VERSION: ${{ matrix.version }}
+          WIX: ${{ needs.debian-plan.outputs.windows_wix }}
+          ICE: ${{ needs.debian-plan.outputs.windows_ice }}
+        run: |
+          # In this session with splatting: a child pwsh would get -Ice without a value when the
+          # recipe accepts no ICE finding (second dry run on pull request 45).
+          $ice = @($env:ICE -split ' ' | Where-Object { $_ })
+          $arguments = @{
+            Source = 'msi-work/source'; Version = $env:VERSION; Out = 'msi-work/out'
+            WixVersion = $env:WIX
+          }
+          if ($ice.Count -gt 0) { $arguments.Ice = $ice }
+          & ./packaging/windows/build-package.ps1 @arguments
+
+      - name: Hand the MSIs to the check
+        uses: actions/upload-artifact@v7
+        with:
+          name: msi-build-${{ matrix.version }}
+          path: |
+            msi-work/out/hitokoto-${{ matrix.version }}-x64.msi
+            msi-work/out/upgrade-test-0.0.0.msi
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-check:
+    name: Install, upgrade and uninstall ${{ matrix.version }}
+    # S037 decision 8: on a fresh runner without Qt, per user and per machine. Only an MSI that
+    # passed is handed on to the release job, as hitokoto-<version>-x64.msi. Not skipped when another
+    # version's build failed (decision 2).
+    needs: [debian-plan, windows-package]
+    if: >-
+      !cancelled() && needs.debian-plan.result == 'success' &&
+      needs.debian-plan.outputs.windows_build != '[]' && needs.debian-plan.outputs.windows_build != ''
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.debian-plan.outputs.windows_build) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.debian-plan.outputs.commit }}
+          sparse-checkout: |
+            packaging/windows
+            scripts/packaging
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: msi-build-${{ matrix.version }}
+          path: ${{ runner.temp }}/msi
+
+      - name: Install, upgrade, start and uninstall
+        shell: pwsh
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          $msi = Join-Path $env:RUNNER_TEMP "msi\hitokoto-$env:VERSION-x64.msi"
+          $test = Join-Path $env:RUNNER_TEMP 'msi\upgrade-test-0.0.0.msi'
+          foreach ($scope in 'user', 'machine') {
+            pwsh packaging/windows/install-check.ps1 -Msi $msi -TestMsi $test -Version $env:VERSION -Scope $scope
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+
+      - name: Logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: msi-logs-${{ matrix.version }}
+          path: |
+            ${{ runner.temp }}/msi/*.log
+            ${{ runner.temp }}/msi/*.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Hand the checked MSI on
+        # The MSI itself, unzipped, as the artifact hitokoto-<version>-x64.msi (archive: false names
+        # the artifact after the file; Armin, 2026-11-13).
+        uses: actions/upload-artifact@v7
+        with:
+          archive: false
+          path: ${{ runner.temp }}/msi/hitokoto-${{ matrix.version }}-x64.msi
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-handover:
+    name: Check the hand-over of the MSIs
+    # The release job runs only on main; this job downloads the checked MSIs exactly as it does,
+    # also in a dry run, and checks that each arrives as a file of its own.
+    needs: [debian-plan, windows-check]
+    if: >-
+      !cancelled() && needs.debian-plan.result == 'success' &&
+      needs.debian-plan.outputs.windows_build != '[]' && needs.debian-plan.outputs.windows_build != ''
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: hitokoto-*-x64.msi
+          merge-multiple: true
+          path: ${{ runner.temp }}/debian
+
+      - name: Check the MSIs
+        env:
+          BUILD: ${{ needs.debian-plan.outputs.windows_build }}
+        run: |
+          set -euo pipefail
+          ls -l "$RUNNER_TEMP/debian"
+          for version in $(jq -r '.[]' <<< "$BUILD"); do
+            msi="$RUNNER_TEMP/debian/hitokoto-${version}-x64.msi"
+            if [ ! -f "$msi" ]; then
+              echo "::error::hitokoto-${version}-x64.msi did not arrive as a file"
+              exit 1
+            fi
+            # An MSI is an OLE compound file: D0 CF 11 E0 A1 B1 1A E1.
+            if [ "$(head -c 8 "$msi" | od -An -tx1 | tr -d ' \n')" != "d0cf11e0a1b11ae1" ]; then
+              echo "::error::hitokoto-${version}-x64.msi is not an MSI (still zipped?)"
+              exit 1
+            fi
+          done
+
+  debian-release:
+    name: Release
+    # Decision 8: the only job that may write. Only on main, after a CI run there or a manual run
+    # with "publish"; it releases the versions whose package passed, also if another version
+    # failed (review O2).
+    needs: [debian-plan, debian-package, windows-check]
+    if: >-
+      !cancelled() && needs.debian-plan.result == 'success' &&
+      needs.debian-plan.outputs.action == 'release' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.publish))
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    concurrency:
+      group: releases
+      cancel-in-progress: false
+    steps:
+      # One flat directory, however many versions: a single matched artifact lands directly in the
+      # path, several in one directory each (first run on main, 2026-11-13); every file carries
+      # its version.
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: debian-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/debian
+
+      # S037: the checked MSIs into the same directory (windows-check hands each on unzipped, as
+      # the artifact hitokoto-<version>-x64.msi; windows-handover checks this in every run).
+      # It may find none (review (code) O3): the release step checks every file a version needs,
+      # and a version skipped for Windows is released without one.
+      - uses: actions/download-artifact@v8
+        if: needs.debian-plan.outputs.windows_build != '[]'
+        continue-on-error: true
+        with:
+          pattern: hitokoto-*-x64.msi
+          merge-multiple: true
+          path: ${{ runner.temp }}/debian
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSIONS: ${{ needs.debian-plan.outputs.versions }}
+          LATEST: ${{ needs.debian-plan.outputs.latest }}
+          WINDOWS_SKIPPED: ${{ needs.debian-plan.outputs.windows_skipped }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for version in $VERSIONS; do
+            tag="v$version"
+            dir="$RUNNER_TEMP/debian"
+            deb="hitokoto_${version}-1_amd64.deb"
+            notes="$dir/notes-$version.md"
+            if [ ! -f "$dir/$deb" ] || [ ! -f "$notes" ]; then
+              echo "::error::$version has no checked package; it is not released"
+              failed=1
+              continue
+            fi
+            # S037 decision 2: the MSI too, unless the version is skipped for Windows; immutable
+            # releases take no asset later, so a version waits for every package it needs.
+            msi="hitokoto-${version}-x64.msi"
+            with_msi=true
+            for skipped in $WINDOWS_SKIPPED; do
+              if [ "$skipped" = "$version" ]; then
+                with_msi=false
+              fi
+            done
+            if [ "$with_msi" = true ] && [ ! -f "$dir/$msi" ]; then
+              echo "::error::$version has no checked installer; it is not released (re-run the failed jobs)"
+              failed=1
+              continue
+            fi
+            # The releases of the tag, published or draft (review O4 of the spec: only this job
+            # sees drafts). A failing API call stops the job (code review O1).
+            releases_of() {
+              gh api --paginate "repos/$GH_REPO/releases" \
+                --jq ".[] | select(.tag_name == \"$tag\") | \"\\(.id) \\(.draft)\""
+            }
+            existing=$(releases_of)
+            # Never change a published release (decision 2); another run may have made it.
+            if grep -q ' false$' <<< "$existing"; then
+              echo "$tag has a release already"
+              continue
+            fi
+            # A draft left by a failed run.
+            while read -r id draft; do
+              if [ "$draft" = "true" ]; then
+                echo "deleting the draft $id of $tag"
+                gh api -X DELETE "repos/$GH_REPO/releases/$id"
+              fi
+            done <<< "$existing"
+            # SHA256SUMS of this version's packages, in a directory of its own for the upload.
+            assets="$RUNNER_TEMP/assets-$version"
+            mkdir -p "$assets"
+            packages=("$deb")
+            if [ "$with_msi" = true ]; then
+              packages+=("$msi")
+            fi
+            for package in "${packages[@]}"; do
+              cp "$dir/$package" "$assets/"
+            done
+            (cd "$assets" && sha256sum "${packages[@]}" > SHA256SUMS)
+            uploads=()
+            for package in "${packages[@]}" SHA256SUMS; do
+              uploads+=("$assets/$package")
+            done
+            latest=false
+            if [ "$version" = "$LATEST" ]; then
+              latest=true
+            fi
+            # Draft first, then publish: also works with immutable releases. Published by its id,
+            # not by the tag (code review O2).
+            gh release create "$tag" --verify-tag --draft --title "hitokoto $version" \
+              --notes-file "$notes" "${uploads[@]}"
+            # The list of the releases can lag behind the creation: for v0.5.4 (2026-11-15) it did
+            # not hold the new draft yet right after it. Ask again, 3 s apart, up to 10 times while
+            # no draft is listed; more than one draft fails at once in the check below.
+            drafts=""
+            for attempt in 1 2 3 4 5 6 7 8 9 10; do
+              drafts=$(releases_of | sed -n 's/ true$//p')
+              if [ -n "$drafts" ]; then
+                break
+              fi
+              echo "no draft of $tag listed yet (attempt $attempt)"
+              sleep 3
+            done
+            if [ "$(wc -w <<< "$drafts")" -ne 1 ]; then
+              echo "::error::expected one draft of $tag, found: $drafts"
+              exit 1
+            fi
+            gh api -X PATCH "repos/$GH_REPO/releases/$drafts" -F draft=false -f make_latest="$latest" \
+              > /dev/null
+            echo "- Released **$tag** (latest: $latest)" >> "$GITHUB_STEP_SUMMARY"
+          done
+          exit "$failed"
