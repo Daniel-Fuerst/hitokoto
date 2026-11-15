@@ -90,6 +90,26 @@ private slots:
         QCoreApplication::processEvents();
     }
 
+    void dismissingAMenuByClickingElsewhereClearsThePill() {
+        test::Fixture f;
+        ui::MenuBar* bar = f.window->topMenuBar();
+        QVERIFY(bar != nullptr);
+        QAction* fileAction = bar->actions()[0];
+        const QRect fileRect = bar->actionGeometry(fileAction);
+        const core::MenuBarStyle style = core::menuBarStyle(core::builtinTheme(core::ColorScheme::Light));
+        const QPoint filePillProbe(fileRect.left() + 3, fileRect.center().y());
+
+        QCursor::setPos(bar->mapToGlobal(fileRect.center()));
+        QTest::mouseMove(bar, fileRect.center());
+        QTest::mousePress(bar, Qt::LeftButton, {}, fileRect.center());
+        QTRY_VERIFY(fileAction->menu()->isVisible());
+
+        // The outside click goes to the popup, so the bar sees neither the release nor a leave.
+        QCursor::setPos(bar->mapToGlobal(QPoint(bar->width() - 2, bar->height() + 200)));
+        fileAction->menu()->hide();
+        QTRY_COMPARE(bar->grab().toImage().pixelColor(filePillProbe), ui::toQColor(style.background));
+    }
+
     void themedMenuBarUsesEveryToken() {
         test::Fixture f;
         constexpr core::Color background{0x18, 0x19, 0x1c, 0xff};

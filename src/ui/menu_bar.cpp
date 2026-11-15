@@ -12,6 +12,7 @@
 #include <QMouseEvent>
 #include <QPaintEvent>
 #include <QPainter>
+#include <QTimer>
 
 #include <algorithm>
 #include <cmath>
@@ -109,7 +110,7 @@ void MenuBar::actionEvent(QActionEvent* event) {
     if (event->type() == QEvent::ActionAdded && event->action() != nullptr) {
         if (QMenu* menu = event->action()->menu()) {
             connect(menu, &QMenu::aboutToShow, this, qOverload<>(&QWidget::update), Qt::UniqueConnection);
-            connect(menu, &QMenu::aboutToHide, this, qOverload<>(&QWidget::update), Qt::UniqueConnection);
+            connect(menu, &QMenu::aboutToHide, this, &MenuBar::resetAfterMenuClosed, Qt::UniqueConnection);
         }
     }
 }
@@ -149,6 +150,18 @@ void MenuBar::leaveEvent(QEvent* event) {
     QMenuBar::leaveEvent(event);
 }
 
+void MenuBar::resetAfterMenuClosed() {
+    // A click outside the popup closes it without the bar ever seeing the release or a leave event,
+    // so the pressed and hover state are recomputed from the real cursor once the popup is gone.
+    QTimer::singleShot(0, this, [this] {
+        pressed_ = false;
+        const QPoint local = mapFromGlobal(QCursor::pos());
+        hoveredAction_ = rect().contains(local) ? actionAt(local) : nullptr;
+        setCursor(hoveredAction_ != nullptr ? Qt::PointingHandCursor : Qt::ArrowCursor);
+        update();
+    });
+}
+
 void MenuBar::paintEvent(QPaintEvent* /*event*/) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
@@ -170,7 +183,9 @@ void MenuBar::paintEvent(QPaintEvent* /*event*/) {
         }
         const bool isOpen =
             (action->menu() != nullptr && action->menu()->isVisible()) || (pressed_ && activeAction() == action);
-        const bool isHovered = !isOpen && (hoveredAction_ == action || activeAction() == action);
+        // activeAction() lingers after a popup is dismissed by clicking elsewhere; it only counts as a
+        // highlight while the bar is in keyboard navigation (Alt / F10), which gives it focus.
+        const bool isHovered = !isOpen && (hoveredAction_ == action || (hasFocus() && activeAction() == action));
         if (isOpen || isHovered) {
             painter.setPen(Qt::NoPen);
             painter.setBrush(toQColor(isOpen ? style_.activeBackground : style_.hoverBackground));

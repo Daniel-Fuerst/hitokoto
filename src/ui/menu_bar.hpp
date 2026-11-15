@@ -35,6 +35,8 @@ protected:
     void paintEvent(QPaintEvent* event) override;
 
 private:
+    void resetAfterMenuClosed();
+
     core::MenuBarStyle style_{core::menuBarStyle(core::builtinTheme(core::ColorScheme::Light))};
     QAction* hoveredAction_ = nullptr;
     bool pressed_ = false;
