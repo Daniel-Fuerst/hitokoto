@@ -22,11 +22,17 @@ bool isConfigFileName(const QString& fileName) {
            fileName.compare(QStringLiteral("settings.toml"), Qt::CaseInsensitive) == 0;
 }
 
-ThemeEntry makeFileThemeEntry(const QFileInfo& info, core::ColorScheme scheme) {
+std::optional<ThemeEntry> makeFileThemeEntry(const QFileInfo& info, core::ColorScheme scheme) {
+    if (!info.exists() || !info.isFile()) {
+        return std::nullopt;
+    }
     const QString absPath = info.absoluteFilePath();
-    QString displayName = info.completeBaseName();
     const core::ThemeLoadResult result = ThemeManager::loadThemeFile(absPath, scheme);
-    if (!result.usedFallback && !result.theme.name.empty()) {
+    if (result.usedFallback) {
+        return std::nullopt;
+    }
+    QString displayName = info.completeBaseName();
+    if (!result.theme.name.empty()) {
         displayName = QString::fromStdString(result.theme.name);
     }
     return ThemeEntry{displayName, absPath, std::nullopt};
@@ -125,7 +131,9 @@ std::optional<ThemeEntry> ThemeManager::loadSavedThemeEntry(const QString& confi
     for (const QString& candidate : candidates) {
         const QFileInfo info(candidate);
         if (info.exists() && info.isFile() && !isConfigFileName(info.fileName())) {
-            return makeFileThemeEntry(info, scheme);
+            if (const auto entry = makeFileThemeEntry(info, scheme)) {
+                return entry;
+            }
         }
     }
 
@@ -187,7 +195,9 @@ QList<ThemeEntry> ThemeManager::availableThemes(const QString& configDir) {
                 continue;
             }
             seenCanonicalPaths.append(canonical);
-            entries.append(makeFileThemeEntry(info, scheme));
+            if (const auto entry = makeFileThemeEntry(info, scheme)) {
+                entries.append(*entry);
+            }
         }
     }
     return entries;
@@ -195,18 +205,39 @@ QList<ThemeEntry> ThemeManager::availableThemes(const QString& configDir) {
 
 core::ThemeLoadResult ThemeManager::loadThemeFile(const QString& path, core::ColorScheme scheme) {
     core::ThemeLoadResult result{core::builtinTheme(scheme), false, {}};
-    QFile file(path);
-    if (!path.isEmpty() && file.exists()) {
-        if (file.open(QIODevice::ReadOnly)) {
-            const QByteArray bytes = file.readAll();
-            result =
-                core::loadTheme(std::string_view(bytes.constData(), static_cast<std::size_t>(bytes.size())), scheme);
-        } else {
-            result.usedFallback = true;
-            result.diagnostics.push_back({0, 0, "cannot read file: " + file.errorString().toStdString()});
-        }
+    if (path.isEmpty()) {
+        result.usedFallback = true;
+        result.diagnostics.push_back({0, 0, "path is empty"});
+        return result;
     }
-    return result;
+    const QFileInfo info(path);
+    if (!info.exists()) {
+        result.usedFallback = true;
+        result.diagnostics.push_back({0, 0, "theme file does not exist"});
+        return result;
+    }
+    if (!info.isFile()) {
+        result.usedFallback = true;
+        result.diagnostics.push_back({0, 0, "not a regular file"});
+        return result;
+    }
+
+    constexpr qint64 kMaxThemeFileSize = 1024LL * 1024LL;  // 1 MiB
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        result.usedFallback = true;
+        result.diagnostics.push_back({0, 0, "cannot read file: " + file.errorString().toStdString()});
+        return result;
+    }
+
+    const QByteArray bytes = file.read(kMaxThemeFileSize + 1);
+    if (bytes.size() > kMaxThemeFileSize || !file.atEnd()) {
+        result.usedFallback = true;
+        result.diagnostics.push_back({0, 0, "theme file exceeds maximum allowed size (1 MiB)"});
+        return result;
+    }
+
+    return core::loadTheme(std::string_view(bytes.constData(), static_cast<std::size_t>(bytes.size())), scheme);
 }
 
 QStringList ThemeManager::formatDiagnostics(const core::ThemeLoadResult& result) {
