@@ -18,7 +18,8 @@ foreach(name IN ITEMS
         TheReleaseJobRunsOnlyOnMain
         TheDebianJobsDoNotWaitForTheAur
         OneVersionDoesNotStopTheOthers
-        TheReleaseFindsEveryPackage)
+        TheReleaseFindsEveryPackage
+        TheReleaseWaitsForItsDraft)
     add_test(NAME S036_${name}
         COMMAND ${CMAKE_COMMAND} -DCASE=${name}
                 -DWORKFLOWS_DIR=${PROJECT_SOURCE_DIR}/.github/workflows -P ${s036_cases})
