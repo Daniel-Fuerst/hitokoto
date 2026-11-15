@@ -32,6 +32,14 @@ public:
     static QString defaultThemePath();
     /// Default configuration directory: <config dir>/hitokoto.
     static QString defaultConfigDir();
+    /// Default configuration file: <config dir>/hitokoto/config.toml.
+    static QString defaultConfigFilePath();
+    /// Configuration file inside `configDir`: `<configDir>/config.toml` (empty if `configDir` is empty).
+    static QString configFilePath(const QString& configDir);
+    /// Persists the selected theme entry to `<configDir>/config.toml`, preserving existing settings.
+    static bool saveSelectedTheme(const QString& configDir, const ThemeEntry& entry);
+    /// Resolves the persisted theme entry from `<configDir>/config.toml`, if configured and found.
+    static std::optional<ThemeEntry> loadSavedThemeEntry(const QString& configDir);
     /// Built-in themes plus any valid/discoverable `.toml` theme files in `configDir` (and `<configDir>/themes`).
     static QList<ThemeEntry> availableThemes(const QString& configDir);
     /// Parses `path` using `scheme` as fallback base. Non-existent files return builtin(`scheme`) without fallback
@@ -46,6 +54,8 @@ public:
 
     void setConfigDir(QString dir);
     [[nodiscard]] const QString& configDir() const noexcept { return configDir_; }
+    void setCliThemeOverride(bool override);
+    [[nodiscard]] bool cliThemeOverride() const noexcept { return cliThemeOverride_; }
 
     void selectThemeFile(const QString& path);
     void selectBuiltinTheme(core::ColorScheme scheme);
@@ -54,6 +64,7 @@ public:
 
     [[nodiscard]] const core::Theme& current() const noexcept { return current_; }
     [[nodiscard]] const QString& userThemePath() const noexcept { return path_; }
+    [[nodiscard]] const QString& activeThemePath() const noexcept { return activeThemePath_; }
 
 signals:
     void themeChanged(const hitokoto::core::Theme& theme);
@@ -63,7 +74,9 @@ private:
     QApplication& app_;
     QString path_;
     QString configDir_;
+    QString activeThemePath_;
     std::optional<core::ColorScheme> builtinOverride_;
+    bool cliThemeOverride_ = false;
     core::Theme current_;
 };
 

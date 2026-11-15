@@ -1,6 +1,6 @@
 # S012 — Distributable builds for Linux, Windows and macOS
 
-- **Status:** Proposed · **Order:** 41 · **Depends on:** S000 (and the licence decision)
+- **Status:** Proposed · **Order:** 42 · **Depends on:** S000 (and the licence decision)
 
 ## Story
 

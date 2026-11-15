@@ -21,6 +21,7 @@ add_library(hitokoto_core STATIC
     src/find.cpp
     src/paste.cpp
     src/reveal.cpp
+    src/settings.cpp
     src/theme.cpp
 )
 add_library(hitokoto::core ALIAS hitokoto_core)

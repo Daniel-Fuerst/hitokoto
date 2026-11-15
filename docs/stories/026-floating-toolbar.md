@@ -4,10 +4,9 @@
 - **Basis:** User request and confirmation on 2026-11-03: a vertical floating toolbar centered on
   the right edge of the editor with two entries: "Create new Table" (inserts a 2-column × 1-body-row
   table and focuses the first header cell) and "Create inline-codeblock" (wraps the selection in
-  backticks or inserts `` `` `` with the caret inside). Extended on `feature/settings` (2026-11-15)
-  with an "Open settings" entry with a settings icon that toggles a non-modal floating `SettingsMenu`
-  flyout displaying theme selection controls (built-in themes plus `.toml` themes from the config
-  folder) and a subtle version hint.
+  backticks or inserts `` `` `` with the caret inside). Extended on `feature/settings` (2026-11-15,
+  specified in [S038](038-settings-menu.md)) with an "Open settings" entry with a settings icon that
+  toggles the non-modal floating `SettingsMenu` flyout (theme selection and `config.toml` persistence).
 
 ## Story
 
@@ -50,12 +49,10 @@ without leaving the editor.
 **Scenario: opening and closing the settings flyout from the toolbar**
 - Given an open editor window
 - When I click "Open settings" in the floating toolbar
-- Then a non-modal floating `SettingsMenu` flyout opens to the left of the floating toolbar, showing
-  an **Appearance** section with a theme selector (`themeSelector` `QComboBox`) and a subtle
-  version hint (`settingsVersionLabel`) at the bottom
-- And the theme selector lists the built-in `hitokoto Light` and `hitokoto Dark` themes plus `.toml`
-  themes discovered from the configuration folder (and its `themes/` subfolder); picking one applies
-  the theme immediately across the application
+- Then the non-modal floating `SettingsMenu` flyout ([S038](038-settings-menu.md)) opens to the
+  left of the floating toolbar, showing an **Appearance** section with `themeSelector` (`QComboBox`)
+  and a subtle version hint (`settingsVersionLabel`) at the bottom, persisting the chosen theme to
+  `config.toml` across restarts
 - And the "Open settings" button appears checked while the editor keeps keyboard focus and typing
   continues uninterrupted
 - When I press `Escape` in the editor or click "Open settings" again

@@ -179,7 +179,8 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   sees it hardly anywhere.
 - **Now:** the version goes to `QApplication::applicationVersion()` (S030). `hitokoto --version`
   shows it (the `QCommandLineParser` option exists since S000; on Windows a message box, because the
-  program is a GUI application; found while implementing S030); there is no About dialog and no
+  program is a GUI application; found while implementing S030); S038 also shows `v<version>` as a
+  subtle version hint at the bottom of `SettingsMenu`. There is still no About dialog and no
   version in the title bar.
 - **Open:** where else it is shown: a dialog Help › About (with the licence and the Qt version), the
   title bar, or both; theme tokens for a dialog (brief, section 8); whether builds between tags show

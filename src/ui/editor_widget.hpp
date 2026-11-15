@@ -6,6 +6,7 @@
 
 #include "block_layout.hpp"
 #include "block_styler.hpp"
+#include "hitokoto/core/settings.hpp"
 #include "hitokoto/core/theme.hpp"
 #include "theme_manager.hpp"
 
@@ -90,6 +91,7 @@ public:
     void setThemeConfigDir(const QString& dir);
     [[nodiscard]] const QString& themeConfigDir() const noexcept { return themeConfigDir_; }
     void setActiveThemePath(const QString& path);
+    [[nodiscard]] const QString& activeThemePath() const noexcept { return activeThemePath_; }
     [[nodiscard]] const core::Theme& currentTheme() const noexcept { return currentTheme_; }
     void refreshAvailableThemes();
     /// S026: inserts a 2-column × 1-body-row table and focuses its first header cell.
@@ -118,6 +120,8 @@ public:
 signals:
     void painted();
     void themeEntrySelected(const hitokoto::ui::ThemeEntry& entry);
+    void savedThemeLoaded(const hitokoto::core::Theme& theme);
+    void settingsLoaded(const hitokoto::core::Settings& settings);
 
 protected:
     bool viewportEvent(QEvent* event) override;

@@ -9,7 +9,6 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QElapsedTimer>
-#include <QFileInfo>
 #include <QTimer>
 
 #include <cstdio>
@@ -62,13 +61,17 @@ int main(int argc, char* argv[]) {
     static const core::ElementRegistry registry = core::ElementRegistry::withBuiltins();
     ui::MainWindow window(registry);
 
-    ui::ThemeManager themes(
-        app, parser.isSet(themeOption) ? parser.value(themeOption) : ui::ThemeManager::defaultThemePath());
-    window.editor()->setThemeConfigDir(themes.configDir());
-    if (!themes.userThemePath().isEmpty() && QFileInfo::exists(themes.userThemePath())) {
-        window.editor()->setActiveThemePath(themes.userThemePath());
+    const bool cliThemeSet = parser.isSet(themeOption);
+    ui::ThemeManager themes(app, cliThemeSet ? parser.value(themeOption) : ui::ThemeManager::defaultThemePath());
+    if (cliThemeSet) {
+        themes.setConfigDir(ui::ThemeManager::defaultConfigDir());
+        themes.setCliThemeOverride(true);
     }
-    QObject::connect(&themes, &ui::ThemeManager::themeChanged, &window, &ui::MainWindow::applyTheme);
+    window.editor()->setThemeConfigDir(themes.configDir());
+    QObject::connect(&themes, &ui::ThemeManager::themeChanged, &window, [&window, &themes](const core::Theme& theme) {
+        window.applyTheme(theme);
+        window.editor()->setActiveThemePath(themes.activeThemePath());
+    });
     QObject::connect(&themes, &ui::ThemeManager::problemsFound, &window,
                      [&window](const QString& path, const QStringList& problems) {
                          window.showMessage(QObject::tr("Theme not applied"),

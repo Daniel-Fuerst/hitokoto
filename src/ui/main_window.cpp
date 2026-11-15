@@ -52,6 +52,12 @@ MainWindow::MainWindow(const core::ElementRegistry& registry, QWidget* parent)
     find_ = new FindController(editor_, findBar_, registry, this);
     createMenus();
     connect(editor_, &EditorWidget::themeEntrySelected, this, &MainWindow::applyThemeEntry);
+    connect(editor_, &EditorWidget::savedThemeLoaded, this, &MainWindow::applyTheme);
+    connect(editor_, &EditorWidget::settingsLoaded, this, [this](const core::Settings& settings) {
+        options_.reportBlankLinesAdded = settings.reportBlankLinesAdded;
+        options_.frontMatterAsProperties = settings.frontMatterAsProperties;
+        options_.smoothScrolling = settings.smoothScrolling;
+    });
 
     askSave_ = [this](const QString& name) {
         const auto answer =
@@ -179,7 +185,12 @@ void MainWindow::applyThemeEntry(const ThemeEntry& entry) {
         applyThemeToApplication(*app, result.theme);
     }
     applyTheme(result.theme);
-    emit themeEntryChosen(entry);
+    if (result.usedFallback) {
+        editor_->setActiveThemePath(QString());
+    } else {
+        ThemeManager::saveSelectedTheme(editor_->themeConfigDir(), entry);
+        emit themeEntryChosen(entry);
+    }
 }
 
 void MainWindow::showMessage(const QString& title, const QString& text) {

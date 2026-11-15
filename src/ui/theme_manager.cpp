@@ -1,18 +1,44 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "theme_manager.hpp"
 
+#include "hitokoto/core/settings.hpp"
+#include "qt_bridge.hpp"
 #include "theme_applier.hpp"
 
 #include <QApplication>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QStandardPaths>
 #include <QStyleHints>
 
+#include <filesystem>
+
 namespace hitokoto::ui {
+namespace {
+
+bool isConfigFileName(const QString& fileName) {
+    return fileName.compare(QStringLiteral("config.toml"), Qt::CaseInsensitive) == 0 ||
+           fileName.compare(QStringLiteral("settings.toml"), Qt::CaseInsensitive) == 0;
+}
+
+ThemeEntry makeFileThemeEntry(const QFileInfo& info, core::ColorScheme scheme) {
+    const QString absPath = info.absoluteFilePath();
+    QString displayName = info.completeBaseName();
+    const core::ThemeLoadResult result = ThemeManager::loadThemeFile(absPath, scheme);
+    if (!result.usedFallback && !result.theme.name.empty()) {
+        displayName = QString::fromStdString(result.theme.name);
+    }
+    return ThemeEntry{displayName, absPath, std::nullopt};
+}
+
+}  // namespace
 
 ThemeManager::ThemeManager(QApplication& app, QString userThemePath, QObject* parent)
-    : QObject(parent), app_(app), path_(std::move(userThemePath)), configDir_(defaultConfigDir()) {
+    : QObject(parent),
+      app_(app),
+      path_(std::move(userThemePath)),
+      configDir_(path_.isEmpty() ? defaultConfigDir() : QFileInfo(path_).absolutePath()) {
     connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this, [this] { reload(); });
 }
 
@@ -24,6 +50,102 @@ QString ThemeManager::defaultThemePath() {
 QString ThemeManager::defaultConfigDir() {
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
     return QDir(dir).filePath(QStringLiteral("hitokoto"));
+}
+
+QString ThemeManager::defaultConfigFilePath() {
+    return configFilePath(defaultConfigDir());
+}
+
+QString ThemeManager::configFilePath(const QString& configDir) {
+    if (configDir.isEmpty()) {
+        return {};
+    }
+    return QDir(configDir).filePath(toQString(core::kSettingsFileName));
+}
+
+bool ThemeManager::saveSelectedTheme(const QString& configDir, const ThemeEntry& entry) {
+    const QString cfgPath = configFilePath(configDir);
+    if (cfgPath.isEmpty()) {
+        return false;
+    }
+    const std::filesystem::path fsPath(cfgPath.toStdU16String());
+    const core::SettingsLoadResult loaded = core::loadSettingsFile(fsPath);
+    core::Settings settings = loaded.settings;
+
+    std::string nextTheme;
+    if (entry.builtinScheme.has_value()) {
+        nextTheme = (*entry.builtinScheme == core::ColorScheme::Dark) ? "dark" : "light";
+    } else if (!entry.path.isEmpty()) {
+        const QDir baseDir(configDir);
+        const QString absEntry = QFileInfo(entry.path).absoluteFilePath();
+        const QString rel = QDir::fromNativeSeparators(baseDir.relativeFilePath(absEntry));
+        if (!rel.isEmpty() && !rel.startsWith(QStringLiteral("..")) && !QDir::isAbsolutePath(rel)) {
+            nextTheme = rel.toStdString();
+        } else {
+            nextTheme = QDir::fromNativeSeparators(absEntry).toStdString();
+        }
+    }
+
+    if (QFileInfo::exists(cfgPath) && loaded.diagnostics.empty() && settings.theme == nextTheme) {
+        return true;
+    }
+    settings.theme = std::move(nextTheme);
+    return !core::saveSettingsFile(fsPath, settings).has_value();
+}
+
+std::optional<ThemeEntry> ThemeManager::loadSavedThemeEntry(const QString& configDir) {
+    const QString cfgPath = configFilePath(configDir);
+    if (cfgPath.isEmpty() || !QFileInfo::exists(cfgPath)) {
+        return std::nullopt;
+    }
+
+    const core::SettingsLoadResult loaded = core::loadSettingsFile(std::filesystem::path(cfgPath.toStdU16String()));
+    const QString raw = toQString(loaded.settings.theme).trimmed();
+    if (raw.isEmpty()) {
+        return std::nullopt;
+    }
+
+    if (const auto scheme = core::builtinSchemeFromSetting(loaded.settings.theme)) {
+        const auto& builtin = core::builtinTheme(*scheme);
+        return ThemeEntry{QString::fromStdString(builtin.name), {}, *scheme};
+    }
+
+    QString normalized = raw;
+    normalized.replace(QLatin1Char('\\'), QLatin1Char('/'));
+
+    QStringList candidates;
+    if (QFileInfo(normalized).isAbsolute()) {
+        candidates.append(normalized);
+    } else {
+        candidates.append(QDir(configDir).filePath(normalized));
+        candidates.append(QDir(configDir).filePath(QStringLiteral("themes/") + normalized));
+    }
+
+    const auto scheme = systemScheme();
+    for (const QString& candidate : candidates) {
+        const QFileInfo info(candidate);
+        if (info.exists() && info.isFile() && !isConfigFileName(info.fileName())) {
+            return makeFileThemeEntry(info, scheme);
+        }
+    }
+
+    const QList<ThemeEntry> entries = availableThemes(configDir);
+    for (const ThemeEntry& entry : entries) {
+        if (entry.name.compare(raw, Qt::CaseInsensitive) == 0) {
+            return entry;
+        }
+    }
+    for (const ThemeEntry& entry : entries) {
+        if (entry.builtinScheme.has_value()) {
+            continue;
+        }
+        const QFileInfo info(entry.path);
+        if (info.fileName().compare(raw, Qt::CaseInsensitive) == 0 ||
+            info.completeBaseName().compare(raw, Qt::CaseInsensitive) == 0) {
+            return entry;
+        }
+    }
+    return std::nullopt;
 }
 
 QList<ThemeEntry> ThemeManager::availableThemes(const QString& configDir) {
@@ -53,6 +175,9 @@ QList<ThemeEntry> ThemeManager::availableThemes(const QString& configDir) {
         const QFileInfoList files =
             dir.entryInfoList({QStringLiteral("*.toml")}, QDir::Files | QDir::Readable, QDir::Name | QDir::IgnoreCase);
         for (const QFileInfo& info : files) {
+            if (isConfigFileName(info.fileName())) {
+                continue;
+            }
             const QString absPath = info.absoluteFilePath();
             QString canonical = info.canonicalFilePath();
             if (canonical.isEmpty()) {
@@ -62,13 +187,7 @@ QList<ThemeEntry> ThemeManager::availableThemes(const QString& configDir) {
                 continue;
             }
             seenCanonicalPaths.append(canonical);
-
-            QString displayName = info.completeBaseName();
-            const core::ThemeLoadResult result = loadThemeFile(absPath, scheme);
-            if (!result.usedFallback && !result.theme.name.empty()) {
-                displayName = QString::fromStdString(result.theme.name);
-            }
-            entries.append(ThemeEntry{displayName, absPath, std::nullopt});
+            entries.append(makeFileThemeEntry(info, scheme));
         }
     }
     return entries;
@@ -102,22 +221,46 @@ void ThemeManager::setConfigDir(QString dir) {
     configDir_ = std::move(dir);
 }
 
+void ThemeManager::setCliThemeOverride(bool override) {
+    cliThemeOverride_ = override;
+}
+
 void ThemeManager::selectThemeFile(const QString& path) {
     builtinOverride_.reset();
+    cliThemeOverride_ = false;
     path_ = path;
+    const auto scheme = systemScheme();
+    const core::ThemeLoadResult check = loadThemeFile(path_, scheme);
+    if (check.usedFallback) {
+        activeThemePath_.clear();
+        current_ = check.theme;
+        applyThemeToApplication(app_, current_);
+        emit themeChanged(current_);
+        emit problemsFound(path_, formatDiagnostics(check));
+        return;
+    }
+    if (!path_.isEmpty() && QFileInfo::exists(path_)) {
+        saveSelectedTheme(configDir_, ThemeEntry{{}, QFileInfo(path_).absoluteFilePath(), std::nullopt});
+    }
     reload();
 }
 
 void ThemeManager::selectBuiltinTheme(core::ColorScheme scheme) {
     builtinOverride_ = scheme;
+    cliThemeOverride_ = false;
     path_.clear();
+    const auto& builtin = core::builtinTheme(scheme);
+    saveSelectedTheme(configDir_, ThemeEntry{QString::fromStdString(builtin.name), {}, scheme});
     reload();
 }
 
 void ThemeManager::syncSelectedTheme(const ThemeEntry& entry, core::Theme theme) {
     builtinOverride_ = entry.builtinScheme;
+    cliThemeOverride_ = false;
     path_ = entry.builtinScheme.has_value() ? QString() : entry.path;
+    activeThemePath_ = entry.builtinScheme.has_value() ? QString() : QFileInfo(entry.path).absoluteFilePath();
     current_ = std::move(theme);
+    saveSelectedTheme(configDir_, entry);
 }
 
 core::ColorScheme ThemeManager::systemScheme() {
@@ -127,15 +270,34 @@ core::ColorScheme ThemeManager::systemScheme() {
 
 void ThemeManager::reload() {
     const auto scheme = systemScheme();
-    core::ThemeLoadResult result{core::builtinTheme(builtinOverride_.value_or(scheme)), false, {}};
-    if (!builtinOverride_.has_value()) {
-        result = loadThemeFile(path_, scheme);
+    core::ThemeLoadResult result{core::builtinTheme(scheme), false, {}};
+    QString loadedPath;
+
+    if (builtinOverride_.has_value()) {
+        result.theme = core::builtinTheme(*builtinOverride_);
+        activeThemePath_.clear();
+    } else if (const auto saved = cliThemeOverride_ ? std::nullopt : loadSavedThemeEntry(configDir_)) {
+        if (saved->builtinScheme.has_value()) {
+            result.theme = core::builtinTheme(*saved->builtinScheme);
+            activeThemePath_.clear();
+        } else {
+            loadedPath = saved->path;
+            result = loadThemeFile(loadedPath, scheme);
+            activeThemePath_ = result.usedFallback ? QString() : QFileInfo(loadedPath).absoluteFilePath();
+        }
+    } else {
+        loadedPath = path_;
+        result = loadThemeFile(loadedPath, scheme);
+        activeThemePath_ = (!loadedPath.isEmpty() && QFileInfo::exists(loadedPath) && !result.usedFallback)
+                               ? QFileInfo(loadedPath).absoluteFilePath()
+                               : QString();
     }
+
     current_ = result.theme;
     applyThemeToApplication(app_, current_);
     emit themeChanged(current_);
     if (result.usedFallback) {
-        emit problemsFound(path_, formatDiagnostics(result));
+        emit problemsFound(loadedPath, formatDiagnostics(result));
     }
 }
 

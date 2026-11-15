@@ -8,14 +8,17 @@
 #include "smooth_scroller.hpp"
 #include "table_embedder.hpp"
 #include "table_paste.hpp"
+#include "theme_applier.hpp"
 
 #include <QAction>
 #include <QApplication>
 #include <QBuffer>
 #include <QClipboard>
 #include <QContextMenuEvent>
+#include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDropEvent>
+#include <QFileInfo>
 #include <QFontMetricsF>
 #include <QGuiApplication>
 #include <QHelpEvent>
@@ -40,6 +43,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <memory>
 #include <utility>
 
@@ -155,7 +159,7 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     connect(toolbar_, &FloatingToolbar::createInlineCodeRequested, this, &EditorWidget::insertInlineCode);
     connect(toolbar_, &FloatingToolbar::openSettingsRequested, this, &EditorWidget::toggleSettingsMenu);
     connect(settingsMenu_, &SettingsMenu::themeEntrySelected, this, [this](const ThemeEntry& entry) {
-        activeThemePath_ = entry.builtinScheme.has_value() ? QString() : entry.path;
+        activeThemePath_ = entry.builtinScheme.has_value() ? QString() : QFileInfo(entry.path).absoluteFilePath();
         emit themeEntrySelected(entry);
     });
     positionToolbar();
@@ -471,13 +475,34 @@ void EditorWidget::setSettingsMenuOpen(bool open) {
 
 void EditorWidget::setThemeConfigDir(const QString& dir) {
     themeConfigDir_ = dir;
+    const QString cfgPath = ThemeManager::configFilePath(themeConfigDir_);
+    if (!cfgPath.isEmpty() && QFileInfo::exists(cfgPath)) {
+        const core::SettingsLoadResult loaded = core::loadSettingsFile(std::filesystem::path(cfgPath.toStdU16String()));
+        setFrontMatterAsProperties(loaded.settings.frontMatterAsProperties);
+        setSmoothScrolling(loaded.settings.smoothScrolling);
+        emit settingsLoaded(loaded.settings);
+    }
+    if (const auto saved = ThemeManager::loadSavedThemeEntry(themeConfigDir_)) {
+        const auto scheme = ThemeManager::systemScheme();
+        core::ThemeLoadResult result{core::builtinTheme(saved->builtinScheme.value_or(scheme)), false, {}};
+        if (!saved->builtinScheme.has_value()) {
+            result = ThemeManager::loadThemeFile(saved->path, scheme);
+        }
+        if (!result.usedFallback) {
+            activeThemePath_ = saved->builtinScheme.has_value() ? QString() : QFileInfo(saved->path).absoluteFilePath();
+            if (auto* app = qobject_cast<QApplication*>(QCoreApplication::instance())) {
+                applyThemeToApplication(*app, result.theme);
+            }
+            emit savedThemeLoaded(result.theme);
+        }
+    }
     if (settingsMenu_->isVisible()) {
         refreshAvailableThemes();
     }
 }
 
 void EditorWidget::setActiveThemePath(const QString& path) {
-    activeThemePath_ = path;
+    activeThemePath_ = path.isEmpty() ? QString() : QFileInfo(path).absoluteFilePath();
     if (settingsMenu_->isVisible()) {
         refreshAvailableThemes();
     }
