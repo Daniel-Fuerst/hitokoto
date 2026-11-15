@@ -357,17 +357,178 @@ std::optional<IoError> saveSettingsFile(const std::filesystem::path& path, const
     return writeFileAtomically(path, serializeSettings(settings));
 }
 
-std::string updateThemeInSettingsSource(std::string_view /*source*/, std::string_view newTheme) {
-    Settings s;
-    s.theme = std::string(newTheme);
-    return serializeSettings(s);
+std::string updateThemeInSettingsSource(std::string_view source, std::string_view newTheme) {
+    const bool hasCRLF = (source.find("\r\n") != std::string_view::npos);
+    const std::string defaultLe = hasCRLF ? "\r\n" : "\n";
+
+    std::size_t appearanceSectionLineEnd = std::string_view::npos;
+    std::string appearanceLe = defaultLe;
+    bool inAppearance = false;
+
+    std::size_t pos = 0;
+    std::size_t themeValStart = std::string_view::npos;
+    std::size_t themeValEnd = std::string_view::npos;
+
+    while (pos < source.size()) {
+        const std::size_t lineStart = pos;
+        const std::size_t nl = source.find('\n', pos);
+        const std::size_t lineEnd = (nl == std::string_view::npos) ? source.size() : nl + 1;
+        pos = lineEnd;
+
+        const std::string_view line = source.substr(lineStart, lineEnd - lineStart);
+        std::string curLe = "\n";
+        if (line.size() >= 2 && line[line.size() - 2] == '\r' && line.back() == '\n') {
+            curLe = "\r\n";
+        }
+
+        std::size_t start = 0;
+        if (lineStart == 0 && line.size() >= 3 && line[0] == '\xEF' && line[1] == '\xBB' && line[2] == '\xBF') {
+            start = 3;
+        }
+        while (start < line.size() && isBlank(line[start])) {
+            ++start;
+        }
+
+        if (start >= line.size() || line[start] == '#' || line[start] == '\r' || line[start] == '\n') {
+            continue;
+        }
+
+        if (line[start] == '[') {
+            const std::size_t close = line.find(']', start);
+            if (close != std::string_view::npos) {
+                const std::string_view secName = line.substr(start + 1, close - start - 1);
+                if (secName == "appearance") {
+                    inAppearance = true;
+                    appearanceSectionLineEnd = lineEnd;
+                    appearanceLe = curLe;
+                } else {
+                    inAppearance = false;
+                }
+            }
+            continue;
+        }
+
+        constexpr std::string_view kThemeKey = "theme";
+        if (line.substr(start, kThemeKey.size()) == kThemeKey) {
+            const std::size_t afterKey = start + kThemeKey.size();
+            if (afterKey == line.size() || isBlank(line[afterKey]) || line[afterKey] == '=') {
+                if (inAppearance || appearanceSectionLineEnd == std::string_view::npos) {
+                    const std::size_t eqPos = line.find('=', afterKey);
+                    if (eqPos != std::string_view::npos) {
+                        std::size_t vStart = eqPos + 1;
+                        while (vStart < line.size() && isBlank(line[vStart])) {
+                            ++vStart;
+                        }
+                        if (vStart < line.size()) {
+                            std::size_t vEnd = vStart;
+                            if (line[vStart] == '"') {
+                                ++vEnd;
+                                while (vEnd < line.size()) {
+                                    if (line[vEnd] == '"') {
+                                        ++vEnd;
+                                        break;
+                                    }
+                                    if (line[vEnd] == '\\' && vEnd + 1 < line.size()) {
+                                        vEnd += 2;
+                                    } else {
+                                        ++vEnd;
+                                    }
+                                }
+                            } else if (line[vStart] == '\'') {
+                                ++vEnd;
+                                while (vEnd < line.size() && line[vEnd] != '\'') {
+                                    ++vEnd;
+                                }
+                                if (vEnd < line.size() && line[vEnd] == '\'') {
+                                    ++vEnd;
+                                }
+                            } else {
+                                while (vEnd < line.size() && !isBlank(line[vEnd]) && line[vEnd] != '#' &&
+                                       line[vEnd] != '\r' && line[vEnd] != '\n') {
+                                    ++vEnd;
+                                }
+                            }
+                            themeValStart = lineStart + vStart;
+                            themeValEnd = lineStart + vEnd;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    const std::string newThemeEscaped = std::string("\"") + escapeTomlString(newTheme) + "\"";
+
+    if (themeValStart != std::string_view::npos) {
+        std::string result;
+        result.reserve(source.size() + newThemeEscaped.size());
+        result.append(source.substr(0, themeValStart));
+        result.append(newThemeEscaped);
+        result.append(source.substr(themeValEnd));
+        return result;
+    }
+
+    if (appearanceSectionLineEnd != std::string_view::npos) {
+        std::string result;
+        result.reserve(source.size() + newThemeEscaped.size() + 16);
+        result.append(source.substr(0, appearanceSectionLineEnd));
+        result.append("theme = ");
+        result.append(newThemeEscaped);
+        result.append(appearanceLe);
+        result.append(source.substr(appearanceSectionLineEnd));
+        return result;
+    }
+
+    std::string result;
+    result.reserve(source.size() + newThemeEscaped.size() + 32);
+    result.append(source);
+    if (!result.empty() && result.back() != '\n') {
+        result.append(defaultLe);
+    }
+    if (!result.empty()) {
+        result.append(defaultLe);
+    }
+    result.append("[appearance]");
+    result.append(defaultLe);
+    result.append("theme = ");
+    result.append(newThemeEscaped);
+    result.append(defaultLe);
+    return result;
 }
 
 std::optional<IoError> updateThemeSettingInFile(const std::filesystem::path& path, std::string_view theme) {
-    const SettingsLoadResult loaded = loadSettingsFile(path);
-    Settings settings = loaded.settings;
-    settings.theme = std::string(theme);
-    return saveSettingsFile(path, settings);
+    if (path.empty()) {
+        return IoError{"settings path is empty"};
+    }
+    std::error_code ec;
+    const bool exists = std::filesystem::exists(path, ec);
+    if (ec) {
+        return IoError{ec.message()};
+    }
+    if (!exists) {
+        Settings def;
+        def.theme = std::string(theme);
+        return saveSettingsFile(path, def);
+    }
+
+    const bool isRegular = std::filesystem::is_regular_file(path, ec);
+    if (ec || !isRegular) {
+        return IoError{"not a regular file"};
+    }
+    constexpr std::uintmax_t kMaxSettingsFileSize = 64ULL * 1024ULL;
+    const std::uintmax_t size = std::filesystem::file_size(path, ec);
+    if (ec || size > kMaxSettingsFileSize) {
+        return IoError{"file exceeds maximum allowed size"};
+    }
+
+    const ReadResult read = readFile(path);
+    if (!read.bytes) {
+        return read.error ? *read.error : IoError{"cannot read file"};
+    }
+
+    const std::string updated = updateThemeInSettingsSource(*read.bytes, theme);
+    return writeFileAtomically(path, updated);
 }
 
 std::optional<ColorScheme> builtinSchemeFromSetting(std::string_view themeSetting) {
