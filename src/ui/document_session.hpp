@@ -123,6 +123,9 @@ private:
     void startWrite(Snapshot s, const QString& path);
     static WriteOutcome write(Snapshot snapshot, const QString& path);
     void finishSave(const QString& path, const WriteOutcome& outcome, quint64 editCount, quint64 documentId);
+    /// Worker thread: reads and decodes `path`, then queues the insertion or the failure. May throw.
+    void readAndDecode(const QString& path, quint64 generation, const std::function<void()>& beforeDecode);
+    void postLoadFailure(const QString& path, quint64 generation, const QString& message);
     void abortLoad(const QString& path, const QString& message);
     void beginInsert(QString text, core::DecodedText meta, const QString& path, std::size_t blankLinesAdded);
     void insertSlice();

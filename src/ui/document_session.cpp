@@ -18,6 +18,7 @@
 #include <climits>
 #include <filesystem>
 #include <iterator>
+#include <new>
 #include <utility>
 
 namespace hitokoto::ui {
@@ -114,53 +115,64 @@ void DocumentSession::load(const QString& path) {
     editor_->setReadOnly(true);
     emit loadStarted(path);
     pool_.start([this, path, generation, beforeDecode = hooks_.beforeDecode] {
-        auto read = core::readFile(toPath(path));
-        if (!read.bytes) {
-            const QString message = describe(path, read.error ? read.error->message : "cannot read file");
-            QMetaObject::invokeMethod(
-                this,
-                [this, path, message, generation] {
-                    if (generation == loadGeneration_)
-                        abortLoad(path, message);
-                },
-                Qt::QueuedConnection);
-            return;
+        // Nothing thrown on the worker thread may leave it: Qt's thread pool does not catch, the
+        // program would end. Every failure becomes a message; the current document stays.
+        try {
+            readAndDecode(path, generation, beforeDecode);
+        } catch (const std::bad_alloc&) {
+            postLoadFailure(path, generation,
+                            describe(path, "not enough memory to open the file. The file was not opened."));
+        } catch (...) {
+            postLoadFailure(path, generation, describe(path, "the file could not be opened."));
         }
-        // Only a file with a pipe can hold a table. memchr on the bytes takes about 1 ms for 10 MB;
-        // looking for it in the decoded text took about 10 ms before the first screen (CI benchmark
-        // open_10mb_first_chunk_ms on 0511251).
-        const bool mayHoldTables = read.bytes->find('|') != std::string::npos;
-        if (beforeDecode) {
-            beforeDecode();
-        }
-        auto decoded = core::decodeUtf8(*read.bytes);
-        read.bytes.reset();
-        if (!decoded.value) {
-            const QString message =
-                describe(path, decoded.error->message + " at byte " + std::to_string(decoded.error->byteOffset) +
-                                   ". The file was not opened; nothing was changed.");
-            QMetaObject::invokeMethod(
-                this,
-                [this, path, message, generation] {
-                    if (generation == loadGeneration_)
-                        abortLoad(path, message);
-                },
-                Qt::QueuedConnection);
-            return;
-        }
-        // ADR 0002, decision 6: text directly below a table gets a blank line, as Obsidian reads it.
-        const std::size_t added = mayHoldTables ? core::separateTextAfterTables(*decoded.value, registry_) : 0;
-        QString text = toQString(std::u16string_view(decoded.value->text));
-        decoded.value->text.clear();
-        decoded.value->text.shrink_to_fit();
-        QMetaObject::invokeMethod(
-            this,
-            [this, text = std::move(text), meta = std::move(*decoded.value), path, generation, added]() mutable {
-                if (generation == loadGeneration_)
-                    beginInsert(std::move(text), std::move(meta), path, added);
-            },
-            Qt::QueuedConnection);
     });
+}
+
+void DocumentSession::readAndDecode(const QString& path, quint64 generation,
+                                    const std::function<void()>& beforeDecode) {
+    auto read = core::readFile(toPath(path));
+    if (!read.bytes) {
+        postLoadFailure(path, generation, describe(path, read.error ? read.error->message : "cannot read file"));
+        return;
+    }
+    // Only a file with a pipe can hold a table. memchr on the bytes takes about 1 ms for 10 MB;
+    // looking for it in the decoded text took about 10 ms before the first screen (CI benchmark
+    // open_10mb_first_chunk_ms on 0511251).
+    const bool mayHoldTables = read.bytes->find('|') != std::string::npos;
+    if (beforeDecode) {
+        beforeDecode();
+    }
+    auto decoded = core::decodeUtf8(*read.bytes);
+    read.bytes.reset();
+    if (!decoded.value) {
+        const std::string reason =
+            decoded.error ? decoded.error->message + " at byte " + std::to_string(decoded.error->byteOffset)
+                          : std::string("the file could not be decoded");
+        postLoadFailure(path, generation, describe(path, reason + ". The file was not opened; nothing was changed."));
+        return;
+    }
+    // ADR 0002, decision 6: text directly below a table gets a blank line, as Obsidian reads it.
+    const std::size_t added = mayHoldTables ? core::separateTextAfterTables(*decoded.value, registry_) : 0;
+    QString text = toQString(std::u16string_view(decoded.value->text));
+    decoded.value->text.clear();
+    decoded.value->text.shrink_to_fit();
+    QMetaObject::invokeMethod(
+        this,
+        [this, text = std::move(text), meta = std::move(*decoded.value), path, generation, added]() mutable {
+            if (generation == loadGeneration_)
+                beginInsert(std::move(text), std::move(meta), path, added);
+        },
+        Qt::QueuedConnection);
+}
+
+void DocumentSession::postLoadFailure(const QString& path, quint64 generation, const QString& message) {
+    QMetaObject::invokeMethod(
+        this,
+        [this, path, message, generation] {
+            if (generation == loadGeneration_)
+                abortLoad(path, message);
+        },
+        Qt::QueuedConnection);
 }
 
 void DocumentSession::abortLoad(const QString& path, const QString& message) {
