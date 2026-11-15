@@ -291,26 +291,55 @@ std::string serializeSettings(const Settings& settings) {
     return out;
 }
 
-SettingsLoadResult loadSettingsFile(const std::filesystem::path& path) {
+SettingsLoadResult loadSettingsFile(const std::filesystem::path& path) noexcept {
     SettingsLoadResult result;
     if (path.empty()) {
         return result;
     }
-    std::error_code ec;
-    const bool exists = std::filesystem::exists(path, ec);
-    if (ec) {
-        result.diagnostics.push_back({0, 0, ec.message()});
+    try {
+        std::error_code ec;
+        const bool exists = std::filesystem::exists(path, ec);
+        if (ec) {
+            result.diagnostics.push_back({0, 0, ec.message()});
+            return result;
+        }
+        if (!exists) {
+            return result;
+        }
+        const bool isRegular = std::filesystem::is_regular_file(path, ec);
+        if (ec) {
+            result.diagnostics.push_back({0, 0, ec.message()});
+            return result;
+        }
+        if (!isRegular) {
+            result.diagnostics.push_back({0, 0, "not a regular file"});
+            return result;
+        }
+        constexpr std::uintmax_t kMaxSettingsFileSize = 64ULL * 1024ULL;
+        const std::uintmax_t size = std::filesystem::file_size(path, ec);
+        if (ec) {
+            result.diagnostics.push_back({0, 0, ec.message()});
+            return result;
+        }
+        if (size > kMaxSettingsFileSize) {
+            result.diagnostics.push_back({0, 0, "file exceeds maximum allowed size"});
+            return result;
+        }
+        const ReadResult read = readFile(path);
+        if (!read.bytes) {
+            result.diagnostics.push_back({0, 0, read.error ? read.error->message : "cannot read file"});
+            return result;
+        }
+        return parseSettings(*read.bytes);
+    } catch (const std::exception& e) {
+        result.settings = Settings{};
+        result.diagnostics = {{0, 0, e.what()}};
+        return result;
+    } catch (...) {
+        result.settings = Settings{};
+        result.diagnostics = {{0, 0, "unknown error loading settings file"}};
         return result;
     }
-    if (!exists) {
-        return result;
-    }
-    const ReadResult read = readFile(path);
-    if (!read.bytes) {
-        result.diagnostics.push_back({0, 0, read.error ? read.error->message : "cannot read file"});
-        return result;
-    }
-    return parseSettings(*read.bytes);
 }
 
 std::optional<IoError> saveSettingsFile(const std::filesystem::path& path, const Settings& settings) {

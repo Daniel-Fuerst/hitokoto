@@ -42,7 +42,7 @@ struct SettingsLoadResult {
 
 [[nodiscard]] SettingsLoadResult parseSettings(std::string_view source);
 [[nodiscard]] std::string serializeSettings(const Settings& settings);
-[[nodiscard]] SettingsLoadResult loadSettingsFile(const std::filesystem::path& path);
+[[nodiscard]] SettingsLoadResult loadSettingsFile(const std::filesystem::path& path) noexcept;
 [[nodiscard]] std::optional<IoError> saveSettingsFile(const std::filesystem::path& path, const Settings& settings);
 [[nodiscard]] std::optional<ColorScheme> builtinSchemeFromSetting(std::string_view themeSetting);
 
