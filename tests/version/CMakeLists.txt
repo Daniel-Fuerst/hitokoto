@@ -57,3 +57,25 @@ if(TARGET hitokoto)
             "-DPLIST=$<TARGET_BUNDLE_CONTENT_DIR:hitokoto>/Info.plist")
     endif()
 endif()
+
+# S032 (code review O2): the check "Version label" in version.yml runs NextVersion.cmake from main;
+# a lint guards the workflow file against an accidental change, and its own cases show that it
+# finds each deviation.
+set(s032_workflow "${PROJECT_SOURCE_DIR}/.github/workflows/version.yml")
+set(s032_lint "${CMAKE_CURRENT_SOURCE_DIR}/s032_workflow_lint.cmake")
+add_test(NAME S032_TheLabelCheckUsesMainsScript
+    COMMAND ${CMAKE_COMMAND} -DWORKFLOW=${s032_workflow} -P ${s032_lint})
+foreach(name IN ITEMS
+        Unchanged
+        CheckoutWithoutMain
+        CheckoutOfAnotherRef
+        SecondCheckout
+        StoredCredentials
+        NoScript
+        PullRequestTarget
+        NoLabelJob)
+    add_test(NAME S032_LintFinds${name}
+        COMMAND ${CMAKE_COMMAND} -DCASE=${name} -DWORKFLOW=${s032_workflow} -DLINT=${s032_lint}
+                -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/cases/s032_${name}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/s032_lint_cases.cmake)
+endforeach()
