@@ -93,6 +93,103 @@ const SettingKeyDef* findSettingKey(std::string_view section, std::string_view k
     return nullptr;
 }
 
+/// One line of config.toml as positions in the whole text (S039, changing the theme).
+struct SourceLine {
+    std::size_t start = 0;       ///< first byte of the line, after a byte order mark on line 1
+    std::size_t contentEnd = 0;  ///< end of the line without "\n" or "\r\n"
+    std::size_t end = 0;         ///< start of the next line
+    std::size_t number = 0;      ///< 1-based
+    std::size_t valueStart = 0;  ///< for the theme key: first byte of its value
+};
+
+enum class SourceScope { Root, Appearance, Other };
+
+SourceLine sourceLineAt(std::string_view source, std::size_t pos, std::size_t number) {
+    SourceLine line;
+    line.number = number;
+    line.start = (pos == 0 && source.starts_with("\xEF\xBB\xBF")) ? 3 : pos;
+    const std::size_t nl = source.find('\n', pos);
+    line.end = nl == std::string_view::npos ? source.size() : nl + 1;
+    line.contentEnd = nl == std::string_view::npos ? source.size() : nl;
+    if (line.contentEnd > line.start && source[line.contentEnd - 1] == '\r') {
+        --line.contentEnd;
+    }
+    return line;
+}
+
+std::size_t skipBlanksFrom(std::string_view s, std::size_t i) {
+    while (i < s.size() && isBlank(s[i])) {
+        ++i;
+    }
+    return i;
+}
+
+bool isTomlBareKeyChar(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
+}
+
+/// The first part of a TOML key (TOML 1.0 "Keys": bare, "basic" or 'literal') at `i` after blanks, without its
+/// quotes; escapes in a quoted part are not decoded. Empty when there is none.
+std::string_view firstTomlKeyPart(std::string_view s, std::size_t i) {
+    i = skipBlanksFrom(s, i);
+    if (i >= s.size()) {
+        return {};
+    }
+    if (s[i] == '"' || s[i] == '\'') {
+        const char quote = s[i];
+        std::size_t j = i + 1;
+        while (j < s.size() && s[j] != quote) {
+            j += (quote == '"' && s[j] == '\\') ? std::size_t{2} : std::size_t{1};
+        }
+        return j < s.size() ? s.substr(i + 1, j - i - 1) : std::string_view{};
+    }
+    std::size_t j = i;
+    while (j < s.size() && isTomlBareKeyChar(s[j])) {
+        ++j;
+    }
+    return s.substr(i, j - i);
+}
+
+/// One past the closing delimiter of the multi-line string opened at `open` (TOML 1.0 "String": `"""` with
+/// escapes or `'''` without; one or two quotes may stand just inside the closing delimiter).
+std::optional<std::size_t> multiLineStringEnd(std::string_view source, std::size_t open) {
+    const char quote = source[open];
+    std::size_t i = open + 3;
+    while (i < source.size()) {
+        if (quote == '"' && source[i] == '\\') {
+            i += 2;
+            continue;
+        }
+        if (source[i] != quote) {
+            ++i;
+            continue;
+        }
+        std::size_t run = 0;
+        while (i + run < source.size() && source[i + run] == quote) {
+            ++run;
+        }
+        if (run >= 3) {
+            return i + run;
+        }
+        i += run;
+    }
+    return std::nullopt;
+}
+
+/// One past the closing quote of the single-line string opened at `open`; the end of the line when it is not
+/// closed there.
+std::size_t singleLineStringEnd(std::string_view source, std::size_t open, std::size_t contentEnd) {
+    const char quote = source[open];
+    std::size_t i = open + 1;
+    while (i < contentEnd) {
+        if (source[i] == quote) {
+            return i + 1;
+        }
+        i += (quote == '"' && source[i] == '\\') ? std::size_t{2} : std::size_t{1};
+    }
+    return contentEnd;
+}
+
 class Parser {
 public:
     explicit Parser(std::string_view src) : src_(src) {
@@ -370,144 +467,135 @@ std::optional<IoError> saveSettingsFile(const std::filesystem::path& path, const
     return writeFileAtomically(path, serializeSettings(settings));
 }
 
-std::string updateThemeInSettingsSource(std::string_view source, std::string_view newTheme) {
-    const bool hasCRLF = (source.find("\r\n") != std::string_view::npos);
-    const std::string defaultLe = hasCRLF ? "\r\n" : "\n";
+SettingsSourceUpdate updateThemeInSettingsSource(std::string_view source, std::string_view newTheme) {
+    const auto refuse = [](std::string message) { return SettingsSourceUpdate{{}, IoError{std::move(message)}}; };
+    if (hasControlCharacters(newTheme)) {
+        return refuse("theme name contains control characters");
+    }
+    const std::string_view defaultLe = source.find("\r\n") != std::string_view::npos ? "\r\n" : "\n";
+    const std::string quoted = std::string("\"") + escapeTomlString(newTheme) + "\"";
 
-    std::size_t appearanceSectionLineEnd = std::string_view::npos;
-    std::string appearanceLe = defaultLe;
-    bool inAppearance = false;
-
-    std::size_t pos = 0;
-    std::size_t themeValStart = std::string_view::npos;
-    std::size_t themeValEnd = std::string_view::npos;
-
-    while (pos < source.size()) {
-        const std::size_t lineStart = pos;
-        const std::size_t nl = source.find('\n', pos);
-        const std::size_t lineEnd = (nl == std::string_view::npos) ? source.size() : nl + 1;
-        pos = lineEnd;
-
-        const std::string_view line = source.substr(lineStart, lineEnd - lineStart);
-        std::string curLe = "\n";
-        if (line.size() >= 2 && line[line.size() - 2] == '\r' && line.back() == '\n') {
-            curLe = "\r\n";
-        }
-
-        std::size_t start = 0;
-        if (lineStart == 0 && line.size() >= 3 && line[0] == '\xEF' && line[1] == '\xBB' && line[2] == '\xBF') {
-            start = 3;
-        }
-        while (start < line.size() && isBlank(line[start])) {
-            ++start;
-        }
-
-        if (start >= line.size() || line[start] == '#' || line[start] == '\r' || line[start] == '\n') {
+    // Find the key the parser reads as the theme, line by line as the parser does.
+    std::optional<SourceLine> themeLine;
+    std::optional<SourceLine> appearanceHeader;
+    std::optional<std::size_t> foreignLine;
+    SourceScope scope = SourceScope::Root;
+    std::size_t lineNo = 0;
+    for (std::size_t pos = 0; pos < source.size() && !themeLine;) {
+        const SourceLine line = sourceLineAt(source, pos, ++lineNo);
+        pos = line.end;
+        const std::string_view content = source.substr(line.start, line.contentEnd - line.start);
+        const std::size_t i = skipBlanksFrom(content, 0);
+        if (i >= content.size() || content[i] == '#') {
             continue;
         }
-
-        if (line[start] == '[') {
-            const std::size_t close = line.find(']', start);
+        if (content[i] == '[') {
+            const std::size_t close = content.find(']', i);
+            const bool canonical =
+                close != std::string_view::npos && content.substr(i + 1, close - i - 1) == "appearance";
             if (close != std::string_view::npos) {
-                const std::string_view secName = line.substr(start + 1, close - start - 1);
-                if (secName == "appearance") {
-                    inAppearance = true;
-                    appearanceSectionLineEnd = lineEnd;
-                    appearanceLe = curLe;
-                } else {
-                    inAppearance = false;
-                }
+                scope = canonical ? SourceScope::Appearance : SourceScope::Other;
+            }
+            if (canonical && !appearanceHeader) {
+                appearanceHeader = line;
+            }
+            const std::size_t open = content.size() > i + 1 && content[i + 1] == '[' ? i + 2 : i + 1;
+            if (!canonical && firstTomlKeyPart(content, open) == "appearance" && !foreignLine) {
+                foreignLine = lineNo;
             }
             continue;
         }
-
-        constexpr std::string_view kThemeKey = "theme";
-        if (line.substr(start, kThemeKey.size()) == kThemeKey) {
-            const std::size_t afterKey = start + kThemeKey.size();
-            if (afterKey == line.size() || isBlank(line[afterKey]) || line[afterKey] == '=') {
-                if (inAppearance || appearanceSectionLineEnd == std::string_view::npos) {
-                    const std::size_t eqPos = line.find('=', afterKey);
-                    if (eqPos != std::string_view::npos) {
-                        std::size_t vStart = eqPos + 1;
-                        while (vStart < line.size() && isBlank(line[vStart])) {
-                            ++vStart;
-                        }
-                        if (vStart < line.size()) {
-                            std::size_t vEnd = vStart;
-                            if (line[vStart] == '"') {
-                                ++vEnd;
-                                while (vEnd < line.size()) {
-                                    if (line[vEnd] == '"') {
-                                        ++vEnd;
-                                        break;
-                                    }
-                                    if (line[vEnd] == '\\' && vEnd + 1 < line.size()) {
-                                        vEnd += 2;
-                                    } else {
-                                        ++vEnd;
-                                    }
-                                }
-                            } else if (line[vStart] == '\'') {
-                                ++vEnd;
-                                while (vEnd < line.size() && line[vEnd] != '\'') {
-                                    ++vEnd;
-                                }
-                                if (vEnd < line.size() && line[vEnd] == '\'') {
-                                    ++vEnd;
-                                }
-                            } else {
-                                while (vEnd < line.size() && !isBlank(line[vEnd]) && line[vEnd] != '#' &&
-                                       line[vEnd] != '\r' && line[vEnd] != '\n') {
-                                    ++vEnd;
-                                }
-                            }
-                            themeValStart = lineStart + vStart;
-                            themeValEnd = lineStart + vEnd;
-                            break;
-                        }
-                    }
-                }
-            }
+        if (scope == SourceScope::Other) {
+            continue;
+        }
+        std::size_t k = i;
+        while (k < content.size() && isKeyChar(content[k])) {
+            ++k;
+        }
+        const std::size_t eq = skipBlanksFrom(content, k);
+        if (content.substr(i, k - i) == "theme" && eq < content.size() && content[eq] == '=') {
+            themeLine = line;
+            themeLine->valueStart = line.start + skipBlanksFrom(content, eq + 1);
+            continue;
+        }
+        const std::string_view part = firstTomlKeyPart(content, i);
+        if (((part == "appearance" && scope == SourceScope::Root) || part == "theme") && !foreignLine) {
+            foreignLine = lineNo;
         }
     }
 
-    const std::string newThemeEscaped = std::string("\"") + escapeTomlString(newTheme) + "\"";
-
-    if (themeValStart != std::string_view::npos) {
-        std::string result;
-        result.reserve(source.size() + newThemeEscaped.size());
-        result.append(source.substr(0, themeValStart));
-        result.append(newThemeEscaped);
-        result.append(source.substr(themeValEnd));
-        return result;
+    std::string changed;
+    if (themeLine) {
+        const std::size_t valueStart = themeLine->valueStart;
+        std::size_t valueEnd = valueStart;
+        const std::string_view rest = source.substr(valueStart, themeLine->contentEnd - valueStart);
+        const std::string where = "line " + std::to_string(themeLine->number) + ": ";
+        if (rest.starts_with(R"(""")") || rest.starts_with("'''")) {
+            const std::optional<std::size_t> close = multiLineStringEnd(source, valueStart);
+            if (!close) {
+                return refuse(where + "the multi-line string of theme is not closed");
+            }
+            valueEnd = *close;
+        } else if (!rest.empty() && (rest.front() == '"' || rest.front() == '\'')) {
+            valueEnd = singleLineStringEnd(source, valueStart, themeLine->contentEnd);
+        } else if (!rest.empty() && (rest.front() == '[' || rest.front() == '{')) {
+            return refuse(where + "the value of theme is an array or a table");
+        } else {
+            while (valueEnd < themeLine->contentEnd && !isBlank(source[valueEnd]) && source[valueEnd] != '#') {
+                ++valueEnd;
+            }
+        }
+        changed.reserve(source.size() + quoted.size() + 1);
+        changed.append(source.substr(0, valueStart));
+        if (source[valueStart - 1] == '=') {
+            changed.push_back(' ');
+        }
+        changed.append(quoted);
+        changed.append(source.substr(valueEnd));
+    } else if (foreignLine) {
+        return refuse("line " + std::to_string(*foreignLine) +
+                      " sets the theme or [appearance] in a form hitokoto cannot change (a dotted or quoted key, or a "
+                      "table header with spaces or quotes)");
+    } else if (appearanceHeader) {
+        const bool hasLineEnd = appearanceHeader->end > appearanceHeader->contentEnd;
+        const std::string_view headerLe =
+            hasLineEnd
+                ? source.substr(appearanceHeader->contentEnd, appearanceHeader->end - appearanceHeader->contentEnd)
+                : defaultLe;
+        changed.reserve(source.size() + quoted.size() + 16);
+        changed.append(source.substr(0, appearanceHeader->end));
+        if (!hasLineEnd) {
+            changed.append(defaultLe);
+        }
+        changed.append("theme = ");
+        changed.append(quoted);
+        changed.append(headerLe);
+        changed.append(source.substr(appearanceHeader->end));
+    } else {
+        changed.reserve(source.size() + quoted.size() + 32);
+        changed.append(source);
+        if (!changed.empty() && changed.back() != '\n') {
+            changed.append(defaultLe);
+        }
+        if (!changed.empty()) {
+            changed.append(defaultLe);
+        }
+        changed.append("[appearance]");
+        changed.append(defaultLe);
+        changed.append("theme = ");
+        changed.append(quoted);
+        changed.append(defaultLe);
     }
 
-    if (appearanceSectionLineEnd != std::string_view::npos) {
-        std::string result;
-        result.reserve(source.size() + newThemeEscaped.size() + 16);
-        result.append(source.substr(0, appearanceSectionLineEnd));
-        result.append("theme = ");
-        result.append(newThemeEscaped);
-        result.append(appearanceLe);
-        result.append(source.substr(appearanceSectionLineEnd));
-        return result;
+    // The text is used only if the parser reads exactly this change from it.
+    const SettingsLoadResult before = parseSettings(source);
+    const SettingsLoadResult after = parseSettings(changed);
+    Settings expected = before.settings;
+    expected.theme = std::string(newTheme);
+    if (!(after.settings == expected) || after.diagnostics.size() > before.diagnostics.size()) {
+        return refuse("changing the theme alone would not give the new theme with all other settings unchanged");
     }
-
-    std::string result;
-    result.reserve(source.size() + newThemeEscaped.size() + 32);
-    result.append(source);
-    if (!result.empty() && result.back() != '\n') {
-        result.append(defaultLe);
-    }
-    if (!result.empty()) {
-        result.append(defaultLe);
-    }
-    result.append("[appearance]");
-    result.append(defaultLe);
-    result.append("theme = ");
-    result.append(newThemeEscaped);
-    result.append(defaultLe);
-    return result;
+    return SettingsSourceUpdate{std::move(changed), std::nullopt};
 }
 
 std::optional<IoError> updateThemeSettingInFile(const std::filesystem::path& path, std::string_view theme) {
@@ -543,8 +631,11 @@ std::optional<IoError> updateThemeSettingInFile(const std::filesystem::path& pat
         return read.error ? *read.error : IoError{"cannot read file"};
     }
 
-    const std::string updated = updateThemeInSettingsSource(*read.bytes, theme);
-    return writeFileAtomically(path, updated);
+    const SettingsSourceUpdate updated = updateThemeInSettingsSource(*read.bytes, theme);
+    if (updated.error) {
+        return updated.error;
+    }
+    return writeFileAtomically(path, updated.source);
 }
 
 std::optional<ColorScheme> builtinSchemeFromSetting(std::string_view themeSetting) {

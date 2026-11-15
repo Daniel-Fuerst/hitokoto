@@ -40,9 +40,21 @@ struct SettingsLoadResult {
     std::vector<SettingsDiagnostic> diagnostics;
 };
 
+/// The text of config.toml after picking a theme (S039).
+struct SettingsSourceUpdate {
+    std::string source;            ///< the changed text; empty when `error` is set
+    std::optional<IoError> error;  ///< why the theme cannot be changed alone; the text is then to be kept as it is
+};
+
 [[nodiscard]] SettingsLoadResult parseSettings(std::string_view source);
 [[nodiscard]] std::string serializeSettings(const Settings& settings);
-[[nodiscard]] std::string updateThemeInSettingsSource(std::string_view source, std::string_view newTheme);
+/// Changes only the value of the theme setting: the first `theme` key that `parseSettings` reads as the theme
+/// (in `[appearance]`, or at the top level before the first section). The whole value is replaced, whatever kind
+/// of TOML value it is; every other byte stays. Without such a key, `theme` is added below the first `[appearance]`
+/// header, or a new `[appearance]` section at the end. The change is refused when the file defines the theme or
+/// `[appearance]` in a form the parser does not read (adding a key would then define it twice in TOML terms), and
+/// when the changed text would not parse to the new theme with all other settings and no new diagnostics.
+[[nodiscard]] SettingsSourceUpdate updateThemeInSettingsSource(std::string_view source, std::string_view newTheme);
 [[nodiscard]] SettingsLoadResult loadSettingsFile(const std::filesystem::path& path) noexcept;
 [[nodiscard]] std::optional<IoError> saveSettingsFile(const std::filesystem::path& path, const Settings& settings);
 [[nodiscard]] std::optional<IoError> updateThemeSettingInFile(const std::filesystem::path& path,

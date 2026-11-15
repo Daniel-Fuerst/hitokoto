@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 #include <string_view>
 
 using namespace hitokoto::core;
@@ -57,5 +58,23 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         }
     }
     (void)builtinSchemeFromSetting(first.settings.theme);
+
+    // Picking a theme: a changed text gives the new theme, all other settings as before, and no new diagnostics.
+    constexpr std::string_view kPicked = R"(themes\picked "one".toml)";
+    const SettingsSourceUpdate update = updateThemeInSettingsSource(src, kPicked);
+    if (update.error) {
+        if (update.error->message.empty() || !update.source.empty()) {
+            std::fprintf(stderr, "refused theme change without a reason or with a text\n");
+            std::abort();
+        }
+    } else {
+        const SettingsLoadResult changed = parseSettings(update.source);
+        Settings expected = first.settings;
+        expected.theme = std::string(kPicked);
+        if (!(changed.settings == expected) || changed.diagnostics.size() > first.diagnostics.size()) {
+            std::fprintf(stderr, "theme change altered more than the theme\n");
+            std::abort();
+        }
+    }
     return 0;
 }
