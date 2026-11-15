@@ -938,7 +938,14 @@ void FindController::onContentsChange(int position, int charsRemoved, int charsA
     const int newCount = doc->blockCount();
     const int delta = newCount - blockCount_;
     const int first = doc->findBlock(position).blockNumber();
-    const int lastNew = std::max(first, doc->findBlock(position + charsAdded).blockNumber());
+    // A change that reaches the end of the document (select all and paste, its undo and redo)
+    // reports one character more than the document holds; it ends in the last line, as in
+    // BlockStyler and BlockLayout.
+    QTextBlock end = doc->findBlock(position + charsAdded);
+    if (!end.isValid()) {
+        end = doc->lastBlock();
+    }
+    const int lastNew = std::max(first, end.blockNumber());
     const int lastOld = lastNew - delta;
     // Code review O6: the front matter changes with line 0, with a line of the block or the line
     // after it, and, while it is not closed, with any line that could close it.

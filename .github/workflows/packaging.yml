@@ -809,7 +809,18 @@ jobs:
             # not by the tag (code review O2).
             gh release create "$tag" --verify-tag --draft --title "hitokoto $version" \
               --notes-file "$notes" "${uploads[@]}"
-            drafts=$(releases_of | sed -n 's/ true$//p')
+            # The list of the releases can lag behind the creation: for v0.5.4 (2026-11-15) it did
+            # not hold the new draft yet right after it. Ask again, 3 s apart, up to 10 times while
+            # no draft is listed; more than one draft fails at once in the check below.
+            drafts=""
+            for attempt in 1 2 3 4 5 6 7 8 9 10; do
+              drafts=$(releases_of | sed -n 's/ true$//p')
+              if [ -n "$drafts" ]; then
+                break
+              fi
+              echo "no draft of $tag listed yet (attempt $attempt)"
+              sleep 3
+            done
             if [ "$(wc -w <<< "$drafts")" -ne 1 ]; then
               echo "::error::expected one draft of $tag, found: $drafts"
               exit 1

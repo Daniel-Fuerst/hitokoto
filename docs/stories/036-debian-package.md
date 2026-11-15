@@ -178,6 +178,13 @@ manual step, and never a package that does not install and start.
   release step looked in a directory per version. Every file now carries its version
   (`notes-X.Y.Z.md`), the release job downloads into one flat directory (`merge-multiple: true`),
   and the lint `S036_TheReleaseFindsEveryPackage` keeps it so.
+- The release waits until its draft is listed (fix, 2026-11-15): the run on main after the merge of
+  pull request 50 stopped in the release step with "expected one draft of v0.5.4, found:" and an
+  empty list. `gh release create --draft` had made the draft, but the list of the releases asked
+  for right after it did not hold it yet; the same code had passed for 0.5.1 to 0.5.3, and
+  "Re-run failed jobs" released 0.5.4. The step now asks again, 3 s apart, up to 10 times while
+  no draft is listed; the check for exactly one draft follows, more than one fails at once, and a
+  failing API call still stops the job. The lint `S036_TheReleaseWaitsForItsDraft` keeps it so.
 
 - S037 (Proposed, 2026-11-13) adds a Windows installer to the same releases: the release job then
   waits for both packages of a version, because an immutable release takes no asset after

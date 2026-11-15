@@ -130,6 +130,8 @@ private:
     [[nodiscard]] qreal margin() const;
     void refreshMetrics();
     [[nodiscard]] bool inSync() const;
+    /// While the layout is not in sync, remembers `block` for storeDeferredHeights and returns true.
+    bool deferWhileOutOfSync(const QTextBlock& block);
     void applyChange(int position, int charsRemoved, int charsAdded);
     void storeDeferredHeights();
     [[nodiscard]] qreal estimatedHeight(const QTextBlock& block) const;
@@ -163,6 +165,7 @@ private:
     mutable core::HeightIndex heights_;
     mutable bool sizeChangePending_ = false;
     mutable std::vector<QTextBlock> deferred_;  ///< laid out while heights_ was stale
+    bool deferredRepaint_ = false;              ///< a deferred block was shown, hidden or resized
     mutable std::vector<int> dirtyBlocks_;      ///< flowing chains to relayout at batch end
     mutable bool flushingDirty_ = false;
     mutable quint64 blockLayouts_ = 0;

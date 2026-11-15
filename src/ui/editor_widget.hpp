@@ -37,6 +37,9 @@ public:
     void applyTheme(const core::Theme& theme);
 
     [[nodiscard]] BlockStyler& styler() noexcept { return *styler_; }
+    /// Between contentsChange and contentsChanged of the document: the layout may not know the new
+    /// lines yet.
+    [[nodiscard]] bool insideEdit() const noexcept { return insideEdit_; }
     /// The table view showing the table whose lines include `blockNumber`; null if the line is not
     /// in a table or the table shows its source (S018).
     [[nodiscard]] QTableView* tableViewAt(int blockNumber) const;

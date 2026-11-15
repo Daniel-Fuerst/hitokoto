@@ -136,6 +136,12 @@ void TableEmbedder::setFindHold(int first, int last, bool untilCaretLeaves) {
     findFirst_ = first;
     findLast_ = first < 0 ? -1 : last;
     findUntilCaretLeaves_ = first >= 0 && untilCaretLeaves;
+    if (editor_->insideEdit()) {
+        // The bar moves its hold while the document changes (FindController::onContentsChange),
+        // before the layout knows the new lines; documentChanged has queued a refresh already.
+        scheduleRefresh();
+        return;
+    }
     refresh();
 }
 
