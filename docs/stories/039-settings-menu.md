@@ -47,6 +47,15 @@ As a writer, I want a non-modal settings flyout reachable from the floating tool
 - When I subsequently pick another theme in `SettingsMenu`
 - Then the new theme is saved to `config.toml` while the existing `[editor]` options remain unchanged
 
+**Scenario: picking a theme changes only the theme setting in config.toml**
+- Given a `config.toml` edited by hand, with comments, unknown keys, or a `theme` key under another section such as `[editor]`
+- When I pick a theme in `themeSelector`
+- Then only the value of `theme` in `[appearance]` changes (or of a top-level `theme` before the first section, which is read as the theme); a `theme` key under any other section stays as it is, and so does every other byte of the file, including its line endings (LF or CRLF) and a byte order mark
+- And a value written as any kind of TOML string (basic, literal, multi-line) or as another single value is replaced as a whole
+- And if `[appearance]` has no `theme`, the key is added below its header; without `[appearance]`, the section is added at the end
+- When the file defines the theme in a form hitokoto does not read (a dotted or quoted key, a table header with spaces or quotes, an array), or the changed text would not give the picked theme with all other settings unchanged
+- Then `config.toml` is left untouched and saving the theme fails with a reason
+
 **Scenario: CLI `--theme` override precedence**
 - Given a `config.toml` with a saved theme and `--theme <path>` passed at startup
 - When `ThemeManager` initializes with CLI override active
@@ -64,7 +73,7 @@ As a writer, I want a non-modal settings flyout reachable from the floating tool
 
 ## Tests
 
-- **Core (`hitokoto_core_tests`, `tests/core/test_s039_settings_menu.cpp`):** `S039_SettingsMenu.SettingsParseAndSerializeRoundTrip`, `S039_SettingsMenu.SettingsParseDiagnosticsPreserveValidEntries`, `S039_SettingsMenu.SettingsSaveCreatesDirectoriesAndLoadsAtomically`, `S039_SettingsMenu.BuiltinSchemeFromSettingMatchesLightAndDarkCaseInsensitively`.
+- **Core (`hitokoto_core_tests`, `tests/core/test_s039_settings_menu.cpp`):** `S039_SettingsMenu.SettingsParseAndSerializeRoundTrip`, `S039_SettingsMenu.SettingsParseDiagnosticsPreserveValidEntries`, `S039_SettingsMenu.SettingsSaveCreatesDirectoriesAndLoadsAtomically`, `S039_SettingsMenu.BuiltinSchemeFromSettingMatchesLightAndDarkCaseInsensitively`; picking a theme: `S039_SettingsMenu.UpdateThemeChangesOnlyTheThemeKeyOfAppearance`, `S039_SettingsMenu.UpdateThemeChangesATopLevelKeyBeforeAnySection`, `S039_SettingsMenu.UpdateThemeReplacesTheWholeValue`, `S039_SettingsMenu.UpdateThemeKeepsLineEndingsAndAByteOrderMark`, `S039_SettingsMenu.UpdateThemeLeavesTheFileWhenOnlyTheThemeCannotBeChanged`.
 - **UI (`tests/ui/tst_s039_settings_menu.cpp`):** `settingsButtonOpensAndClosesSettingsMenuWithDebugInfo`, `settingsMenuListsAndSelectsThemesFromConfigFolder`, `selectedThemePersistsInConfigFileAcrossRestart`, `editorOptionsInConfigFileLoadAndSurviveThemeSelection`.
 - **Theme manager persistence (`tests/ui/tst_s005_theme.cpp`):** `themeSelectionPersistsAcrossThemeManagerRestart`.
 

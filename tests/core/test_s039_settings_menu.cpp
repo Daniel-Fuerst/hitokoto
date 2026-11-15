@@ -7,7 +7,12 @@
 
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <random>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #if !defined(_WIN32)
 #include <sys/stat.h>
@@ -38,6 +43,42 @@ public:
 private:
     std::filesystem::path path_;
 };
+
+/// What picking a theme leaves in a config.toml that held `original`.
+struct ThemeUpdateOutcome {
+    std::optional<IoError> error;
+    std::string bytes;
+};
+
+ThemeUpdateOutcome updateThemeIn(const std::string& original, std::string_view theme) {
+    SettingsTempDir dir;
+    const std::filesystem::path configPath = dir.path() / "config.toml";
+    {
+        std::ofstream out(configPath, std::ios::binary);
+        out << original;
+    }
+    ThemeUpdateOutcome outcome;
+    outcome.error = updateThemeSettingInFile(configPath, theme);
+    const ReadResult read = readFile(configPath);
+    outcome.bytes = read.bytes ? *read.bytes : std::string("<unreadable>");
+    return outcome;
+}
+
+struct ThemeUpdateCase {
+    const char* name;
+    std::string original;
+    std::string expected;
+};
+
+void expectThemeUpdates(const std::vector<ThemeUpdateCase>& cases) {
+    for (const auto& c : cases) {
+        SCOPED_TRACE(c.name);
+        const ThemeUpdateOutcome outcome = updateThemeIn(c.original, "ember.toml");
+        EXPECT_FALSE(outcome.error.has_value()) << (outcome.error ? outcome.error->message : "");
+        EXPECT_EQ(outcome.bytes, c.expected);
+        EXPECT_EQ(parseSettings(outcome.bytes).settings.theme, "ember.toml");
+    }
+}
 
 }  // namespace
 
@@ -311,4 +352,85 @@ TEST(S039_SettingsMenu, RefusesThemeSettingWithControlCharactersOrLineBreaks) {
     EXPECT_TRUE(updateErr.has_value());
 
     EXPECT_FALSE(std::filesystem::exists(configPath));
+}
+
+// A `theme` key under another section is not the theme: only the key in [appearance] (or a
+// top-level key before the first section, which hitokoto reads as the theme) changes.
+TEST(S039_SettingsMenu, UpdateThemeChangesOnlyTheThemeKeyOfAppearance) {
+    expectThemeUpdates({
+        {"theme under [editor] before [appearance]", "[editor]\ntheme = \"x\"\n\n[appearance]\ntheme = \"light\"\n",
+         "[editor]\ntheme = \"x\"\n\n[appearance]\ntheme = \"ember.toml\"\n"},
+        {"theme under [editor], no [appearance]", "[editor]\nsmooth-scrolling = false\ntheme = \"x\"\n",
+         "[editor]\nsmooth-scrolling = false\ntheme = \"x\"\n\n[appearance]\ntheme = \"ember.toml\"\n"},
+        {"theme under an unknown section", "[appearance]\ntheme = \"light\"\n[other]\ntheme = \"x\"\n",
+         "[appearance]\ntheme = \"ember.toml\"\n[other]\ntheme = \"x\"\n"},
+    });
+}
+
+TEST(S039_SettingsMenu, UpdateThemeChangesATopLevelKeyBeforeAnySection) {
+    expectThemeUpdates({
+        {"top-level key, then [editor]", "theme = \"light\" # mine\n\n[editor]\nsmooth-scrolling = false\n",
+         "theme = \"ember.toml\" # mine\n\n[editor]\nsmooth-scrolling = false\n"},
+        {"top-level key, then a second one in [appearance]", "theme = \"x\"\n[appearance]\ntheme = \"light\"\n",
+         "theme = \"ember.toml\"\n[appearance]\ntheme = \"light\"\n"},
+    });
+}
+
+// TOML 1.0 knows four kinds of strings; the whole value is replaced, whatever its kind.
+TEST(S039_SettingsMenu, UpdateThemeReplacesTheWholeValue) {
+    const std::string before = "[appearance]\n";
+    const std::string after = "\n[editor]\nsmooth-scrolling = false\n";
+    const std::string expected = before + "theme = \"ember.toml\"" + after;
+    expectThemeUpdates({
+        {"multi-line basic string", before + R"(theme = """light""")" + after, expected},
+        {"multi-line basic string over two lines", before + "theme = \"\"\"\nlight\"\"\"" + after, expected},
+        {"multi-line basic string with quotes inside the delimiters",
+         before + R"(theme = """"light" theme"""")" + after, expected},
+        {"literal string", before + "theme = 'light'" + after, expected},
+        {"multi-line literal string", before + "theme = '''light'''" + after, expected},
+        {"basic string with an escaped quote", before + R"(theme = "a\"b")" + after, expected},
+        {"boolean", before + "theme = true" + after, expected},
+        {"no value", before + "theme =" + after, expected},
+        {"comment after the value", before + "theme = \"light\" # mine" + after,
+         before + "theme = \"ember.toml\" # mine" + after},
+    });
+}
+
+TEST(S039_SettingsMenu, UpdateThemeKeepsLineEndingsAndAByteOrderMark) {
+    expectThemeUpdates({
+        {"CRLF, theme under [editor] before [appearance]",
+         "[editor]\r\ntheme = \"x\"\r\n\r\n[appearance]\r\ntheme = \"light\"\r\n",
+         "[editor]\r\ntheme = \"x\"\r\n\r\n[appearance]\r\ntheme = \"ember.toml\"\r\n"},
+        {"CRLF, [appearance] without theme", "[appearance]\r\n[editor]\r\nsmooth-scrolling = false\r\n",
+         "[appearance]\r\ntheme = \"ember.toml\"\r\n[editor]\r\nsmooth-scrolling = false\r\n"},
+        {"byte order mark before [appearance]", "\xEF\xBB\xBF[appearance]\ntheme = \"light\"\n",
+         "\xEF\xBB\xBF[appearance]\ntheme = \"ember.toml\"\n"},
+        {"byte order mark before a top-level key", "\xEF\xBB\xBFtheme = \"light\"\n",
+         "\xEF\xBB\xBFtheme = \"ember.toml\"\n"},
+        {"[appearance] as the last line without a line break", "[editor]\nsmooth-scrolling = false\n[appearance]",
+         "[editor]\nsmooth-scrolling = false\n[appearance]\ntheme = \"ember.toml\"\n"},
+    });
+}
+
+// When the theme cannot be changed alone, the file stays as it is and the caller gets a reason.
+TEST(S039_SettingsMenu, UpdateThemeLeavesTheFileWhenOnlyTheThemeCannotBeChanged) {
+    const std::vector<std::pair<const char*, std::string>> cases = {
+        // TOML 1.0: a dotted key defines the table appearance; a header [appearance] may not define it again.
+        {"dotted key", "appearance.theme = \"light\"\n"},
+        // TOML 1.0: whitespace around the key of a table header is ignored, so this is [appearance].
+        {"header with spaces", "[ appearance ]\ntheme = \"light\"\n"},
+        // TOML 1.0: quoted and bare keys are equivalent, so a second theme key would be a duplicate.
+        {"quoted key", "[appearance]\n\"theme\" = \"light\"\n"},
+        {"array value over two lines", "[appearance]\ntheme = [\"a\",\n  \"b\"]\n"},
+        {"multi-line string without its end", "[appearance]\ntheme = \"\"\"light\n"},
+        // hitokoto reads the lines inside the string as settings; replacing the string would drop them.
+        {"multi-line string holding lines that hitokoto reads",
+         "[appearance]\ntheme = \"\"\"\n[editor]\nsmooth-scrolling = false\n\"\"\"\n"},
+    };
+    for (const auto& [name, original] : cases) {
+        SCOPED_TRACE(name);
+        const ThemeUpdateOutcome outcome = updateThemeIn(original, "ember.toml");
+        EXPECT_TRUE(outcome.error.has_value());
+        EXPECT_EQ(outcome.bytes, original);
+    }
 }
