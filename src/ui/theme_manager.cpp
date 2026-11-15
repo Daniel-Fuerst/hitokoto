@@ -92,11 +92,8 @@ bool ThemeManager::saveSelectedTheme(const QString& configDir, const ThemeEntry&
         }
     }
 
-    if (QFileInfo::exists(cfgPath) && loaded.diagnostics.empty() && settings.theme == nextTheme) {
-        return true;
-    }
-    settings.theme = std::move(nextTheme);
-    return !core::saveSettingsFile(fsPath, settings).has_value();
+    const auto err = core::updateThemeSettingInFile(fsPath, nextTheme);
+    return !err.has_value();
 }
 
 std::optional<ThemeEntry> ThemeManager::loadSavedThemeEntry(const QString& configDir) {

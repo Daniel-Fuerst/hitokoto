@@ -42,8 +42,11 @@ struct SettingsLoadResult {
 
 [[nodiscard]] SettingsLoadResult parseSettings(std::string_view source);
 [[nodiscard]] std::string serializeSettings(const Settings& settings);
+[[nodiscard]] std::string updateThemeInSettingsSource(std::string_view source, std::string_view newTheme);
 [[nodiscard]] SettingsLoadResult loadSettingsFile(const std::filesystem::path& path) noexcept;
 [[nodiscard]] std::optional<IoError> saveSettingsFile(const std::filesystem::path& path, const Settings& settings);
+[[nodiscard]] std::optional<IoError> updateThemeSettingInFile(const std::filesystem::path& path,
+                                                              std::string_view theme);
 [[nodiscard]] std::optional<ColorScheme> builtinSchemeFromSetting(std::string_view themeSetting);
 
 }  // namespace hitokoto::core

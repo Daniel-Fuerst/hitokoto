@@ -357,6 +357,19 @@ std::optional<IoError> saveSettingsFile(const std::filesystem::path& path, const
     return writeFileAtomically(path, serializeSettings(settings));
 }
 
+std::string updateThemeInSettingsSource(std::string_view /*source*/, std::string_view newTheme) {
+    Settings s;
+    s.theme = std::string(newTheme);
+    return serializeSettings(s);
+}
+
+std::optional<IoError> updateThemeSettingInFile(const std::filesystem::path& path, std::string_view theme) {
+    const SettingsLoadResult loaded = loadSettingsFile(path);
+    Settings settings = loaded.settings;
+    settings.theme = std::string(theme);
+    return saveSettingsFile(path, settings);
+}
+
 std::optional<ColorScheme> builtinSchemeFromSetting(std::string_view themeSetting) {
     const std::string lower = toLowerAsciiString(trimBlanks(themeSetting));
     if (lower == "light" || lower == "hitokoto light") {

@@ -158,3 +158,137 @@ TEST(S038_SettingsMenu, LoadSettingsFileRejectsNonRegularOrOversizedFiles) {
     EXPECT_FALSE(fifoResult.diagnostics.empty());
 #endif
 }
+
+TEST(S038_SettingsMenu, UpdateThemeSettingPreservesExistingContentByteForByte) {
+    SettingsTempDir dir;
+    const std::filesystem::path configPath = dir.path() / "config.toml";
+
+    const std::string original =
+        "# my notes on this file\n"
+        "[appearance]\n"
+        "theme = \"light\"\n"
+        "\n"
+        "[editor]\n"
+        "smooth-scrolling = false\n"
+        "front-matter-as-properties = false # as I like it\n"
+        "spell-check = true\n"
+        "report-blank-lines-added = ture\n";
+
+    {
+        std::ofstream out(configPath, std::ios::binary);
+        out << original;
+    }
+
+    const auto err = updateThemeSettingInFile(configPath, "dark");
+    EXPECT_FALSE(err.has_value());
+
+    const ReadResult read = readFile(configPath);
+    if (!read.bytes) {
+        FAIL() << "read failed";
+        return;
+    }
+
+    const std::string expected =
+        "# my notes on this file\n"
+        "[appearance]\n"
+        "theme = \"dark\"\n"
+        "\n"
+        "[editor]\n"
+        "smooth-scrolling = false\n"
+        "front-matter-as-properties = false # as I like it\n"
+        "spell-check = true\n"
+        "report-blank-lines-added = ture\n";
+
+    EXPECT_EQ(*read.bytes, expected);
+}
+
+TEST(S038_SettingsMenu, UpdateThemeSettingPreservesCrlfLineEndings) {
+    SettingsTempDir dir;
+    const std::filesystem::path configPath = dir.path() / "config.toml";
+
+    const std::string original =
+        "[appearance]\r\n"
+        "theme = \"light\"\r\n"
+        "\r\n"
+        "[editor]\r\n"
+        "smooth-scrolling = false\r\n";
+
+    {
+        std::ofstream out(configPath, std::ios::binary);
+        out << original;
+    }
+
+    const auto err = updateThemeSettingInFile(configPath, "nord.toml");
+    EXPECT_FALSE(err.has_value());
+
+    const ReadResult read = readFile(configPath);
+    if (!read.bytes) {
+        FAIL() << "read failed";
+        return;
+    }
+
+    const std::string expected =
+        "[appearance]\r\n"
+        "theme = \"nord.toml\"\r\n"
+        "\r\n"
+        "[editor]\r\n"
+        "smooth-scrolling = false\r\n";
+
+    EXPECT_EQ(*read.bytes, expected);
+}
+
+TEST(S038_SettingsMenu, UpdateThemeSettingAddsAppearanceSectionIfMissing) {
+    SettingsTempDir dir;
+    const std::filesystem::path configPath = dir.path() / "config.toml";
+
+    const std::string original =
+        "[editor]\n"
+        "smooth-scrolling = false\n";
+
+    {
+        std::ofstream out(configPath, std::ios::binary);
+        out << original;
+    }
+
+    const auto err = updateThemeSettingInFile(configPath, "dracula.toml");
+    EXPECT_FALSE(err.has_value());
+
+    const ReadResult read = readFile(configPath);
+    if (!read.bytes) {
+        FAIL() << "read failed";
+        return;
+    }
+
+    const SettingsLoadResult loaded = parseSettings(*read.bytes);
+    EXPECT_TRUE(loaded.diagnostics.empty());
+    EXPECT_EQ(loaded.settings.theme, "dracula.toml");
+    EXPECT_FALSE(loaded.settings.smoothScrolling);
+    EXPECT_NE(read.bytes->find("[editor]\nsmooth-scrolling = false"), std::string::npos);
+}
+
+#if !defined(_WIN32)
+TEST(S038_SettingsMenu, UpdateThemeSettingLeavesUnreadableFileUntouched) {
+    SettingsTempDir dir;
+    const std::filesystem::path configPath = dir.path() / "config.toml";
+
+    const std::string original = "# unreadable secret content\n";
+    {
+        std::ofstream out(configPath, std::ios::binary);
+        out << original;
+    }
+    // Write permissions only (no read permissions)
+    std::filesystem::permissions(configPath, std::filesystem::perms::owner_write);
+
+    const auto err = updateThemeSettingInFile(configPath, "dark");
+    EXPECT_TRUE(err.has_value());
+
+    // Restore read permissions to verify file was untouched
+    std::filesystem::permissions(configPath, std::filesystem::perms::owner_read | std::filesystem::perms::owner_write);
+    const ReadResult read = readFile(configPath);
+    if (!read.bytes) {
+        FAIL() << "read failed";
+        return;
+    }
+    EXPECT_EQ(*read.bytes, original);
+}
+#endif
