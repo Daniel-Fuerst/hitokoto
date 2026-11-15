@@ -41,7 +41,7 @@ fs::path temporarySibling(const fs::path& target) {
 
 }  // namespace
 
-ReadResult readFile(const fs::path& path) {
+ReadResult readFile(const fs::path& path, [[maybe_unused]] std::uintmax_t maxBytes) {
     ReadResult r;
     std::ifstream in(path, std::ios::binary);
     if (!in) {

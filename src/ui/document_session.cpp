@@ -113,7 +113,7 @@ void DocumentSession::load(const QString& path) {
     loading_ = true;
     editor_->setReadOnly(true);
     emit loadStarted(path);
-    pool_.start([this, path, generation] {
+    pool_.start([this, path, generation, beforeDecode = hooks_.beforeDecode] {
         auto read = core::readFile(toPath(path));
         if (!read.bytes) {
             const QString message = describe(path, read.error ? read.error->message : "cannot read file");
@@ -130,6 +130,9 @@ void DocumentSession::load(const QString& path) {
         // looking for it in the decoded text took about 10 ms before the first screen (CI benchmark
         // open_10mb_first_chunk_ms on 0511251).
         const bool mayHoldTables = read.bytes->find('|') != std::string::npos;
+        if (beforeDecode) {
+            beforeDecode();
+        }
         auto decoded = core::decodeUtf8(*read.bytes);
         read.bytes.reset();
         if (!decoded.value) {

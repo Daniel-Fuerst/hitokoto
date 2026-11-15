@@ -15,6 +15,8 @@
 #include <QThreadPool>
 #include <QTimer>
 
+#include <functional>
+#include <utility>
 #include <vector>
 
 namespace hitokoto::ui {
@@ -57,6 +59,14 @@ public:
     bool saveNow(const QString& path, QString* error = nullptr);
     /// Blocks until background work has finished.
     void waitForIdle();
+
+    /// Test seam: called on the worker thread at fixed points of loading and saving. A hook may
+    /// throw, standing in for a failure at that point (such as running out of memory).
+    struct WorkerHooks {
+        std::function<void()> beforeDecode;  ///< a file was read and is about to be decoded
+    };
+    /// Applies to loads and saves started afterwards.
+    void setWorkerHooksForTesting(WorkerHooks hooks) { hooks_ = std::move(hooks); }
 
 signals:
     void loadStarted(const QString& path);
@@ -137,6 +147,7 @@ private:
     quint64 loadGeneration_ = 0;
     quint64 documentId_ = 0;  ///< changes whenever another document replaces the current one
     int savesInFlight_ = 0;
+    WorkerHooks hooks_;
 };
 
 }  // namespace hitokoto::ui

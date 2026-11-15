@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -18,8 +19,19 @@ struct ReadResult {
     std::optional<IoError> error;
 };
 
+/// The largest file readFile() reads unless told otherwise: 128 MiB. Opening a file takes about
+/// 27 times its size in memory and about 0.3 s per MiB (S001, S007), so a file at this bound
+/// already needs about 3.5 GB; larger files are refused with a message instead of reading them.
+inline constexpr std::uintmax_t kMaxReadBytes = std::uintmax_t{128} * 1024 * 1024;
+
 /// Reads a whole file as bytes.
-ReadResult readFile(const std::filesystem::path& path);
+///
+/// Only regular files are read. What is not a regular file after following symbolic links (a
+/// folder, a pipe, a device, a socket) is refused before it is opened, so that reading never
+/// waits on a pipe. A file larger than `maxBytes` is refused, also when it grows while it is
+/// read. Every failure, including running out of memory, is returned as an IoError with a message
+/// for the user; nothing is thrown.
+ReadResult readFile(const std::filesystem::path& path, std::uintmax_t maxBytes = kMaxReadBytes);
 
 /// Test seam for the atomic writer.
 struct AtomicWriteHooks {

@@ -2,6 +2,10 @@
 // S001: opening a Markdown file shows its content.
 #include "ui_test_support.hpp"
 
+#include <QDir>
+
+#include <new>
+
 using namespace hitokoto;
 
 class tst_s001_open : public QObject {
@@ -59,6 +63,42 @@ private slots:
         test::Fixture f;
         QVERIFY(!f.open(f.dir.filePath(QStringLiteral("missing.md"))));
         QVERIFY(!f.editor()->isReadOnly());
+    }
+
+    void openingAFolderShowsAMessageAndTheProgramGoesOn() {
+        test::Fixture f;
+        f.editor()->setPlainText(QStringLiteral("keep me"));
+        QVERIFY(QDir(f.dir.path()).mkdir(QStringLiteral("Documents")));
+        QVERIFY(!f.open(f.dir.filePath(QStringLiteral("Documents"))));
+        QCOMPARE(f.messages.size(), 1);
+        QVERIFY2(f.messages.first().startsWith(QStringLiteral("Cannot open file: Documents: ")),
+                 qPrintable(f.messages.first()));
+        QVERIFY2(f.messages.first().contains(QStringLiteral("folder")), qPrintable(f.messages.first()));
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("keep me"));
+        QVERIFY(!f.editor()->isReadOnly());
+        QVERIFY(!f.session()->isLoading());
+        QVERIFY(f.open(f.writeFile(QStringLiteral("notes.md"), "# next")));
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("# next"));
+    }
+
+    void runningOutOfMemoryWhileOpeningShowsAMessageAndKeepsTheDocument() {
+        test::Fixture f;
+        f.editor()->setPlainText(QStringLiteral("keep me"));
+        const QString path = f.writeFile(QStringLiteral("notes.md"), "# notes");
+        ui::DocumentSession::WorkerHooks hooks;
+        hooks.beforeDecode = [] { throw std::bad_alloc(); };
+        f.session()->setWorkerHooksForTesting(hooks);
+        QVERIFY(!f.open(path));
+        QCOMPARE(f.messages.size(), 1);
+        QVERIFY2(f.messages.first().startsWith(QStringLiteral("Cannot open file: notes.md: ")),
+                 qPrintable(f.messages.first()));
+        QVERIFY2(f.messages.first().contains(QStringLiteral("not enough memory")), qPrintable(f.messages.first()));
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("keep me"));
+        QVERIFY(!f.editor()->isReadOnly());
+        QVERIFY(!f.session()->isLoading());
+        f.session()->setWorkerHooksForTesting({});
+        QVERIFY(f.open(path));
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("# notes"));
     }
 
     void emptyFileOpens() {
