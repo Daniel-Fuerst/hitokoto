@@ -20,6 +20,7 @@ TEST(S038_SubtleMenuBar, MenuBarTokensFallbackAndResolve) {
         EXPECT_EQ(defaults.activeText, base.text);
         EXPECT_EQ(defaults.hoverBackground, base.surface);
         EXPECT_EQ(defaults.activeBackground, base.border);
+        EXPECT_EQ(defaults.mnemonic, base.accent);
         EXPECT_DOUBLE_EQ(defaults.itemRadius, base.radius);
         EXPECT_DOUBLE_EQ(defaults.itemPaddingHorizontal, base.spacing);
         EXPECT_DOUBLE_EQ(defaults.itemPaddingVertical, 4.0);
@@ -40,6 +41,7 @@ TEST(S038_SubtleMenuBar, MenuBarTokensFallbackAndResolve) {
         "active-text = \"#e0e4ff\"\n"
         "hover-background = \"#2e3035\"\n"
         "active-background = \"#3b3f47\"\n"
+        "mnemonic = \"#ffb86c\"\n"
         "item-radius = 10\n"
         "item-padding-horizontal = 12\n"
         "item-padding-vertical = 5\n"
@@ -60,6 +62,7 @@ TEST(S038_SubtleMenuBar, MenuBarTokensFallbackAndResolve) {
     EXPECT_EQ(custom.activeText, (Color{0xe0, 0xe4, 0xff, 0xff}));
     EXPECT_EQ(custom.hoverBackground, (Color{0x2e, 0x30, 0x35, 0xff}));
     EXPECT_EQ(custom.activeBackground, (Color{0x3b, 0x3f, 0x47, 0xff}));
+    EXPECT_EQ(custom.mnemonic, (Color{0xff, 0xb8, 0x6c, 0xff}));
     EXPECT_DOUBLE_EQ(custom.itemRadius, 10.0);
     EXPECT_DOUBLE_EQ(custom.itemPaddingHorizontal, 12.0);
     EXPECT_DOUBLE_EQ(custom.itemPaddingVertical, 5.0);

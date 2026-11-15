@@ -110,6 +110,42 @@ private slots:
         QTRY_COMPARE(bar->grab().toImage().pixelColor(filePillProbe), ui::toQColor(style.background));
     }
 
+    void holdingAltRevealsSubtleAccessKeyHints() {
+        test::Fixture f;
+        ui::MenuBar* bar = f.window->topMenuBar();
+        QVERIFY(bar != nullptr);
+        const core::MenuBarStyle style = core::menuBarStyle(core::builtinTheme(core::ColorScheme::Light));
+        const QColor accent = ui::toQColor(style.mnemonic);
+        const QRect fileRect = bar->actionGeometry(bar->actions()[0]);
+        const auto countAccent = [&] {
+            const QImage img = bar->grab().toImage();
+            int n = 0;
+            for (int y = fileRect.top(); y <= fileRect.bottom(); ++y) {
+                for (int x = fileRect.left(); x <= fileRect.right(); ++x) {
+                    n += img.pixelColor(x, y) == accent ? 1 : 0;
+                }
+            }
+            return n;
+        };
+
+        QVERIFY(!bar->mnemonicHintsVisible());
+        QCOMPARE(countAccent(), 0);
+
+        // A modifier-only event, not key input to an editor: sent straight to the window.
+        QKeyEvent press(QEvent::KeyPress, Qt::Key_Alt, Qt::AltModifier);
+        QCoreApplication::sendEvent(f.window.get(), &press);
+        QVERIFY(bar->mnemonicHintsVisible());
+        QVERIFY(countAccent() > 0);
+
+        QKeyEvent release(QEvent::KeyRelease, Qt::Key_Alt, Qt::NoModifier);
+        QCoreApplication::sendEvent(f.window.get(), &release);
+        if (bar->hasFocus()) {  // Alt alone enters keyboard navigation; Escape leaves it.
+            test::keyClick(bar, Qt::Key_Escape);
+        }
+        QTRY_VERIFY(!bar->mnemonicHintsVisible());
+        QCOMPARE(countAccent(), 0);
+    }
+
     void themedMenuBarUsesEveryToken() {
         test::Fixture f;
         constexpr core::Color background{0x18, 0x19, 0x1c, 0xff};

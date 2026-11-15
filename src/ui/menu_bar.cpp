@@ -7,7 +7,10 @@
 #include <QActionEvent>
 #include <QApplication>
 #include <QEvent>
+#include <QFocusEvent>
+#include <QFontMetricsF>
 #include <QHoverEvent>
+#include <QKeyEvent>
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPaintEvent>
@@ -28,18 +31,26 @@ QString hex(const core::Color& c) {
     return toQColor(c).name(c.a == 255 ? QColor::HexRgb : QColor::HexArgb);
 }
 
-QString cleanLabel(const QString& text) {
-    QString out;
-    out.reserve(text.size());
+/// The label without `&` markers, and the index of its access key in it (-1 if it has none).
+struct Label {
+    QString text;
+    qsizetype mnemonic = -1;
+};
+
+Label parseLabel(const QString& text) {
+    Label out;
+    out.text.reserve(text.size());
     for (qsizetype i = 0; i < text.size(); ++i) {
         if (text[i] == u'&') {
             if (i + 1 < text.size() && text[i + 1] == u'&') {
-                out.append(u'&');
+                out.text.append(u'&');
                 ++i;
+            } else if (i + 1 < text.size() && out.mnemonic < 0) {
+                out.mnemonic = out.text.size();
             }
             continue;
         }
-        out.append(text[i]);
+        out.text.append(text[i]);
     }
     return out;
 }
@@ -50,7 +61,44 @@ MenuBar::MenuBar(QWidget* parent) : QMenuBar(parent) {
     setNativeMenuBar(false);
     setMouseTracking(true);
     setAttribute(Qt::WA_Hover, true);
+    qApp->installEventFilter(this);
     applyStyle(style_);
+}
+
+bool MenuBar::eventFilter(QObject* watched, QEvent* event) {
+    // Access keys are hinted only while Alt is held (or the bar is keyboard-driven, see
+    // mnemonicHintsVisible()), so the bar stays quiet the rest of the time.
+    bool held = altHeld_;
+    switch (event->type()) {
+        case QEvent::KeyPress:
+        case QEvent::KeyRelease: {
+            const auto* key = static_cast<const QKeyEvent*>(event);
+            held = key->key() == Qt::Key_Alt ? event->type() == QEvent::KeyPress
+                                             : key->modifiers().testFlag(Qt::AltModifier);
+            break;
+        }
+        case QEvent::ApplicationDeactivate:
+        case QEvent::WindowDeactivate:
+            held = false;
+            break;
+        default:
+            break;
+    }
+    if (held != altHeld_) {
+        altHeld_ = held;
+        update();
+    }
+    return QMenuBar::eventFilter(watched, event);
+}
+
+void MenuBar::focusInEvent(QFocusEvent* event) {
+    QMenuBar::focusInEvent(event);
+    update();
+}
+
+void MenuBar::focusOutEvent(QFocusEvent* event) {
+    QMenuBar::focusOutEvent(event);
+    update();
 }
 
 void MenuBar::applyStyle(const core::MenuBarStyle& style) {
@@ -173,6 +221,7 @@ void MenuBar::paintEvent(QPaintEvent* /*event*/) {
     }
 
     painter.setFont(font());
+    const bool hints = mnemonicHintsVisible();
     for (QAction* action : actions()) {
         if (action == nullptr || !action->isVisible() || action->isSeparator()) {
             continue;
@@ -194,8 +243,35 @@ void MenuBar::paintEvent(QPaintEvent* /*event*/) {
             painter.drawRoundedRect(QRectF(itemRect), radius, radius);
         }
         const core::Color& textColor = isOpen ? style_.activeText : (isHovered ? style_.hoverText : style_.text);
+        const Label label = parseLabel(action->text());
         painter.setPen(toQColor(textColor));
-        painter.drawText(QRectF(itemRect), Qt::AlignCenter, cleanLabel(action->text()));
+        if (!hints || label.mnemonic < 0) {
+            painter.drawText(QRectF(itemRect), Qt::AlignCenter, label.text);
+            continue;
+        }
+
+        // Access-key hint: the key letter takes the mnemonic colour and gets a short, rounded
+        // underline just below the baseline, instead of the classic full-weight underline.
+        const QFontMetricsF fm(font());
+        const QString before = label.text.left(label.mnemonic);
+        const QString key = label.text.mid(label.mnemonic, 1);
+        const QString after = label.text.mid(label.mnemonic + 1);
+        const qreal x0 = itemRect.center().x() + 0.5 - fm.horizontalAdvance(label.text) / 2.0;
+        const qreal baseline = itemRect.center().y() + 0.5 + (fm.ascent() - fm.descent()) / 2.0;
+        const qreal xKey = x0 + fm.horizontalAdvance(before);
+        const qreal keyWidth = fm.horizontalAdvance(key);
+        painter.drawText(QPointF(x0, baseline), before);
+        painter.drawText(QPointF(xKey + keyWidth, baseline), after);
+        const QColor accent = toQColor(style_.mnemonic);
+        painter.setPen(accent);
+        painter.drawText(QPointF(xKey, baseline), key);
+
+        const qreal thickness = std::max<qreal>(1.0, fm.lineWidth());
+        const qreal inset = keyWidth * 0.15;
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(accent);
+        painter.drawRoundedRect(QRectF(xKey + inset, baseline + fm.underlinePos(), keyWidth - 2 * inset, thickness),
+                                thickness / 2, thickness / 2);
     }
 }
 

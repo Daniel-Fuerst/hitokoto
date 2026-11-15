@@ -24,7 +24,14 @@ As a writer, I want the top menu bar to blend subtly into the editor without a f
 - Then its pill background uses `menu-bar.active-background` (`colors.border`) and its label uses `menu-bar.active-text` (`colors.text`)
 - And all existing actions, shortcuts, mnemonics and `window->menuBar()->actions()` remain intact
 
+**Scenario: subtle access-key hints while Alt is held**
+- Given the subtle top menu bar with no mnemonic underlines at rest
+- When the user holds Alt (or navigates the bar by keyboard after tapping Alt / F10)
+- Then the access-key letter of each item (`F`ile, `E`dit, `V`iew) takes the `menu-bar.mnemonic` colour (`colors.accent`) and gets a short, rounded, hairline underline
+- When Alt is released or keyboard navigation ends
+- Then the hints disappear again
+
 **Scenario: theming baseline (ADR 0004)**
-- Given a theme with `[menu-bar]` tokens (`background`, `border`, `border-width`, `padding`, `spacing`, `text`, `hover-text`, `active-text`, `hover-background`, `active-background`, `item-radius`, `item-padding-horizontal`, `item-padding-vertical`, `font-family`, `font-scale`)
+- Given a theme with `[menu-bar]` tokens (`background`, `border`, `border-width`, `padding`, `spacing`, `text`, `hover-text`, `active-text`, `hover-background`, `active-background`, `mnemonic`, `item-radius`, `item-padding-horizontal`, `item-padding-vertical`, `font-family`, `font-scale`)
 - When the theme is applied
 - Then the menu bar uses those tokens, falling back to the documented values when unset

@@ -104,7 +104,7 @@ struct FindTokens {
 
 /// Tokens of `[menu-bar]` (S038); resolved by menuBarStyle().
 struct MenuBarTokens {
-    std::optional<Color> background, border, text, hoverText, activeText, hoverBackground, activeBackground;
+    std::optional<Color> background, border, text, hoverText, activeText, hoverBackground, activeBackground, mnemonic;
     std::optional<double> borderWidth, padding, spacing, itemRadius, itemPaddingHorizontal, itemPaddingVertical,
         fontScale;
     std::optional<std::string> fontFamily;
@@ -282,6 +282,7 @@ struct FindStyle {
 /// Resolved look of the top menu bar (S038).
 struct MenuBarStyle {
     Color background, border, text, hoverText, activeText, hoverBackground, activeBackground;
+    Color mnemonic;  ///< access-key hint shown only while Alt is held or the bar is keyboard-driven
     double borderWidth = 0;
     double padding = 6;
     double spacing = 4;

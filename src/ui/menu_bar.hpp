@@ -9,6 +9,7 @@
 class QAction;
 class QActionEvent;
 class QEvent;
+class QFocusEvent;
 class QMouseEvent;
 class QPaintEvent;
 
@@ -24,8 +25,13 @@ public:
 
     void applyStyle(const core::MenuBarStyle& style);
     [[nodiscard]] const core::MenuBarStyle& menuBarStyle() const noexcept { return style_; }
+    /// True while Alt is held or the bar is driven by the keyboard: only then are access keys hinted.
+    [[nodiscard]] bool mnemonicHintsVisible() const noexcept { return altHeld_ || hasFocus(); }
 
 protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+    void focusInEvent(QFocusEvent* event) override;
+    void focusOutEvent(QFocusEvent* event) override;
     bool event(QEvent* event) override;
     void actionEvent(QActionEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
@@ -40,6 +46,7 @@ private:
     core::MenuBarStyle style_{core::menuBarStyle(core::builtinTheme(core::ColorScheme::Light))};
     QAction* hoveredAction_ = nullptr;
     bool pressed_ = false;
+    bool altHeld_ = false;
 };
 
 }  // namespace hitokoto::ui

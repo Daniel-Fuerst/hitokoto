@@ -233,6 +233,7 @@ follows the general tokens above.
 | `menu-bar.active-text` | color | Text colour of an open or pressed menu bar item | `colors.text` |
 | `menu-bar.hover-background` | color | Pill background of a hovered menu bar item | `colors.surface` |
 | `menu-bar.active-background` | color | Pill background of an open or pressed menu bar item | `colors.border` |
+| `menu-bar.mnemonic` | color | Access-key hint (letter and short underline) shown while Alt is held | `colors.accent` |
 | `menu-bar.item-radius` | number (px) | Corner radius of menu bar item pills, 0 to 32 | `layout.radius` |
 | `menu-bar.item-padding-horizontal` | number (px) | Horizontal space inside each menu bar item pill, 0 to 32 | `layout.spacing` |
 | `menu-bar.item-padding-vertical` | number (px) | Vertical space inside each menu bar item pill, 0 to 32 | 4 |
