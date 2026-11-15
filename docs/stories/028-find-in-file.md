@@ -428,7 +428,11 @@ fallbacks keep the contrast whatever a theme sets for `colors.text`.
   as a fresh search).
 - Added with the rework after 0.5.4: UI `replacingTheWholeDocumentUpdatesTheMatches` (select all
   and paste a text with as many lines, fewer, more or no match, then undo and redo: after each step
-  the count, the current match and the highlights on screen as a fresh search).
+  the count, the current match and the highlights on screen as a fresh search);
+  `anEditAboveTheMatchLeavesEveryLineWhereAFreshWindowDrawsIt` (an edit above the current match
+  that removes lines and makes a table text, shows a table's source or makes a new table: every
+  line and table view where a fresh window with the same text, caret and search draws it, with
+  the bar open and closed).
 
 ## Implementation
 
@@ -490,6 +494,14 @@ the whole document (select all and paste, its undo and redo) is read again to it
 reports such a change with one character more than the document holds, so the line at its end is
 not a valid block; `FindController::onContentsChange` now takes the last line then, as
 `BlockStyler` and `BlockLayout` do, and the results of the old lines no longer stay.
+
+In the same rework: an edit above the current match that adds or removes lines moves the bar's
+hold while the document changes, before the layout knows the new lines. Tables that then showed,
+hid or resized lines below the edit left those lines with the heights they had before, so they were
+drawn over each other or with a gap. Now `TableEmbedder::setFindHold` finds the tables again after
+the change (queued) when it is called inside one, and at once otherwise, as after Escape; and
+`BlockLayout::setHidden` and `setReservedHeight` remember a block they get inside a change and
+record its height once the change is applied, as the layout already did for blocks laid out then.
 
 Next: Armin's test of the functionality in practice; changes become stories of their own. Then
 acceptance (Done).
