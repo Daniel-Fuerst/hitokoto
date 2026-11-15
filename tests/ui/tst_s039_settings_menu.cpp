@@ -11,19 +11,52 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPalette>
 #include <QTemporaryDir>
 #include <QToolButton>
 
+#include <cstddef>
 #include <filesystem>
+#include <string_view>
 
 using namespace hitokoto;
 
 namespace {
 QToolButton* toolbarButton(ui::EditorWidget* editor, const char* name) {
     return editor->floatingToolbar()->findChild<QToolButton*>(QString::fromLatin1(name));
+}
+
+/// The diagnostics of `bytes` as the parser words them ("line 4, column 20: ...").
+QStringList settingsProblems(const QByteArray& bytes) {
+    QStringList lines;
+    for (const auto& d :
+         core::parseSettings(std::string_view(bytes.constData(), static_cast<std::size_t>(bytes.size()))).diagnostics) {
+        lines << QString::fromStdString(d.toString());
+    }
+    return lines;
+}
+
+/// Opens the flyout and picks `name` in the theme selector.
+bool pickTheme(test::Fixture& f, const QString& name) {
+    QToolButton* settingsBtn = toolbarButton(f.editor(), "openSettingsButton");
+    if (settingsBtn == nullptr) {
+        return false;
+    }
+    if (!f.editor()->settingsMenu()->isVisible()) {
+        QTest::mouseClick(settingsBtn, Qt::LeftButton);
+        f.settle();
+    }
+    auto* combo = f.editor()->settingsMenu()->findChild<QComboBox*>(QStringLiteral("themeSelector"));
+    const int index = combo != nullptr ? combo->findText(name) : -1;
+    if (index < 0) {
+        return false;
+    }
+    combo->setCurrentIndex(index);
+    f.settle();
+    return true;
 }
 }  // namespace
 
@@ -363,6 +396,88 @@ private slots:
         auto* box = window.findChild<QMessageBox*>();
         QVERIFY(box != nullptr);
         QCOMPARE(box->textFormat(), Qt::PlainText);
+    }
+
+    // The problems of config.toml are shown once when the configuration is read at start, the way a
+    // broken theme is reported; a later pick that saves fine shows nothing more.
+    void problemsInTheConfigFileAreReportedOnceAtStart() {
+        test::Fixture f;
+        const QString configPath = f.writeFile(QStringLiteral("config.toml"), "[appearance]\ntheme = \"dark\"\n");
+        f.messages.clear();
+        f.editor()->setThemeConfigDir(f.dir.path());
+        f.settle();
+        QCOMPARE(f.messages, QStringList());
+
+        const QByteArray broken =
+            "[appearance]\n"
+            "theme = \"light\"\n"
+            "[editor]\n"
+            "smooth-scrolling = ture\n"
+            "spell-check = true\n"
+            "front-matter-as-properties = false\n";
+        f.writeFile(QStringLiteral("config.toml"), broken);
+        f.editor()->setThemeConfigDir(f.dir.path());
+        f.settle();
+        QCOMPARE(f.messages.size(), 1);
+        const QString message = f.messages.first();
+        QVERIFY2(message.startsWith(QStringLiteral("Settings error: ")), qPrintable(message));
+        QVERIFY2(message.contains(configPath), qPrintable(message));
+        const QStringList problems = settingsProblems(broken);
+        QCOMPARE(problems.size(), 2);
+        for (const QString& problem : problems) {
+            QVERIFY2(message.contains(problem), qPrintable(message));
+        }
+        QVERIFY(!f.editor()->frontMatterAsProperties());  // the valid settings still apply
+
+        QVERIFY(pickTheme(f, QStringLiteral("hitokoto Dark")));
+        QCOMPARE(f.messages.size(), 1);
+        QByteArray expected = broken;
+        expected.replace("theme = \"light\"", "theme = \"dark\"");
+        QCOMPARE(test::Fixture::readFile(configPath), expected);
+    }
+
+    // A pick that cannot be saved keeps the file, uses the theme for now, and says why, with the
+    // problems of config.toml.
+    void aThemePickThatCannotBeSavedIsReportedWithTheProblemsOfTheFile() {
+        test::Fixture f;
+        const QByteArray original = "appearance.theme = \"light\"\n[editor]\nsmooth-scrolling = false\n";
+        const QString configPath = f.writeFile(QStringLiteral("config.toml"), original);
+        f.editor()->setThemeConfigDir(f.dir.path());
+        f.settle();
+        const QStringList problems = settingsProblems(original);
+        QCOMPARE(problems.size(), 1);
+        QCOMPARE(f.messages.size(), 1);
+        QVERIFY2(f.messages.first().contains(problems.first()), qPrintable(f.messages.first()));
+
+        f.messages.clear();
+        QVERIFY(pickTheme(f, QStringLiteral("hitokoto Dark")));
+        QCOMPARE(f.messages.size(), 1);
+        const QString message = f.messages.first();
+        QVERIFY2(message.startsWith(QStringLiteral("Theme not saved: ")), qPrintable(message));
+        QVERIFY2(message.contains(configPath), qPrintable(message));
+        QVERIFY2(message.contains(QStringLiteral("line 1 sets the theme or [appearance]")), qPrintable(message));
+        QVERIFY2(message.contains(problems.first()), qPrintable(message));
+        QCOMPARE(test::Fixture::readFile(configPath), original);
+        QCOMPARE(QString::fromStdString(f.editor()->currentTheme().name), QStringLiteral("hitokoto Dark"));
+    }
+
+    // A config.toml that cannot be read at all is reported at start and again when a pick is not saved.
+    void aConfigFileThatIsAFolderIsReportedAtStartAndWhenAPickIsNotSaved() {
+        test::Fixture f;
+        const QString configPath = f.dir.filePath(QStringLiteral("config.toml"));
+        QVERIFY(QDir().mkpath(configPath));
+        f.messages.clear();
+        f.editor()->setThemeConfigDir(f.dir.path());
+        f.settle();
+        QCOMPARE(f.messages.size(), 1);
+        QVERIFY2(f.messages.first().startsWith(QStringLiteral("Settings error: ")), qPrintable(f.messages.first()));
+        QVERIFY2(f.messages.first().contains(QStringLiteral("not a regular file")), qPrintable(f.messages.first()));
+
+        QVERIFY(pickTheme(f, QStringLiteral("hitokoto Dark")));
+        QCOMPARE(f.messages.size(), 2);
+        QVERIFY2(f.messages.last().startsWith(QStringLiteral("Theme not saved: ")), qPrintable(f.messages.last()));
+        QVERIFY2(f.messages.last().contains(QStringLiteral("not a regular file")), qPrintable(f.messages.last()));
+        QVERIFY(QFileInfo(configPath).isDir());
     }
 
 #if !defined(Q_OS_WIN)

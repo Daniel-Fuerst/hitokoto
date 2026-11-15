@@ -56,6 +56,14 @@ As a writer, I want a non-modal settings flyout reachable from the floating tool
 - When the file defines the theme in a form hitokoto does not read (a dotted or quoted key, a table header with spaces or quotes, an array), or the changed text would not give the picked theme with all other settings unchanged
 - Then `config.toml` is left untouched and saving the theme fails with a reason
 
+**Scenario: problems in config.toml are reported**
+- Given a `config.toml` with malformed entries, unknown keys or sections, wrong value types, or one that cannot be read at all (for example a folder of that name)
+- When the editor reads its configuration at start
+- Then one message "Settings error" names the file and lists each problem with its line and column, the way a broken theme is reported, while all valid settings apply
+- When I pick a theme and it cannot be saved (see the previous scenario, or the file cannot be read)
+- Then the theme is used for the session, `config.toml` stays untouched, and one message "Theme not saved" names the file, gives the reason and lists the problems of the file
+- And a pick that is saved shows no message
+
 **Scenario: CLI `--theme` override precedence**
 - Given a `config.toml` with a saved theme and `--theme <path>` passed at startup
 - When `ThemeManager` initializes with CLI override active
@@ -74,7 +82,7 @@ As a writer, I want a non-modal settings flyout reachable from the floating tool
 ## Tests
 
 - **Core (`hitokoto_core_tests`, `tests/core/test_s039_settings_menu.cpp`):** `S039_SettingsMenu.SettingsParseAndSerializeRoundTrip`, `S039_SettingsMenu.SettingsParseDiagnosticsPreserveValidEntries`, `S039_SettingsMenu.SettingsSaveCreatesDirectoriesAndLoadsAtomically`, `S039_SettingsMenu.BuiltinSchemeFromSettingMatchesLightAndDarkCaseInsensitively`; picking a theme: `S039_SettingsMenu.UpdateThemeChangesOnlyTheThemeKeyOfAppearance`, `S039_SettingsMenu.UpdateThemeChangesATopLevelKeyBeforeAnySection`, `S039_SettingsMenu.UpdateThemeReplacesTheWholeValue`, `S039_SettingsMenu.UpdateThemeKeepsLineEndingsAndAByteOrderMark`, `S039_SettingsMenu.UpdateThemeLeavesTheFileWhenOnlyTheThemeCannotBeChanged`.
-- **UI (`tests/ui/tst_s039_settings_menu.cpp`):** `settingsButtonOpensAndClosesSettingsMenuWithDebugInfo`, `settingsMenuListsAndSelectsThemesFromConfigFolder`, `selectedThemePersistsInConfigFileAcrossRestart`, `editorOptionsInConfigFileLoadAndSurviveThemeSelection`.
+- **UI (`tests/ui/tst_s039_settings_menu.cpp`):** `settingsButtonOpensAndClosesSettingsMenuWithDebugInfo`, `settingsMenuListsAndSelectsThemesFromConfigFolder`, `selectedThemePersistsInConfigFileAcrossRestart`, `editorOptionsInConfigFileLoadAndSurviveThemeSelection`; reporting problems of `config.toml`: `problemsInTheConfigFileAreReportedOnceAtStart`, `aThemePickThatCannotBeSavedIsReportedWithTheProblemsOfTheFile`, `aConfigFileThatIsAFolderIsReportedAtStartAndWhenAPickIsNotSaved`.
 - **Theme manager persistence (`tests/ui/tst_s005_theme.cpp`):** `themeSelectionPersistsAcrossThemeManagerRestart`.
 
 ## Implementation
