@@ -1,12 +1,13 @@
 # S032 — The check "Version label" takes its script from main
 
-- **Status:** In review since 2026-11-15 (CI green on Linux, Windows and macOS on pull request 36
-  after the merge of main `ed91faa`; the check "Version label" logged "Rules from main at
-  ed91faa…" and passed with `version:none`; on 2026-11-10 it stayed red without a label although
-  the temporary commit `76a560c` made the pull request's copy of the script always succeed, since
-  it ran the rules from main `10a60bf`; reverted in `e92a9b7`); in progress since 2026-11-10;
-  confirmed by Armin, 2026-11-09 · **Order:** 33 (after S031) · **Size:** S · **Depends on:**
-  S030 · **Decision:** ADR 0010 (unchanged)
+- **Status:** Done (accepted by Armin, 2026-11-15, after CI and "Version" were green on
+  pull request 36 at `c56748e`; label `version:none`); In review since 2026-11-15 (CI green on
+  Linux, Windows and macOS on pull request 36 after the merge of main `ed91faa`; the check "Version
+  label" logged "Rules from main at ed91faa…" and passed with `version:none`; on 2026-11-10 it
+  stayed red without a label although the temporary commit `76a560c` made the pull request's copy of
+  the script always succeed, since it ran the rules from main `10a60bf`; reverted in `e92a9b7`); in
+  progress since 2026-11-10; confirmed by Armin, 2026-11-09 · **Order:** 33 (after S031) ·
+  **Size:** S · **Depends on:** S030 · **Decision:** ADR 0010 (unchanged)
 - **Basis:** code review of S030, O3 (`docs/reviews/030-automatic-versions-code.md`), and the entry
   "The check 'Version label' with the script from main" in `unrefined.md`, which this story
   replaces. Follow-up work to S030, written as a story on Armin's request (2026-11-09); implemented
