@@ -422,6 +422,10 @@ fallbacks keep the contrast whatever a theme sets for `colors.text`.
   - S009: geometry after every step and no hidden range under a highlight's text colour (O11).
   - Benchmarks: `s028_step_incomplete_*` (O9), `s028_table_field_typing_*` and
     `s028_table_step_*` on the 1,000-row table with "Highlight all" (O8).
+- Added with the rework after 0.5.2: UI `changingATableWhileAMatchBelowItIsCurrent` (keys that
+  change a table's rows or columns or the lines below it while the current match is below the
+  table: the same document, caret and cell as with the bar closed, the table view kept, the count
+  as a fresh search).
 
 ## Implementation
 
@@ -468,6 +472,15 @@ After the code review (`docs/reviews/028-find-in-file-code.md`, all twelve objec
 
 CI of pull request #27 green on Linux, Windows and macOS (2026-11-07); the `s028_*` Linux baselines
 come from that run.
+
+Rework after 0.5.2 (`agents/s028-table-rows-during-find`, 2026-11-14): with the current match below
+a table, a key in the table that adds or removes a line (Enter or Tab in the last row, deleting a
+row, Enter in an empty last row, Escape above a line that is no row, Backspace on the empty line
+below the table) moves the match. The bar moves its hold at once, inside the change, and
+`TableEmbedder::setFindHold` finds the tables again; the change then went on with a reference into
+the list of tables it had replaced. The changes to rows and columns, `leaveBelow` and Backspace
+below a table now copy what they need before the change and look the table up again by its header
+line after it (`tableWithHeader`, `update(header)`).
 
 Next: Armin's test of the functionality in practice; changes become stories of their own. Then
 acceptance (Done).
