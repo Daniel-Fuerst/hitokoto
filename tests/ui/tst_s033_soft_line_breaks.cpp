@@ -7,6 +7,7 @@
 #include "find_controller.hpp"
 #include "ui_test_support.hpp"
 
+#include <QAbstractScrollArea>
 #include <QAction>
 #include <QClipboard>
 #include <QElapsedTimer>
@@ -98,6 +99,37 @@ protected:
 
 private:
     QWidget* widget_;
+};
+
+/// Counts the resizes of a scroll area's viewport. Past `limit` it keeps the vertical scroll bar shown,
+/// so that a scroll bar that is shown and hidden in turn ends and the test can report it instead of
+/// hanging in the event loop.
+class ViewportResizeLimit : public QObject {
+public:
+    ViewportResizeLimit(QAbstractScrollArea* area, int limit) : area_(area), limit_(limit) {
+        area_->viewport()->installEventFilter(this);
+    }
+    ~ViewportResizeLimit() override { area_->viewport()->removeEventFilter(this); }
+    ViewportResizeLimit(const ViewportResizeLimit&) = delete;
+    ViewportResizeLimit& operator=(const ViewportResizeLimit&) = delete;
+    ViewportResizeLimit(ViewportResizeLimit&&) = delete;
+    ViewportResizeLimit& operator=(ViewportResizeLimit&&) = delete;
+
+    int count = 0;
+    bool cut = false;
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override {
+        if (watched == area_->viewport() && event->type() == QEvent::Resize && ++count > limit_ && !cut) {
+            cut = true;
+            area_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+        }
+        return false;
+    }
+
+private:
+    QAbstractScrollArea* area_;
+    int limit_;
 };
 
 /// The line at the top of the view: the block and line of the text that starts it, and its position.
@@ -806,6 +838,67 @@ private slots:
         f.settle();
         QVERIFY(editorResizes.count > 0);
         QCOMPARE(editor->anchorRestores() - before, static_cast<quint64>(editorResizes.count));
+    }
+
+    // A window made large enough for the whole document: the view shows the document from its top,
+    // and the scroll bar, needed in the smaller window, is hidden and stays hidden. The reading
+    // position held from the smaller window lies below the top then, and no scroll value reaches
+    // it; restoring it must not make the scroll range larger than the document needs. A larger range
+    // shows the scroll bar, the narrower text column gives the document its own range again, which
+    // hides the scroll bar, and the restore made the range larger again: the editor took no input.
+    void aWindowThatFitsTheDocumentShowsItWithoutScrollBar_data() {
+        QTest::addColumn<QByteArray>("markdown");
+        QTest::addColumn<int>("smallWidth");
+        QTest::addColumn<int>("largeWidth");
+        QByteArray table = "| a | b |\n|---|---|\n";
+        for (int row = 0; row < 12; ++row) {
+            table += "| " + QByteArray::number(row) + " | x |" + (row < 11 ? "\n" : "");
+        }
+        QByteArray tableAndLines = "| a | b |\n|---|---|\n| 1 | 2 |\n";
+        for (int line = 0; line < 7; ++line) {
+            tableAndLines += "line " + QByteArray::number(line) + '\n';
+        }
+        QTest::newRow("table, taller") << table << 900 << 900;
+        QTest::newRow("table, taller and wider") << table << 336 << 700;
+        QTest::newRow("table and lines, taller and wider") << tableAndLines << 336 << 510;
+    }
+
+    void aWindowThatFitsTheDocumentShowsItWithoutScrollBar() {
+        QFETCH(QByteArray, markdown);
+        QFETCH(int, smallWidth);
+        QFETCH(int, largeWidth);
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("fits.md"), markdown)));
+        f.settle();
+        auto* editor = f.editor();
+        auto* bar = editor->verticalScrollBar();
+        const int chrome = f.window->height() - editor->viewport()->height();
+        const int height = static_cast<int>(std::ceil(editor->document()->documentLayout()->documentSize().height()));
+        QVERIFY(height < editor->viewport()->height());
+
+        // A window in which the document scrolls, scrolled a few pixels down by the reader.
+        f.window->resize(smallWidth, chrome + height / 2);
+        f.settle();
+        QVERIFY(bar->maximum() > 10);
+        bar->setValue(10);
+        f.settle();
+
+        // Qt lays the scroll area out twice for one resize and may show the scroll bar for the old
+        // range in both passes; the new width hides it each time: four resizes of the viewport. The
+        // bound leaves as many again for a style or window system that adds a pass, and is still far
+        // from a scroll bar shown and hidden without end.
+        ViewportResizeLimit resizes(editor, 100);
+        f.window->resize(largeWidth, chrome + height + height / 2);
+        f.settle();
+        // Each round of the event loop may take one more turn of a scroll bar shown and hidden in turn.
+        for (int round = 0; round < 50 && !resizes.cut; ++round) {
+            QCoreApplication::processEvents();
+        }
+        QVERIFY2(!resizes.cut, "the scroll bar was shown and hidden in turn");
+        QVERIFY2(resizes.count <= 8, qPrintable(QStringLiteral("%1 resizes of the viewport").arg(resizes.count)));
+        QVERIFY(!bar->isVisible());
+        QCOMPARE(bar->maximum(), 0);
+        QCOMPARE(bar->value(), 0);
     }
 
     // Benchmark of PR #37 (s031_paste_no_table_5000_lines_ms 29 -> 139 ms): an edit that adds many lines
