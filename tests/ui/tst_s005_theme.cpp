@@ -120,7 +120,9 @@ private slots:
 
             const auto saved = ui::ThemeManager::loadSavedThemeEntry(f.dir.path());
             QVERIFY(saved.has_value());
-            QCOMPARE(saved->builtinScheme, std::optional<core::ColorScheme>(core::ColorScheme::Dark));
+            if (saved.has_value()) {
+                QCOMPARE(saved->builtinScheme, std::optional<core::ColorScheme>(core::ColorScheme::Dark));
+            }
         }
     }
 };

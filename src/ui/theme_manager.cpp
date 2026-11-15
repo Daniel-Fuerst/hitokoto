@@ -107,7 +107,7 @@ std::optional<ThemeEntry> ThemeManager::loadSavedThemeEntry(const QString& confi
 
     if (const auto scheme = core::builtinSchemeFromSetting(loaded.settings.theme)) {
         const auto& builtin = core::builtinTheme(*scheme);
-        return ThemeEntry{QString::fromStdString(builtin.name), {}, *scheme};
+        return ThemeEntry{QString::fromStdString(builtin.name), {}, scheme};
     }
 
     QString normalized = raw;

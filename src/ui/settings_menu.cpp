@@ -56,7 +56,8 @@ SettingsMenu::SettingsMenu(QWidget* parent) : QWidget(parent) {
     themeCombo_->setFocusPolicy(Qt::NoFocus);
     connect(themeCombo_, &QComboBox::currentIndexChanged, this, [this](int index) {
         if (index >= 0 && index < entries_.size()) {
-            emit themeEntrySelected(entries_.at(index));
+            const ThemeEntry entry = entries_.at(index);
+            emit themeEntrySelected(entry);
         }
     });
 
@@ -83,11 +84,13 @@ SettingsMenu::SettingsMenu(QWidget* parent) : QWidget(parent) {
 
 void SettingsMenu::setAvailableThemes(const QList<ThemeEntry>& entries, const QString& activePath,
                                       const core::Theme& activeTheme) {
-    entries_ = entries;
     const QSignalBlocker blocker(themeCombo_);
-    themeCombo_->clear();
-    for (const ThemeEntry& entry : entries_) {
-        themeCombo_->addItem(entry.name);
+    if (entries_ != entries) {
+        entries_ = entries;
+        themeCombo_->clear();
+        for (const ThemeEntry& entry : entries_) {
+            themeCombo_->addItem(entry.name);
+        }
     }
 
     int selected = -1;
@@ -116,7 +119,7 @@ void SettingsMenu::setAvailableThemes(const QList<ThemeEntry>& entries, const QS
             }
         }
     }
-    if (selected >= 0) {
+    if (selected >= 0 && themeCombo_->currentIndex() != selected) {
         themeCombo_->setCurrentIndex(selected);
     }
     adjustSize();
