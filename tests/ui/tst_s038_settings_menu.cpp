@@ -12,7 +12,9 @@
 #include <QDir>
 #include <QFile>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPalette>
+#include <QTemporaryDir>
 #include <QToolButton>
 
 #include <filesystem>
@@ -349,6 +351,18 @@ private slots:
         QCOMPARE(combo->findText(QStringLiteral("x")), -1);
         QCOMPARE(combo->findText(QStringLiteral("x.toml")), -1);
 #endif
+    }
+
+    void messageBoxUsesPlainTextFormat() {
+        QTemporaryDir tempDir;
+        ui::MainWindow window(test::registry());
+        window.editor()->setThemeConfigDir(tempDir.path());
+
+        window.showMessage(QStringLiteral("Theme error"),
+                           QStringLiteral("Could not load \"<img src='x'>.toml\":\nsyntax error"));
+        auto* box = window.findChild<QMessageBox*>();
+        QVERIFY(box != nullptr);
+        QCOMPARE(box->textFormat(), Qt::PlainText);
     }
 };
 
