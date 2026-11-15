@@ -364,6 +364,39 @@ private slots:
         QVERIFY(box != nullptr);
         QCOMPARE(box->textFormat(), Qt::PlainText);
     }
+
+#if !defined(Q_OS_WIN)
+    void themeWithControlCharactersNotOfferedOrSaved() {
+        test::Fixture f;
+        f.editor()->setThemeConfigDir(f.dir.path());
+
+        const QDir configDir(f.dir.path());
+        QVERIFY(configDir.mkpath(QStringLiteral("themes")));
+        const QDir themesDir(configDir.filePath(QStringLiteral("themes")));
+
+        const QString badName = QStringLiteral("a\n[editor]\nsmooth-scrolling = false\n#.toml");
+        const QString badPath = themesDir.filePath(badName);
+        QFile file(badPath);
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        file.write("name = \"Injected\"\nbase = \"light\"\n");
+        file.close();
+
+        auto* settingsBtn = toolbarButton(f.editor(), "openSettingsButton");
+        QVERIFY(settingsBtn != nullptr);
+        QTest::mouseClick(settingsBtn, Qt::LeftButton);
+        f.settle();
+
+        auto* menu = f.editor()->settingsMenu();
+        QVERIFY(menu != nullptr);
+        auto* combo = menu->findChild<QComboBox*>(QStringLiteral("themeSelector"));
+        QVERIFY(combo != nullptr);
+        QCOMPARE(combo->findText(QStringLiteral("Injected")), -1);
+        QCOMPARE(combo->findText(badName), -1);
+
+        ui::ThemeEntry badEntry{badName, badPath, std::nullopt};
+        QVERIFY(!ui::ThemeManager::saveSelectedTheme(f.dir.path(), badEntry));
+    }
+#endif
 };
 
 QTEST_MAIN(tst_s038_settings_menu)

@@ -292,3 +292,23 @@ TEST(S038_SettingsMenu, UpdateThemeSettingLeavesUnreadableFileUntouched) {
     EXPECT_EQ(*read.bytes, original);
 }
 #endif
+
+TEST(S038_SettingsMenu, RefusesThemeSettingWithControlCharactersOrLineBreaks) {
+    SettingsTempDir dir;
+    const std::filesystem::path configPath = dir.path() / "config.toml";
+
+    const Settings malicious{
+        .theme = "a\n[editor]\nsmooth-scrolling = false\n#.toml",
+        .smoothScrolling = true,
+        .frontMatterAsProperties = true,
+        .reportBlankLinesAdded = false,
+    };
+
+    const auto err = saveSettingsFile(configPath, malicious);
+    EXPECT_TRUE(err.has_value());
+
+    const auto updateErr = updateThemeSettingInFile(configPath, malicious.theme);
+    EXPECT_TRUE(updateErr.has_value());
+
+    EXPECT_FALSE(std::filesystem::exists(configPath));
+}
