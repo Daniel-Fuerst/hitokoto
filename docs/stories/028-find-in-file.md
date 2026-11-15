@@ -426,6 +426,9 @@ fallbacks keep the contrast whatever a theme sets for `colors.text`.
   change a table's rows or columns or the lines below it while the current match is below the
   table: the same document, caret and cell as with the bar closed, the table view kept, the count
   as a fresh search).
+- Added with the rework after 0.5.4: UI `replacingTheWholeDocumentUpdatesTheMatches` (select all
+  and paste a text with as many lines, fewer, more or no match, then undo and redo: after each step
+  the count, the current match and the highlights on screen as a fresh search).
 
 ## Implementation
 
@@ -481,6 +484,12 @@ below the table) moves the match. The bar moves its hold at once, inside the cha
 the list of tables it had replaced. The changes to rows and columns, `leaveBelow` and Backspace
 below a table now copy what they need before the change and look the table up again by its header
 line after it (`tableWithHeader`, `update(header)`).
+
+Rework after 0.5.4 (`agents/s028-find-during-document-change`, 2026-11-15): a change that replaces
+the whole document (select all and paste, its undo and redo) is read again to its last line. Qt
+reports such a change with one character more than the document holds, so the line at its end is
+not a valid block; `FindController::onContentsChange` now takes the last line then, as
+`BlockStyler` and `BlockLayout` do, and the results of the old lines no longer stay.
 
 Next: Armin's test of the functionality in practice; changes become stories of their own. Then
 acceptance (Done).
