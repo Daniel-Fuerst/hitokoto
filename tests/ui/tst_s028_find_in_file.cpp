@@ -10,6 +10,7 @@
 #include "ui_test_support.hpp"
 
 #include <QAbstractItemModel>
+#include <QAbstractTextDocumentLayout>
 #include <QAccessible>
 #include <QAction>
 #include <QClipboard>
@@ -272,18 +273,78 @@ QString placeOf(const test::Fixture& f) {
         .arg(focus != nullptr ? QString::fromLatin1(focus->metaObject()->className()) : QStringLiteral("nothing"));
 }
 
-QAction* findMenuAction(const test::Fixture& f) {
+/// Where every line is drawn: shown or hidden, its top and its height, and the height of the table
+/// view on a table's first line (S018).
+QStringList linePlaces(const test::Fixture& f) {
+    QStringList places;
+    QAbstractTextDocumentLayout* layout = f.editor()->document()->documentLayout();
+    for (QTextBlock b = f.editor()->document()->begin(); b.isValid(); b = b.next()) {
+        const QRectF rect = layout->blockBoundingRect(b);
+        QString place = QStringLiteral("line %1: %2, top %3, height %4")
+                            .arg(b.blockNumber())
+                            .arg(b.isVisible() ? QStringLiteral("shown") : QStringLiteral("hidden"))
+                            .arg(rect.top())
+                            .arg(rect.height());
+        QTableView* view = f.editor()->tableViewAt(b.blockNumber());
+        if (view != nullptr && (b.blockNumber() == 0 || f.editor()->tableViewAt(b.blockNumber() - 1) != view)) {
+            place += QStringLiteral(", table view %1 high").arg(view->parentWidget()->height());
+        }
+        places << place;
+    }
+    return places;
+}
+
+/// The lines drawn elsewhere than in a fresh window with the same text, the caret at the same place
+/// and the same search (none if `text` is empty); empty if there are none.
+QString placesDifferingFromAFreshWindow(const test::Fixture& f, const QString& text) {
+    const QStringList places = linePlaces(f);
+    const QTextCursor caret = f.editor()->textCursor();
+    test::Fixture fresh;
+    if (!load(fresh, f.editor()->toPlainText())) {
+        return QStringLiteral("the fresh window did not open");
+    }
+    QTextCursor c(fresh.editor()->document());
+    c.setPosition(caret.anchor());
+    c.setPosition(caret.position(), QTextCursor::KeepAnchor);
+    fresh.editor()->setFocus();
+    fresh.editor()->setTextCursor(c);
+    if (!text.isEmpty()) {
+        search(fresh, text);
+        if (!waitComplete(fresh)) {
+            return QStringLiteral("the fresh search did not complete");
+        }
+    }
+    fresh.editor()->setFocus();
+    fresh.settle();
+    const QStringList expected = linePlaces(fresh);
+    QStringList differing;
+    for (qsizetype i = 0; i < std::max(places.size(), expected.size()); ++i) {
+        const QString now = i < places.size() ? places[i] : QStringLiteral("no line");
+        const QString then = i < expected.size() ? expected[i] : QStringLiteral("no line");
+        if (now != then) {
+            differing << QStringLiteral("%1 (fresh: %2)").arg(now, then);
+        }
+    }
+    return differing.join(QLatin1Char('\n'));
+}
+
+/// The action of the Edit menu with this shortcut.
+QAction* editMenuAction(const test::Fixture& f, QKeySequence::StandardKey standard) {
     for (QAction* menu : f.window->menuBar()->actions()) {
         if (menu->menu() == nullptr || !menu->text().contains(QStringLiteral("Edit"))) {
             continue;
         }
         for (QAction* a : menu->menu()->actions()) {
-            if (a->shortcut() == QKeySequence(QKeySequence::Find)) {
+            if (a->shortcut() == QKeySequence(standard)) {
                 return a;
             }
         }
     }
     return nullptr;
+}
+
+QAction* findMenuAction(const test::Fixture& f) {
+    return editMenuAction(f, QKeySequence::Find);
 }
 
 const QString kTable = QStringLiteral(
@@ -1099,6 +1160,85 @@ private slots:
                 QCOMPARE(differenceToFresh(f, QStringLiteral("needle")), QString());
                 QCOMPARE(controller(f)->countText(), QStringLiteral("1 of 1"));
             }
+        }
+    }
+
+    // An edit above the current match that adds or removes lines moves the bar's hold while the
+    // document changes. Tables and lines outside the edit that show, hide or change their height
+    // then are drawn where a fresh window with the same text, caret and search draws them.
+    void anEditAboveTheMatchLeavesEveryLineWhereAFreshWindowDrawsIt_data() {
+        QTest::addColumn<QString>("markdown");
+        QTest::addColumn<int>("from");   // the selection runs from the start of this line
+        QTest::addColumn<int>("to");     // to the start of this one
+        QTest::addColumn<bool>("cut");   // then Edit > Cut, else the Delete key
+        QTest::addColumn<bool>("undo");  // then Edit > Undo
+        const QString table = QStringLiteral("| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n");
+        // From "middle" to the start of the second table's header: the current match goes, the
+        // table whose header joins the line above is read again, and the next match is in it.
+        QTest::newRow("from a line above the match into a table's header")
+            << QStringLiteral("first line\n\nsecond line\n\n") + table +
+                   QStringLiteral("\nmiddle\n\nneedle here\n\n| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | needle |\n\nend\n")
+            << 9 << 13 << false << false;
+        // The delimiter row goes: the table above the match is text again, its rows show.
+        const QString plain = QStringLiteral("intro\n\n") + table + QStringLiteral("\nmiddle\n\nneedle\n\nend\n");
+        QTest::newRow("a delimiter row above the match") << plain << 3 << 4 << false << false;
+        QTest::newRow("a delimiter row above the match, cut") << plain << 3 << 4 << true << false;
+        // And back: the table is there again, its rows hide and its view takes their place.
+        QTest::newRow("a delimiter row above the match, cut and undone") << plain << 3 << 4 << true << true;
+        // A blank line between a header and its delimiter row goes: a table appears above the match.
+        QTest::newRow("a blank line that kept a table apart, cut")
+            << QStringLiteral("intro\n\n| a | b |\n\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n\nmiddle\n\nneedle\n\nend\n") << 3
+            << 4 << true << false;
+    }
+
+    void anEditAboveTheMatchLeavesEveryLineWhereAFreshWindowDrawsIt() {
+        QFETCH(QString, markdown);
+        QFETCH(int, from);
+        QFETCH(int, to);
+        QFETCH(bool, cut);
+        QFETCH(bool, undo);
+        for (const bool findOpen : {false, true}) {
+            test::Fixture f;
+            QVERIFY(load(f, markdown));
+            const QString query = findOpen ? QStringLiteral("needle") : QString();
+            if (findOpen) {
+                search(f, query);
+                QVERIFY(waitComplete(f));
+                QVERIFY(controller(f)->currentMatch().has_value());
+                QVERIFY(static_cast<int>(current(f).start.line) > from);
+            }
+            f.editor()->setFocus();
+            QTextCursor selection(f.editor()->document()->findBlockByNumber(from));
+            selection.setPosition(f.editor()->document()->findBlockByNumber(to).position(), QTextCursor::KeepAnchor);
+            f.editor()->setTextCursor(selection);
+            if (cut) {
+                QAction* cutAction = editMenuAction(f, QKeySequence::Cut);
+                QVERIFY(cutAction != nullptr);
+                cutAction->trigger();
+            } else {
+                test::keyClick(f.editor(), Qt::Key_Delete);
+            }
+            QVERIFY(f.editor()->toPlainText() != markdown);
+            if (undo) {
+                QVERIFY(waitComplete(f));
+                f.settle();
+                QAction* undoAction = editMenuAction(f, QKeySequence::Undo);
+                QVERIFY(undoAction != nullptr);
+                undoAction->trigger();
+                QCOMPARE(f.editor()->toPlainText(), markdown);
+            }
+            if (findOpen) {
+                QVERIFY(bar(f)->isVisible());
+                QVERIFY(waitComplete(f));
+            }
+            f.settle();
+            // The line the key went to keeps its table's source until the caret leaves (S018).
+            test::keyClick(f.editor(), Qt::Key_End, Qt::ControlModifier);
+            f.settle();
+            const QString differing = placesDifferingFromAFreshWindow(f, query);
+            QVERIFY2(differing.isEmpty(),
+                     qPrintable(QStringLiteral("find bar %1:\n%2")
+                                    .arg(findOpen ? QStringLiteral("open") : QStringLiteral("closed"), differing)));
         }
     }
 
