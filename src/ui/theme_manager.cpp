@@ -223,8 +223,6 @@ core::ThemeLoadResult ThemeManager::loadThemeFile(const QString& path, core::Col
     }
     const QFileInfo info(path);
     if (!info.exists()) {
-        result.usedFallback = true;
-        result.diagnostics.push_back({0, 0, "theme file does not exist"});
         return result;
     }
     if (!info.isFile()) {
