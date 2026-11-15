@@ -6,7 +6,14 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <fstream>
 #include <random>
+
+#if !defined(_WIN32)
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+#endif
 
 using namespace hitokoto::core;
 
@@ -120,4 +127,34 @@ TEST(S038_SettingsMenu, BuiltinSchemeFromSettingMatchesLightAndDarkCaseInsensiti
     EXPECT_EQ(builtinSchemeFromSetting("hitokoto dark"), ColorScheme::Dark);
     EXPECT_EQ(builtinSchemeFromSetting("berry-crush.toml"), std::nullopt);
     EXPECT_EQ(builtinSchemeFromSetting(""), std::nullopt);
+}
+
+TEST(S038_SettingsMenu, LoadSettingsFileRejectsNonRegularOrOversizedFiles) {
+    SettingsTempDir dir;
+    const std::filesystem::path configDir = dir.path() / "dir_config";
+    std::filesystem::create_directories(configDir);
+
+    const SettingsLoadResult dirResult = loadSettingsFile(configDir);
+    EXPECT_EQ(dirResult.settings, Settings{});
+    EXPECT_FALSE(dirResult.diagnostics.empty());
+
+    const std::filesystem::path oversizedPath = dir.path() / "oversized.toml";
+    {
+        std::ofstream out(oversizedPath, std::ios::binary);
+        out << "theme = \"light\"\n";
+    }
+    std::filesystem::resize_file(oversizedPath, 64 * 1024 + 1);
+    const SettingsLoadResult oversizedResult = loadSettingsFile(oversizedPath);
+    EXPECT_EQ(oversizedResult.settings, Settings{});
+    EXPECT_FALSE(oversizedResult.diagnostics.empty());
+
+#if !defined(_WIN32)
+    const std::filesystem::path fifoPath = dir.path() / "fifo.toml";
+    ASSERT_EQ(::mkfifo(fifoPath.c_str(), 0600), 0);
+    ::alarm(2);
+    const SettingsLoadResult fifoResult = loadSettingsFile(fifoPath);
+    ::alarm(0);
+    EXPECT_EQ(fifoResult.settings, Settings{});
+    EXPECT_FALSE(fifoResult.diagnostics.empty());
+#endif
 }
