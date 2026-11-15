@@ -22,13 +22,23 @@ bool isConfigFileName(const QString& fileName) {
            fileName.compare(QStringLiteral("settings.toml"), Qt::CaseInsensitive) == 0;
 }
 
+bool hasControlCharacters(const QString& s) {
+    for (const QChar& c : s) {
+        const auto u = c.unicode();
+        if (u < 0x20 || u == 0x7f) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::optional<ThemeEntry> makeFileThemeEntry(const QFileInfo& info, core::ColorScheme scheme) {
-    if (!info.exists() || !info.isFile()) {
+    if (!info.exists() || !info.isFile() || hasControlCharacters(info.fileName())) {
         return std::nullopt;
     }
     const QString absPath = info.absoluteFilePath();
     const core::ThemeLoadResult result = ThemeManager::loadThemeFile(absPath, scheme);
-    if (result.usedFallback) {
+    if (result.usedFallback || hasControlCharacters(QString::fromStdString(result.theme.name))) {
         return std::nullopt;
     }
     QString displayName = info.completeBaseName();
@@ -92,6 +102,10 @@ bool ThemeManager::saveSelectedTheme(const QString& configDir, const ThemeEntry&
         }
     }
 
+    if (hasControlCharacters(entry.path) || hasControlCharacters(toQString(nextTheme))) {
+        return false;
+    }
+
     const auto err = core::updateThemeSettingInFile(fsPath, nextTheme);
     return !err.has_value();
 }
@@ -104,7 +118,7 @@ std::optional<ThemeEntry> ThemeManager::loadSavedThemeEntry(const QString& confi
 
     const core::SettingsLoadResult loaded = core::loadSettingsFile(std::filesystem::path(cfgPath.toStdU16String()));
     const QString raw = toQString(loaded.settings.theme).trimmed();
-    if (raw.isEmpty()) {
+    if (raw.isEmpty() || hasControlCharacters(raw)) {
         return std::nullopt;
     }
 
@@ -180,7 +194,7 @@ QList<ThemeEntry> ThemeManager::availableThemes(const QString& configDir) {
         const QFileInfoList files =
             dir.entryInfoList({QStringLiteral("*.toml")}, QDir::Files | QDir::Readable, QDir::Name | QDir::IgnoreCase);
         for (const QFileInfo& info : files) {
-            if (isConfigFileName(info.fileName())) {
+            if (isConfigFileName(info.fileName()) || hasControlCharacters(info.fileName())) {
                 continue;
             }
             const QString absPath = info.absoluteFilePath();
@@ -202,9 +216,9 @@ QList<ThemeEntry> ThemeManager::availableThemes(const QString& configDir) {
 
 core::ThemeLoadResult ThemeManager::loadThemeFile(const QString& path, core::ColorScheme scheme) {
     core::ThemeLoadResult result{core::builtinTheme(scheme), false, {}};
-    if (path.isEmpty()) {
+    if (path.isEmpty() || hasControlCharacters(path)) {
         result.usedFallback = true;
-        result.diagnostics.push_back({0, 0, "path is empty"});
+        result.diagnostics.push_back({0, 0, path.isEmpty() ? "path is empty" : "path contains control characters"});
         return result;
     }
     const QFileInfo info(path);

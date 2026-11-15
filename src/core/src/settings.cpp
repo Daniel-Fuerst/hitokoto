@@ -48,6 +48,16 @@ bool isKnownSection(std::string_view name) {
     return name == "appearance" || name == "editor";
 }
 
+bool hasControlCharacters(std::string_view s) {
+    for (char c : s) {
+        const auto uc = static_cast<unsigned char>(c);
+        if (uc < 0x20 || uc == 0x7f) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::string escapeTomlString(std::string_view s) {
     std::string out;
     out.reserve(s.size());
@@ -278,7 +288,7 @@ SettingsLoadResult parseSettings(std::string_view source) {
 std::string serializeSettings(const Settings& settings) {
     std::string out;
     out += "# hitokoto configuration\n";
-    if (!settings.theme.empty()) {
+    if (!settings.theme.empty() && !hasControlCharacters(settings.theme)) {
         out += "\n[appearance]\n";
         out += "theme = \"";
         out += escapeTomlString(settings.theme);
@@ -345,6 +355,9 @@ SettingsLoadResult loadSettingsFile(const std::filesystem::path& path) noexcept 
 std::optional<IoError> saveSettingsFile(const std::filesystem::path& path, const Settings& settings) {
     if (path.empty()) {
         return IoError{"settings path is empty"};
+    }
+    if (hasControlCharacters(settings.theme)) {
+        return IoError{"theme name contains control characters"};
     }
     const std::filesystem::path parent = path.parent_path();
     if (!parent.empty()) {
@@ -500,6 +513,9 @@ std::string updateThemeInSettingsSource(std::string_view source, std::string_vie
 std::optional<IoError> updateThemeSettingInFile(const std::filesystem::path& path, std::string_view theme) {
     if (path.empty()) {
         return IoError{"settings path is empty"};
+    }
+    if (hasControlCharacters(theme)) {
+        return IoError{"theme name contains control characters"};
     }
     std::error_code ec;
     const bool exists = std::filesystem::exists(path, ec);
