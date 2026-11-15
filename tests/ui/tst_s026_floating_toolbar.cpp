@@ -283,9 +283,11 @@ private slots:
 
         // Typing continues uninterrupted while the menu is open and updates document stats.
         f.placeCaret(2, 5);
-        test::keyClicks(f.editor(), QStringLiteral("\nfour"));
+        test::keyClick(f.editor(), Qt::Key_Return);
+        test::keyClicks(f.editor(), QStringLiteral("four"));
         f.settle();
-        QVERIFY(docValue->text().contains(QString::number(f.editor()->document()->blockCount())));
+        QCOMPARE(f.editor()->document()->blockCount(), 4);
+        QVERIFY(docValue->text().contains(QStringLiteral("4")));
 
         // Escape closes the menu without stealing focus.
         test::keyClick(f.editor(), Qt::Key_Escape);

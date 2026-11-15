@@ -25,6 +25,7 @@ namespace hitokoto::ui {
 
 class FloatingToolbar;
 class PropertiesEmbedder;
+class SettingsMenu;
 class SmoothScroller;
 class TableEmbedder;
 
@@ -81,6 +82,10 @@ public:
     [[nodiscard]] QTextCharFormat formatAt(const QPoint& pos) const;
     /// S026: the floating toolbar on the right-hand side of the editor.
     [[nodiscard]] FloatingToolbar* floatingToolbar() const noexcept { return toolbar_; }
+    /// Non-modal floating settings menu anchored beside the floating toolbar.
+    [[nodiscard]] SettingsMenu* settingsMenu() const noexcept { return settingsMenu_; }
+    void toggleSettingsMenu();
+    void setSettingsMenuOpen(bool open);
     /// S026: inserts a 2-column × 1-body-row table and focuses its first header cell.
     void insertTable();
     /// S026: wraps the selection in single backticks, or inserts `` `` `` with the caret inside.
@@ -163,6 +168,7 @@ private:
     void updateReveal();
     void updateMargins();
     void positionToolbar();
+    void updateSettingsDebugInfo();
     [[nodiscard]] int availableTableWidth() const;
     void paintCodeBlockPanels();
     void paintInlineCodeBoxes(QPainter& painter, const QTextBlock& block, const core::LineRender& render,
@@ -200,6 +206,7 @@ private:
     std::unique_ptr<TableEmbedder> tables_;
     std::unique_ptr<PropertiesEmbedder> properties_;
     FloatingToolbar* toolbar_ = nullptr;
+    SettingsMenu* settingsMenu_ = nullptr;
     SmoothScroller* verticalScroller_ = nullptr;
     bool smoothScrolling_ = true;
     bool frontMatterAsProperties_ = true;

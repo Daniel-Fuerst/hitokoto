@@ -5,7 +5,8 @@
   the right edge of the editor with two entries: "Create new Table" (inserts a 2-column × 1-body-row
   table and focuses the first header cell) and "Create inline-codeblock" (wraps the selection in
   backticks or inserts `` `` `` with the caret inside). Extended on `feature/settings` (2026-11-15)
-  with an "Open settings" entry with a settings icon.
+  with an "Open settings" entry with a settings icon that toggles a non-modal floating `SettingsMenu`
+  flyout displaying app debug info.
 
 ## Story
 
@@ -44,6 +45,16 @@ without leaving the editor.
 - Given selected text in the editor
 - When I click "Create inline-codeblock" in the floating toolbar
 - Then the selected text is wrapped in single backticks (`` `selected` ``) in one undo step
+
+**Scenario: opening and closing the settings flyout from the toolbar**
+- Given an open editor window
+- When I click "Open settings" in the floating toolbar
+- Then a non-modal floating `SettingsMenu` flyout opens to the left of the floating toolbar, showing
+  app debug info (application, Qt, platform, theme, document stats)
+- And the "Open settings" button appears checked while the editor keeps keyboard focus and typing
+  continues uninterrupted
+- When I press `Escape` in the editor or click "Open settings" again
+- Then the `SettingsMenu` closes and the button is unchecked
 
 **Scenario: theming baseline**
 - Given a theme with `[toolbar]` tokens (`background`, `border`, `border-width`, `radius`,

@@ -104,16 +104,16 @@ protected:
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing);
 
-        const bool pressed = isDown();
+        const bool active = isDown() || isChecked();
         const bool hovered = underMouse();
-        if (pressed || hovered) {
+        if (active || hovered) {
             painter.setPen(Qt::NoPen);
-            painter.setBrush(toQColor(pressed ? style_.activeBackground : style_.hoverBackground));
+            painter.setBrush(toQColor(active ? style_.activeBackground : style_.hoverBackground));
             const qreal radius = std::clamp<qreal>(style_.buttonRadius, 0, std::min(width(), height()) / 2.0);
             painter.drawRoundedRect(QRectF(rect()), radius, radius);
         }
 
-        const QColor iconColor = toQColor(pressed ? style_.activeIcon : style_.icon);
+        const QColor iconColor = toQColor(active ? style_.activeIcon : style_.icon);
         const qreal extent = std::min(width(), height()) * 0.56;
         const QRectF box((width() - extent) / 2.0, (height() - extent) / 2.0, extent, extent);
         const qreal stroke = std::max<qreal>(1.25, extent / 10.0);
@@ -158,11 +158,21 @@ FloatingToolbar::FloatingToolbar(QWidget* parent) : QWidget(parent) {
 
     settingsButton_ = new ToolbarButton(IconKind::Settings, style_, this);
     settingsButton_->setObjectName(QStringLiteral("openSettingsButton"));
+    settingsButton_->setCheckable(true);
     settingsButton_->setToolTip(tr("Open settings"));
     settingsButton_->setAccessibleName(tr("Open settings"));
     connect(settingsButton_, &QToolButton::clicked, this, &FloatingToolbar::openSettingsRequested);
 
     updateLayout();
+}
+
+void FloatingToolbar::setSettingsOpen(bool open) {
+    settingsButton_->setChecked(open);
+    settingsButton_->update();
+}
+
+bool FloatingToolbar::isSettingsOpen() const {
+    return settingsButton_->isChecked();
 }
 
 void FloatingToolbar::applyStyle(const core::ToolbarStyle& style) {
