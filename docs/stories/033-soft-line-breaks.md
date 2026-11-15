@@ -167,6 +167,11 @@ All rules follow CommonMark 0.31.2 (sections 4.8 Paragraphs, 5.2 List items, 6.7
     Edit menu count as typing.
   - A resize while the caret is followed: if the new width puts the caret off screen, the view
     follows the caret and lets the reading position go (review O4 of the layout-cost review).
+  - A document that fits the view after a resize or theme change shows from its top, and the
+    vertical scroll bar stays hidden: no scroll value reaches a reading position below the top
+    then, and restoring it never makes a scroll range larger that does not scroll. A larger range
+    would show the scroll bar, the narrower text column would give the document its own range
+    again and hide the scroll bar, and the next restore would show it again, without end.
 
 ## Acceptance scenarios
 
@@ -270,6 +275,12 @@ All rules follow CommonMark 0.31.2 (sections 4.8 Paragraphs, 5.2 List items, 6.7
 - When I make the window narrower and then wider again
 - Then the same block is at the top of the view after each resize
 
+**Scenario: a window that fits the document shows it without scroll bar**
+- Given a document scrolled a few pixels down in a window too small for it
+- When I make the window large enough for the whole document
+- Then the document shows from its top, the vertical scroll bar is hidden, and the editor takes
+  input at once
+
 **Scenario: the file stays byte for byte (ADR 0002)**
 - Given a document with flowing paragraphs, hard line breaks (`\` and `2+` spaces), and bullet
   continuations
@@ -363,7 +374,9 @@ No new theme tokens are required:
   (`aResizeAndBackShowsTheSameTopLine`, `aResizeAndBackAtTheEndShowsTheSameTopLine`), a new reading
   position once the view scrolls (`scrollingAfterAResizeTakesTheNewTopLine`), one restore of the
   reading position per resize although Qt nests a second `resizeEvent`
-  (`aResizeRestoresTheReadingPositionOnce`), only the screen styled at once after an edit of many
+  (`aResizeRestoresTheReadingPositionOnce`), a window that fits the document shows it from the top
+  without scroll bar and the viewport resized a few times only, also with a table
+  (`aWindowThatFitsTheDocumentShowsItWithoutScrollBar`), only the screen styled at once after an edit of many
   lines (`insertingManyLinesStylesOnlyTheScreenAtOnce`), each block of a screen laid out about once
   (`layingOutTheScreenLaysOutEachBlockAboutOnce`), a block that stops sharing a line
   (`aBlockThatStopsSharingALineGetsItsTopWithoutTheBlockBeforeLaidOut`), estimates close to the
@@ -507,3 +520,16 @@ Review of the rework (`docs/reviews/033-soft-line-breaks-code-layout-cost.md`, 2
 - Known limit (O11): `tst_s033` takes about 15 s in the cloud (3 s on 24acd13; 13.6 s on Windows
   before O3): the fixtures of 3,000 and 20,000 lines and the fixed slices that make the tests the
   same on every machine.
+
+Rework on 2026-11-15 (branch `agents/s033-scroll-bar-settles`, from main a099fa5):
+
+- A window made large enough for the whole document, after the reader had scrolled in a smaller
+  one, could show and hide the vertical scroll bar in turn without end; the editor took no input.
+  `EditorWidget::restoreAnchor` made the scroll range as large as the held reading position needs,
+  also when the document fit and the range was 0. That range showed the scroll bar; at the
+  narrower width `QTextEdit::resizeEvent` gave the document its own range again and hid the scroll
+  bar at once, inside the same resize, whose restore then made the range larger again. Each turn
+  queued the next one. Whether it ended depended on Qt's own guard in
+  `QTextEditPrivate::relayoutDocument`, which keeps the scroll bar when the document estimated at
+  the narrower width is lower than before; with exact heights, as of a table, it never ended.
+  `restoreAnchor` now makes only a range larger that scrolls already.

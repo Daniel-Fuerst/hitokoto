@@ -150,6 +150,9 @@ private:
     [[nodiscard]] ScrollAnchor readingAnchor();
     /// The scroll value that shows `anchor` at the top (lays its block out).
     [[nodiscard]] int anchorValue(const ScrollAnchor& anchor) const;
+    /// Scrolls `anchor` to the top as far as the document allows. It may make a scroll range larger
+    /// for heights not taken in yet, never a range that does not scroll: that would show the scroll
+    /// bar for a document that fits the view.
     void restoreAnchor(const ScrollAnchor& anchor);
     /// Restores the held reading position again if it moved since a resize or theme change.
     void settleAnchor();
