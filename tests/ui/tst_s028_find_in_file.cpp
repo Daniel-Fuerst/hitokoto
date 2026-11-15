@@ -12,6 +12,7 @@
 #include <QAbstractItemModel>
 #include <QAccessible>
 #include <QAction>
+#include <QClipboard>
 #include <QDesktopServices>
 #include <QElapsedTimer>
 #include <QImage>
@@ -67,6 +68,13 @@ void pressFind(const test::Fixture& f) {
     QWidget* target = QApplication::focusWidget() != nullptr ? QApplication::focusWidget() : f.editor();
     const QKeySequence find(QKeySequence::Find);
     const QKeyCombination key = find[0];
+    test::keyClick(target, key.key(), key.keyboardModifiers());
+}
+
+/// The first key of a standard shortcut (Ctrl+Z, Cmd+Z, ...) to the widget that has the focus.
+void pressStandardKey(const test::Fixture& f, QKeySequence::StandardKey standard) {
+    QWidget* target = QApplication::focusWidget() != nullptr ? QApplication::focusWidget() : f.editor();
+    const QKeyCombination key = QKeySequence(standard)[0];
     test::keyClick(target, key.key(), key.keyboardModifiers());
 }
 
@@ -1092,6 +1100,52 @@ private slots:
                 QCOMPARE(controller(f)->countText(), QStringLiteral("1 of 1"));
             }
         }
+    }
+
+    // Select all and paste replaces the whole document; the matches are those of a fresh search,
+    // with as many lines as before, fewer or more, and after undoing and redoing the paste.
+    void replacingTheWholeDocumentUpdatesTheMatches_data() {
+        QTest::addColumn<QString>("pasted");
+        QTest::newRow("as many lines") << QStringLiteral(
+            "alpha\n\nbeta\n\ngamma needle\n\ndelta\n\nneedle epsilon\n\nzeta needle\n");
+        QTest::newRow("fewer lines") << QStringLiteral("a\n\nb\n\nc needle\n");
+        QTest::newRow("more lines") << QStringLiteral(
+            "a\n\nb needle\n\nc\n\nd\n\ne needle\n\nf\n\ng needle\n\nh\n\ni\n\nj needle\n");
+        QTest::newRow("no match left") << QStringLiteral("a\n\nb\n");
+    }
+
+    void replacingTheWholeDocumentUpdatesTheMatches() {
+        QFETCH(QString, pasted);
+        const QString before = QStringLiteral("one\n\ntwo needle\n\nthree\n\nfour\n\nfive needle\n\nsix\n");
+        test::Fixture f;
+        QVERIFY(load(f, before));
+        search(f, QStringLiteral("needle"));
+        QVERIFY(waitComplete(f));
+        bar(f)->highlightAllAction()->setChecked(true);
+        QCOMPARE(controller(f)->countText(), QStringLiteral("1 of 2"));
+        f.editor()->setFocus();
+        QApplication::clipboard()->setText(pasted);
+        const auto checkStep = [&](const char* step, const QString& text) {
+            QCOMPARE(f.editor()->toPlainText(), text);
+            QVERIFY(bar(f)->isVisible());
+            QVERIFY(waitComplete(f));
+            QCoreApplication::processEvents();
+            const QString difference = differenceToFresh(f, QStringLiteral("needle"));
+            QVERIFY2(difference.isEmpty(), qPrintable(QStringLiteral("%1: %2").arg(QLatin1String(step), difference)));
+        };
+        pressStandardKey(f, QKeySequence::SelectAll);
+        pressStandardKey(f, QKeySequence::Paste);
+        checkStep("paste", pasted);
+        if (QTest::currentTestFailed()) {
+            return;
+        }
+        pressStandardKey(f, QKeySequence::Undo);
+        checkStep("undo", before);
+        if (QTest::currentTestFailed()) {
+            return;
+        }
+        pressStandardKey(f, QKeySequence::Redo);
+        checkStep("redo", pasted);
     }
 
     // Code review O3: highlight all marks the key, the value or the chip that holds a match.
