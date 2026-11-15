@@ -11,7 +11,9 @@
 #include "theme_applier.hpp"
 
 #include <QApplication>
+#include <QColor>
 #include <QFile>
+#include <QImage>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -115,6 +117,25 @@ inline QList<int> blocksWithUserData(const QTextDocument* document) {
         }
     }
     return result;
+}
+
+/// A red image of 120 x 80 pixels at `path`.
+inline bool writeRedImage(const QString& path) {
+    QImage image(120, 80, QImage::Format_RGB32);
+    image.fill(QColor(255, 0, 0));
+    return image.save(path, "PNG");
+}
+
+/// How many pixels of `image` are pure red.
+inline int redPixels(const QImage& image) {
+    const QImage rgb = image.convertToFormat(QImage::Format_RGB32);
+    int count = 0;
+    for (int y = 0; y < rgb.height(); ++y) {
+        for (int x = 0; x < rgb.width(); ++x) {
+            count += rgb.pixel(x, y) == qRgb(255, 0, 0) ? 1 : 0;
+        }
+    }
+    return count;
 }
 
 }  // namespace hitokoto::test

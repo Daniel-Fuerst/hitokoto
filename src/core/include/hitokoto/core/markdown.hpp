@@ -457,6 +457,22 @@ std::size_t separateTextAfterTables(DecodedText& decoded, const ElementRegistry&
 /// U+2028, a line break inside one block (S031 review (code) O10: two-line cells laid out several
 /// times faster than with Qt's Markdown import). Nothing if the cell may hold other syntax.
 [[nodiscard]] std::optional<std::u16string> tableCellPlainLayout(std::u16string_view markdown);
+/// Cell Markdown prepared for Qt's Markdown import of a cell, which the UI runs without raw HTML.
+struct TableCellImport {
+    std::u16string markdown;
+    /// What stands for a line break in `markdown`: a space (U+2000) that the UI turns into U+2028
+    /// after the import, because Markdown reads a space beside emphasis as it reads the `<br>` tag
+    /// and U+2028 not; U+2028 itself if the cell holds U+2000 or an entity, which could spell it.
+    char16_t lineBreak = u'\u2000';
+};
+/// Cell Markdown (escaped pipes already resolved) for Qt's Markdown import of the cell, which runs
+/// without raw HTML so that tags show as their characters. An image shows as its characters, as in
+/// the editor outside tables: the brackets of `![...]` are escaped, so `![x](y)` is text and a link
+/// around it stays a link. Each `<br>` (any spelling, not escaped) becomes `lineBreak`. Code spans
+/// and autolinks stay as they are; they, escapes and brackets are read as CommonMark reads them
+/// (checked with commonmark.js 0.31.2 and markdown-it-py 4.2.0). Display only; the file keeps its
+/// Markdown.
+[[nodiscard]] TableCellImport tableCellImport(std::u16string_view markdown);
 /// Edited text as cell Markdown: `|` becomes `\|`, a line break `<br>`.
 [[nodiscard]] std::u16string tableCellFromText(std::u16string_view text);
 /// `line` with the content of cell `column` replaced by `markdown`; the rest stays byte for byte.

@@ -430,6 +430,10 @@ std::u16string escapeTableCellBlockStart(std::u16string_view markdown) {
     return out;
 }
 
+TableCellImport tableCellImport(std::u16string_view markdown) {
+    return {std::u16string(markdown)};
+}
+
 std::u16string tableCellToText(std::u16string_view markdown) {
     std::u16string out;
     out.reserve(markdown.size());
