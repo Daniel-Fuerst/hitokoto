@@ -371,17 +371,27 @@ void DocumentSession::copySlice() {
 
 DocumentSession::WriteOutcome DocumentSession::write(Snapshot s, const QString& path,
                                                      const std::function<void()>& beforeEncode) {
-    if (beforeEncode) {
-        beforeEncode();
+    // A save runs on the worker thread, saveNow() on the caller's (quitting). An exception would
+    // end the program in both cases, while the editor holds the only copy of the text: every
+    // failure becomes an outcome with a message instead. The target is only ever replaced by a
+    // complete temporary file (writeFileAtomically), so a failure before that leaves it as it was.
+    try {
+        if (beforeEncode) {
+            beforeEncode();
+        }
+        const auto bytes = core::encodeUtf8(view(s.text), s.format.hasBom, s.format.ending, s.perBreak);
+        if (!bytes) {
+            return {false, QStringLiteral("internal error: text could not be encoded")};
+        }
+        if (const auto err = core::writeFileAtomically(toPath(path), *bytes)) {
+            return {false, describe(path, err->message)};
+        }
+        return {true, {}};
+    } catch (const std::bad_alloc&) {
+        return {false, describe(path, "not enough memory to save the file")};
+    } catch (...) {
+        return {false, describe(path, "the file could not be saved")};
     }
-    const auto bytes = core::encodeUtf8(view(s.text), s.format.hasBom, s.format.ending, s.perBreak);
-    if (!bytes) {
-        return {false, QStringLiteral("internal error: text could not be encoded")};
-    }
-    if (const auto err = core::writeFileAtomically(toPath(path), *bytes)) {
-        return {false, describe(path, err->message)};
-    }
-    return {true, {}};
 }
 
 void DocumentSession::startWrite(Snapshot s, const QString& path) {
@@ -389,7 +399,7 @@ void DocumentSession::startWrite(Snapshot s, const QString& path) {
     const quint64 documentId = documentId_;
     ++savesInFlight_;
     pool_.start([this, s = std::move(s), path, editCount, documentId, beforeEncode = hooks_.beforeEncode]() mutable {
-        const WriteOutcome outcome = write(std::move(s), path, beforeEncode);
+        const WriteOutcome outcome = write(std::move(s), path, beforeEncode);  // reports, never throws
         QMetaObject::invokeMethod(
             this, [this, path, outcome, editCount, documentId] { finishSave(path, outcome, editCount, documentId); },
             Qt::QueuedConnection);

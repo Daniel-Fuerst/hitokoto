@@ -122,6 +122,7 @@ private:
     void cancelCopy();
     void onContentsChange(int position, int charsRemoved, int charsAdded);
     void startWrite(Snapshot s, const QString& path);
+    /// Encodes and writes atomically. Every failure, also running out of memory, is an outcome.
     static WriteOutcome write(Snapshot snapshot, const QString& path, const std::function<void()>& beforeEncode);
     void finishSave(const QString& path, const WriteOutcome& outcome, quint64 editCount, quint64 documentId);
     /// Worker thread: reads and decodes `path`, then queues the insertion or the failure. May throw.
