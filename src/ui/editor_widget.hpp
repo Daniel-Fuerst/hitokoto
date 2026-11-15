@@ -7,6 +7,7 @@
 #include "block_layout.hpp"
 #include "block_styler.hpp"
 #include "hitokoto/core/theme.hpp"
+#include "theme_manager.hpp"
 
 #include <QPointF>
 #include <QTextBlock>
@@ -86,6 +87,11 @@ public:
     [[nodiscard]] SettingsMenu* settingsMenu() const noexcept { return settingsMenu_; }
     void toggleSettingsMenu();
     void setSettingsMenuOpen(bool open);
+    void setThemeConfigDir(const QString& dir);
+    [[nodiscard]] const QString& themeConfigDir() const noexcept { return themeConfigDir_; }
+    void setActiveThemePath(const QString& path);
+    [[nodiscard]] const core::Theme& currentTheme() const noexcept { return currentTheme_; }
+    void refreshAvailableThemes();
     /// S026: inserts a 2-column × 1-body-row table and focuses its first header cell.
     void insertTable();
     /// S026: wraps the selection in single backticks, or inserts `` `` `` with the caret inside.
@@ -111,6 +117,7 @@ public:
 
 signals:
     void painted();
+    void themeEntrySelected(const hitokoto::ui::ThemeEntry& entry);
 
 protected:
     bool viewportEvent(QEvent* event) override;
@@ -208,6 +215,9 @@ private:
     FloatingToolbar* toolbar_ = nullptr;
     SettingsMenu* settingsMenu_ = nullptr;
     SmoothScroller* verticalScroller_ = nullptr;
+    QString themeConfigDir_;
+    QString activeThemePath_;
+    core::Theme currentTheme_{core::builtinTheme(core::ColorScheme::Light)};
     bool smoothScrolling_ = true;
     bool frontMatterAsProperties_ = true;
     double padding_ = 0;

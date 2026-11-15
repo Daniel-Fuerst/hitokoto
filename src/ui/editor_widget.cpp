@@ -148,11 +148,16 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     connect(layout_, &BlockLayout::blocksGoneUnreported, properties_.get(), &PropertiesEmbedder::forgetAll);
 
     // S026: floating toolbar on the right-hand side and its settings flyout.
+    themeConfigDir_ = ThemeManager::defaultConfigDir();
     toolbar_ = new FloatingToolbar(this);
     settingsMenu_ = new SettingsMenu(this);
     connect(toolbar_, &FloatingToolbar::createTableRequested, this, &EditorWidget::insertTable);
     connect(toolbar_, &FloatingToolbar::createInlineCodeRequested, this, &EditorWidget::insertInlineCode);
     connect(toolbar_, &FloatingToolbar::openSettingsRequested, this, &EditorWidget::toggleSettingsMenu);
+    connect(settingsMenu_, &SettingsMenu::themeEntrySelected, this, [this](const ThemeEntry& entry) {
+        activeThemePath_ = entry.builtinScheme.has_value() ? QString() : entry.path;
+        emit themeEntrySelected(entry);
+    });
     connect(document(), &QTextDocument::contentsChanged, this, [this] {
         if (settingsMenu_->isVisible()) {
             updateSettingsDebugInfo();
@@ -361,8 +366,12 @@ void EditorWidget::applyTheme(const core::Theme& theme) {
     properties_->setAvailableWidth(availableTableWidth());
     properties_->setLook(styler_->formats().properties(), styler_->formats().propertiesFont(),
                          styler_->formats().propertiesBadgeFont());
+    currentTheme_ = theme;
     toolbar_->applyStyle(core::toolbarStyle(theme));
     settingsMenu_->applyTheme(theme);
+    if (settingsMenu_->isVisible()) {
+        refreshAvailableThemes();
+    }
     positionToolbar();
     if (!wasModified) {
         document()->setModified(false);
@@ -457,6 +466,7 @@ void EditorWidget::toggleSettingsMenu() {
 void EditorWidget::setSettingsMenuOpen(bool open) {
     toolbar_->setSettingsOpen(open);
     if (open) {
+        refreshAvailableThemes();
         updateSettingsDebugInfo();
         settingsMenu_->show();
         positionToolbar();
@@ -469,6 +479,25 @@ void EditorWidget::updateSettingsDebugInfo() {
     const int lines = document()->blockCount();
     const int chars = std::max(0, document()->characterCount() - 1);
     settingsMenu_->setDocumentStats(lines, chars);
+    positionToolbar();
+}
+
+void EditorWidget::setThemeConfigDir(const QString& dir) {
+    themeConfigDir_ = dir;
+    if (settingsMenu_->isVisible()) {
+        refreshAvailableThemes();
+    }
+}
+
+void EditorWidget::setActiveThemePath(const QString& path) {
+    activeThemePath_ = path;
+    if (settingsMenu_->isVisible()) {
+        refreshAvailableThemes();
+    }
+}
+
+void EditorWidget::refreshAvailableThemes() {
+    settingsMenu_->setAvailableThemes(ThemeManager::availableThemes(themeConfigDir_), activeThemePath_, currentTheme_);
     positionToolbar();
 }
 

@@ -3,11 +3,14 @@
 #pragma once
 
 #include "hitokoto/core/theme.hpp"
+#include "theme_manager.hpp"
 
+#include <QList>
 #include <QWidget>
 
 #include <array>
 
+class QComboBox;
 class QGridLayout;
 class QLabel;
 class QVBoxLayout;
@@ -24,7 +27,14 @@ public:
 
     void applyTheme(const core::Theme& theme);
     void setDocumentStats(int lineCount, int charCount);
+    void setAvailableThemes(const QList<ThemeEntry>& entries, const QString& activePath,
+                            const core::Theme& activeTheme);
+    [[nodiscard]] QComboBox* themeSelector() const noexcept { return themeCombo_; }
+    [[nodiscard]] const QList<ThemeEntry>& themeEntries() const noexcept { return entries_; }
     [[nodiscard]] const core::ToolbarStyle& toolbarStyle() const noexcept { return style_; }
+
+signals:
+    void themeEntrySelected(const hitokoto::ui::ThemeEntry& entry);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -32,9 +42,14 @@ protected:
 private:
     core::ToolbarStyle style_{core::toolbarStyle(core::builtinTheme(core::ColorScheme::Light))};
     QVBoxLayout* mainLayout_ = nullptr;
+    QGridLayout* appearanceLayout_ = nullptr;
     QGridLayout* gridLayout_ = nullptr;
     QLabel* titleLabel_ = nullptr;
+    QLabel* appearanceLabel_ = nullptr;
+    QLabel* themeKeyLabel_ = nullptr;
     QLabel* sectionLabel_ = nullptr;
+    QComboBox* themeCombo_ = nullptr;
+    QList<ThemeEntry> entries_;
     std::array<QLabel*, 5> keyLabels_{};
     QLabel* appValue_ = nullptr;
     QLabel* qtValue_ = nullptr;

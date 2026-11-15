@@ -3,14 +3,18 @@
 
 #include "qt_bridge.hpp"
 
+#include <QAbstractItemView>
+#include <QComboBox>
 #include <QCoreApplication>
 #include <QFont>
 #include <QFontDatabase>
 #include <QGridLayout>
 #include <QGuiApplication>
 #include <QLabel>
+#include <QPaintEvent>
 #include <QPainter>
 #include <QPalette>
+#include <QSignalBlocker>
 #include <QSysInfo>
 #include <QVBoxLayout>
 
@@ -41,12 +45,33 @@ SettingsMenu::SettingsMenu(QWidget* parent) : QWidget(parent) {
     setFocusPolicy(Qt::NoFocus);
     setObjectName(QStringLiteral("settingsMenu"));
     setAccessibleName(tr("Settings menu"));
+    setMinimumWidth(260);
 
     mainLayout_ = new QVBoxLayout(this);
     titleLabel_ = makeLabel(tr("Settings"), this, "settingsTitleLabel");
+
+    appearanceLabel_ = makeLabel(tr("Appearance"), this);
+    themeKeyLabel_ = makeLabel(tr("Theme"), this);
+    themeCombo_ = new QComboBox(this);
+    themeCombo_->setObjectName(QStringLiteral("themeSelector"));
+    themeCombo_->setAccessibleName(tr("Theme"));
+    themeCombo_->setFocusPolicy(Qt::NoFocus);
+    connect(themeCombo_, &QComboBox::currentIndexChanged, this, [this](int index) {
+        if (index >= 0 && index < entries_.size()) {
+            emit themeEntrySelected(entries_.at(index));
+        }
+    });
+
+    appearanceLayout_ = new QGridLayout;
+    appearanceLayout_->addWidget(themeKeyLabel_, 0, 0, Qt::AlignLeft | Qt::AlignVCenter);
+    appearanceLayout_->addWidget(themeCombo_, 0, 1);
+    appearanceLayout_->setColumnStretch(1, 1);
+
     sectionLabel_ = makeLabel(tr("Debug info"), this);
 
     mainLayout_->addWidget(titleLabel_);
+    mainLayout_->addWidget(appearanceLabel_);
+    mainLayout_->addLayout(appearanceLayout_);
     mainLayout_->addWidget(sectionLabel_);
 
     gridLayout_ = new QGridLayout();
@@ -88,6 +113,47 @@ SettingsMenu::SettingsMenu(QWidget* parent) : QWidget(parent) {
     hide();
 }
 
+void SettingsMenu::setAvailableThemes(const QList<ThemeEntry>& entries, const QString& activePath,
+                                      const core::Theme& activeTheme) {
+    entries_ = entries;
+    const QSignalBlocker blocker(themeCombo_);
+    themeCombo_->clear();
+    for (const ThemeEntry& entry : entries_) {
+        themeCombo_->addItem(entry.name);
+    }
+
+    int selected = -1;
+    if (!activePath.isEmpty()) {
+        for (int i = 0; i < entries_.size(); ++i) {
+            if (!entries_.at(i).builtinScheme.has_value() && entries_.at(i).path == activePath) {
+                selected = i;
+                break;
+            }
+        }
+    }
+    if (selected < 0 && !activeTheme.name.empty()) {
+        const QString activeName = QString::fromStdString(activeTheme.name);
+        for (int i = 0; i < entries_.size(); ++i) {
+            if (entries_.at(i).name == activeName) {
+                selected = i;
+                break;
+            }
+        }
+    }
+    if (selected < 0) {
+        for (int i = 0; i < entries_.size(); ++i) {
+            if (entries_.at(i).builtinScheme == activeTheme.scheme) {
+                selected = i;
+                break;
+            }
+        }
+    }
+    if (selected >= 0) {
+        themeCombo_->setCurrentIndex(selected);
+    }
+    adjustSize();
+}
+
 void SettingsMenu::applyTheme(const core::Theme& theme) {
     style_ = core::toolbarStyle(theme);
 
@@ -103,11 +169,16 @@ void SettingsMenu::applyTheme(const core::Theme& theme) {
         uiFont.setPointSizeF(theme.uiFontSize);
     }
     setFont(uiFont);
-    for (QLabel* label : {sectionLabel_, appValue_, qtValue_, platformValue_, themeValue_, documentValue_}) {
+    for (QLabel* label : {appearanceLabel_, themeKeyLabel_, sectionLabel_, appValue_, qtValue_, platformValue_,
+                          themeValue_, documentValue_}) {
         label->setFont(uiFont);
     }
     for (QLabel* key : keyLabels_) {
         key->setFont(uiFont);
+    }
+    themeCombo_->setFont(uiFont);
+    if (QAbstractItemView* view = themeCombo_->view()) {
+        view->setFont(uiFont);
     }
     QFont titleFont = uiFont;
     titleFont.setWeight(QFont::DemiBold);
@@ -116,6 +187,8 @@ void SettingsMenu::applyTheme(const core::Theme& theme) {
     const QColor textColor = toQColor(theme.text);
     const QColor mutedColor = toQColor(theme.textMuted);
     setLabelColor(titleLabel_, textColor);
+    setLabelColor(appearanceLabel_, mutedColor);
+    setLabelColor(themeKeyLabel_, mutedColor);
     setLabelColor(sectionLabel_, mutedColor);
     for (QLabel* key : keyLabels_) {
         setLabelColor(key, mutedColor);
@@ -128,6 +201,7 @@ void SettingsMenu::applyTheme(const core::Theme& theme) {
     const int gap = std::max(4, static_cast<int>(std::lround(style_.spacing)));
     mainLayout_->setContentsMargins(pad, pad, pad, pad);
     mainLayout_->setSpacing(gap);
+    appearanceLayout_->setHorizontalSpacing(gap * 2);
     gridLayout_->setHorizontalSpacing(gap * 2);
     gridLayout_->setVerticalSpacing(std::max(2, gap / 2));
 

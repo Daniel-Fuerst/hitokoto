@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S026: floating toolbar on the right-hand side of the editor.
 #include "floating_toolbar.hpp"
+#include "hitokoto/core/theme.hpp"
 #include "settings_menu.hpp"
 #include "ui_test_support.hpp"
 
 #include <QAbstractItemModel>
+#include <QApplication>
+#include <QComboBox>
+#include <QFile>
 #include <QGuiApplication>
 #include <QLabel>
 #include <QPlainTextEdit>
@@ -306,6 +310,81 @@ private slots:
         f.settle();
         QVERIFY(!menu->isVisible());
         QVERIFY(!settingsBtn->isChecked());
+    }
+
+    void settingsMenuListsAndSelectsThemesFromConfigFolder() {
+        test::Fixture f;
+
+        auto writeThemeFile = [&](const QString& relativeName, const QByteArray& content) {
+            QFile file(f.dir.filePath(relativeName));
+            QVERIFY2(file.open(QIODevice::WriteOnly | QIODevice::Truncate), qPrintable(file.errorString()));
+            QCOMPARE(file.write(content), content.size());
+        };
+
+        writeThemeFile(QStringLiteral("berry-crush.toml"),
+                       "name = \"Berry Crush\"\n"
+                       "base = \"dark\"\n\n"
+                       "[colors]\n"
+                       "background = \"#2a1220\"\n"
+                       "accent = \"#f06292\"\n");
+        writeThemeFile(QStringLiteral("ember.toml"),
+                       "name = \"Ember\"\n"
+                       "base = \"light\"\n\n"
+                       "[colors]\n"
+                       "background = \"#fdf3e7\"\n"
+                       "accent = \"#d9480f\"\n");
+
+        f.editor()->setThemeConfigDir(f.dir.path());
+
+        auto* toolbar = f.editor()->floatingToolbar();
+        auto* settingsBtn = toolbar->findChild<QToolButton*>(QStringLiteral("openSettingsButton"));
+        auto* menu = f.editor()->settingsMenu();
+        QVERIFY(settingsBtn != nullptr);
+        QVERIFY(menu != nullptr);
+
+        QTest::mouseClick(settingsBtn, Qt::LeftButton);
+        f.settle();
+        QVERIFY(menu->isVisible());
+
+        auto* combo = menu->findChild<QComboBox*>(QStringLiteral("themeSelector"));
+        QVERIFY2(combo != nullptr, "SettingsMenu must expose a themeSelector QComboBox");
+
+        const int lightIdx = combo->findText(QStringLiteral("hitokoto Light"));
+        const int darkIdx = combo->findText(QStringLiteral("hitokoto Dark"));
+        const int berryIdx = combo->findText(QStringLiteral("Berry Crush"));
+        const int emberIdx = combo->findText(QStringLiteral("Ember"));
+        QVERIFY2(lightIdx >= 0, "hitokoto Light should appear in themeSelector");
+        QVERIFY2(darkIdx >= 0, "hitokoto Dark should appear in themeSelector");
+        QVERIFY2(berryIdx >= 0, "Berry Crush from config folder should appear in themeSelector");
+        QVERIFY2(emberIdx >= 0, "Ember from config folder should appear in themeSelector");
+
+        auto* themeLabel = menu->findChild<QLabel*>(QStringLiteral("debugThemeValue"));
+        QVERIFY(themeLabel != nullptr);
+
+        // Selecting Ember applies its light colors immediately.
+        combo->setCurrentIndex(emberIdx);
+        f.settle();
+        QCOMPARE(QApplication::palette().color(QPalette::Base), QColor(QStringLiteral("#fdf3e7")));
+        QCOMPARE(QApplication::palette().color(QPalette::Accent), QColor(QStringLiteral("#d9480f")));
+        QVERIFY(themeLabel->text().contains(QStringLiteral("Ember")));
+
+        // Selecting Berry Crush switches to its dark colors immediately.
+        combo->setCurrentIndex(berryIdx);
+        f.settle();
+        QCOMPARE(QApplication::palette().color(QPalette::Base), QColor(QStringLiteral("#2a1220")));
+        QCOMPARE(QApplication::palette().color(QPalette::Accent), QColor(QStringLiteral("#f06292")));
+        QVERIFY(themeLabel->text().contains(QStringLiteral("Berry Crush")));
+
+        // Selecting built-in Dark restores builtinTheme(ColorScheme::Dark).
+        const auto builtinDark = hitokoto::core::builtinTheme(hitokoto::core::ColorScheme::Dark);
+        combo->setCurrentIndex(darkIdx);
+        f.settle();
+        QCOMPARE(QApplication::palette().color(QPalette::Base),
+                 QColor(builtinDark.background.r, builtinDark.background.g, builtinDark.background.b,
+                        builtinDark.background.a));
+        QCOMPARE(QApplication::palette().color(QPalette::Accent),
+                 QColor(builtinDark.accent.r, builtinDark.accent.g, builtinDark.accent.b, builtinDark.accent.a));
+        QVERIFY(themeLabel->text().contains(QStringLiteral("hitokoto Dark")));
     }
 };
 

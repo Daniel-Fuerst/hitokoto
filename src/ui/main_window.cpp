@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "main_window.hpp"
 
+#include "theme_applier.hpp"
+
+#include <QApplication>
+#include <QCoreApplication>
+
 #include "application_icon.hpp"
 #include "document_session.hpp"
 #include "editor_widget.hpp"
@@ -46,6 +51,7 @@ MainWindow::MainWindow(const core::ElementRegistry& registry, QWidget* parent)
     setCentralWidget(central);
     find_ = new FindController(editor_, findBar_, registry, this);
     createMenus();
+    connect(editor_, &EditorWidget::themeEntrySelected, this, &MainWindow::applyThemeEntry);
 
     askSave_ = [this](const QString& name) {
         const auto answer =
@@ -156,6 +162,24 @@ void MainWindow::createMenus() {
 void MainWindow::applyTheme(const core::Theme& theme) {
     editor_->applyTheme(theme);
     find_->applyTheme(theme);
+}
+
+void MainWindow::applyThemeEntry(const ThemeEntry& entry) {
+    const auto scheme = ThemeManager::systemScheme();
+    core::ThemeLoadResult result{core::builtinTheme(entry.builtinScheme.value_or(scheme)), false, {}};
+    if (!entry.builtinScheme.has_value()) {
+        result = ThemeManager::loadThemeFile(entry.path, scheme);
+        if (result.usedFallback) {
+            const QStringList lines = ThemeManager::formatDiagnostics(result);
+            showMessage(tr("Theme error"),
+                        tr("Could not load \"%1\":\n%2").arg(entry.path, lines.join(QLatin1Char('\n'))));
+        }
+    }
+    if (auto* app = qobject_cast<QApplication*>(QCoreApplication::instance())) {
+        applyThemeToApplication(*app, result.theme);
+    }
+    applyTheme(result.theme);
+    emit themeEntryChosen(entry);
 }
 
 void MainWindow::showMessage(const QString& title, const QString& text) {

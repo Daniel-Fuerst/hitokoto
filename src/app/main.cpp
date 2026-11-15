@@ -9,6 +9,7 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QElapsedTimer>
+#include <QFileInfo>
 #include <QTimer>
 
 #include <cstdio>
@@ -63,6 +64,10 @@ int main(int argc, char* argv[]) {
 
     ui::ThemeManager themes(
         app, parser.isSet(themeOption) ? parser.value(themeOption) : ui::ThemeManager::defaultThemePath());
+    window.editor()->setThemeConfigDir(themes.configDir());
+    if (!themes.userThemePath().isEmpty() && QFileInfo::exists(themes.userThemePath())) {
+        window.editor()->setActiveThemePath(themes.userThemePath());
+    }
     QObject::connect(&themes, &ui::ThemeManager::themeChanged, &window, &ui::MainWindow::applyTheme);
     QObject::connect(&themes, &ui::ThemeManager::problemsFound, &window,
                      [&window](const QString& path, const QStringList& problems) {
@@ -74,6 +79,10 @@ int main(int argc, char* argv[]) {
                          }
                      });
     QObject::connect(&window, &ui::MainWindow::reloadThemeRequested, &themes, &ui::ThemeManager::reload);
+    QObject::connect(&window, &ui::MainWindow::themeEntryChosen, &themes,
+                     [&themes, &window](const ui::ThemeEntry& entry) {
+                         themes.syncSelectedTheme(entry, window.editor()->currentTheme());
+                     });
     themes.reload();
 
     const QStringList files = parser.positionalArguments();

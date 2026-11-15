@@ -123,6 +123,19 @@ QPushButton:disabled { color: %7; border-color: %8; }
 )")
                .arg(buttonBackground, buttonText, buttonBorder, hex(t.accent), hex(t.selection), hex(t.selectionText),
                     hex(t.textMuted), hex(t.border));
+
+    css += QStringLiteral(R"(
+QComboBox { background: %1; color: %2; border: 1px solid %3; border-radius: %4; padding: %5 %6; }
+QComboBox:hover, QComboBox:focus, QComboBox:on { border-color: %7; }
+QComboBox::drop-down { border: none; width: %8; }
+QComboBox QAbstractItemView { background: %1; color: %2; border: 1px solid %3; outline: 0; }
+)")
+               .arg(hex(t.surface), hex(t.text), hex(t.border), radius, half, full, hex(t.accent), px(t.spacing * 3));
+
+    css += QStringLiteral(R"(
+QComboBox QAbstractItemView::item:selected { background: %1; color: %2; }
+)")
+               .arg(hex(t.selection), hex(t.selectionText));
     return css;
 }
 
