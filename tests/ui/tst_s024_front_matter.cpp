@@ -11,6 +11,7 @@
 #include <QScrollBar>
 #include <QTableView>
 #include <QTime>
+#include <QToolTip>
 
 #include <cmath>
 
@@ -700,6 +701,33 @@ private slots:
         QVERIFY(qAbs(heightOf(editor, 0) - (view->height() + 20)) < 1);
         QCOMPARE(view->font().families().value(0), QStringLiteral("Props Sans"));
         QCOMPARE(view->font().pointSizeF(), editor->styler().formats().baseFont().pointSizeF() * 0.5);
+    }
+
+    // The tooltip of an unsupported value shows its JSON as its characters, also when the value
+    // holds tags: no image and no formatting of the value's own (S022: link titles alike).
+    void theTooltipOfAValueShowsItsCharacters() {
+        test::Fixture f;
+        const QString image = f.dir.filePath(QStringLiteral("red.png"));
+        QVERIFY(test::writeRedImage(image));
+        const QString markdown = QStringLiteral("---\nk:\n  a: \"<img src='%1'> <b>b</b>\"\n---\nbody\n").arg(image);
+        QVERIFY(f.open(f.writeFile(QStringLiteral("tip.md"), markdown.toUtf8())));
+        f.placeCaret(4);
+        f.settle();
+        QWidget* view = f.editor()->propertiesView();
+        QVERIFY(view != nullptr);
+        const auto* properties = qobject_cast<ui::PropertiesView*>(view);
+        QVERIFY(properties != nullptr);
+        const QString json = properties->toolTipText(0);
+        QVERIFY(json.contains(QStringLiteral("<img src=")));
+        const QPoint point = onValue(view, 0);
+        QHelpEvent help(QEvent::ToolTip, point, view->mapToGlobal(point));
+        QCoreApplication::sendEvent(view, &help);
+        QCOMPARE(test::shownText(QToolTip::text()), json);
+        QWidget* tip = test::toolTipWindow();
+        QVERIFY(tip != nullptr);
+        QCOMPARE(test::redPixels(tip->grab().toImage()), 0);
+        QToolTip::hideText();
+        QCOMPARE(f.editor()->toPlainText(), markdown);
     }
 };
 

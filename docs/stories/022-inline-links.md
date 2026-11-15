@@ -26,6 +26,8 @@ As a writer, I want inline links (`[text](url)` and `[text](url "title")`, with 
 - When the line is rendered
 - Then the link text has a tooltip set to `"Hover over me to see the title!"`
 - And the destination is `https://example.com`
+- And the tooltip shows the title as exactly its characters, spaces included, also when the title
+  holds tags (`<b>`, `<img …>`): no formatting and no image of the title's own
 
 **Scenario: URL with balanced parentheses**
 - Given `[Link with Parentheses in URL](https://en.wikipedia.org/wiki/Markdown_(markup_language))`
@@ -78,3 +80,14 @@ As a writer, I want inline links (`[text](url)` and `[text](url "title")`, with 
 - UI: `tst_s022_inline_links` verifies character formatting, tooltip text, anchor href, concealment when inactive, reveal when active, pointing-hand cursor on hover over browser links, I-beam cursor over text, clicking links on concealed lines to open in the browser, clicking on active lines to place caret while Ctrl+clicking opens the link, clicking badge links containing images to open the outer destination, and rejection of unsafe schemes or relative URLs.
 - Quality Gate: `tst_s009_concealment` extends the standing concealment quality gate with inline links.
 - Benchmarks: `S022_RenderLineWithLinks` and `S022_RenderLineWithUnclosedBrackets` in `bench/core_bench.cpp`.
+
+## Rework on 2026-11-15
+
+On `agents/s018-table-cell-content`: Qt shows a tooltip as rich text when its text looks like rich
+text. The format of a link's text now carries the title as rich text that shows exactly its
+characters and looks as plain text did (`Qt::convertFromPlainText` with `Qt::WhiteSpacePre`), so
+every way Qt shows the tooltip of the format shows the title as its characters; the tooltip of an
+unsupported front matter value (S024) gets the same treatment. Tests:
+`tst_s022_inline_links` `aTitleWithTagsShowsAsItsCharacters` (a title with tags and two spaces, the
+tooltip shows its characters and no image) and the title checks of the other tests compare the
+text the tooltip shows; `tst_s024_front_matter` `theTooltipOfAValueShowsItsCharacters`.

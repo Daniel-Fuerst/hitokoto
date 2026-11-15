@@ -13,6 +13,7 @@
 #include <QPaintEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QTextDocument>
 #include <QTextLayout>
 #include <QTime>
 #include <QToolTip>
@@ -688,7 +689,9 @@ bool PropertiesView::event(QEvent* event) {
         auto* help = static_cast<QHelpEvent*>(event);
         const int row = rowAt(help->pos());
         if (const QString tip = toolTipText(row); !tip.isEmpty()) {
-            QToolTip::showText(help->globalPos(), tip, this, rows_[static_cast<std::size_t>(row)].rect);
+            // As its characters, also where the value holds tags (S022: link titles alike).
+            QToolTip::showText(help->globalPos(), Qt::convertFromPlainText(tip, Qt::WhiteSpacePre), this,
+                               rows_[static_cast<std::size_t>(row)].rect);
         } else {
             QToolTip::hideText();
         }
