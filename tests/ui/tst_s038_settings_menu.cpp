@@ -302,6 +302,54 @@ private slots:
         QVERIFY(!reloaded.settings.frontMatterAsProperties);
         QVERIFY(reloaded.settings.reportBlankLinesAdded);
     }
+
+    void themeDiscoveryRejectsNonRegularOrOversizedFiles() {
+        test::Fixture f;
+        f.editor()->setThemeConfigDir(f.dir.path());
+
+        const QDir configDir(f.dir.path());
+        QVERIFY(configDir.mkpath(QStringLiteral("themes")));
+        const QDir themesDir(configDir.filePath(QStringLiteral("themes")));
+
+        // Normal theme must be discovered and listed.
+        QFile normalFile(themesDir.filePath(QStringLiteral("normal.toml")));
+        QVERIFY(normalFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        normalFile.write("name = \"Normal Theme\"\nbase = \"light\"\n");
+        normalFile.close();
+
+        // Oversized theme (> 1 MiB) must be skipped.
+        const QString oversizedPath = themesDir.filePath(QStringLiteral("oversized.toml"));
+        QFile oversizedFile(oversizedPath);
+        QVERIFY(oversizedFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        oversizedFile.write("name = \"Oversized Theme\"\nbase = \"light\"\n");
+        oversizedFile.close();
+        std::filesystem::resize_file(std::filesystem::path(oversizedPath.toStdU16String()), 1024 * 1024 + 1024);
+
+#if !defined(Q_OS_WIN)
+        // Symlink to /dev/zero must be skipped and not block or exhaust memory.
+        std::error_code ec;
+        std::filesystem::create_symlink("/dev/zero", themesDir.filePath(QStringLiteral("x.toml")).toStdString(), ec);
+        QVERIFY(!ec);
+#endif
+
+        auto* settingsBtn = toolbarButton(f.editor(), "openSettingsButton");
+        QVERIFY(settingsBtn != nullptr);
+        QTest::mouseClick(settingsBtn, Qt::LeftButton);
+        f.settle();
+
+        auto* menu = f.editor()->settingsMenu();
+        QVERIFY(menu != nullptr);
+        QVERIFY(menu->isVisible());
+
+        auto* combo = menu->findChild<QComboBox*>(QStringLiteral("themeSelector"));
+        QVERIFY(combo != nullptr);
+        QVERIFY(combo->findText(QStringLiteral("Normal Theme")) >= 0);
+        QCOMPARE(combo->findText(QStringLiteral("Oversized Theme")), -1);
+#if !defined(Q_OS_WIN)
+        QCOMPARE(combo->findText(QStringLiteral("x")), -1);
+        QCOMPARE(combo->findText(QStringLiteral("x.toml")), -1);
+#endif
+    }
 };
 
 QTEST_MAIN(tst_s038_settings_menu)
