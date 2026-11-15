@@ -8,6 +8,8 @@
 
 #include <algorithm>
 #include <array>
+#include <map>
+#include <vector>
 
 namespace hitokoto::core {
 namespace {
@@ -430,8 +432,176 @@ std::u16string escapeTableCellBlockStart(std::u16string_view markdown) {
     return out;
 }
 
+namespace {
+
+bool asciiAlphanumeric(char16_t c) noexcept {
+    return (c >= u'a' && c <= u'z') || (c >= u'A' && c <= u'Z') || (c >= u'0' && c <= u'9');
+}
+
+bool asciiPunctuationCharacter(char16_t c) noexcept {
+    return (c >= u'!' && c <= u'/') || (c >= u':' && c <= u'@') || (c >= u'[' && c <= u'`') || (c >= u'{' && c <= u'~');
+}
+
+/// The end of a CommonMark autolink at `at` (`<scheme:...>` or `<address@domain>`), or 0.
+std::size_t autolinkEnd(std::u16string_view text, std::size_t at) noexcept {
+    const std::size_t n = text.size();
+    // A scheme: a letter, then 1 to 31 letters, digits, `+`, `.` or `-`; then `:` and no ASCII
+    // control character, space, `<` or `>` up to the closing `>`.
+    if (at + 1 < n &&
+        ((text[at + 1] >= u'a' && text[at + 1] <= u'z') || (text[at + 1] >= u'A' && text[at + 1] <= u'Z'))) {
+        std::size_t j = at + 2;
+        while (j < n && j - (at + 1) < 32 &&
+               (asciiAlphanumeric(text[j]) || text[j] == u'+' || text[j] == u'.' || text[j] == u'-')) {
+            ++j;
+        }
+        if (j - (at + 1) >= 2 && j < n && text[j] == u':') {
+            ++j;
+            while (j < n && text[j] > u' ' && text[j] != u'\x7f' && text[j] != u'<' && text[j] != u'>') {
+                ++j;
+            }
+            if (j < n && text[j] == u'>') {
+                return j + 1;
+            }
+        }
+    }
+    // An e-mail address: the characters of its local part, `@`, labels of 1 to 63 letters, digits
+    // and inner hyphens separated by `.`.
+    constexpr std::u16string_view kLocal = u".!#$%&'*+/=?^_`{|}~-";
+    std::size_t j = at + 1;
+    while (j < n && (asciiAlphanumeric(text[j]) || kLocal.find(text[j]) != std::u16string_view::npos)) {
+        ++j;
+    }
+    if (j == at + 1 || j >= n || text[j] != u'@') {
+        return 0;
+    }
+    ++j;
+    while (true) {
+        const std::size_t label = j;
+        while (j < n && j - label < 63 && (asciiAlphanumeric(text[j]) || text[j] == u'-')) {
+            ++j;
+        }
+        if (j == label || text[label] == u'-' || text[j - 1] == u'-') {
+            return 0;
+        }
+        if (j < n && text[j] == u'.') {
+            ++j;
+            continue;
+        }
+        break;
+    }
+    return j < n && text[j] == u'>' ? j + 1 : 0;
+}
+
+/// The end of a `<br>` at `at` in any spelling (`<br>`, `<BR/>`, `<br />`, with ASCII whitespace
+/// before the slash), or 0.
+std::size_t breakTagEnd(std::u16string_view text, std::size_t at) noexcept {
+    const std::size_t n = text.size();
+    if (at + 3 >= n || text[at] != u'<' || (text[at + 1] != u'b' && text[at + 1] != u'B') ||
+        (text[at + 2] != u'r' && text[at + 2] != u'R')) {
+        return 0;
+    }
+    std::size_t j = at + 3;
+    while (j < n && (text[j] == u' ' || (text[j] >= u'\t' && text[j] <= u'\r'))) {
+        ++j;
+    }
+    if (j < n && text[j] == u'/') {
+        ++j;
+    }
+    return j < n && text[j] == u'>' ? j + 1 : 0;
+}
+
+}  // namespace
+
 TableCellImport tableCellImport(std::u16string_view markdown) {
-    return {std::u16string(markdown)};
+    TableCellImport result;
+    // The space that stands for a line break must not come from the cell itself; an entity could
+    // spell it.
+    if (markdown.find(u' ') != std::u16string_view::npos || markdown.find(u'&') != std::u16string_view::npos) {
+        result.lineBreak = u' ';
+    }
+    const std::size_t n = markdown.size();
+    // The backtick runs; for each length the runs of that length in order, to find a code span's
+    // end: the next run of the same length (CommonMark 6.1).
+    struct Run {
+        std::size_t start = 0;
+        std::size_t length = 0;
+    };
+    std::vector<Run> runs;
+    std::map<std::size_t, std::vector<std::size_t>> runsOfLength;
+    for (std::size_t i = 0; i < n;) {
+        if (markdown[i] != u'`') {
+            ++i;
+            continue;
+        }
+        const std::size_t start = i;
+        while (i < n && markdown[i] == u'`') {
+            ++i;
+        }
+        runsOfLength[i - start].push_back(runs.size());
+        runs.push_back({start, i - start});
+    }
+    std::u16string& out = result.markdown;
+    out.reserve(n + 8);
+    std::vector<bool> openBrackets;  // per open `[`: whether it opens an image
+    std::size_t run = 0;             // the first run that does not end before `i`
+    for (std::size_t i = 0; i < n;) {
+        const char16_t c = markdown[i];
+        if (c == u'\\' && i + 1 < n && asciiPunctuationCharacter(markdown[i + 1])) {
+            out.append(markdown.substr(i, 2));
+            i += 2;
+            continue;
+        }
+        if (c == u'`') {
+            // A code span stays as it is; a run without an end of the same length is text. After an
+            // escaped backtick, the rest of its run opens.
+            while (runs[run].start + runs[run].length <= i) {
+                ++run;
+            }
+            const std::size_t length = runs[run].start + runs[run].length - i;
+            std::size_t end = i + length;
+            if (const auto same = runsOfLength.find(length); same != runsOfLength.end()) {
+                const auto next = std::upper_bound(same->second.begin(), same->second.end(), run);
+                if (next != same->second.end()) {
+                    end = runs[*next].start + length;
+                }
+            }
+            out.append(markdown.substr(i, end - i));
+            i = end;
+            continue;
+        }
+        if (c == u'<') {
+            if (const std::size_t end = autolinkEnd(markdown, i); end != 0) {
+                out.append(markdown.substr(i, end - i));
+                i = end;
+                continue;
+            }
+            if (const std::size_t end = breakTagEnd(markdown, i); end != 0) {
+                out += result.lineBreak;
+                i = end;
+                continue;
+            }
+        }
+        if (c == u'!' && i + 1 < n && markdown[i + 1] == u'[') {
+            out += u"!\\[";
+            openBrackets.push_back(true);
+            i += 2;
+            continue;
+        }
+        if (c == u'[') {
+            openBrackets.push_back(false);
+        } else if (c == u']' && !openBrackets.empty()) {
+            const bool image = openBrackets.back();
+            openBrackets.pop_back();
+            if (image) {
+                out += u"\\]";
+                ++i;
+                continue;
+            }
+        }
+        out += c;
+        ++i;
+    }
+    return result;
 }
 
 std::u16string tableCellToText(std::u16string_view markdown) {
