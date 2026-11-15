@@ -125,6 +125,8 @@ signals:
     void themeEntrySelected(const hitokoto::ui::ThemeEntry& entry);
     void savedThemeLoaded(const hitokoto::core::Theme& theme);
     void settingsLoaded(const hitokoto::core::Settings& settings);
+    /// S039: config.toml was read with problems (one line each); emitted once per setThemeConfigDir.
+    void settingsProblemsFound(const QString& path, const QStringList& problems);
 
 protected:
     bool viewportEvent(QEvent* event) override;

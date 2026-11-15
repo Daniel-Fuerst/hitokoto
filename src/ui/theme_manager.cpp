@@ -79,10 +79,16 @@ QString ThemeManager::configFilePath(const QString& configDir) {
     return QDir(configDir).filePath(toQString(core::kSettingsFileName));
 }
 
-bool ThemeManager::saveSelectedTheme(const QString& configDir, const ThemeEntry& entry) {
+bool ThemeManager::saveSelectedTheme(const QString& configDir, const ThemeEntry& entry, QString* error) {
+    const auto fail = [error](const QString& why) {
+        if (error != nullptr) {
+            *error = why;
+        }
+        return false;
+    };
     const QString cfgPath = configFilePath(configDir);
     if (cfgPath.isEmpty()) {
-        return false;
+        return fail(QStringLiteral("there is no configuration folder"));
     }
     const std::filesystem::path fsPath(cfgPath.toStdU16String());
     const core::SettingsLoadResult loaded = core::loadSettingsFile(fsPath);
@@ -103,11 +109,14 @@ bool ThemeManager::saveSelectedTheme(const QString& configDir, const ThemeEntry&
     }
 
     if (hasControlCharacters(entry.path) || hasControlCharacters(toQString(nextTheme))) {
-        return false;
+        return fail(QStringLiteral("the name of the theme contains control characters"));
     }
 
     const auto err = core::updateThemeSettingInFile(fsPath, nextTheme);
-    return !err.has_value();
+    if (err.has_value()) {
+        return fail(QString::fromStdString(err->message));
+    }
+    return true;
 }
 
 std::optional<ThemeEntry> ThemeManager::loadSavedThemeEntry(const QString& configDir) {
@@ -253,6 +262,14 @@ QStringList ThemeManager::formatDiagnostics(const core::ThemeLoadResult& result)
     QStringList lines;
     for (const auto& d : result.diagnostics) {
         lines << QString::fromStdString(d.line > 0 ? d.toString() : d.message);
+    }
+    return lines;
+}
+
+QStringList ThemeManager::formatSettingsDiagnostics(const core::SettingsLoadResult& result) {
+    QStringList lines;
+    for (const auto& d : result.diagnostics) {
+        lines << QString::fromStdString(d.toString());
     }
     return lines;
 }

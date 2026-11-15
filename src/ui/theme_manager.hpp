@@ -2,6 +2,7 @@
 // S005: finds, loads and applies the theme; follows the system colour scheme.
 #pragma once
 
+#include "hitokoto/core/settings.hpp"
 #include "hitokoto/core/theme.hpp"
 
 #include <QList>
@@ -36,8 +37,9 @@ public:
     static QString defaultConfigFilePath();
     /// Configuration file inside `configDir`: `<configDir>/config.toml` (empty if `configDir` is empty).
     static QString configFilePath(const QString& configDir);
-    /// Persists the selected theme entry to `<configDir>/config.toml`, preserving existing settings.
-    static bool saveSelectedTheme(const QString& configDir, const ThemeEntry& entry);
+    /// Persists the selected theme entry to `<configDir>/config.toml`, preserving existing settings. On failure the
+    /// file is left as it was and `error` (if given) says why.
+    static bool saveSelectedTheme(const QString& configDir, const ThemeEntry& entry, QString* error = nullptr);
     /// Resolves the persisted theme entry from `<configDir>/config.toml`, if configured and found.
     static std::optional<ThemeEntry> loadSavedThemeEntry(const QString& configDir);
     /// Built-in themes plus any valid/discoverable `.toml` theme files in `configDir` (and `<configDir>/themes`).
@@ -46,6 +48,8 @@ public:
     /// flag.
     static core::ThemeLoadResult loadThemeFile(const QString& path, core::ColorScheme scheme);
     static QStringList formatDiagnostics(const core::ThemeLoadResult& result);
+    /// The problems of config.toml, one line each ("line 4, column 20: ...").
+    static QStringList formatSettingsDiagnostics(const core::SettingsLoadResult& result);
     static core::ColorScheme systemScheme();
 
     /// Loads the theme file (if any) and applies it. Emits themeChanged and, if the file was

@@ -488,6 +488,9 @@ void EditorWidget::setThemeConfigDir(const QString& dir) {
         setFrontMatterAsProperties(loaded.settings.frontMatterAsProperties);
         setSmoothScrolling(loaded.settings.smoothScrolling);
         emit settingsLoaded(loaded.settings);
+        if (!loaded.diagnostics.empty()) {
+            emit settingsProblemsFound(cfgPath, ThemeManager::formatSettingsDiagnostics(loaded));
+        }
     }
     if (const auto saved = ThemeManager::loadSavedThemeEntry(themeConfigDir_)) {
         const auto scheme = ThemeManager::systemScheme();

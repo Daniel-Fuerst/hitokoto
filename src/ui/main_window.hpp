@@ -75,6 +75,7 @@ private:
     void updateTitle();
     [[nodiscard]] QString documentName() const;
     bool saveBlocking(const QString& path);
+    void reportThemeNotSaved(const QString& reason);
 
     EditorWidget* editor_;
     DocumentSession* session_;
