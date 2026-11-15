@@ -338,6 +338,22 @@ const Token kTokens[] = {
     {{"find", "current-text", "color", "Text of the current match", "#1a1a1a"}, &applyOptColor<&Theme::find, &FindTokens::currentText>},
     {{"find", "match-background", "color", "Other matches (highlight all); cells, values and chips with a match", "#fff3bf (light), #5c4a12 (dark)"}, &applyOptColor<&Theme::find, &FindTokens::matchBackground>},
     {{"find", "match-text", "color", "Text of other matches", "#1a1a1a (light), #f1f1f1 (dark)"}, &applyOptColor<&Theme::find, &FindTokens::matchText>},
+    {{"menu-bar", "background", "color", "Background of the top menu bar", "colors.background"}, &applyOptColor<&Theme::menuBar, &MenuBarTokens::background>},
+    {{"menu-bar", "border", "color", "Line below the top menu bar", "colors.border"}, &applyOptColor<&Theme::menuBar, &MenuBarTokens::border>},
+    {{"menu-bar", "border-width", "number (px)", "Width of the line below the top menu bar, 0 to 8", "0"}, &applyOptNumber<&Theme::menuBar, &MenuBarTokens::borderWidth, 0, 80>},
+    {{"menu-bar", "padding", "number (px)", "Space around the menu bar items, 0 to 32", "6"}, &applyOptNumber<&Theme::menuBar, &MenuBarTokens::padding, 0, 320>},
+    {{"menu-bar", "spacing", "number (px)", "Space between menu bar items, 0 to 32", "4"}, &applyOptNumber<&Theme::menuBar, &MenuBarTokens::spacing, 0, 320>},
+    {{"menu-bar", "text", "color", "Text colour of idle menu bar items", "colors.text-muted"}, &applyOptColor<&Theme::menuBar, &MenuBarTokens::text>},
+    {{"menu-bar", "hover-text", "color", "Text colour of a hovered menu bar item", "colors.text"}, &applyOptColor<&Theme::menuBar, &MenuBarTokens::hoverText>},
+    {{"menu-bar", "active-text", "color", "Text colour of an open or pressed menu bar item", "colors.text"}, &applyOptColor<&Theme::menuBar, &MenuBarTokens::activeText>},
+    {{"menu-bar", "hover-background", "color", "Pill background of a hovered menu bar item", "colors.surface"}, &applyOptColor<&Theme::menuBar, &MenuBarTokens::hoverBackground>},
+    {{"menu-bar", "active-background", "color", "Pill background of an open or pressed menu bar item", "colors.border"}, &applyOptColor<&Theme::menuBar, &MenuBarTokens::activeBackground>},
+    {{"menu-bar", "mnemonic", "color", "Access-key hint (letter and short underline) shown while Alt is held", "colors.accent"}, &applyOptColor<&Theme::menuBar, &MenuBarTokens::mnemonic>},
+    {{"menu-bar", "item-radius", "number (px)", "Corner radius of menu bar item pills, 0 to 32", "layout.radius"}, &applyOptNumber<&Theme::menuBar, &MenuBarTokens::itemRadius, 0, 320>},
+    {{"menu-bar", "item-padding-horizontal", "number (px)", "Horizontal space inside each menu bar item pill, 0 to 32", "layout.spacing"}, &applyOptNumber<&Theme::menuBar, &MenuBarTokens::itemPaddingHorizontal, 0, 320>},
+    {{"menu-bar", "item-padding-vertical", "number (px)", "Vertical space inside each menu bar item pill, 0 to 32", "4"}, &applyOptNumber<&Theme::menuBar, &MenuBarTokens::itemPaddingVertical, 0, 320>},
+    {{"menu-bar", "font-family", "string", "Font family of the menu bar; \"\" = UI font", "\"\""}, &applyOptString<&Theme::menuBar, &MenuBarTokens::fontFamily>},
+    {{"menu-bar", "font-scale", "number", "Font size of the menu bar relative to the UI font, 0.5 to 2", "1"}, &applyOptNumber<&Theme::menuBar, &MenuBarTokens::fontScale, 5, 20>},
 };
 // clang-format on
 
@@ -901,6 +917,28 @@ FindStyle findStyle(const Theme& t) {
         .buttonSize = f.buttonSize.value_or(24),
         .buttonRadius = f.buttonRadius.value_or(t.radius),
         .fontFamily = f.fontFamily.value_or(""),
+    };
+}
+
+MenuBarStyle menuBarStyle(const Theme& t) {
+    const MenuBarTokens& mb = t.menuBar;
+    return {
+        .background = mb.background.value_or(t.background),
+        .border = mb.border.value_or(t.border),
+        .text = mb.text.value_or(t.textMuted),
+        .hoverText = mb.hoverText.value_or(t.text),
+        .activeText = mb.activeText.value_or(t.text),
+        .hoverBackground = mb.hoverBackground.value_or(t.surface),
+        .activeBackground = mb.activeBackground.value_or(t.border),
+        .mnemonic = mb.mnemonic.value_or(t.accent),
+        .borderWidth = mb.borderWidth.value_or(0),
+        .padding = mb.padding.value_or(6),
+        .spacing = mb.spacing.value_or(4),
+        .itemRadius = mb.itemRadius.value_or(t.radius),
+        .itemPaddingHorizontal = mb.itemPaddingHorizontal.value_or(t.spacing),
+        .itemPaddingVertical = mb.itemPaddingVertical.value_or(4),
+        .fontScale = mb.fontScale.value_or(1),
+        .fontFamily = mb.fontFamily.value_or(""),
     };
 }
 

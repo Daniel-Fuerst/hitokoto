@@ -5,6 +5,7 @@
 
 #include <QFontDatabase>
 #include <QFontMetricsF>
+#include <QTextDocument>
 
 #include <algorithm>
 #include <optional>
@@ -295,7 +296,9 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
             format.setAnchor(true);
             format.setAnchorHref(QString::fromStdU16String(link->destination));
             if (!link->title.empty()) {
-                format.setToolTip(QString::fromStdU16String(link->title));
+                // As its characters, wherever Qt shows the tooltip of the format: Qt shows text that
+                // looks like rich text as rich text.
+                format.setToolTip(Qt::convertFromPlainText(QString::fromStdU16String(link->title), Qt::WhiteSpacePre));
             }
         }
         if (inlineRun != nullptr && !is(core::Role::InlineCode)) {

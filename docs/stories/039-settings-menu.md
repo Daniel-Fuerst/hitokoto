@@ -1,6 +1,6 @@
-# S038 — Settings menu and persistent configuration
+# S039 — Settings menu and persistent configuration
 
-- **Status:** In review · **Order:** 39 · **Size:** M · **Depends on:** S005, S024, S026, S027, S030
+- **Status:** In review · **Order:** 40 · **Size:** M · **Depends on:** S005, S024, S026, S027, S030
 - **Basis:** User requests on `feature/settings` (2026-11-15): an "Open settings" button (`openSettingsButton`) with a gear icon on the floating toolbar (S026) that toggles a non-modal floating `SettingsMenu` flyout (`settingsMenu`) to the left of the toolbar; an **Appearance** section with a theme selector (`themeSelector` `QComboBox`) listing built-in themes (`hitokoto Light`, `hitokoto Dark`) plus `.toml` themes from the platform configuration directory and its `themes/` subfolder; a subtle version hint (`settingsVersionLabel`, `v<version>`) at the bottom right instead of a debug info table; and persistence of user settings (`[appearance]` `theme` and `[editor]` options `smooth-scrolling`, `front-matter-as-properties`, `report-blank-lines-added`) in `config.toml` inside the OS configuration directory (`~/.config/hitokoto` on Linux, `%LOCALAPPDATA%\hitokoto` on Windows, `~/Library/Preferences/hitokoto` on macOS via `QStandardPaths::GenericConfigLocation`).
 
 ## Story
@@ -64,8 +64,8 @@ As a writer, I want a non-modal settings flyout reachable from the floating tool
 
 ## Tests
 
-- **Core (`hitokoto_core_tests`, `tests/core/test_s038_settings_menu.cpp`):** `S038_SettingsMenu.SettingsParseAndSerializeRoundTrip`, `S038_SettingsMenu.SettingsParseDiagnosticsPreserveValidEntries`, `S038_SettingsMenu.SettingsSaveCreatesDirectoriesAndLoadsAtomically`, `S038_SettingsMenu.BuiltinSchemeFromSettingMatchesLightAndDarkCaseInsensitively`.
-- **UI (`tests/ui/tst_s038_settings_menu.cpp`):** `settingsButtonOpensAndClosesSettingsMenuWithDebugInfo`, `settingsMenuListsAndSelectsThemesFromConfigFolder`, `selectedThemePersistsInConfigFileAcrossRestart`, `editorOptionsInConfigFileLoadAndSurviveThemeSelection`.
+- **Core (`hitokoto_core_tests`, `tests/core/test_s039_settings_menu.cpp`):** `S039_SettingsMenu.SettingsParseAndSerializeRoundTrip`, `S039_SettingsMenu.SettingsParseDiagnosticsPreserveValidEntries`, `S039_SettingsMenu.SettingsSaveCreatesDirectoriesAndLoadsAtomically`, `S039_SettingsMenu.BuiltinSchemeFromSettingMatchesLightAndDarkCaseInsensitively`.
+- **UI (`tests/ui/tst_s039_settings_menu.cpp`):** `settingsButtonOpensAndClosesSettingsMenuWithDebugInfo`, `settingsMenuListsAndSelectsThemesFromConfigFolder`, `selectedThemePersistsInConfigFileAcrossRestart`, `editorOptionsInConfigFileLoadAndSurviveThemeSelection`.
 - **Theme manager persistence (`tests/ui/tst_s005_theme.cpp`):** `themeSelectionPersistsAcrossThemeManagerRestart`.
 
 ## Implementation

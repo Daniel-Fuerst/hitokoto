@@ -5,7 +5,7 @@
   the right edge of the editor with two entries: "Create new Table" (inserts a 2-column × 1-body-row
   table and focuses the first header cell) and "Create inline-codeblock" (wraps the selection in
   backticks or inserts `` `` `` with the caret inside). Extended on `feature/settings` (2026-11-15,
-  specified in [S038](038-settings-menu.md)) with an "Open settings" entry with a settings icon that
+  specified in [S039](039-settings-menu.md)) with an "Open settings" entry with a settings icon that
   toggles the non-modal floating `SettingsMenu` flyout (theme selection and `config.toml` persistence).
 
 ## Story
@@ -49,7 +49,7 @@ without leaving the editor.
 **Scenario: opening and closing the settings flyout from the toolbar**
 - Given an open editor window
 - When I click "Open settings" in the floating toolbar
-- Then the non-modal floating `SettingsMenu` flyout ([S038](038-settings-menu.md)) opens to the
+- Then the non-modal floating `SettingsMenu` flyout ([S039](039-settings-menu.md)) opens to the
   left of the floating toolbar, showing an **Appearance** section with `themeSelector` (`QComboBox`)
   and a subtle version hint (`settingsVersionLabel`) at the bottom, persisting the chosen theme to
   `config.toml` across restarts

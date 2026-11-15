@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S038: settings menu configuration persistence and CLI builtin scheme matching.
+// S039: settings menu configuration persistence and CLI builtin scheme matching.
 #include "hitokoto/core/settings.hpp"
 #include "hitokoto/core/theme.hpp"
 
@@ -41,7 +41,7 @@ private:
 
 }  // namespace
 
-TEST(S038_SettingsMenu, SettingsParseAndSerializeRoundTrip) {
+TEST(S039_SettingsMenu, SettingsParseAndSerializeRoundTrip) {
     const Settings original{
         .theme = "themes/berry-crush.toml",
         .smoothScrolling = false,
@@ -77,7 +77,7 @@ TEST(S038_SettingsMenu, SettingsParseAndSerializeRoundTrip) {
     EXPECT_TRUE(crlf.settings.reportBlankLinesAdded);
 }
 
-TEST(S038_SettingsMenu, SettingsParseDiagnosticsPreserveValidEntries) {
+TEST(S039_SettingsMenu, SettingsParseDiagnosticsPreserveValidEntries) {
     const SettingsLoadResult res = parseSettings(
         "[appearance]\n"
         "theme = \"light\"\n"
@@ -95,7 +95,7 @@ TEST(S038_SettingsMenu, SettingsParseDiagnosticsPreserveValidEntries) {
     EXPECT_FALSE(res.settings.reportBlankLinesAdded);
 }
 
-TEST(S038_SettingsMenu, SettingsSaveCreatesDirectoriesAndLoadsAtomically) {
+TEST(S039_SettingsMenu, SettingsSaveCreatesDirectoriesAndLoadsAtomically) {
     SettingsTempDir dir;
     const std::filesystem::path configPath = dir.path() / "nested" / "hitokoto" / std::string(kSettingsFileName);
 
@@ -119,7 +119,7 @@ TEST(S038_SettingsMenu, SettingsSaveCreatesDirectoriesAndLoadsAtomically) {
     EXPECT_EQ(loaded.settings, saved);
 }
 
-TEST(S038_SettingsMenu, BuiltinSchemeFromSettingMatchesLightAndDarkCaseInsensitively) {
+TEST(S039_SettingsMenu, BuiltinSchemeFromSettingMatchesLightAndDarkCaseInsensitively) {
     EXPECT_EQ(builtinSchemeFromSetting("light"), ColorScheme::Light);
     EXPECT_EQ(builtinSchemeFromSetting("Light"), ColorScheme::Light);
     EXPECT_EQ(builtinSchemeFromSetting("hitokoto Light"), ColorScheme::Light);
@@ -129,7 +129,7 @@ TEST(S038_SettingsMenu, BuiltinSchemeFromSettingMatchesLightAndDarkCaseInsensiti
     EXPECT_EQ(builtinSchemeFromSetting(""), std::nullopt);
 }
 
-TEST(S038_SettingsMenu, LoadSettingsFileRejectsNonRegularOrOversizedFiles) {
+TEST(S039_SettingsMenu, LoadSettingsFileRejectsNonRegularOrOversizedFiles) {
     SettingsTempDir dir;
     const std::filesystem::path configDir = dir.path() / "dir_config";
     std::filesystem::create_directories(configDir);
@@ -159,7 +159,7 @@ TEST(S038_SettingsMenu, LoadSettingsFileRejectsNonRegularOrOversizedFiles) {
 #endif
 }
 
-TEST(S038_SettingsMenu, UpdateThemeSettingPreservesExistingContentByteForByte) {
+TEST(S039_SettingsMenu, UpdateThemeSettingPreservesExistingContentByteForByte) {
     SettingsTempDir dir;
     const std::filesystem::path configPath = dir.path() / "config.toml";
 
@@ -202,7 +202,7 @@ TEST(S038_SettingsMenu, UpdateThemeSettingPreservesExistingContentByteForByte) {
     EXPECT_EQ(*read.bytes, expected);
 }
 
-TEST(S038_SettingsMenu, UpdateThemeSettingPreservesCrlfLineEndings) {
+TEST(S039_SettingsMenu, UpdateThemeSettingPreservesCrlfLineEndings) {
     SettingsTempDir dir;
     const std::filesystem::path configPath = dir.path() / "config.toml";
 
@@ -237,7 +237,7 @@ TEST(S038_SettingsMenu, UpdateThemeSettingPreservesCrlfLineEndings) {
     EXPECT_EQ(*read.bytes, expected);
 }
 
-TEST(S038_SettingsMenu, UpdateThemeSettingAddsAppearanceSectionIfMissing) {
+TEST(S039_SettingsMenu, UpdateThemeSettingAddsAppearanceSectionIfMissing) {
     SettingsTempDir dir;
     const std::filesystem::path configPath = dir.path() / "config.toml";
 
@@ -267,7 +267,7 @@ TEST(S038_SettingsMenu, UpdateThemeSettingAddsAppearanceSectionIfMissing) {
 }
 
 #if !defined(_WIN32)
-TEST(S038_SettingsMenu, UpdateThemeSettingLeavesUnreadableFileUntouched) {
+TEST(S039_SettingsMenu, UpdateThemeSettingLeavesUnreadableFileUntouched) {
     SettingsTempDir dir;
     const std::filesystem::path configPath = dir.path() / "config.toml";
 
@@ -293,7 +293,7 @@ TEST(S038_SettingsMenu, UpdateThemeSettingLeavesUnreadableFileUntouched) {
 }
 #endif
 
-TEST(S038_SettingsMenu, RefusesThemeSettingWithControlCharactersOrLineBreaks) {
+TEST(S039_SettingsMenu, RefusesThemeSettingWithControlCharactersOrLineBreaks) {
     SettingsTempDir dir;
     const std::filesystem::path configPath = dir.path() / "config.toml";
 

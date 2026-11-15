@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S038: settings parser fuzz target
+// S039: settings parser fuzz target
 #include "hitokoto/core/settings.hpp"
 
 #include <cstdint>

@@ -396,3 +396,65 @@ TEST(S018_Tables, TwoLineCellsNeedNoMarkdown) {
         EXPECT_FALSE(tableCellPlainLayout(syntax).has_value()) << "syntax cell of length " << syntax.size();
     }
 }
+
+// A cell shows an image's Markdown as its characters, as the editor does outside tables: the
+// import gets the image's brackets escaped. Each pair was checked with commonmark.js 0.31.2 and
+// markdown-it-py 4.2.0 (commonmark, HTML off): the first renders an image where it has one, the
+// second renders no image and exactly the characters of the first (its code spans, autolinks,
+// escapes and links as in the first).
+TEST(S018_Tables, AnImageInACellImportsAsItsCharacters) {
+    const std::vector<std::pair<std::u16string_view, std::u16string_view>> imports = {
+        {u"![x](y)", u"!\\[x\\](y)"},
+        {u"**b** ![x](y \"t\") *i*", u"**b** !\\[x\\](y \"t\") *i*"},
+        {u"![x](<a b>)", u"!\\[x\\](<a b>)"},
+        {u"![x]", u"!\\[x\\]"},
+        {u"![x][r]", u"!\\[x\\][r]"},
+        {u"![a [b] c](y)", u"!\\[a [b] c\\](y)"},
+        {u"![![x](y)](z)", u"!\\[!\\[x\\](y)\\](z)"},
+        {u"![x`]`](y)", u"!\\[x`]`\\](y)"},
+        // a link with an image as its text stays a link with the image's characters as its text
+        {u"[![x](y)](z)", u"[!\\[x\\](y)](z)"},
+        {u"[a ![b](c) d](e)", u"[a !\\[b\\](c) d](e)"},
+        // after an escaped backslash the image is one
+        {u"\\\\![x](y)", u"\\\\!\\[x\\](y)"},
+        // a backtick without a closing one is text; after an escaped backtick the rest of the run opens
+        {u"`![x](y)", u"`!\\[x\\](y)"},
+        {u"\\`![x](y)`", u"\\`!\\[x\\](y)`"},
+        // an autolink that starts first ends before the image, and so does a code span
+        {u"<https://x`>![c](d)`", u"<https://x`>!\\[c\\](d)`"},
+        {u"`<https://x`>![c](d)", u"`<https://x`>!\\[c\\](d)"},
+    };
+    for (const auto& [cell, expected] : imports) {
+        EXPECT_EQ(tableCellImport(cell).markdown, expected);
+    }
+    // No image, nothing to change: escaped, in code, in an autolink, an entity, `!` without `[`,
+    // HTML (the import runs without it).
+    for (const std::u16string_view unchanged :
+         {u"\\![x](y)", u"!\\[x](y)", u"`![x](y)`", u"``a`![x](y)`b``", u"\\``x`", u"`<b>x</b>`",
+          u"<https://example.com/![x](y)>", u"<a@example.com>", u"&#33;[x](y)", u"&lt;b&gt;", u"a!b !(x) [l](u)",
+          u"<span style=\"color:#ff0000\">x</span>", u"<img src=\"y\">", u"<a href=\"y\">z</a>", u"\\<b>",
+          u"[a](b`)![c](d)`"}) {
+        EXPECT_EQ(tableCellImport(unchanged).markdown, unchanged);
+    }
+}
+
+// A `<br>` is a line break in a cell; the import gets a space for it, which the UI turns into a
+// line break (Markdown reads U+2028 beside emphasis otherwise than the tag). In a code span and
+// after an escape it stays text, as CommonMark shows it there.
+TEST(S018_Tables, ALineBreakInACellImportsAsASpace) {
+    const std::vector<std::pair<std::u16string_view, std::u16string_view>> imports = {
+        {u"a<br>b", u"a b"},        {u"a<BR />b", u"a b"},          {u"a<br\t/>b", u"a b"},
+        {u"<br>_u_<br>", u" _u_ "}, {u"a\\\\<br>b", u"a\\\\ b"},    {u"`a<br>b`<br>c", u"`a<br>b` c"},
+        {u"a\\<br>b", u"a\\<br>b"}, {u"a<brr>b<b>", u"a<brr>b<b>"},
+    };
+    for (const auto& [cell, expected] : imports) {
+        const TableCellImport import = tableCellImport(cell);
+        EXPECT_EQ(import.markdown, expected);
+        EXPECT_EQ(import.lineBreak, u' ');
+    }
+    // A cell with that space or an entity gets U+2028 itself.
+    EXPECT_EQ(tableCellImport(u"a <br>b").markdown, u"a  b");
+    EXPECT_EQ(tableCellImport(u"a <br>b").lineBreak, u' ');
+    EXPECT_EQ(tableCellImport(u"&amp;<br>b").markdown, u"&amp; b");
+    EXPECT_EQ(tableCellImport(u"&amp;<br>b").lineBreak, u' ');
+}

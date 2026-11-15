@@ -38,6 +38,9 @@ reserve space for an embedded widget.
    the input after a `<br>` without slash. Wrapping, row heights and column widths come from the
    view. The cell editor is a Qt text editor showing the cell's Markdown with real line breaks;
    `Shift+Enter` inserts one.
+   Since 2026-11-15 (rework of S018) the import runs without raw HTML, so tags in a cell show as
+   their characters, as outside tables; a `<br>` reaches it as a space that becomes a line break
+   (U+2028) after it, and an image's brackets are escaped, so the image shows as its characters.
 5. **Source view.** A shortcut and a context-menu entry switch one table between the view and its
    Markdown lines (`BlockLayout` shows the lines and releases the reserved height). Rows with text
    the view does not show are marked in the view.

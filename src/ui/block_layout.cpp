@@ -96,6 +96,9 @@ void BlockLayout::setReservedHeight(const QTextBlock& block, qreal height) {
             const_cast<QTextBlock&>(block).setUserData(nullptr);  // deletes it
         }
     }
+    if (deferWhileOutOfSync(block)) {
+        return;
+    }
     setHeight(block.blockNumber(), heightOf(block), true);
     emit update();
 }
@@ -110,8 +113,23 @@ void BlockLayout::setHidden(const QTextBlock& block, bool hidden) {
         return;
     }
     const_cast<QTextBlock&>(block).setVisible(!hidden);
+    if (deferWhileOutOfSync(block)) {
+        return;
+    }
     setHeight(block.blockNumber(), heightOf(block), true);
     emit update();
+}
+
+bool BlockLayout::deferWhileOutOfSync(const QTextBlock& block) {
+    // Inside a change of the document (between contentsChange and documentChanged) heights_ still
+    // has the old numbering and setHeight ignores the block; its height is recorded once the change
+    // is applied, and the view is drawn again then.
+    if (inSync()) {
+        return false;
+    }
+    deferred_.push_back(block);
+    deferredRepaint_ = true;
+    return true;
 }
 
 void BlockLayout::setBlockSpacing(const QTextBlock& block, qreal above, qreal below) {
@@ -758,6 +776,14 @@ void BlockLayout::storeDeferredHeights() {
     for (const QTextBlock& block : blocks) {
         if (block.isValid()) {
             setHeight(block.blockNumber(), advanceOf(block), batch_ == 0);
+        }
+    }
+    if (deferredRepaint_) {
+        deferredRepaint_ = false;
+        if (batch_ > 0) {
+            batchNeedsRepaint_ = true;
+        } else {
+            emit update();
         }
     }
 }

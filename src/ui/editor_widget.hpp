@@ -40,6 +40,9 @@ public:
     void applyTheme(const core::Theme& theme);
 
     [[nodiscard]] BlockStyler& styler() noexcept { return *styler_; }
+    /// Between contentsChange and contentsChanged of the document: the layout may not know the new
+    /// lines yet.
+    [[nodiscard]] bool insideEdit() const noexcept { return insideEdit_; }
     /// The table view showing the table whose lines include `blockNumber`; null if the line is not
     /// in a table or the table shows its source (S018).
     [[nodiscard]] QTableView* tableViewAt(int blockNumber) const;
@@ -163,6 +166,9 @@ private:
     [[nodiscard]] ScrollAnchor readingAnchor();
     /// The scroll value that shows `anchor` at the top (lays its block out).
     [[nodiscard]] int anchorValue(const ScrollAnchor& anchor) const;
+    /// Scrolls `anchor` to the top as far as the document allows. It may make a scroll range larger
+    /// for heights not taken in yet, never a range that does not scroll: that would show the scroll
+    /// bar for a document that fits the view.
     void restoreAnchor(const ScrollAnchor& anchor);
     /// Restores the held reading position again if it moved since a resize or theme change.
     void settleAnchor();

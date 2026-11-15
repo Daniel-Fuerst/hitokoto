@@ -80,14 +80,13 @@ QString makeStyleSheet(const core::Theme& t) {
             break;
     }
 
+    const core::MenuBarStyle mb = core::menuBarStyle(t);
+
     // Placeholders: %1 background, %2 surface, %3 border, %4 text, %5 muted, %6 accent,
     // %7 selection, %8 selection text, %9 radius.
     QString css = QStringLiteral(R"(
 QMainWindow, QDialog, QMessageBox { background: %1; color: %4; }
 QPlainTextEdit, QTextEdit { background: %1; color: %4; border: none; selection-background-color: %7; selection-color: %8; }
-QMenuBar { background: %1; color: %4; border-bottom: 1px solid %3; }
-QMenuBar::item { background: transparent; border-radius: %9; }
-QMenuBar::item:selected { background: %2; }
 QMenu { background: %2; color: %4; border: 1px solid %3; border-radius: %9; }
 QMenu::item:selected { background: %6; color: %1; border-radius: %9; }
 QMenu::item:disabled { color: %5; }
@@ -102,7 +101,18 @@ QToolTip { background: %2; color: %4; border: 1px solid %3; }
                            hex(t.accent), hex(t.selection), hex(t.selectionText), radius);
 
     css += QStringLiteral(R"(
-QMenuBar::item { padding: %1 %2; }
+QMenuBar { background: %1; color: %2; border: none; border-bottom: %3 solid %4; padding: %5; spacing: %6; }
+QMenuBar::item { background: transparent; padding: %7 %8; margin: 0px; border-radius: %9; }
+QMenuBar::item:selected { background: %10; color: %11; }
+QMenuBar::item:pressed { background: %12; color: %13; }
+)")
+               .arg(hex(mb.background), hex(mb.text), px(std::max(0.0, mb.borderWidth)), hex(mb.border),
+                    px(std::max(0.0, mb.padding)), px(std::max(0.0, mb.spacing)),
+                    px(std::max(0.0, mb.itemPaddingVertical)), px(std::max(0.0, mb.itemPaddingHorizontal)),
+                    px(std::max(0.0, mb.itemRadius)))
+               .arg(hex(mb.hoverBackground), hex(mb.hoverText), hex(mb.activeBackground), hex(mb.activeText));
+
+    css += QStringLiteral(R"(
 QMenu { padding: %1; }
 QMenu::item { padding: %1 %3; }
 QMenu::separator { margin: %1 %2; }

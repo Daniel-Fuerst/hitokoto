@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S038: settings menu flyout, live theme switching, and persistent configuration.
+// S039: settings menu flyout, live theme switching, and persistent configuration.
 #include "floating_toolbar.hpp"
 #include "hitokoto/core/settings.hpp"
 #include "hitokoto/core/theme.hpp"
@@ -27,7 +27,7 @@ QToolButton* toolbarButton(ui::EditorWidget* editor, const char* name) {
 }
 }  // namespace
 
-class tst_s038_settings_menu : public QObject {
+class tst_s039_settings_menu : public QObject {
     Q_OBJECT
 private slots:
     void settingsButtonOpensAndClosesSettingsMenuWithDebugInfo() {
@@ -399,5 +399,5 @@ private slots:
 #endif
 };
 
-QTEST_MAIN(tst_s038_settings_menu)
-#include "tst_s038_settings_menu.moc"
+QTEST_MAIN(tst_s039_settings_menu)
+#include "tst_s039_settings_menu.moc"

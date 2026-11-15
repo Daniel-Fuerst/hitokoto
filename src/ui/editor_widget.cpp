@@ -320,10 +320,17 @@ void EditorWidget::restoreAnchor(const ScrollAnchor& anchor) {
     // runs, and scrolling lays out the blocks that come into view: near the end of the document
     // either can cut the value short while the estimates below are still too small. Set it again
     // once the blocks on screen have their lines; the range follows the document size later.
+    // A range that does not scroll stays as it is: the document fits the view. A larger range
+    // would show the scroll bar; the narrower text column gives the document its own range again,
+    // which hides the scroll bar at once, and the restore of that resize would make the range
+    // larger again, without end. Should the laid-out document not fit after all, its range comes
+    // with the next size report, and settleAnchor shows the reading position then.
     QScrollBar* bar = verticalScrollBar();
     for (int pass = 0; pass < 2; ++pass) {
         const int value = anchorValue(anchor);
-        bar->setMaximum(std::max(bar->maximum(), value));
+        if (bar->maximum() > bar->minimum()) {
+            bar->setMaximum(std::max(bar->maximum(), value));
+        }
         bar->setValue(value);
         if (bar->value() == value) {
             break;
