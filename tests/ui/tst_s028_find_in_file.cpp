@@ -19,6 +19,7 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
+#include <QPlainTextEdit>
 #include <QRandomGenerator>
 #include <QSignalSpy>
 #include <QTableView>
@@ -230,6 +231,37 @@ void typeAt(const test::Fixture& f, int line, int column, const QString& text) {
     f.placeCaret(line, column);
     f.editor()->setFocus();
     test::typeText(f.editor(), text);
+}
+
+/// Clicks the middle of a cell of `view`, as a user does.
+void clickCell(QTableView* view, int row, int column) {
+    const QPoint point = view->visualRect(view->model()->index(row, column)).center();
+    QWidget* target = view->viewport()->childAt(point);
+    if (target == nullptr) {
+        target = view->viewport();
+    }
+    QTest::mouseClick(target, Qt::LeftButton, {}, target->mapFrom(view->viewport(), point));
+    QCoreApplication::processEvents();
+}
+
+/// Where the keys go now: a cell of the table at line 0 and the caret in it, or the caret in the
+/// editor.
+QString placeOf(const test::Fixture& f) {
+    QWidget* focus = QApplication::focusWidget();
+    if (focus == f.editor()) {
+        const QTextCursor c = f.editor()->textCursor();
+        return QStringLiteral("line %1, column %2").arg(c.blockNumber()).arg(c.positionInBlock());
+    }
+    QTableView* view = f.editor()->tableViewAt(0);
+    if (auto* cell = qobject_cast<QPlainTextEdit*>(focus);
+        cell != nullptr && view != nullptr && view->isAncestorOf(cell)) {
+        return QStringLiteral("cell %1,%2 at %3")
+            .arg(view->currentIndex().row())
+            .arg(view->currentIndex().column())
+            .arg(cell->textCursor().position());
+    }
+    return QStringLiteral("focus on %1")
+        .arg(focus != nullptr ? QString::fromLatin1(focus->metaObject()->className()) : QStringLiteral("nothing"));
 }
 
 QAction* findMenuAction(const test::Fixture& f) {
@@ -977,6 +1009,89 @@ private slots:
         QTRY_COMPARE(QApplication::focusWidget(), static_cast<QWidget*>(f.editor()));
         QCOMPARE(f.editor()->textCursor().blockNumber(), 4);
         QVERIFY(bar(f)->isVisible());
+    }
+
+    // S018 changes a table's lines while the bar holds a match below it: the edit moves the match,
+    // the bar moves its hold at once, and the change goes on with the table as it is after the edit.
+    // The keys give the same document, caret and cell as with the bar closed.
+    void changingATableWhileAMatchBelowItIsCurrent_data() {
+        QTest::addColumn<QString>("markdown");
+        QTest::addColumn<bool>("inCell");  // the keys go to cell (a, b), else to line a, column b
+        QTest::addColumn<int>("a");
+        QTest::addColumn<int>("b");
+        QTest::addColumn<int>("key");
+        QTest::addColumn<int>("modifiers");
+        QTest::addColumn<QString>("expected");
+        QTest::addColumn<QString>("place");
+        const QString table = QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2 |\n");
+        const QString below = QStringLiteral("\nneedle\n");
+        const QString added = table + QStringLiteral("|  |  |\n") + below;
+        const int none = Qt::NoModifier;
+        const int ctrlShift = Qt::ControlModifier | Qt::ShiftModifier;
+        QTest::newRow("Enter in the last row adds a row") << table + below << true << 1 << 0 << int(Qt::Key_Return)
+                                                          << none << added << QStringLiteral("cell 2,0 at 0");
+        QTest::newRow("Tab in the last cell adds a row")
+            << table + below << true << 1 << 1 << int(Qt::Key_Tab) << none << added << QStringLiteral("cell 2,0 at 0");
+        QTest::newRow("Ctrl+Shift+Backspace deletes a row")
+            << table + QStringLiteral("| 3 | 4 |\n") + below << true << 2 << 0 << int(Qt::Key_Backspace) << ctrlShift
+            << table + below << QStringLiteral("cell 1,0 at 1");
+        QTest::newRow("Ctrl+Shift+Delete deletes a row")
+            << table + QStringLiteral("| 3 | 4 |\n") + below << true << 1 << 1 << int(Qt::Key_Delete) << ctrlShift
+            << QStringLiteral("| a | b |\n| --- | --- |\n| 3 | 4 |\n") + below << QStringLiteral("cell 1,1 at 0");
+        QTest::newRow("Enter in an empty last row leaves below")
+            << added << true << 2 << 0 << int(Qt::Key_Return) << none << table + below
+            << QStringLiteral("line 4, column 0");
+        QTest::newRow("Escape adds lines above a line that is no row")
+            << table + QStringLiteral("# needle\n") << true << 1 << 1 << int(Qt::Key_Escape) << none
+            << table + QStringLiteral("\n\n# needle\n") << QStringLiteral("line 4, column 0");
+        QTest::newRow("Backspace on the empty line below")
+            << table + QStringLiteral("\n") + below << false << 4 << 0 << int(Qt::Key_Backspace) << none
+            << table + below << QStringLiteral("cell 1,1 at 1");
+        QTest::newRow("Ctrl+Alt+Backspace deletes a column")
+            << table + below << true << 1 << 0 << int(Qt::Key_Backspace) << int(Qt::ControlModifier | Qt::AltModifier)
+            << QStringLiteral("| b |\n| --- |\n| 2 |\n") + below << QStringLiteral("cell 1,0 at 0");
+    }
+
+    void changingATableWhileAMatchBelowItIsCurrent() {
+        QFETCH(QString, markdown);
+        QFETCH(bool, inCell);
+        QFETCH(int, a);
+        QFETCH(int, b);
+        QFETCH(int, key);
+        QFETCH(int, modifiers);
+        QFETCH(QString, expected);
+        QFETCH(QString, place);
+        for (const bool findOpen : {false, true}) {
+            test::Fixture f;
+            QVERIFY(load(f, markdown));
+            if (findOpen) {
+                search(f, QStringLiteral("needle"));
+                QVERIFY(waitComplete(f));
+                QCOMPARE(controller(f)->countText(), QStringLiteral("1 of 1"));
+            }
+            if (inCell) {
+                QTableView* view = f.editor()->tableViewAt(0);
+                QVERIFY(view != nullptr);
+                clickCell(view, a, b);
+            } else {
+                f.editor()->setFocus();
+                f.placeCaret(a, b);
+            }
+            test::keyClick(QApplication::focusWidget(), static_cast<Qt::Key>(key),
+                           static_cast<Qt::KeyboardModifiers>(modifiers));
+            QCoreApplication::processEvents();
+            f.settle();
+            QCOMPARE(f.editor()->toPlainText(), expected);
+            QCOMPARE(placeOf(f), place);
+            QVERIFY(f.editor()->tableViewAt(0) != nullptr);
+            QVERIFY(!f.editor()->isTableSourceShown(0));
+            if (findOpen) {
+                QVERIFY(bar(f)->isVisible());
+                QVERIFY(waitComplete(f));
+                QCOMPARE(differenceToFresh(f, QStringLiteral("needle")), QString());
+                QCOMPARE(controller(f)->countText(), QStringLiteral("1 of 1"));
+            }
+        }
     }
 
     // Code review O3: highlight all marks the key, the value or the chip that holds a match.
