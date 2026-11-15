@@ -2,6 +2,9 @@
 // S004: save and save-as write the text byte for byte, through the real editor widget.
 #include "ui_test_support.hpp"
 
+#include <QDir>
+
+#include <new>
 #include <random>
 
 using namespace hitokoto;
@@ -110,6 +113,51 @@ private slots:
     }
 
     // Property: random valid Markdown-ish text survives open -> edit-free save unchanged.
+    // Running out of memory while the save encodes its copy of the text, on the worker thread
+    // (save) and on the calling thread (saveNow, what quitting does).
+    void runningOutOfMemoryWhileSavingKeepsTextAndFile_data() {
+        QTest::addColumn<bool>("now");
+        QTest::newRow("save") << false;
+        QTest::newRow("saveNow") << true;
+    }
+
+    void runningOutOfMemoryWhileSavingKeepsTextAndFile() {
+        QFETCH(bool, now);
+        test::Fixture f;
+        const QString path = f.writeFile(QStringLiteral("notes.md"), "# old\r\n");
+        QVERIFY(f.open(path));
+        test::keyClicks(f.editor(), QStringLiteral("new "));
+        const QString text = f.editor()->toPlainText();
+        ui::DocumentSession::WorkerHooks hooks;
+        hooks.beforeEncode = [] { throw std::bad_alloc(); };
+        f.session()->setWorkerHooksForTesting(hooks);
+        QSignalSpy failed(f.session(), &ui::DocumentSession::saveFailed);
+        QSignalSpy finished(f.session(), &ui::DocumentSession::saveFinished);
+        if (now) {
+            QString error;
+            QVERIFY(!f.session()->saveNow(path, &error));
+            QVERIFY2(error.contains(QStringLiteral("not enough memory")), qPrintable(error));
+        } else {
+            f.session()->save(path);
+            QTRY_COMPARE(failed.size(), 1);
+            QVERIFY2(failed.first().at(1).toString().contains(QStringLiteral("not enough memory")),
+                     qPrintable(failed.first().at(1).toString()));
+        }
+        QCOMPARE(failed.size(), 1);
+        QCOMPARE(finished.size(), 0);
+        QVERIFY(!f.session()->isSaving());
+        QCOMPARE(f.editor()->toPlainText(), text);
+        QVERIFY(f.editor()->document()->isModified());
+        QVERIFY(!f.editor()->isReadOnly());
+        QCOMPARE(test::Fixture::readFile(path), QByteArray("# old\r\n"));
+        QCOMPARE(QDir(f.dir.path()).entryList(QDir::Files | QDir::Hidden), QStringList{QStringLiteral("notes.md")});
+        // The next save works.
+        f.session()->setWorkerHooksForTesting({});
+        QVERIFY(f.saveAndWait(path));
+        QCOMPARE(test::Fixture::readFile(path), QByteArray("new # old\r\n"));
+        QVERIFY(!f.editor()->document()->isModified());
+    }
+
     void propertyRandomFilesRoundTrip() {
         std::mt19937 rng(1024);
         const char* pieces[] = {"# ",       "## ", "- ",   "* ", "+ ",       "text",         " ",

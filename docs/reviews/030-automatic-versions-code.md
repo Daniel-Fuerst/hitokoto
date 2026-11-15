@@ -25,7 +25,7 @@ objections:
     severity: minor
     title: "The check Version label runs the pull request's own copy of NextVersion.cmake"
     disposition: documented
-    disposition_rationale: "Risk accepted for now (Armin, 2026-11-09): the tag job runs the script from main and stops after the merge at a pull request without exactly one version label. Follow-up work once S030 is on main: the check takes the script from main instead of the pull request; before the merge main has no script. It guards against an accidental change of the script; a deliberate change of the check through version.yml stays possible on purpose, so that the versioning can be changed later (Armin). Entry in unrefined.md, 'The check Version label with the script from main'."
+    disposition_rationale: "Risk accepted for now (Armin, 2026-11-09): the tag job runs the script from main and stops after the merge at a pull request without exactly one version label. Follow-up work once S030 is on main: the check takes the script from main instead of the pull request; before the merge main has no script. It guards against an accidental change of the script; a deliberate change of the check through version.yml stays possible on purpose, so that the versioning can be changed later (Armin). Entry in unrefined.md, 'The check Version label with the script from main'; it became story S032 (2026-11-09)."
   - id: O4
     category: operational
     severity: minor

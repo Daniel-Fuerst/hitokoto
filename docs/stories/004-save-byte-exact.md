@@ -26,6 +26,12 @@ hitokoto is safe to use on any file.
 - Given a save is interrupted after the temporary file was written but before the rename
 - Then the original file is intact, and the temporary file lives in the same directory
 
+**Scenario: a save that fails keeps text and file**
+- Given a save fails on its way, also because memory runs out while the text is encoded, in the
+  background or when quitting
+- Then I see a message, the text stays in the editor and marked as modified, the file on disk is
+  unchanged, and the program goes on; the next save works
+
 **Scenario: Save As**
 - When I choose File › Save As and pick a new path
 - Then the file is written there, the title changes, later saves go to the new path
@@ -41,9 +47,24 @@ hitokoto is safe to use on any file.
 - Core fuzz test: arbitrary bytes that decode as UTF-8 survive decode → encode unchanged.
 - UI: `tst_s004_save` – open fixture, edit headings/bullets, save, compare bytes with expectation.
   With mixed endings only lines whose ending differs from the majority store it per block.
+- UI: `tst_s004_save` – running out of memory while encoding (test seam on the worker thread,
+  `std::bad_alloc`), for `save()` and for `saveNow()`: message, text and modified flag kept, file
+  unchanged, no temporary file left, the next save writes.
 
 ## Notes
 
 - Mixed line endings: proposal – keep each existing line's ending, new lines get the file's
   majority ending. Needs confirmation.
 - Windows: rename over an open file can fail if another process holds it; report clearly, retry once.
+
+## Rework on 2026-11-15
+
+Branch `agents/s001-read-what-can-be-read`, from main ed91faa.
+
+- The lambda that `DocumentSession::startWrite` gives to `QThreadPool` let an exception leave the
+  worker thread; Qt's thread pool does not catch, so `std::bad_alloc` from `core::encodeUtf8`
+  ended the program while the editor held the only copy of the text. `saveNow()` (quitting) calls
+  the same code on the calling thread, where an exception would leave through Qt's event loop.
+- `DocumentSession::write` now turns every failure into an outcome with a message ("not enough
+  memory to save the file"), reported through `saveFailed` as before. The file is only ever
+  replaced by a complete temporary file, so a failure before that leaves it as it was.
