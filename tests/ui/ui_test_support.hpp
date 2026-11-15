@@ -18,6 +18,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTextBlock>
+#include <QTextDocumentFragment>
 #include <QTextLayout>
 
 #include <memory>
@@ -117,6 +118,23 @@ inline QList<int> blocksWithUserData(const QTextDocument* document) {
         }
     }
     return result;
+}
+
+/// The text a tooltip with `text` shows: its characters, or what its rich text shows when Qt takes
+/// it for rich text (a no-break space shows as a space).
+inline QString shownText(const QString& text) {
+    return Qt::mightBeRichText(text) ? QTextDocumentFragment::fromHtml(text).toPlainText().replace(QChar::Nbsp, u' ')
+                                     : text;
+}
+
+/// The window of the tooltip on screen, if one is.
+inline QWidget* toolTipWindow() {
+    for (QWidget* window : QApplication::topLevelWidgets()) {
+        if (window->isVisible() && window->inherits("QTipLabel")) {
+            return window;
+        }
+    }
+    return nullptr;
 }
 
 /// A red image of 120 x 80 pixels at `path`.
