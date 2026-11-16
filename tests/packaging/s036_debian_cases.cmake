@@ -560,6 +560,14 @@ elseif("${CASE}" STREQUAL "TheBuildTakesTheSharedDesktopEntry")
         message(FATAL_ERROR "packaging/debian has a desktop entry of its own")
     endif()
 
+elseif("${CASE}" STREQUAL "TheTestsRunWithoutRoot")
+    # The workflow builds as root in debian:trixie, and root ignores file permissions: a test that
+    # takes a permission away fails as root (S039, v0.7.0). As root the tests run as nobody.
+    file(READ "${RECIPE_DIR}/build-package.sh" text)
+    expect_contains("${text}" "if [ \"$(id -u)\" -eq 0 ]; then" "the check for root")
+    expect_contains("${text}" "setpriv --reuid=nobody --regid=nogroup --clear-groups"
+                    "ctest as nobody")
+
 else()
     message(FATAL_ERROR "unknown case ${CASE}")
 endif()

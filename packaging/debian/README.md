@@ -66,6 +66,7 @@ docker run --rm -v "$PWD:/w" -w /w debian:trixie \
 ```
 
 The build runs the tests of that version with platform `offscreen`; a failing test stops it.
+As root (as in the container) the tests run as `nobody`, because root ignores file permissions.
 `debian-work/` is not part of the repository.
 
 ## How the releases are made (S036)
