@@ -1,17 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "hitokoto/core/markdown.hpp"
 
+#include "../inline_steps.hpp"
+
 #include <algorithm>
 #include <vector>
 
 namespace hitokoto::core {
 namespace {
 
-bool escaped(std::u16string_view line, std::size_t position) {
+/// Looks only at the backslashes directly before `position`, and a run of backslashes stands
+/// before one backtick only: all calls together stay within the length of the line.
+bool escaped(std::u16string_view line, std::size_t position, detail::InlineSteps& steps) {
     std::size_t slashes = 0;
     while (position > slashes && line[position - slashes - 1] == u'\\') {
         ++slashes;
     }
+    steps.add(slashes + 1);
     return slashes % 2 != 0;
 }
 
@@ -21,10 +26,13 @@ public:
     [[nodiscard]] std::u16string_view triggerCharacters() const noexcept override { return u"`"; }
 
     void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
+        detail::InlineSteps steps;
+        steps.add(line.size());
         std::vector<bool> opaque(line.size(), false);
         for (const auto& span : out.opaqueSpans) {
             if (span.start < line.size()) {
                 const auto end = std::min<std::size_t>(span.end(), line.size());
+                steps.add(end - span.start);
                 std::fill(opaque.begin() + static_cast<std::ptrdiff_t>(span.start),
                           opaque.begin() + static_cast<std::ptrdiff_t>(end), true);
             }
@@ -41,7 +49,7 @@ public:
             if (opener == std::u16string_view::npos) {
                 // A backslash escape keeps a backtick from opening a span. Inside a span backslashes
                 // are literal (CommonMark), so the next single backtick always closes it.
-                if (!escaped(line, i)) {
+                if (!escaped(line, i, steps)) {
                     opener = i;
                 }
                 continue;

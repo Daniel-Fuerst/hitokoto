@@ -415,6 +415,12 @@ private:
     std::vector<std::unique_ptr<MultiLineElement>> multiLineElements_;
 };
 
+/// The work the inline pass has done on the calling thread so far, in steps: one for each character
+/// an inline element or the registry's merge of their results looks at, and one for each entry of
+/// a list they walk. A test renders a line, takes the difference and compares it with the length
+/// of the line: a line renders in linear time (S013, S015, S020, S022). The number means nothing else.
+[[nodiscard]] std::uint64_t inlineSteps() noexcept;
+
 /// Built-in elements (each in its own source file).
 std::unique_ptr<LineElement> makeHeadingElement();
 std::unique_ptr<LineElement> makeBulletElement();

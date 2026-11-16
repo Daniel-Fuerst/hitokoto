@@ -3,6 +3,8 @@
 // and revealed with the marker colour on the active line.
 #include "hitokoto/core/markdown.hpp"
 
+#include "../inline_steps.hpp"
+
 #include <algorithm>
 #include <cstdint>
 #include <vector>
@@ -14,15 +16,17 @@ bool isAsciiPunctuation(char16_t c) noexcept {
     return (c >= u'!' && c <= u'/') || (c >= u':' && c <= u'@') || (c >= u'[' && c <= u'`') || (c >= u'{' && c <= u'~');
 }
 
-bool escaped(std::u16string_view line, std::size_t position) noexcept {
+bool escaped(std::u16string_view line, std::size_t position, detail::InlineSteps& steps) noexcept {
     std::size_t slashes = 0;
     while (position > slashes && line[position - slashes - 1] == u'\\') {
         ++slashes;
     }
+    steps.add(slashes + 1);
     return slashes % 2 != 0;
 }
 
-std::u16string unescapePunctuation(std::u16string_view text) {
+std::u16string unescapePunctuation(std::u16string_view text, detail::InlineSteps& steps) {
+    steps.add(text.size());
     std::u16string result;
     result.reserve(text.size());
     for (std::size_t i = 0; i < text.size(); ++i) {
@@ -36,8 +40,9 @@ std::u16string unescapePunctuation(std::u16string_view text) {
     return result;
 }
 
-std::size_t findClosingBacktick(std::u16string_view line, std::size_t opener) noexcept {
+std::size_t findClosingBacktick(std::u16string_view line, std::size_t opener, detail::InlineSteps& steps) noexcept {
     for (std::size_t j = opener + 1; j < line.size(); ++j) {
+        steps.add();
         if (line[j] == u'`' && line[j - 1] != u'`' && (j + 1 >= line.size() || line[j + 1] != u'`')) {
             return j;
         }
@@ -45,7 +50,7 @@ std::size_t findClosingBacktick(std::u16string_view line, std::size_t opener) no
     return std::u16string_view::npos;
 }
 
-std::size_t parseTitle(std::u16string_view line, std::size_t& pos, std::u16string& title) {
+std::size_t parseTitle(std::u16string_view line, std::size_t& pos, std::u16string& title, detail::InlineSteps& steps) {
     if (pos >= line.size()) {
         return std::u16string_view::npos;
     }
@@ -54,10 +59,11 @@ std::size_t parseTitle(std::u16string_view line, std::size_t& pos, std::u16strin
     ++pos;
     const std::size_t titleStart = pos;
     while (pos < line.size()) {
+        steps.add();
         if (line[pos] == u'\\' && pos + 1 < line.size()) {
             pos += 2;
         } else if (line[pos] == closeDelim) {
-            title = unescapePunctuation(line.substr(titleStart, pos - titleStart));
+            title = unescapePunctuation(line.substr(titleStart, pos - titleStart), steps);
             ++pos;
             while (pos < line.size() && (line[pos] == u' ' || line[pos] == u'\t')) {
                 ++pos;
@@ -81,8 +87,9 @@ struct DestinationAndTitle {
     std::size_t endParen = std::u16string_view::npos;
 };
 
-DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size_t pos) {
+DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size_t pos, detail::InlineSteps& steps) {
     while (pos < line.size() && (line[pos] == u' ' || line[pos] == u'\t')) {
+        steps.add();
         ++pos;
     }
     if (pos >= line.size()) {
@@ -100,12 +107,13 @@ DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size
         const std::size_t destStart = pos;
         bool validAngle = false;
         while (pos < line.size()) {
+            steps.add();
             if (line[pos] == u'\\' && pos + 1 < line.size()) {
                 pos += 2;
             } else if (line[pos] == u'<' || line[pos] == u'\n' || line[pos] == u'\r') {
                 break;
             } else if (line[pos] == u'>') {
-                result.destination = unescapePunctuation(line.substr(destStart, pos - destStart));
+                result.destination = unescapePunctuation(line.substr(destStart, pos - destStart), steps);
                 ++pos;
                 validAngle = true;
                 break;
@@ -126,7 +134,7 @@ DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size
             return result;
         }
         if (hadSpace && pos < line.size() && (line[pos] == u'"' || line[pos] == u'\'' || line[pos] == u'(')) {
-            result.endParen = parseTitle(line, pos, result.title);
+            result.endParen = parseTitle(line, pos, result.title, steps);
             if (result.endParen != std::u16string_view::npos) {
                 return result;
             }
@@ -137,6 +145,7 @@ DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size
     const std::size_t destStart = pos;
     int parenDepth = 0;
     while (pos < line.size()) {
+        steps.add();
         if (line[pos] == u' ' || line[pos] == u'\t') {
             break;
         }
@@ -160,7 +169,7 @@ DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size
         return {};
     }
 
-    result.destination = unescapePunctuation(line.substr(destStart, pos - destStart));
+    result.destination = unescapePunctuation(line.substr(destStart, pos - destStart), steps);
     bool hadSpace = false;
     while (pos < line.size() && (line[pos] == u' ' || line[pos] == u'\t')) {
         hadSpace = true;
@@ -171,7 +180,7 @@ DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size
         return result;
     }
     if (hadSpace && pos < line.size() && (line[pos] == u'"' || line[pos] == u'\'' || line[pos] == u'(')) {
-        result.endParen = parseTitle(line, pos, result.title);
+        result.endParen = parseTitle(line, pos, result.title, steps);
         if (result.endParen != std::u16string_view::npos) {
             return result;
         }
@@ -185,10 +194,12 @@ public:
     [[nodiscard]] std::u16string_view triggerCharacters() const noexcept override { return u"["; }
 
     void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
+        detail::InlineSteps steps;
         std::vector<bool> inCode(line.size(), false);
         for (const auto& span : out.opaqueSpans) {
             if (span.start < line.size()) {
                 const auto end = std::min<std::size_t>(span.end(), line.size());
+                steps.add(end - span.start);
                 std::fill(inCode.begin() + static_cast<std::ptrdiff_t>(span.start),
                           inCode.begin() + static_cast<std::ptrdiff_t>(end), true);
             }
@@ -209,6 +220,7 @@ public:
         std::vector<OpenBracket> openBrackets;
 
         for (std::size_t i = 0; i < line.size();) {
+            steps.add();
             if (inCode[i]) {
                 ++i;
                 continue;
@@ -218,14 +230,14 @@ public:
                 continue;
             }
             if (line[i] == u'`' && (i == 0 || line[i - 1] != u'`') && (i + 1 >= line.size() || line[i + 1] != u'`')) {
-                const auto close = findClosingBacktick(line, i);
+                const auto close = findClosingBacktick(line, i, steps);
                 if (close != std::u16string_view::npos) {
                     i = close + 1;
                     continue;
                 }
             }
             if (line[i] == u'[') {
-                const bool isImage = (i > 0 && line[i - 1] == u'!' && !escaped(line, i - 1));
+                const bool isImage = (i > 0 && line[i - 1] == u'!' && !escaped(line, i - 1, steps));
                 openBrackets.push_back({i, isImage});
                 ++i;
                 continue;
@@ -236,7 +248,7 @@ public:
                     continue;
                 }
                 if (i + 1 < line.size() && line[i + 1] == u'(') {
-                    auto parsed = parseDestinationAndTitle(line, i + 2);
+                    auto parsed = parseDestinationAndTitle(line, i + 2, steps);
                     if (parsed.endParen != std::u16string_view::npos) {
                         const auto open = openBrackets.back();
                         openBrackets.pop_back();
@@ -248,6 +260,7 @@ public:
                         parsedLinks.push_back(
                             {open.index, i, parsed.endParen, std::move(parsed.destination), std::move(parsed.title)});
                         // O6: CommonMark forbids links inside links; outer brackets cannot form links.
+                        steps.add(openBrackets.size());
                         openBrackets.clear();
                         i = parsed.endParen + 1;
                         continue;

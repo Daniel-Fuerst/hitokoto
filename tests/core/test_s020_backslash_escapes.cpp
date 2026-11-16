@@ -3,6 +3,8 @@
 #include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/theme.hpp"
 
+#include "line_work.hpp"
+
 #include <gtest/gtest.h>
 
 #include <string>
@@ -208,4 +210,52 @@ TEST(S020_BackslashEscapes, ThemeTokensAreParsedAndFallback) {
     const auto def = builtinTheme(ColorScheme::Light);
     EXPECT_FALSE(def.escape.marker.has_value());
     EXPECT_EQ(escapeStyle(def).marker, def.marker) << "escape.marker falls back to colors.marker";
+}
+
+// Rework of 2026-11-16: a line renders in linear time (steps counted, line_work.hpp). The last two
+// lines end in backslashes behind code spans and links: whether the line ends in a hard break is
+// read from them, once for the line.
+TEST(S020_BackslashEscapes, ALineRendersInLinearTime) {
+    using hitokoto::test::halves;
+    using hitokoto::test::of;
+    for (const auto& pattern : {
+             of("\\", u"\\"),
+             of("\\*", u"\\*"),
+             of("\\\\ ", u"\\\\ "),
+             of("!\\[", u"!\\["),
+             of("\\a", u"\\a"),
+             halves("`a` .. \\", u"`a` ", u"\\"),
+             halves("[a](b) .. \\", u"[a](b) ", u"\\"),
+         }) {
+        hitokoto::test::expectLinearWork(pattern);
+    }
+}
+
+// As before the rework; checked against commonmark.js 0.31.2 and markdown-it-py 4.2.0:
+// \*a\<em>b</em>
+TEST(S020_BackslashEscapes, EscapedBackslashesAndStarsBesideEmphasis) {
+    const auto r = show(u"\\\\\\*a\\\\*b*");
+    EXPECT_EQ(r.inlineStyles, (std::vector<InlineStyleRun>{{{8, 1}, InlineStyle::Italic}}));
+    EXPECT_EQ(r.hidden, (std::vector<HiddenRange>{
+                            {{0, 1}, HideMode::Collapse},
+                            {{2, 1}, HideMode::Collapse},
+                            {{5, 1}, HideMode::Collapse},
+                            {{7, 1}, HideMode::Collapse},
+                            {{9, 1}, HideMode::Collapse},
+                        }));
+}
+
+// The hard break at the end of a paragraph line: an odd number of backslashes, counted back to a
+// code span (S033). As before the rework.
+TEST(S020_BackslashEscapes, BackslashesAtTheEndOfALineAreCountedBackToACodeSpan) {
+    const BlockState paragraph{0, 0, 1};
+    const auto render = [&](std::u16string_view line) {
+        return registry().render(line, {false, paragraph, u"next line"});
+    };
+    EXPECT_TRUE(render(u"text\\").hardBreak);
+    EXPECT_FALSE(render(u"text\\\\").hardBreak);
+    EXPECT_TRUE(render(u"text\\\\\\").hardBreak);
+    EXPECT_TRUE(render(u"`a\\`\\").hardBreak) << "the backslash inside the span does not count";
+    EXPECT_FALSE(render(u"`a\\`\\\\").hardBreak);
+    EXPECT_FALSE(render(u"`a\\`").hardBreak) << "the line ends with the span";
 }

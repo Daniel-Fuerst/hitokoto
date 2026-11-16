@@ -3,6 +3,8 @@
 #include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/theme.hpp"
 
+#include "line_work.hpp"
+
 #include <gtest/gtest.h>
 
 using namespace hitokoto::core;
@@ -138,4 +140,33 @@ TEST(S015_InlineCode, ThemeTokensFallBackToCodeBlockTokens) {
     EXPECT_DOUBLE_EQ(i.padding, 2) << "fixed fallback, not the code block's";
     EXPECT_DOUBLE_EQ(i.fontScale, 1) << "fixed fallback, not the code block's";
     EXPECT_EQ(i.marker, t.marker) << "falls back to colors.marker, not code-block.marker";
+}
+
+// Rework of 2026-11-16: a line renders in linear time (steps counted, line_work.hpp). Every span
+// gives three runs and two hidden ranges, which the registry merges with those of the other elements.
+TEST(S015_InlineCode, ALineRendersInLinearTime) {
+    using hitokoto::test::of;
+    for (const auto& pattern : {
+             of("`a ", u"`a "),
+             of("`a` ", u"`a` "),
+             of("`` ` ", u"`` ` "),
+             of("`\\", u"`\\"),
+             of("\\`", u"\\`"),
+             of("`a` *b* ", u"`a` *b* "),
+         }) {
+        hitokoto::test::expectLinearWork(pattern);
+    }
+}
+
+// As before the rework; checked against commonmark.js 0.31.2 and markdown-it-py 4.2.0:
+// <code>a</code> <code>b </code>c`
+TEST(S015_InlineCode, SpansFollowOneAnotherAndTheLastBacktickStaysText) {
+    const auto r = show(u"`a` `b `c`");
+    EXPECT_EQ(r.runs, (std::vector<StyleRun>{{{1, 1}, Role::InlineCode, 0}, {{5, 2}, Role::InlineCode, 0}}));
+    EXPECT_EQ(r.hidden, (std::vector<HiddenRange>{
+                            {{0, 1}, HideMode::Collapse},
+                            {{2, 1}, HideMode::Collapse},
+                            {{4, 1}, HideMode::Collapse},
+                            {{7, 1}, HideMode::Collapse},
+                        }));
 }

@@ -3,8 +3,12 @@
 #include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/theme.hpp"
 
+#include "line_work.hpp"
+
 #include <gtest/gtest.h>
 
+#include <cstdint>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -494,4 +498,185 @@ TEST(S022_InlineLinks, RevealedLinkDoesNotOverlapEmphasisOrEscapeMarkers) {
                               {{8, 4}, Role::LinkMarker, 0},
                           }));
     }
+}
+
+// Rework of 2026-11-16: a line renders in linear time (steps counted, line_work.hpp). `](` that
+// never becomes a link read on to the end of the line each time: parentheses that do not balance,
+// a title that does not end.
+TEST(S022_InlineLinks, ALineRendersInLinearTime) {
+    using hitokoto::test::halves;
+    using hitokoto::test::LinePattern;
+    using hitokoto::test::of;
+    using hitokoto::test::repeated;
+    for (const auto& pattern : {
+             of("[](", u"[]("),
+             of("[a](", u"[a]("),
+             of("[a](b) ", u"[a](b) "),
+             of("[a](b (", u"[a](b ("),
+             of("[a](<b> (", u"[a](<b> ("),
+             of("[a](b \"", u"[a](b \""),
+             of("[a](b 't' ", u"[a](b 't' "),
+             of("[a](<", u"[a](<"),
+             of("[a]( ", u"[a]( "),
+             of("[a](b\\", u"[a](b\\"),
+             of("![", u"!["),
+             of("![a](b) ", u"![a](b) "),
+             of("[", u"["),
+             of("[[a](", u"[[a]("),
+             of("[a](b)](", u"[a](b)]("),
+             of("[*a*](u) ", u"[*a*](u) "),
+             of("[`a`](u) ", u"[`a`](u) "),
+             of("*a* `b` [c](d) \\* ~~e~~ ", u"*a* `b` [c](d) \\* ~~e~~ "),
+             halves("[ .. ](", u"[", u"]("),
+             halves("[ .. ](x) ", u"[", u"](x) "),
+             halves("[a]((( .. )))", u"[a](((", u")))"),
+             LinePattern{"- [a](b) ", [](std::size_t length) { return u"- " + repeated(u"[a](b) ", length); }},
+             LinePattern{"[*a* `b` ..](u)",
+                         [](std::size_t length) { return u"[" + repeated(u"*a* `b` ", length) + u"](u)"; }},
+             LinePattern{"[a]((b)(b)..)", [](std::size_t length) { return u"[a](" + repeated(u"(b)", length) + u")"; }},
+             LinePattern{"[a](b \"*x* ..\")",
+                         [](std::size_t length) { return u"[a](b \"" + repeated(u"*x* ", length) + u"\")"; }},
+         }) {
+        hitokoto::test::expectLinearWork(pattern);
+    }
+}
+
+// All four inline elements on lines put together at random from pieces of their syntax (a fixed
+// seed): no line takes more than kStepsPerCharacter.
+TEST(S022_InlineLinks, RandomLinesOfSyntaxRenderInLinearTime) {
+    static constexpr std::u16string_view kPieces[] = {
+        u"[a](b)",
+        u"[",
+        u"]",
+        u"](",
+        u"](<",
+        u">",
+        u")",
+        u"(",
+        u" \"t\"",
+        u" 't'",
+        u" (t)",
+        u"\"",
+        u"'",
+        u"!",
+        u"![",
+        u"*",
+        u"**",
+        u"***",
+        u"_",
+        u"__",
+        u"~~",
+        u"`",
+        u"``",
+        u"`a`",
+        u"\\",
+        u"\\\\",
+        u"\\*",
+        u"\\[",
+        u"\\]",
+        u"\\(",
+        u"\\)",
+        u"a",
+        u"b",
+        u" ",
+        u"  ",
+        u"<",
+        u"x*y",
+        u"a_b",
+        u" *a*",
+        u"**b**",
+        u"~~s~~",
+        u"[*a*](u)",
+        u"[`c`](u \"t\")",
+        u"[x](<u v>)",
+        u"[x](u(v)w)",
+    };
+    std::uint32_t state = 20261116U;
+    const auto next = [&state] {
+        state = state * 1664525U + 1013904223U;  // a linear congruential generator: the same lines everywhere
+        return state >> 8;
+    };
+    for (int i = 0; i < 200; ++i) {
+        std::u16string line;
+        // Some lines repeat one short sequence of pieces, the others take each piece at random.
+        const std::size_t period = i % 4 == 0 ? 1 + next() % 4 : 0;
+        std::vector<std::size_t> sequence;
+        for (std::size_t k = 0; k < period; ++k) {
+            sequence.push_back(next() % std::size(kPieces));
+        }
+        for (std::size_t k = 0; line.size() < 4000; ++k) {
+            line += kPieces[period != 0 ? sequence[k % period] : next() % std::size(kPieces)];
+        }
+        const std::uint64_t steps = hitokoto::test::renderSteps(line);
+        ASSERT_LE(steps, hitokoto::test::kStepsPerCharacter * line.size())
+            << "line " << i << ": " << steps << " steps for " << line.size() << " characters";
+    }
+}
+
+// The links are the same as before the rework. Each line checked against commonmark.js 0.31.2 and
+// markdown-it-py 4.2.0 (mode commonmark).
+TEST(S022_InlineLinks, ParenthesesOfADestinationBalanceOrThereIsNoLink) {
+    // <a href="b(c(d)e)f">a</a> [g](h(i)
+    auto r = show(u"[a](b(c(d)e)f) [g](h(i)");
+    ASSERT_EQ(r.links.size(), 1U);
+    EXPECT_EQ(r.links[0].destination, u"b(c(d)e)f");
+    EXPECT_EQ(r.links[0].full, (Span{0, 14}));
+
+    // <a href="(b)">a</a> [c]((d)
+    r = show(u"[a]((b)) [c]((d)");
+    ASSERT_EQ(r.links.size(), 1U);
+    EXPECT_EQ(r.links[0].destination, u"(b)");
+    EXPECT_EQ(r.links[0].full, (Span{0, 8}));
+
+    // <a href="b(c">a</a> <a href="e)">d</a>: an escaped parenthesis neither opens nor closes.
+    r = show(u"[a](b\\(c) [d](e\\))");
+    ASSERT_EQ(r.links.size(), 2U);
+    EXPECT_EQ(r.links[0].destination, u"b(c");
+    EXPECT_EQ(r.links[1].destination, u"e)");
+    EXPECT_EQ(r.links[1].full, (Span{10, 8}));
+
+    // []([]([](<a href="y">x</a>: the three that never close leave the last one a link.
+    r = show(u"[]([]([]([x](y)");
+    ASSERT_EQ(r.links.size(), 1U);
+    EXPECT_EQ(r.links[0].destination, u"y");
+    EXPECT_EQ(r.links[0].full, (Span{9, 6}));
+}
+
+TEST(S022_InlineLinks, ATitleEndsAtItsDelimiterOrThereIsNoLink) {
+    // <a href="b%20c" title="t">a</a> <a href="e" title="f">d</a> <a href="h" title="i">g</a>
+    auto r = show(u"[a](<b c> \"t\") [d](e 'f') [g](h (i))");
+    ASSERT_EQ(r.links.size(), 3U);
+    EXPECT_EQ(r.links[0].destination, u"b c");
+    EXPECT_EQ(r.links[0].title, u"t");
+    EXPECT_EQ(r.links[1].destination, u"e");
+    EXPECT_EQ(r.links[1].title, u"f");
+    EXPECT_EQ(r.links[2].destination, u"h");
+    EXPECT_EQ(r.links[2].title, u"i");
+    EXPECT_EQ(r.links[2].full, (Span{26, 10}));
+
+    // [a](b "t" <a href="d">c</a>: a title without `)` behind it.
+    r = show(u"[a](b \"t\" [c](d)");
+    ASSERT_EQ(r.links.size(), 1U);
+    EXPECT_EQ(r.links[0].destination, u"d");
+    EXPECT_EQ(r.links[0].full, (Span{10, 6}));
+
+    // [a](b (t <a href="d">c</a>: a title in parentheses that does not end before the next link.
+    r = show(u"[a](b (t [c](d)");
+    ASSERT_EQ(r.links.size(), 1U);
+    EXPECT_EQ(r.links[0].destination, u"d");
+    EXPECT_EQ(r.links[0].full, (Span{9, 6}));
+}
+
+// <a href="u"><em>a</em></a> <em>b <a href="d">c</a> e</em>
+TEST(S022_InlineLinks, EmphasisInsideALinkAndAroundALink) {
+    const auto r = show(u"[*a*](u) *b [c](d) e*");
+    ASSERT_EQ(r.links.size(), 2U);
+    EXPECT_EQ(r.links[0].destination, u"u");
+    EXPECT_EQ(r.links[1].destination, u"d");
+    EXPECT_EQ(r.inlineStyles, (std::vector<InlineStyleRun>{
+                                  {{2, 1}, InlineStyle::Italic},
+                                  {{10, 2}, InlineStyle::Italic},
+                                  {{13, 1}, InlineStyle::Italic},
+                                  {{18, 2}, InlineStyle::Italic},
+                              }));
 }

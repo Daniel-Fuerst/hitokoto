@@ -2,6 +2,7 @@
 #include "hitokoto/core/markdown.hpp"
 
 #include "block_rules.hpp"
+#include "inline_steps.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -10,6 +11,8 @@
 namespace hitokoto::core {
 namespace {
 
+thread_local std::uint64_t inlineStepCount = 0;
+
 /// Runs of inline elements (every run appended after the block element ran, from index
 /// `firstInlineRun` on) take precedence over the block element's runs on the same characters.
 /// The registry tells them apart by position, so a new inline element needs no new role here.
@@ -17,6 +20,8 @@ void splitAroundInlineRuns(LineRender& out, std::size_t firstInlineRun) {
     if (firstInlineRun >= out.runs.size()) {
         return;  // no inline runs
     }
+    detail::InlineSteps steps;
+    steps.add(out.runs.size());
     std::vector<StyleRun> inlineRuns(out.runs.begin() + static_cast<std::ptrdiff_t>(firstInlineRun), out.runs.end());
     std::sort(inlineRuns.begin(), inlineRuns.end(),
               [](const StyleRun& left, const StyleRun& right) { return left.span.start < right.span.start; });
@@ -25,6 +30,7 @@ void splitAroundInlineRuns(LineRender& out, std::size_t firstInlineRun) {
         const auto& run = out.runs[i];
         std::uint32_t start = run.span.start;
         for (const auto& inlineRun : inlineRuns) {
+            steps.add();
             if (inlineRun.span.end() <= start || inlineRun.span.start >= run.span.end()) {
                 continue;
             }
@@ -53,6 +59,8 @@ void carveLinkTextAroundOtherRuns(LineRender& out) {
     if (!hasLinkText) {
         return;
     }
+    detail::InlineSteps steps;
+    steps.add(2 * out.runs.size());
     std::vector<StyleRun> otherRuns;
     std::vector<StyleRun> linkTextRuns;
     for (const auto& run : out.runs) {
@@ -68,6 +76,7 @@ void carveLinkTextAroundOtherRuns(LineRender& out) {
     for (const auto& run : linkTextRuns) {
         std::uint32_t start = run.span.start;
         for (const auto& other : otherRuns) {
+            steps.add();
             if (other.span.end() <= start || other.span.start >= run.span.end()) {
                 continue;
             }
@@ -91,6 +100,8 @@ void carveRunsAroundHidden(LineRender& out) {
     if (out.hidden.empty()) {
         return;
     }
+    detail::InlineSteps steps;
+    steps.add(out.hidden.size() + out.runs.size());
     if (out.hidden.size() > 1) {
         const auto byStart = [](const HiddenRange& left, const HiddenRange& right) {
             return left.span.start < right.span.start;
@@ -104,6 +115,7 @@ void carveRunsAroundHidden(LineRender& out) {
     }
     const bool overlap = std::any_of(out.runs.begin(), out.runs.end(), [&](const StyleRun& run) {
         return std::any_of(out.hidden.begin(), out.hidden.end(), [&](const HiddenRange& hidden) {
+            steps.add();
             return hidden.span.start < run.span.end() && run.span.start < hidden.span.end();
         });
     });
@@ -114,6 +126,7 @@ void carveRunsAroundHidden(LineRender& out) {
     for (const auto& run : out.runs) {
         std::uint32_t start = run.span.start;
         for (const auto& hidden : out.hidden) {
+            steps.add();
             if (hidden.span.end() <= start || hidden.span.start >= run.span.end()) {
                 continue;
             }
@@ -133,6 +146,8 @@ void carveInlineStylesAroundHidden(LineRender& out) {
     if (out.hidden.empty() || out.inlineStyles.empty()) {
         return;
     }
+    detail::InlineSteps steps;
+    steps.add(out.hidden.size() + out.inlineStyles.size());
     const auto byStart = [](const HiddenRange& left, const HiddenRange& right) {
         return left.span.start < right.span.start;
     };
@@ -141,6 +156,7 @@ void carveInlineStylesAroundHidden(LineRender& out) {
     }
     const bool overlap = std::any_of(out.inlineStyles.begin(), out.inlineStyles.end(), [&](const InlineStyleRun& run) {
         return std::any_of(out.hidden.begin(), out.hidden.end(), [&](const HiddenRange& hidden) {
+            steps.add();
             return hidden.span.start < run.span.end() && run.span.start < hidden.span.end();
         });
     });
@@ -151,6 +167,7 @@ void carveInlineStylesAroundHidden(LineRender& out) {
     for (const auto& run : out.inlineStyles) {
         std::uint32_t start = run.span.start;
         for (const auto& hidden : out.hidden) {
+            steps.add();
             if (hidden.span.end() <= start || hidden.span.start >= run.span.end()) {
                 continue;
             }
@@ -188,6 +205,14 @@ void renderMarkerLine(std::u16string_view line, bool revealed, LineRender& out) 
 }
 
 }  // namespace
+
+void detail::addInlineSteps(std::uint64_t steps) noexcept {
+    inlineStepCount += steps;
+}
+
+std::uint64_t inlineSteps() noexcept {
+    return inlineStepCount;
+}
 
 /// What a line is, decided from the line, the state entering it and the next line (ADR 0006).
 struct ElementRegistry::Classified {
@@ -497,6 +522,7 @@ LineRender ElementRegistry::render(std::u16string_view line, const LineContext& 
                         if (!inSpan(out.opaqueSpans, last) && !inHidden(out.hidden, last)) {
                             std::uint32_t bsRun = 0;
                             for (std::uint32_t p = length; p > contentFirst && line[p - 1] == u'\\'; --p) {
+                                detail::addInlineSteps(out.opaqueSpans.size() + 1);
                                 if (inSpan(out.opaqueSpans, p - 1)) {
                                     break;
                                 }

@@ -4,6 +4,8 @@
 // Inside inline code spans and fenced code blocks backslashes remain literal.
 #include "hitokoto/core/markdown.hpp"
 
+#include "../inline_steps.hpp"
+
 #include <algorithm>
 #include <vector>
 
@@ -20,15 +22,19 @@ public:
     [[nodiscard]] std::u16string_view triggerCharacters() const noexcept override { return u"\\"; }
 
     void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
+        detail::InlineSteps steps;
+        steps.add(line.size());
         std::vector<bool> codeCharacters(line.size(), false);
         for (const auto& span : out.opaqueSpans) {
             if (span.start < line.size()) {
                 const auto end = std::min<std::size_t>(span.end(), line.size());
+                steps.add(end - span.start);
                 std::fill(codeCharacters.begin() + static_cast<std::ptrdiff_t>(span.start),
                           codeCharacters.begin() + static_cast<std::ptrdiff_t>(end), true);
             }
         }
         for (const auto& h : out.hidden) {
+            steps.add(h.span.length);
             std::fill(codeCharacters.begin() + static_cast<std::ptrdiff_t>(h.span.start),
                       codeCharacters.begin() + static_cast<std::ptrdiff_t>(h.span.end()), true);
         }
