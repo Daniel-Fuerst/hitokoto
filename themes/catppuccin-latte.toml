@@ -1,0 +1,83 @@
+# hitokoto theme "Catppuccin Latte" - the soothing pastel light flavour of Catppuccin:
+#   Base     #eff1f5   Mantle    #e6e9ef   Crust     #dce0e8   Surface0  #ccd0da
+#   Text     #4c4f69   Subtext1  #5c5f77   Subtext0  #6c6f85   Overlay1  #8c8fa1
+#   Mauve    #8839ef   Blue      #1e66f5   Teal      #179299   Peach     #fe640b
+# Warm daylight paper tones keep body text crisp (WCAG AA) while pastel mauve,
+# sapphire and teal provide calm accents across the editor and UI elements.
+#
+# Install: copy to ~/.config/hitokoto/theme.toml (or start with --theme path/to/this/file)
+name = "Catppuccin Latte"
+base = "light"
+
+[colors]
+primary        = "#8839ef"   # Mauve: focus rings, default buttons
+secondary      = "#179299"   # Teal: less prominent highlights
+accent         = "#8839ef"   # Mauve: active states, menu highlights, scroll hover
+background     = "#eff1f5"   # Base
+surface        = "#e6e9ef"   # Mantle: menus, dialogs, toolbars, raised surfaces
+border         = "#ccd0da"   # Surface0: separators and outlines
+text           = "#4c4f69"   # Text
+text-muted     = "#6c6f85"   # Subtext0
+selection      = "#ccd0da"   # Surface0
+selection-text = "#4c4f69"   # Text
+marker         = "#8c8fa1"   # Overlay1: revealed Markdown syntax markers
+bullet         = "#8839ef"   # Mauve
+
+[fonts]
+ui-family     = ""
+ui-size       = 0
+editor-family = ""
+editor-size   = 12
+
+[headings]
+h1-scale = 1.9
+h2-scale = 1.55
+h3-scale = 1.3
+h4-scale = 1.15
+h5-scale = 1.05
+h6-scale = 1.0
+weight   = 700
+
+[layout]
+radius           = 6
+spacing          = 8
+editor-padding   = 32
+editor-max-width = 760
+
+[buttons]
+style = "filled"
+
+[code-block]
+background   = "#e6e9ef"   # Mantle
+border       = "#ccd0da"   # Surface0
+border-width = 1
+badge-text   = "#6c6f85"   # Subtext0
+
+[inline-code]
+background   = "#dce0e8"   # Crust pill
+text         = "#7c2ae8"   # darkened Mauve (AA on Crust)
+border-width = 0
+
+[emphasis]
+italic-text        = "#5c5f77"   # Subtext1
+strikethrough-text = "#6c6f85"   # Subtext0
+
+[table]
+header-background = "#e6e9ef"   # Mantle
+stripe-background = "#eaecef"   # subtle alternating row between Base and Mantle
+
+[link]
+text = "#1856d6"   # deepened Latte Blue (AA on Base)
+
+[properties]
+unsupported-text  = "#d20f39"   # Red
+chip-background   = "#dce0e8"   # Crust
+chip-border       = "#ccd0da"   # Surface0
+chip-border-width = 1
+
+[find]
+no-match-background = "#f5d5dd"   # soft Latte Red tint
+current-background  = "#f5d996"   # warm Latte Yellow tint
+current-text        = "#4c4f69"   # Text
+match-background    = "#fae8be"   # pale Latte Yellow tint
+match-text          = "#4c4f69"   # Text

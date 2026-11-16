@@ -1,0 +1,82 @@
+# hitokoto theme "Catppuccin Macchiato" - the rich deep-indigo flavour of Catppuccin:
+#   Base     #24273a   Mantle    #1e2030   Crust     #181926   Surface0  #363a4f   Surface1  #494d64
+#   Text     #cad3f5   Subtext1  #b8c0e0   Subtext0  #a5adcb   Overlay1  #8087a2
+#   Mauve    #c6a0f6   Blue      #8aadf4   Teal      #8bd5ca   Flamingo  #f0c6c6   Yellow    #eed49f
+# Deep indigo neutrals paired with gentle pastel accents for distraction-free writing.
+#
+# Install: copy to ~/.config/hitokoto/theme.toml (or start with --theme path/to/this/file)
+name = "Catppuccin Macchiato"
+base = "dark"
+
+[colors]
+primary        = "#c6a0f6"   # Mauve: focus rings, default buttons
+secondary      = "#8bd5ca"   # Teal: less prominent highlights
+accent         = "#8aadf4"   # Blue: active states, menu highlights, scroll hover
+background     = "#24273a"   # Base
+surface        = "#1e2030"   # Mantle: menus, dialogs, toolbars, raised surfaces
+border         = "#494d64"   # Surface1: separators and outlines
+text           = "#cad3f5"   # Text
+text-muted     = "#a5adcb"   # Subtext0
+selection      = "#494d64"   # Surface1
+selection-text = "#cad3f5"   # Text
+marker         = "#8087a2"   # Overlay1: revealed Markdown syntax markers
+bullet         = "#c6a0f6"   # Mauve
+
+[fonts]
+ui-family     = ""
+ui-size       = 0
+editor-family = ""
+editor-size   = 12
+
+[headings]
+h1-scale = 1.9
+h2-scale = 1.55
+h3-scale = 1.3
+h4-scale = 1.15
+h5-scale = 1.05
+h6-scale = 1.0
+weight   = 700
+
+[layout]
+radius           = 6
+spacing          = 8
+editor-padding   = 32
+editor-max-width = 760
+
+[buttons]
+style = "filled"
+
+[code-block]
+background   = "#1e2030"   # Mantle
+border       = "#363a4f"   # Surface0
+border-width = 1
+badge-text   = "#a5adcb"   # Subtext0
+
+[inline-code]
+background   = "#363a4f"   # Surface0 pill
+text         = "#f0c6c6"   # Flamingo (AA on Surface0)
+border-width = 0
+
+[emphasis]
+italic-text        = "#b8c0e0"   # Subtext1
+strikethrough-text = "#939ab7"   # Overlay2
+
+[table]
+header-background = "#1e2030"   # Mantle
+stripe-background = "#212435"   # subtle alternating row between Base and Mantle
+
+[link]
+text = "#8aadf4"   # Blue
+
+[properties]
+unsupported-text  = "#f5a97f"   # Peach
+chip-background   = "#363a4f"   # Surface0
+chip-border       = "#494d64"   # Surface1
+chip-border-width = 1
+
+[find]
+no-match-background = "#533248"   # muted Macchiato Red tint
+current-background  = "#eed49f"   # Yellow
+current-text        = "#181926"   # Crust
+match-background    = "#494d64"   # Surface1
+match-text          = "#cad3f5"   # Text
