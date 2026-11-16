@@ -1,6 +1,7 @@
 # ADR 0013: The Windows package uses the Qt of the other platforms and follows Qt's advisories
 
-- **Status:** Proposed (Claude, 2026-11-16, on Armin's decision of the same day)
+- **Status:** Accepted (Armin, 2026-11-16); proposed by Claude on 2026-11-16, on Armin's decision
+  of the same day
 - **Date:** 2026-11-16
 - **Deciders:** Armin
 

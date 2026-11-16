@@ -279,7 +279,7 @@ cleanly.
 
 ## Rework on 2026-11-16
 
-Branch `agents/s037-windows-qt-current`, from main a1a75a8 (ADR 0013, Proposed).
+Branch `agents/s037-windows-qt-current`, from main a1a75a8 (ADR 0013, Accepted on 2026-11-16).
 
 - Windows built, tested and packaged with Qt 6.8.3, because aqtinstall 3.3.0, its newest release,
   cannot install Qt 6.11 or newer for Windows. The open-source Qt 6.8 gets no binary patch release
