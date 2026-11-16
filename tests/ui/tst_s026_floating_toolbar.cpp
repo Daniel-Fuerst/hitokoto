@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S026: floating toolbar on the right-hand side of the editor.
 #include "floating_toolbar.hpp"
+#include "hitokoto/core/theme.hpp"
+#include "settings_menu.hpp"
 #include "ui_test_support.hpp"
 
 #include <QAbstractItemModel>
+#include <QApplication>
+#include <QGuiApplication>
 #include <QPlainTextEdit>
 #include <QScrollBar>
 #include <QTableView>
@@ -39,19 +43,38 @@ private slots:
 
         QToolButton* tableBtn = toolbarButton(f.editor(), "createTableButton");
         QToolButton* codeBtn = toolbarButton(f.editor(), "createInlineCodeButton");
+        QToolButton* settingsBtn = toolbarButton(f.editor(), "openSettingsButton");
         QVERIFY(tableBtn != nullptr);
         QVERIFY(codeBtn != nullptr);
+        QVERIFY(settingsBtn != nullptr);
         QVERIFY(tableBtn->isVisible());
         QVERIFY(codeBtn->isVisible());
+        QVERIFY(settingsBtn->isVisible());
         QCOMPARE(tableBtn->focusPolicy(), Qt::NoFocus);
         QCOMPARE(codeBtn->focusPolicy(), Qt::NoFocus);
+        QCOMPARE(settingsBtn->focusPolicy(), Qt::NoFocus);
         QVERIFY(!tableBtn->toolTip().isEmpty());
         QVERIFY(!codeBtn->toolTip().isEmpty());
+        QVERIFY(!settingsBtn->toolTip().isEmpty());
         QVERIFY(!tableBtn->accessibleName().isEmpty());
         QVERIFY(!codeBtn->accessibleName().isEmpty());
-        // Vertical layout: inline-code button sits below table button.
+        QVERIFY(!settingsBtn->accessibleName().isEmpty());
+        // Vertical layout: inline-code button sits below table button, settings button below inline-code.
         QVERIFY(codeBtn->y() > tableBtn->y());
         QCOMPARE(codeBtn->x(), tableBtn->x());
+        QVERIFY(settingsBtn->y() > codeBtn->y());
+        QCOMPARE(settingsBtn->x(), tableBtn->x());
+
+        f.editor()->setFocus();
+        QSignalSpy settingsSpy(bar, &ui::FloatingToolbar::openSettingsRequested);
+        QTest::mouseClick(settingsBtn, Qt::LeftButton);
+        f.settle();
+        QCOMPARE(settingsSpy.count(), 1);
+        QVERIFY(f.editor()->hasFocus());
+        // Close the settings menu again before verifying toolbar geometry during scroll/resize.
+        QTest::mouseClick(settingsBtn, Qt::LeftButton);
+        f.settle();
+        QVERIFY(!f.editor()->settingsMenu()->isVisible());
 
         const auto checkCenteredOnRight = [&] {
             const int expectedY = (f.editor()->height() - bar->height()) / 2;
@@ -197,13 +220,17 @@ private slots:
 
         QToolButton* tableBtn = toolbarButton(f.editor(), "createTableButton");
         QToolButton* codeBtn = toolbarButton(f.editor(), "createInlineCodeButton");
+        QToolButton* settingsBtn = toolbarButton(f.editor(), "openSettingsButton");
         QVERIFY(tableBtn != nullptr);
         QVERIFY(codeBtn != nullptr);
+        QVERIFY(settingsBtn != nullptr);
         QCOMPARE(tableBtn->size(), QSize(34, 34));
         QCOMPARE(codeBtn->size(), QSize(34, 34));
+        QCOMPARE(settingsBtn->size(), QSize(34, 34));
         QCOMPARE(bar->width(), 34 + 2 * 6);
-        QCOMPARE(bar->height(), 2 * 34 + 8 + 2 * 6);
+        QCOMPARE(bar->height(), 3 * 34 + 2 * 8 + 2 * 6);
         QCOMPARE(codeBtn->y() - tableBtn->y() - tableBtn->height(), 8);
+        QCOMPARE(settingsBtn->y() - codeBtn->y() - codeBtn->height(), 8);
 
         const QImage img = bar->grab().toImage();
         QCOMPARE(img.pixelColor(bar->width() / 2, 4), QColor(background.r, background.g, background.b, background.a));

@@ -52,7 +52,8 @@ foreach(t IN ITEMS
         tst_s028_find_in_file
         tst_s031_paste_tables
         tst_s033_soft_line_breaks
-        tst_s038_subtle_menu_bar)
+        tst_s038_subtle_menu_bar
+        tst_s039_settings_menu)
     hitokoto_ui_test(${t})
 endforeach()
 

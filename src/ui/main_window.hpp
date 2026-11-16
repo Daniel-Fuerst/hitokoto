@@ -4,6 +4,7 @@
 #include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/theme.hpp"
 #include "options.hpp"
+#include "theme_manager.hpp"
 
 #include <QMainWindow>
 
@@ -49,6 +50,7 @@ public:
     void setOptions(const Options& options);
 
     void applyTheme(const core::Theme& theme);
+    void applyThemeEntry(const ThemeEntry& entry);
     void showMessage(const QString& title, const QString& text);
 
     /// File actions; they ask about unsaved changes first where needed.
@@ -63,6 +65,7 @@ public:
 
 signals:
     void reloadThemeRequested();
+    void themeEntryChosen(const hitokoto::ui::ThemeEntry& entry);
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -72,6 +75,7 @@ private:
     void updateTitle();
     [[nodiscard]] QString documentName() const;
     bool saveBlocking(const QString& path);
+    void reportThemeNotSaved(const QString& reason);
 
     EditorWidget* editor_;
     DocumentSession* session_;

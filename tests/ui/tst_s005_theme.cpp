@@ -3,6 +3,8 @@
 #include "theme_manager.hpp"
 #include "ui_test_support.hpp"
 
+#include <QFileInfo>
+
 using namespace hitokoto;
 
 class tst_s005_theme : public QObject {
@@ -66,6 +68,62 @@ private slots:
         QVERIFY(light != dark);
         const QPoint corner(light.width() - 5, light.height() - 5);
         QVERIFY(light.pixelColor(corner).lightness() > dark.pixelColor(corner).lightness());
+    }
+
+    void themeSelectionPersistsAcrossThemeManagerRestart() {
+        test::Fixture f;
+        const QString customPath = f.writeFile(QStringLiteral("ember.toml"),
+                                               "name = \"Ember\"\n"
+                                               "base = \"light\"\n\n"
+                                               "[colors]\n"
+                                               "background = \"#fdf3e7\"\n"
+                                               "accent = \"#d9480f\"\n");
+        const QString defaultPath = f.dir.filePath(QStringLiteral("theme.toml"));
+
+        {
+            ui::ThemeManager themes(*qApp, defaultPath);
+            QObject::connect(&themes, &ui::ThemeManager::themeChanged, f.window.get(), &ui::MainWindow::applyTheme);
+            themes.reload();
+            themes.selectThemeFile(customPath);
+            QCOMPARE(QString::fromStdString(themes.current().name), QStringLiteral("Ember"));
+            QVERIFY(QFile::exists(f.dir.filePath(QStringLiteral("config.toml"))));
+        }
+
+        {
+            ui::ThemeManager restarted(*qApp, defaultPath);
+            QObject::connect(&restarted, &ui::ThemeManager::themeChanged, f.window.get(), &ui::MainWindow::applyTheme);
+            restarted.reload();
+            QCOMPARE(QString::fromStdString(restarted.current().name), QStringLiteral("Ember"));
+            QCOMPARE(QApplication::palette().color(QPalette::Base), QColor(QStringLiteral("#fdf3e7")));
+            restarted.selectBuiltinTheme(core::ColorScheme::Dark);
+        }
+
+        {
+            ui::ThemeManager restartedDark(*qApp, defaultPath);
+            restartedDark.reload();
+            QCOMPARE(restartedDark.current(), core::builtinTheme(core::ColorScheme::Dark));
+        }
+
+        {
+            // Explicit CLI --theme override takes precedence without overwriting config.toml.
+            const QString cliPath = f.writeFile(QStringLiteral("cli-theme.toml"),
+                                                "name = \"CLI Custom\"\n"
+                                                "base = \"light\"\n\n"
+                                                "[colors]\n"
+                                                "accent = \"#123456\"\n");
+            ui::ThemeManager cliThemes(*qApp, cliPath);
+            cliThemes.setConfigDir(f.dir.path());
+            cliThemes.setCliThemeOverride(true);
+            cliThemes.reload();
+            QCOMPARE(QString::fromStdString(cliThemes.current().name), QStringLiteral("CLI Custom"));
+            QCOMPARE(cliThemes.activeThemePath(), QFileInfo(cliPath).absoluteFilePath());
+
+            const auto saved = ui::ThemeManager::loadSavedThemeEntry(f.dir.path());
+            QVERIFY(saved.has_value());
+            if (saved.has_value()) {
+                QCOMPARE(saved->builtinScheme, std::optional<core::ColorScheme>(core::ColorScheme::Dark));
+            }
+        }
     }
 };
 

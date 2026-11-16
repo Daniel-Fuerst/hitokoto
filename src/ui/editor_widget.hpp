@@ -6,7 +6,9 @@
 
 #include "block_layout.hpp"
 #include "block_styler.hpp"
+#include "hitokoto/core/settings.hpp"
 #include "hitokoto/core/theme.hpp"
+#include "theme_manager.hpp"
 
 #include <QPointF>
 #include <QTextBlock>
@@ -25,6 +27,7 @@ namespace hitokoto::ui {
 
 class FloatingToolbar;
 class PropertiesEmbedder;
+class SettingsMenu;
 class SmoothScroller;
 class TableEmbedder;
 
@@ -84,6 +87,16 @@ public:
     [[nodiscard]] QTextCharFormat formatAt(const QPoint& pos) const;
     /// S026: the floating toolbar on the right-hand side of the editor.
     [[nodiscard]] FloatingToolbar* floatingToolbar() const noexcept { return toolbar_; }
+    /// Non-modal floating settings menu anchored beside the floating toolbar.
+    [[nodiscard]] SettingsMenu* settingsMenu() const noexcept { return settingsMenu_; }
+    void toggleSettingsMenu();
+    void setSettingsMenuOpen(bool open);
+    void setThemeConfigDir(const QString& dir);
+    [[nodiscard]] const QString& themeConfigDir() const noexcept { return themeConfigDir_; }
+    void setActiveThemePath(const QString& path);
+    [[nodiscard]] const QString& activeThemePath() const noexcept { return activeThemePath_; }
+    [[nodiscard]] const core::Theme& currentTheme() const noexcept { return currentTheme_; }
+    void refreshAvailableThemes();
     /// S026: inserts a 2-column × 1-body-row table and focuses its first header cell.
     void insertTable();
     /// S026: wraps the selection in single backticks, or inserts `` `` `` with the caret inside.
@@ -109,6 +122,11 @@ public:
 
 signals:
     void painted();
+    void themeEntrySelected(const hitokoto::ui::ThemeEntry& entry);
+    void savedThemeLoaded(const hitokoto::core::Theme& theme);
+    void settingsLoaded(const hitokoto::core::Settings& settings);
+    /// S039: config.toml was read with problems (one line each); emitted once per setThemeConfigDir.
+    void settingsProblemsFound(const QString& path, const QStringList& problems);
 
 protected:
     bool viewportEvent(QEvent* event) override;
@@ -206,7 +224,11 @@ private:
     std::unique_ptr<TableEmbedder> tables_;
     std::unique_ptr<PropertiesEmbedder> properties_;
     FloatingToolbar* toolbar_ = nullptr;
+    SettingsMenu* settingsMenu_ = nullptr;
     SmoothScroller* verticalScroller_ = nullptr;
+    QString themeConfigDir_;
+    QString activeThemePath_;
+    core::Theme currentTheme_{core::builtinTheme(core::ColorScheme::Light)};
     bool smoothScrolling_ = true;
     bool frontMatterAsProperties_ = true;
     double padding_ = 0;

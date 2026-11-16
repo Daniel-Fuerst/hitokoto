@@ -4,13 +4,15 @@
 - **Basis:** User request and confirmation on 2026-11-03: a vertical floating toolbar centered on
   the right edge of the editor with two entries: "Create new Table" (inserts a 2-column × 1-body-row
   table and focuses the first header cell) and "Create inline-codeblock" (wraps the selection in
-  backticks or inserts `` `` `` with the caret inside).
+  backticks or inserts `` `` `` with the caret inside). Extended on `feature/settings` (2026-11-15,
+  specified in [S039](039-settings-menu.md)) with an "Open settings" entry with a settings icon that
+  toggles the non-modal floating `SettingsMenu` flyout (theme selection and `config.toml` persistence).
 
 ## Story
 
 As a writer, I want a floating toolbar on the right-hand side of the editor with buttons to create a
-new table and an inline code span, so that I can insert them with one click without leaving the
-editor.
+new table, create an inline code span, and open settings, so that I can trigger them with one click
+without leaving the editor.
 
 ## Acceptance scenarios
 
@@ -19,8 +21,8 @@ editor.
 - Then a vertical floating toolbar is visible, centered vertically along the right edge of the
   editor at `toolbar.margin` from the edge
 - And it stays in place when the document is scrolled or the window is resized
-- And its buttons have tooltips and accessible names ("Create new table", "Create inline code") and
-  do not steal keyboard focus from the editor when clicked
+- And its buttons have tooltips and accessible names ("Create new table", "Create inline code",
+  "Open settings") and do not steal keyboard focus from the editor when clicked
 
 **Scenario: creating a new table from the toolbar**
 - Given the caret on an empty line in the editor
@@ -43,6 +45,18 @@ editor.
 - Given selected text in the editor
 - When I click "Create inline-codeblock" in the floating toolbar
 - Then the selected text is wrapped in single backticks (`` `selected` ``) in one undo step
+
+**Scenario: opening and closing the settings flyout from the toolbar**
+- Given an open editor window
+- When I click "Open settings" in the floating toolbar
+- Then the non-modal floating `SettingsMenu` flyout ([S039](039-settings-menu.md)) opens to the
+  left of the floating toolbar, showing an **Appearance** section with `themeSelector` (`QComboBox`)
+  and a subtle version hint (`settingsVersionLabel`) at the bottom, persisting the chosen theme to
+  `config.toml` across restarts
+- And the "Open settings" button appears checked while the editor keeps keyboard focus and typing
+  continues uninterrupted
+- When I press `Escape` in the editor or click "Open settings" again
+- Then the `SettingsMenu` closes and the button is unchecked
 
 **Scenario: theming baseline**
 - Given a theme with `[toolbar]` tokens (`background`, `border`, `border-width`, `radius`,

@@ -46,10 +46,11 @@ story ID (see "Conventions").
 | 37 | [S036](036-debian-package.md) | Every version gets a Debian package for trixie | S030, S034, S035 | M | Done |
 | 38 | [S037](037-windows-msi.md) | Every version gets a Windows installer (MSI) | S030, S035, S036 | L | In review |
 | 39 | [S038](038-subtle-menu-bar.md) | Subtle top menu bar without a dividing line | S005 | S | In review |
-| 40 | [S007](007-large-files.md) | 10 MB files open within budget and type without lag | S006 | L | Partly done |
-| 41 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
-| 42 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |
-| 43 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | Open |
+| 40 | [S039](039-settings-menu.md) | Settings menu and persistent configuration | S005, S026 | M | In review |
+| 41 | [S007](007-large-files.md) | 10 MB files open within budget and type without lag | S006 | L | Partly done |
+| 42 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
+| 43 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |
+| 44 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | Open |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 

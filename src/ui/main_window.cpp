@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "main_window.hpp"
 
+#include "hitokoto/core/settings.hpp"
+#include "theme_applier.hpp"
+
+#include <QApplication>
+#include <QCoreApplication>
+
 #include "application_icon.hpp"
 #include "document_session.hpp"
 #include "editor_widget.hpp"
@@ -23,6 +29,7 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <filesystem>
 
 namespace hitokoto::ui {
 namespace {
@@ -49,6 +56,19 @@ MainWindow::MainWindow(const core::ElementRegistry& registry, QWidget* parent)
     menuBar_ = new MenuBar(this);
     setMenuBar(menuBar_);
     createMenus();
+    connect(editor_, &EditorWidget::themeEntrySelected, this, &MainWindow::applyThemeEntry);
+    connect(editor_, &EditorWidget::savedThemeLoaded, this, &MainWindow::applyTheme);
+    // S039: problems of config.toml, shown once when it is read, like a broken theme.
+    connect(editor_, &EditorWidget::settingsProblemsFound, this,
+            [this](const QString& path, const QStringList& problems) {
+                showMessage(tr("Settings error"), tr("%1 has errors; the settings concerned keep their defaults.\n\n%2")
+                                                      .arg(path, problems.join(QLatin1Char('\n'))));
+            });
+    connect(editor_, &EditorWidget::settingsLoaded, this, [this](const core::Settings& settings) {
+        options_.reportBlankLinesAdded = settings.reportBlankLinesAdded;
+        options_.frontMatterAsProperties = settings.frontMatterAsProperties;
+        options_.smoothScrolling = settings.smoothScrolling;
+    });
 
     askSave_ = [this](const QString& name) {
         const auto answer =
@@ -62,6 +82,7 @@ MainWindow::MainWindow(const core::ElementRegistry& registry, QWidget* parent)
     };
     message_ = [this](const QString& title, const QString& text) {
         auto* box = new QMessageBox(QMessageBox::Warning, title, text, QMessageBox::Ok, this);
+        box->setTextFormat(Qt::PlainText);
         box->setAttribute(Qt::WA_DeleteOnClose);
         box->open();
     };
@@ -160,6 +181,45 @@ void MainWindow::applyTheme(const core::Theme& theme) {
     menuBar_->applyStyle(core::menuBarStyle(theme));
     editor_->applyTheme(theme);
     find_->applyTheme(theme);
+}
+
+void MainWindow::applyThemeEntry(const ThemeEntry& entry) {
+    const auto scheme = ThemeManager::systemScheme();
+    core::ThemeLoadResult result{core::builtinTheme(entry.builtinScheme.value_or(scheme)), false, {}};
+    if (!entry.builtinScheme.has_value()) {
+        result = ThemeManager::loadThemeFile(entry.path, scheme);
+        if (result.usedFallback) {
+            const QStringList lines = ThemeManager::formatDiagnostics(result);
+            showMessage(tr("Theme error"),
+                        tr("Could not load \"%1\":\n%2").arg(entry.path, lines.join(QLatin1Char('\n'))));
+        }
+    }
+    if (auto* app = qobject_cast<QApplication*>(QCoreApplication::instance())) {
+        applyThemeToApplication(*app, result.theme);
+    }
+    applyTheme(result.theme);
+    if (result.usedFallback) {
+        editor_->setActiveThemePath(QString());
+    } else {
+        QString error;
+        if (!ThemeManager::saveSelectedTheme(editor_->themeConfigDir(), entry, &error)) {
+            reportThemeNotSaved(error);
+        }
+        emit themeEntryChosen(entry);
+    }
+}
+
+void MainWindow::reportThemeNotSaved(const QString& reason) {
+    const QString path = ThemeManager::configFilePath(editor_->themeConfigDir());
+    QString text = tr("The theme is used for now, but it could not be saved in %1: %2").arg(path, reason);
+    if (!path.isEmpty()) {
+        const QStringList problems = ThemeManager::formatSettingsDiagnostics(
+            core::loadSettingsFile(std::filesystem::path(path.toStdU16String())));
+        if (!problems.isEmpty()) {
+            text += QStringLiteral("\n\n") + problems.join(QLatin1Char('\n'));
+        }
+    }
+    showMessage(tr("Theme not saved"), text);
 }
 
 void MainWindow::showMessage(const QString& title, const QString& text) {

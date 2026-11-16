@@ -4,17 +4,21 @@
 #include "floating_toolbar.hpp"
 #include "properties_embedder.hpp"
 #include "qt_bridge.hpp"
+#include "settings_menu.hpp"
 #include "smooth_scroller.hpp"
 #include "table_embedder.hpp"
 #include "table_paste.hpp"
+#include "theme_applier.hpp"
 
 #include <QAction>
 #include <QApplication>
 #include <QBuffer>
 #include <QClipboard>
 #include <QContextMenuEvent>
+#include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDropEvent>
+#include <QFileInfo>
 #include <QFontMetricsF>
 #include <QGuiApplication>
 #include <QHelpEvent>
@@ -39,6 +43,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <memory>
 #include <utility>
 
@@ -146,10 +151,17 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     connect(layout_, &BlockLayout::documentSizeChanged, properties_.get(), &PropertiesEmbedder::reposition);
     connect(layout_, &BlockLayout::blocksGoneUnreported, properties_.get(), &PropertiesEmbedder::forgetAll);
 
-    // S026: floating toolbar on the right-hand side.
+    // S026: floating toolbar on the right-hand side and its settings flyout.
+    themeConfigDir_ = ThemeManager::defaultConfigDir();
     toolbar_ = new FloatingToolbar(this);
+    settingsMenu_ = new SettingsMenu(this);
     connect(toolbar_, &FloatingToolbar::createTableRequested, this, &EditorWidget::insertTable);
     connect(toolbar_, &FloatingToolbar::createInlineCodeRequested, this, &EditorWidget::insertInlineCode);
+    connect(toolbar_, &FloatingToolbar::openSettingsRequested, this, &EditorWidget::toggleSettingsMenu);
+    connect(settingsMenu_, &SettingsMenu::themeEntrySelected, this, [this](const ThemeEntry& entry) {
+        activeThemePath_ = entry.builtinScheme.has_value() ? QString() : QFileInfo(entry.path).absoluteFilePath();
+        emit themeEntrySelected(entry);
+    });
     positionToolbar();
 }
 
@@ -360,7 +372,12 @@ void EditorWidget::applyTheme(const core::Theme& theme) {
     properties_->setAvailableWidth(availableTableWidth());
     properties_->setLook(styler_->formats().properties(), styler_->formats().propertiesFont(),
                          styler_->formats().propertiesBadgeFont());
+    currentTheme_ = theme;
     toolbar_->applyStyle(core::toolbarStyle(theme));
+    settingsMenu_->applyTheme(theme);
+    if (settingsMenu_->isVisible()) {
+        refreshAvailableThemes();
+    }
     positionToolbar();
     if (!wasModified) {
         document()->setModified(false);
@@ -438,6 +455,72 @@ void EditorWidget::positionToolbar() {
     const int y = std::max(0, (height() - toolbar_->height()) / 2);
     toolbar_->move(x, y);
     toolbar_->raise();
+    if (settingsMenu_ != nullptr) {
+        const int gap = std::max(4, static_cast<int>(std::lround(toolbar_->toolbarStyle().spacing)) * 2);
+        const int menuX = std::max(0, x - gap - settingsMenu_->width());
+        const int menuY = std::clamp(y + (toolbar_->height() - settingsMenu_->height()) / 2, 0,
+                                     std::max(0, height() - settingsMenu_->height()));
+        settingsMenu_->move(menuX, menuY);
+        settingsMenu_->raise();
+    }
+}
+
+void EditorWidget::toggleSettingsMenu() {
+    setSettingsMenuOpen(!settingsMenu_->isVisible());
+}
+
+void EditorWidget::setSettingsMenuOpen(bool open) {
+    toolbar_->setSettingsOpen(open);
+    if (open) {
+        refreshAvailableThemes();
+        settingsMenu_->show();
+        positionToolbar();
+    } else {
+        settingsMenu_->hide();
+    }
+}
+
+void EditorWidget::setThemeConfigDir(const QString& dir) {
+    themeConfigDir_ = dir;
+    const QString cfgPath = ThemeManager::configFilePath(themeConfigDir_);
+    if (!cfgPath.isEmpty() && QFileInfo::exists(cfgPath)) {
+        const core::SettingsLoadResult loaded = core::loadSettingsFile(std::filesystem::path(cfgPath.toStdU16String()));
+        setFrontMatterAsProperties(loaded.settings.frontMatterAsProperties);
+        setSmoothScrolling(loaded.settings.smoothScrolling);
+        emit settingsLoaded(loaded.settings);
+        if (!loaded.diagnostics.empty()) {
+            emit settingsProblemsFound(cfgPath, ThemeManager::formatSettingsDiagnostics(loaded));
+        }
+    }
+    if (const auto saved = ThemeManager::loadSavedThemeEntry(themeConfigDir_)) {
+        const auto scheme = ThemeManager::systemScheme();
+        core::ThemeLoadResult result{core::builtinTheme(saved->builtinScheme.value_or(scheme)), false, {}};
+        if (!saved->builtinScheme.has_value()) {
+            result = ThemeManager::loadThemeFile(saved->path, scheme);
+        }
+        if (!result.usedFallback) {
+            activeThemePath_ = saved->builtinScheme.has_value() ? QString() : QFileInfo(saved->path).absoluteFilePath();
+            if (auto* app = qobject_cast<QApplication*>(QCoreApplication::instance())) {
+                applyThemeToApplication(*app, result.theme);
+            }
+            emit savedThemeLoaded(result.theme);
+        }
+    }
+    if (settingsMenu_->isVisible()) {
+        refreshAvailableThemes();
+    }
+}
+
+void EditorWidget::setActiveThemePath(const QString& path) {
+    activeThemePath_ = path.isEmpty() ? QString() : QFileInfo(path).absoluteFilePath();
+    if (settingsMenu_->isVisible()) {
+        refreshAvailableThemes();
+    }
+}
+
+void EditorWidget::refreshAvailableThemes() {
+    settingsMenu_->setAvailableThemes(ThemeManager::availableThemes(themeConfigDir_), activeThemePath_, currentTheme_);
+    positionToolbar();
 }
 
 void EditorWidget::resizeEvent(QResizeEvent* event) {
@@ -675,6 +758,11 @@ void EditorWidget::keyPressEvent(QKeyEvent* event) {
     // scroll of the reader's, and the caret is followed further (S033).
     const QScopedValueRollback<bool> input(typing_, true);
     verticalScroller_->stop();
+    if (event->key() == Qt::Key_Escape && settingsMenu_->isVisible()) {
+        setSettingsMenuOpen(false);
+        event->accept();
+        return;
+    }
     if (tables_->handleEditorKey(event) || properties_->handleEditorKey(event)) {
         return;
     }

@@ -21,6 +21,7 @@ add_executable(hitokoto_core_tests
     core/test_s031_paste_tables.cpp
     core/test_s033_soft_line_breaks.cpp
     core/test_s038_subtle_menu_bar.cpp
+    core/test_s039_settings_menu.cpp
     core/test_s004_save.cpp
     core/test_s005_theme.cpp
     core/test_s007_large_files.cpp
