@@ -122,6 +122,11 @@ inline code is registered first (`addInline` documents this). Besides the multi-
 the paragraph context connects two elements (ADR 0006): which lines are paragraph text and at
 which content column, carried in `BlockState::paragraph` from above, and the setext level from
 below; elements contribute to it only through their declared paragraph role.
+An inline element renders a line in linear time: it may look at each character a fixed number of
+times, however the line is made up. It counts its steps (`src/core/src/inline_steps.hpp`: one for
+each character it looks at and each entry of a list it walks), `core::inlineSteps()` reads the
+sum, and the tests of its story compare the steps for a short and a long line of each pattern
+(`tests/core/line_work.hpp`). The registry's merge of the elements' results follows the same rule.
 `S014_FencedCodeBlocks.MultiLineElementsAreAddedByRegistrationOnly` adds a test-only element
 this way, `S013_InlineEmphasis.InlineElementsAreAddedByRegistrationOnly` a test-only inline element.
 

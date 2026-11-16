@@ -67,3 +67,14 @@ Branch `agents/s013-inline-in-linear-time`, from main 0b69199.
 - A line above the bounds of S007 (longer than 4,000 characters, or with more than 500 characters
   that can start inline syntax) shows as text: no backslash escapes are rendered on it. See
   `007-large-files.md`, "Rework on 2026-11-16".
+- A line renders in linear time. The element itself was linear; a line of backslashes gives one
+  run and one hidden range for every second character, and the registry compared every run with
+  every hidden range (200,000 backslashes: 6.9 s for two renders). The registry now looks up where
+  a run starts among the hidden ranges (`013-inline-emphasis.md`, "Rework on 2026-11-16").
+- The backslashes at the end of a paragraph line, which decide about a hard break (S033), were
+  counted back one by one, asking every code span and link marker each time. They are now counted
+  in one pass over the backslashes and one over the spans. The results are unchanged.
+- Tests: `S020_BackslashEscapes` `ALineRendersInLinearTime` (steps of the inline pass for seven
+  patterns, `tests/core/line_work.hpp`), `EscapedBackslashesAndStarsBesideEmphasis` (checked
+  against commonmark.js 0.31.2 and markdown-it-py 4.2.0) and
+  `BackslashesAtTheEndOfALineAreCountedBackToACodeSpan`.

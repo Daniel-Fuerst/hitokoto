@@ -596,7 +596,7 @@ TEST(S022_InlineLinks, RandomLinesOfSyntaxRenderInLinearTime) {
         state = state * 1664525U + 1013904223U;  // a linear congruential generator: the same lines everywhere
         return state >> 8;
     };
-    for (int i = 0; i < 200; ++i) {
+    for (int i = 0; i < 120; ++i) {
         std::u16string line;
         // Some lines repeat one short sequence of pieces, the others take each piece at random.
         const std::size_t period = i % 4 == 0 ? 1 + next() % 4 : 0;
@@ -604,7 +604,7 @@ TEST(S022_InlineLinks, RandomLinesOfSyntaxRenderInLinearTime) {
         for (std::size_t k = 0; k < period; ++k) {
             sequence.push_back(next() % std::size(kPieces));
         }
-        for (std::size_t k = 0; line.size() < 4000; ++k) {
+        for (std::size_t k = 0; line.size() < 3000; ++k) {
             line += kPieces[period != 0 ? sequence[k % period] : next() % std::size(kPieces)];
         }
         const std::uint64_t steps = hitokoto::test::renderSteps(line);

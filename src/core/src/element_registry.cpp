@@ -5,6 +5,7 @@
 #include "inline_steps.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <stdexcept>
 
@@ -12,6 +13,81 @@ namespace hitokoto::core {
 namespace {
 
 thread_local std::uint64_t inlineStepCount = 0;
+
+/// The ranges of a line that cut runs apart (hidden ranges under styled runs, inline runs under a
+/// block's runs), prepared so that cutting one run costs what the run meets, not a pass over all
+/// ranges: with a few thousand runs and as many ranges, as in a line of `a*a*a*`, comparing each
+/// run with each range made rendering the line quadratic.
+///
+/// The ranges are joined where they overlap; ranges that only touch stay apart, and an empty range
+/// stays a place where a run is split. What `pieces` and `meets` answer is what a pass over all
+/// ranges in the order of their starts answered.
+class Cuts {
+public:
+    /// `ranges` in the order of their starts; `spanOf` gives the span of one.
+    template <typename Ranges, typename SpanOf>
+    Cuts(const Ranges& ranges, SpanOf spanOf, detail::InlineSteps& steps) : steps_(steps) {
+        // Most lines have a handful of ranges: those need no allocation.
+        if (ranges.size() > few_.size()) {
+            many_.resize(ranges.size());
+            joined_ = many_.data();
+        }
+        steps_.add(ranges.size());
+        for (const auto& range : ranges) {
+            const Span span = spanOf(range);
+            if (count_ > 0 && span.start < joined_[count_ - 1].end()) {
+                Span& last = joined_[count_ - 1];
+                last.length = std::max(last.end(), span.end()) - last.start;
+            } else {
+                joined_[count_++] = span;
+            }
+        }
+    }
+    Cuts(const Cuts&) = delete;
+    Cuts& operator=(const Cuts&) = delete;
+
+    /// Whether a range and `run` share a character, or an empty range lies inside `run`, or `run` is
+    /// empty and lies inside a range.
+    [[nodiscard]] bool meets(Span run) const {
+        const Span* first = firstEndingAfter(run.start);
+        return first != end() && first->start < run.end();
+    }
+
+    /// Calls `piece(start, length)` for each part of `run` that no range covers, left to right.
+    template <typename Piece>
+    void pieces(Span run, Piece piece) const {
+        std::uint32_t start = run.start;
+        for (const Span* cut = firstEndingAfter(run.start); cut != end() && cut->start < run.end(); ++cut) {
+            steps_.add();
+            if (cut->end() <= start) {
+                continue;
+            }
+            if (cut->start > start) {
+                piece(start, cut->start - start);
+            }
+            start = std::max(start, cut->end());
+        }
+        if (start < run.end()) {
+            piece(start, run.end() - start);
+        }
+    }
+
+private:
+    [[nodiscard]] const Span* end() const noexcept { return joined_ + count_; }
+
+    /// The first range that ends after `position`; the joined ranges end in the order they start.
+    [[nodiscard]] const Span* firstEndingAfter(std::uint32_t position) const {
+        steps_.add();
+        return std::partition_point(static_cast<const Span*>(joined_), end(),
+                                    [position](const Span& cut) { return cut.end() <= position; });
+    }
+
+    std::array<Span, 16> few_{};
+    std::vector<Span> many_;
+    Span* joined_ = few_.data();
+    std::size_t count_ = 0;
+    detail::InlineSteps& steps_;
+};
 
 /// Runs of inline elements (every run appended after the block element ran, from index
 /// `firstInlineRun` on) take precedence over the block element's runs on the same characters.
@@ -21,26 +97,18 @@ void splitAroundInlineRuns(LineRender& out, std::size_t firstInlineRun) {
         return;  // no inline runs
     }
     detail::InlineSteps steps;
-    steps.add(out.runs.size());
     std::vector<StyleRun> inlineRuns(out.runs.begin() + static_cast<std::ptrdiff_t>(firstInlineRun), out.runs.end());
     std::sort(inlineRuns.begin(), inlineRuns.end(),
               [](const StyleRun& left, const StyleRun& right) { return left.span.start < right.span.start; });
+    steps.add(out.runs.size());
     std::vector<StyleRun> splitRuns;
-    for (std::size_t i = 0; i < firstInlineRun; ++i) {
-        const auto& run = out.runs[i];
-        std::uint32_t start = run.span.start;
-        for (const auto& inlineRun : inlineRuns) {
-            steps.add();
-            if (inlineRun.span.end() <= start || inlineRun.span.start >= run.span.end()) {
-                continue;
-            }
-            if (inlineRun.span.start > start) {
-                splitRuns.push_back({{start, inlineRun.span.start - start}, run.role, run.level});
-            }
-            start = std::max(start, inlineRun.span.end());
-        }
-        if (start < run.span.end()) {
-            splitRuns.push_back({{start, run.span.end() - start}, run.role, run.level});
+    if (firstInlineRun > 0) {
+        const Cuts cuts(inlineRuns, [](const StyleRun& run) { return run.span; }, steps);
+        for (std::size_t i = 0; i < firstInlineRun; ++i) {
+            const auto& run = out.runs[i];
+            cuts.pieces(run.span, [&](std::uint32_t start, std::uint32_t length) {
+                splitRuns.push_back({{start, length}, run.role, run.level});
+            });
         }
     }
     splitRuns.insert(splitRuns.end(), inlineRuns.begin(), inlineRuns.end());
@@ -72,22 +140,12 @@ void carveLinkTextAroundOtherRuns(LineRender& out) {
     }
     std::sort(otherRuns.begin(), otherRuns.end(),
               [](const StyleRun& left, const StyleRun& right) { return left.span.start < right.span.start; });
+    const Cuts cuts(otherRuns, [](const StyleRun& run) { return run.span; }, steps);
     std::vector<StyleRun> splitRuns;
     for (const auto& run : linkTextRuns) {
-        std::uint32_t start = run.span.start;
-        for (const auto& other : otherRuns) {
-            steps.add();
-            if (other.span.end() <= start || other.span.start >= run.span.end()) {
-                continue;
-            }
-            if (other.span.start > start) {
-                splitRuns.push_back({{start, other.span.start - start}, run.role, run.level});
-            }
-            start = std::max(start, other.span.end());
-        }
-        if (start < run.span.end()) {
-            splitRuns.push_back({{start, run.span.end() - start}, run.role, run.level});
-        }
+        cuts.pieces(run.span, [&](std::uint32_t start, std::uint32_t length) {
+            splitRuns.push_back({{start, length}, run.role, run.level});
+        });
     }
     splitRuns.insert(splitRuns.end(), otherRuns.begin(), otherRuns.end());
     std::sort(splitRuns.begin(), splitRuns.end(),
@@ -113,31 +171,17 @@ void carveRunsAroundHidden(LineRender& out) {
     if (out.runs.empty()) {
         return;
     }
-    const bool overlap = std::any_of(out.runs.begin(), out.runs.end(), [&](const StyleRun& run) {
-        return std::any_of(out.hidden.begin(), out.hidden.end(), [&](const HiddenRange& hidden) {
-            steps.add();
-            return hidden.span.start < run.span.end() && run.span.start < hidden.span.end();
-        });
-    });
+    const Cuts cuts(out.hidden, [](const HiddenRange& hidden) { return hidden.span; }, steps);
+    const bool overlap =
+        std::any_of(out.runs.begin(), out.runs.end(), [&](const StyleRun& run) { return cuts.meets(run.span); });
     if (!overlap) {
         return;  // the common case: nothing to carve, nothing to allocate
     }
     std::vector<StyleRun> visibleRuns;
     for (const auto& run : out.runs) {
-        std::uint32_t start = run.span.start;
-        for (const auto& hidden : out.hidden) {
-            steps.add();
-            if (hidden.span.end() <= start || hidden.span.start >= run.span.end()) {
-                continue;
-            }
-            if (hidden.span.start > start) {
-                visibleRuns.push_back({{start, hidden.span.start - start}, run.role, run.level});
-            }
-            start = std::max(start, hidden.span.end());
-        }
-        if (start < run.span.end()) {
-            visibleRuns.push_back({{start, run.span.end() - start}, run.role, run.level});
-        }
+        cuts.pieces(run.span, [&](std::uint32_t start, std::uint32_t length) {
+            visibleRuns.push_back({{start, length}, run.role, run.level});
+        });
     }
     out.runs = std::move(visibleRuns);
 }
@@ -154,31 +198,17 @@ void carveInlineStylesAroundHidden(LineRender& out) {
     if (!std::is_sorted(out.hidden.begin(), out.hidden.end(), byStart)) {
         std::sort(out.hidden.begin(), out.hidden.end(), byStart);
     }
-    const bool overlap = std::any_of(out.inlineStyles.begin(), out.inlineStyles.end(), [&](const InlineStyleRun& run) {
-        return std::any_of(out.hidden.begin(), out.hidden.end(), [&](const HiddenRange& hidden) {
-            steps.add();
-            return hidden.span.start < run.span.end() && run.span.start < hidden.span.end();
-        });
-    });
+    const Cuts cuts(out.hidden, [](const HiddenRange& hidden) { return hidden.span; }, steps);
+    const bool overlap = std::any_of(out.inlineStyles.begin(), out.inlineStyles.end(),
+                                     [&](const InlineStyleRun& run) { return cuts.meets(run.span); });
     if (!overlap) {
         return;
     }
     std::vector<InlineStyleRun> visibleStyles;
     for (const auto& run : out.inlineStyles) {
-        std::uint32_t start = run.span.start;
-        for (const auto& hidden : out.hidden) {
-            steps.add();
-            if (hidden.span.end() <= start || hidden.span.start >= run.span.end()) {
-                continue;
-            }
-            if (hidden.span.start > start) {
-                visibleStyles.push_back({{start, hidden.span.start - start}, run.style});
-            }
-            start = std::max(start, hidden.span.end());
-        }
-        if (start < run.span.end()) {
-            visibleStyles.push_back({{start, run.span.end() - start}, run.style});
-        }
+        cuts.pieces(run.span, [&](std::uint32_t start, std::uint32_t length) {
+            visibleStyles.push_back({{start, length}, run.style});
+        });
     }
     out.inlineStyles = std::move(visibleStyles);
 }
@@ -520,14 +550,21 @@ LineRender ElementRegistry::render(std::u16string_view line, const LineContext& 
                     if (length > contentFirst && line[length - 1] == u'\\') {
                         const std::uint32_t last = length - 1;
                         if (!inSpan(out.opaqueSpans, last) && !inHidden(out.hidden, last)) {
-                            std::uint32_t bsRun = 0;
-                            for (std::uint32_t p = length; p > contentFirst && line[p - 1] == u'\\'; --p) {
-                                detail::addInlineSteps(out.opaqueSpans.size() + 1);
-                                if (inSpan(out.opaqueSpans, p - 1)) {
-                                    break;
-                                }
-                                ++bsRun;
+                            // The backslashes at the end of the line, back to the last character
+                            // that an opaque span holds: one pass over the backslashes and one over
+                            // the spans, not the spans once for every backslash.
+                            std::uint32_t runStart = length;
+                            while (runStart > contentFirst && line[runStart - 1] == u'\\') {
+                                --runStart;
                             }
+                            std::uint32_t counted = runStart;
+                            for (const Span& span : out.opaqueSpans) {
+                                if (span.length > 0 && span.start < length && span.end() > runStart) {
+                                    counted = std::max(counted, std::min(span.end(), length));
+                                }
+                            }
+                            detail::addInlineSteps(std::uint64_t{length} - runStart + out.opaqueSpans.size());
+                            const std::uint32_t bsRun = length - counted;
                             backslashHardBreak = (bsRun % 2U) == 1U;
                         }
                     }

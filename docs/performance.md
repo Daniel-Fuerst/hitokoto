@@ -77,6 +77,24 @@ with Qt 6.12.0 and 14 ms with Qt 6.8.3 (links in both); the slowest single key i
 A line without any syntax is not helped by the bounds: 43 ms per key (up to 53 ms) with 200,000
 characters, all of it Qt's layout of the block (`docs/stories/unrefined.md`, "Very long lines").
 
+The inline elements and the registry's merge of their results are linear since the rework of
+S013, S015, S020 and S022 on the same day. The core alone, one render concealed and one revealed
+of one line (a harness outside the repository, an optimised build, with the bounds lifted so that
+the elements run; best of three after the rework):
+
+| Line of | 50,000 | 100,000 | 200,000 characters | Before, 200,000 |
+|---|---|---|---|---|
+| `[](` | 0.6 ms | 1.4 ms | 2.9 ms | 18.9 s |
+| `[a](` | 0.6 ms | 1.2 ms | 2.5 ms | 11.2 s |
+| `a*` | 5.6 ms | 11.9 ms | 27.2 ms | 9.5 s |
+| `` `a `` | 2.9 ms | 5.8 ms | 12.4 ms | 4.6 s |
+| `\` | 2.9 ms | 6.1 ms | 12.9 ms | 6.9 s |
+| `~~a` | 4.1 ms | 8.6 ms | 18.0 ms | 4.1 s |
+
+Counted in steps (`core::inlineSteps`, three renders of a line), 53 patterns take between 3 and
+47 steps per character whatever the length; 40 of them took 59 to 64 times the steps for eight
+times the length before.
+
 ### 2026-11-09, development VM, S031 (release build, offscreen, Qt 6.12.0)
 
 `s031_paste_*`: Ctrl+V in an empty document until the table view shows all rows, median of five

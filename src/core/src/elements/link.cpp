@@ -6,6 +6,7 @@
 #include "../inline_steps.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -25,8 +26,7 @@ bool escaped(std::u16string_view line, std::size_t position, detail::InlineSteps
     return slashes % 2 != 0;
 }
 
-std::u16string unescapePunctuation(std::u16string_view text, detail::InlineSteps& steps) {
-    steps.add(text.size());
+std::u16string unescapePunctuation(std::u16string_view text) {
     std::u16string result;
     result.reserve(text.size());
     for (std::size_t i = 0; i < text.size(); ++i) {
@@ -50,45 +50,146 @@ std::size_t findClosingBacktick(std::u16string_view line, std::size_t opener, de
     return std::u16string_view::npos;
 }
 
-std::size_t parseTitle(std::u16string_view line, std::size_t& pos, std::u16string& title, detail::InlineSteps& steps) {
-    if (pos >= line.size()) {
-        return std::u16string_view::npos;
-    }
-    const char16_t openDelim = line[pos];
-    const char16_t closeDelim = (openDelim == u'(') ? u')' : openDelim;
-    ++pos;
-    const std::size_t titleStart = pos;
-    while (pos < line.size()) {
-        steps.add();
-        if (line[pos] == u'\\' && pos + 1 < line.size()) {
-            pos += 2;
-        } else if (line[pos] == closeDelim) {
-            title = unescapePunctuation(line.substr(titleStart, pos - titleStart), steps);
-            ++pos;
-            while (pos < line.size() && (line[pos] == u' ' || line[pos] == u'\t')) {
-                ++pos;
-            }
-            if (pos < line.size() && line[pos] == u')') {
-                return pos;
-            }
-            return std::u16string_view::npos;
-        } else if (line[pos] == u'\n' || line[pos] == u'\r') {
-            return std::u16string_view::npos;
-        } else {
-            ++pos;
-        }
-    }
-    return std::u16string_view::npos;
+bool isBlank(char16_t c) noexcept {
+    return c == u' ' || c == u'\t';
 }
 
-struct DestinationAndTitle {
-    std::u16string destination;
-    std::u16string title;
-    std::size_t endParen = std::u16string_view::npos;
+/// Where reading a link destination or a link title ends, for every position of a line it could
+/// start at. A line can hold many `](` that never become a link (`[](` repeated: every one reads
+/// on to the end of the line, to find its parentheses unbalanced there); answering each from its
+/// position onwards made such a line quadratic. The answer for a position follows from the answers
+/// for the positions to its right, so one pass from the end of the line gives them all. The tables
+/// are built when the first `](` asks.
+class LinkScans {
+public:
+    static constexpr std::uint32_t kNone = 0xFFFFFFFFU;
+
+    LinkScans(std::u16string_view line, detail::InlineSteps& steps) : line_(line), steps_(steps) {}
+
+    /// A destination without angle brackets that starts at `pos`: the index where it stops with its
+    /// parentheses balanced (a blank, a `)` that closes none of its own, or the end of the line),
+    /// or kNone if a blank or the end of the line comes while a parenthesis is open. A backslash
+    /// takes the next character with it.
+    [[nodiscard]] std::uint32_t destinationEnd(std::size_t pos) {
+        if (destination_.empty()) {
+            buildDestination();
+        }
+        return destination_[pos];
+    }
+
+    /// The first `delimiter` (`"`, `'` or `)`) at or after `pos` that no backslash takes with it,
+    /// or kNone if a line break or the end of the line comes first.
+    [[nodiscard]] std::uint32_t titleEnd(std::size_t pos, char16_t delimiter) {
+        auto& table = title_[delimiter == u'"' ? 0U : delimiter == u'\'' ? 1U : 2U];
+        if (table.empty()) {
+            buildTitle(table, delimiter);
+        }
+        return table[pos];
+    }
+
+private:
+    void buildDestination() {
+        const std::size_t size = line_.size();
+        steps_.add(size + 1);
+        destination_.assign(size + 1, static_cast<std::uint32_t>(size));
+        for (std::size_t p = size; p-- > 0;) {
+            const char16_t c = line_[p];
+            if (isBlank(c)) {
+                destination_[p] = static_cast<std::uint32_t>(p);
+            } else if (c == u'\\' && p + 1 < size) {
+                destination_[p] = destination_[p + 2];
+            } else if (c == u'(') {
+                // Balanced if what follows stops at a `)`: that one closes this parenthesis, and
+                // the destination goes on behind it.
+                const std::uint32_t inner = destination_[p + 1];
+                destination_[p] =
+                    inner != kNone && inner < size && line_[inner] == u')' ? destination_[inner + 1] : kNone;
+            } else if (c == u')') {
+                destination_[p] = static_cast<std::uint32_t>(p);
+            } else {
+                destination_[p] = destination_[p + 1];
+            }
+        }
+    }
+
+    void buildTitle(std::vector<std::uint32_t>& table, char16_t delimiter) {
+        const std::size_t size = line_.size();
+        steps_.add(size + 1);
+        table.assign(size + 1, kNone);
+        for (std::size_t p = size; p-- > 0;) {
+            const char16_t c = line_[p];
+            if (c == u'\\' && p + 1 < size) {
+                table[p] = table[p + 2];
+            } else if (c == delimiter) {
+                table[p] = static_cast<std::uint32_t>(p);
+            } else if (c == u'\n' || c == u'\r') {
+                table[p] = kNone;
+            } else {
+                table[p] = table[p + 1];
+            }
+        }
+    }
+
+    std::u16string_view line_;
+    detail::InlineSteps& steps_;
+    std::vector<std::uint32_t> destination_;
+    std::array<std::vector<std::uint32_t>, 3> title_;
 };
 
-DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size_t pos, detail::InlineSteps& steps) {
-    while (pos < line.size() && (line[pos] == u' ' || line[pos] == u'\t')) {
+/// What follows `](`: where the destination and the title lie in the line, and the closing `)`.
+/// The texts are taken out of the line only once the link stands.
+struct DestinationAndTitle {
+    std::size_t endParen = std::u16string_view::npos;
+    std::size_t destinationStart = 0;
+    std::size_t destinationLength = 0;
+    std::size_t titleStart = 0;
+    std::size_t titleLength = 0;
+};
+
+/// The title that starts with the delimiter at `pos`, and the `)` behind it; `result.endParen`
+/// stays npos if there is none.
+void parseTitle(std::u16string_view line, std::size_t pos, LinkScans& scans, detail::InlineSteps& steps,
+                DestinationAndTitle& result) {
+    const char16_t openDelim = line[pos];
+    const char16_t closeDelim = (openDelim == u'(') ? u')' : openDelim;
+    const std::size_t titleStart = pos + 1;
+    const std::uint32_t close = scans.titleEnd(titleStart, closeDelim);
+    if (close == LinkScans::kNone) {
+        return;
+    }
+    pos = close + std::size_t{1};
+    while (pos < line.size() && isBlank(line[pos])) {
+        steps.add();
+        ++pos;
+    }
+    if (pos < line.size() && line[pos] == u')') {
+        result.titleStart = titleStart;
+        result.titleLength = close - titleStart;
+        result.endParen = pos;
+    }
+}
+
+/// After the destination, at `pos`: blanks, then `)`, or a title and `)`.
+void parseAfterDestination(std::u16string_view line, std::size_t pos, LinkScans& scans, detail::InlineSteps& steps,
+                           DestinationAndTitle& result) {
+    bool hadSpace = false;
+    while (pos < line.size() && isBlank(line[pos])) {
+        steps.add();
+        hadSpace = true;
+        ++pos;
+    }
+    if (pos < line.size() && line[pos] == u')') {
+        result.endParen = pos;
+        return;
+    }
+    if (hadSpace && pos < line.size() && (line[pos] == u'"' || line[pos] == u'\'' || line[pos] == u'(')) {
+        parseTitle(line, pos, scans, steps, result);
+    }
+}
+
+DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size_t pos, LinkScans& scans,
+                                             detail::InlineSteps& steps) {
+    while (pos < line.size() && isBlank(line[pos])) {
         steps.add();
         ++pos;
     }
@@ -96,13 +197,15 @@ DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size
         return {};
     }
 
+    DestinationAndTitle result;
     if (line[pos] == u')') {
-        return {u"", u"", pos};
+        result.endParen = pos;
+        return result;
     }
 
-    DestinationAndTitle result;
-
     if (line[pos] == u'<') {
+        // Stops at the next `<` or `>`, and the `<` of a later destination is one: these scans
+        // do not overlap.
         ++pos;
         const std::size_t destStart = pos;
         bool validAngle = false;
@@ -113,7 +216,8 @@ DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size
             } else if (line[pos] == u'<' || line[pos] == u'\n' || line[pos] == u'\r') {
                 break;
             } else if (line[pos] == u'>') {
-                result.destination = unescapePunctuation(line.substr(destStart, pos - destStart), steps);
+                result.destinationStart = destStart;
+                result.destinationLength = pos - destStart;
                 ++pos;
                 validAngle = true;
                 break;
@@ -121,71 +225,20 @@ DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size
                 ++pos;
             }
         }
-        if (!validAngle) {
-            return {};
+        if (validAngle) {
+            parseAfterDestination(line, pos, scans, steps, result);
         }
-        bool hadSpace = false;
-        while (pos < line.size() && (line[pos] == u' ' || line[pos] == u'\t')) {
-            hadSpace = true;
-            ++pos;
-        }
-        if (pos < line.size() && line[pos] == u')') {
-            result.endParen = pos;
-            return result;
-        }
-        if (hadSpace && pos < line.size() && (line[pos] == u'"' || line[pos] == u'\'' || line[pos] == u'(')) {
-            result.endParen = parseTitle(line, pos, result.title, steps);
-            if (result.endParen != std::u16string_view::npos) {
-                return result;
-            }
-        }
-        return {};
-    }
-
-    const std::size_t destStart = pos;
-    int parenDepth = 0;
-    while (pos < line.size()) {
-        steps.add();
-        if (line[pos] == u' ' || line[pos] == u'\t') {
-            break;
-        }
-        if (line[pos] == u'\\' && pos + 1 < line.size()) {
-            pos += 2;
-        } else if (line[pos] == u'(') {
-            ++parenDepth;
-            ++pos;
-        } else if (line[pos] == u')') {
-            if (parenDepth > 0) {
-                --parenDepth;
-                ++pos;
-            } else {
-                break;
-            }
-        } else {
-            ++pos;
-        }
-    }
-    if (parenDepth != 0) {
-        return {};
-    }
-
-    result.destination = unescapePunctuation(line.substr(destStart, pos - destStart), steps);
-    bool hadSpace = false;
-    while (pos < line.size() && (line[pos] == u' ' || line[pos] == u'\t')) {
-        hadSpace = true;
-        ++pos;
-    }
-    if (pos < line.size() && line[pos] == u')') {
-        result.endParen = pos;
         return result;
     }
-    if (hadSpace && pos < line.size() && (line[pos] == u'"' || line[pos] == u'\'' || line[pos] == u'(')) {
-        result.endParen = parseTitle(line, pos, result.title, steps);
-        if (result.endParen != std::u16string_view::npos) {
-            return result;
-        }
+
+    const std::uint32_t end = scans.destinationEnd(pos);
+    if (end == LinkScans::kNone) {
+        return {};
     }
-    return {};
+    result.destinationStart = pos;
+    result.destinationLength = end - pos;
+    parseAfterDestination(line, end, scans, steps, result);
+    return result;
 }
 
 class LinkElement final : public InlineElement {
@@ -208,9 +261,7 @@ public:
         struct ParsedLink {
             std::size_t openBracket = 0;
             std::size_t closeBracket = 0;
-            std::size_t endParen = 0;
-            std::u16string destination;
-            std::u16string title;
+            DestinationAndTitle target;
         };
         struct OpenBracket {
             std::size_t index = 0;
@@ -218,6 +269,9 @@ public:
         };
         std::vector<ParsedLink> parsedLinks;
         std::vector<OpenBracket> openBrackets;
+        LinkScans scans(line, steps);
+        // Once no single backtick closes a span from some position on, none does from any later one.
+        bool noClosingBacktick = false;
 
         for (std::size_t i = 0; i < line.size();) {
             steps.add();
@@ -229,12 +283,14 @@ public:
                 i += 2;
                 continue;
             }
-            if (line[i] == u'`' && (i == 0 || line[i - 1] != u'`') && (i + 1 >= line.size() || line[i + 1] != u'`')) {
+            if (!noClosingBacktick && line[i] == u'`' && (i == 0 || line[i - 1] != u'`') &&
+                (i + 1 >= line.size() || line[i + 1] != u'`')) {
                 const auto close = findClosingBacktick(line, i, steps);
                 if (close != std::u16string_view::npos) {
                     i = close + 1;
                     continue;
                 }
+                noClosingBacktick = true;
             }
             if (line[i] == u'[') {
                 const bool isImage = (i > 0 && line[i - 1] == u'!' && !escaped(line, i - 1, steps));
@@ -248,7 +304,7 @@ public:
                     continue;
                 }
                 if (i + 1 < line.size() && line[i + 1] == u'(') {
-                    auto parsed = parseDestinationAndTitle(line, i + 2, steps);
+                    const auto parsed = parseDestinationAndTitle(line, i + 2, scans, steps);
                     if (parsed.endParen != std::u16string_view::npos) {
                         const auto open = openBrackets.back();
                         openBrackets.pop_back();
@@ -257,8 +313,7 @@ public:
                             i = parsed.endParen + 1;
                             continue;
                         }
-                        parsedLinks.push_back(
-                            {open.index, i, parsed.endParen, std::move(parsed.destination), std::move(parsed.title)});
+                        parsedLinks.push_back({open.index, i, parsed});
                         // O6: CommonMark forbids links inside links; outer brackets cannot form links.
                         steps.add(openBrackets.size());
                         openBrackets.clear();
@@ -274,21 +329,25 @@ public:
         }
 
         std::vector<StyleRun> newRuns;
-        for (auto& pl : parsedLinks) {
+        for (const auto& link : parsedLinks) {
+            const std::size_t endParen = link.target.endParen;
+            // A link's destination and title lie inside it, and links do not overlap.
+            steps.add(endParen - link.openBracket);
             LinkTarget target;
-            target.span = {static_cast<std::uint32_t>(pl.openBracket + 1),
-                           static_cast<std::uint32_t>(pl.closeBracket - pl.openBracket - 1)};
-            target.full = {static_cast<std::uint32_t>(pl.openBracket),
-                           static_cast<std::uint32_t>(pl.endParen - pl.openBracket + 1)};
-            target.destination = std::move(pl.destination);
-            target.title = std::move(pl.title);
+            target.span = {static_cast<std::uint32_t>(link.openBracket + 1),
+                           static_cast<std::uint32_t>(link.closeBracket - link.openBracket - 1)};
+            target.full = {static_cast<std::uint32_t>(link.openBracket),
+                           static_cast<std::uint32_t>(endParen - link.openBracket + 1)};
+            target.destination =
+                unescapePunctuation(line.substr(link.target.destinationStart, link.target.destinationLength));
+            target.title = unescapePunctuation(line.substr(link.target.titleStart, link.target.titleLength));
 
             out.inlineContexts.push_back(target.span);
             out.links.push_back(std::move(target));
 
-            const auto marker1 = Span{static_cast<std::uint32_t>(pl.openBracket), 1};
-            const auto marker2 = Span{static_cast<std::uint32_t>(pl.closeBracket),
-                                      static_cast<std::uint32_t>(pl.endParen - pl.closeBracket + 1)};
+            const auto marker1 = Span{static_cast<std::uint32_t>(link.openBracket), 1};
+            const auto marker2 = Span{static_cast<std::uint32_t>(link.closeBracket),
+                                      static_cast<std::uint32_t>(endParen - link.closeBracket + 1)};
 
             out.opaqueSpans.push_back(marker1);
             out.opaqueSpans.push_back(marker2);
@@ -301,8 +360,8 @@ public:
                 newRuns.push_back({marker2, Role::LinkMarker, 0});
             }
 
-            const std::uint32_t textStart = static_cast<std::uint32_t>(pl.openBracket + 1);
-            const std::uint32_t textEnd = static_cast<std::uint32_t>(pl.closeBracket);
+            const std::uint32_t textStart = static_cast<std::uint32_t>(link.openBracket + 1);
+            const std::uint32_t textEnd = static_cast<std::uint32_t>(link.closeBracket);
             if (textStart < textEnd) {
                 newRuns.push_back({{textStart, textEnd - textStart}, Role::LinkText, 0});
             }

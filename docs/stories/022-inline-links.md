@@ -99,3 +99,23 @@ Branch `agents/s013-inline-in-linear-time`, from main 0b69199.
 - A line above the bounds of S007 (longer than 4,000 characters, or with more than 500 characters
   that can start inline syntax) shows as text: no links are rendered on it. See
   `007-large-files.md`, "Rework on 2026-11-16".
+- A line renders in linear time. Before, every `](` that did not become a link read on to the end
+  of the line: a destination whose parentheses never balance (`[](` and `[a](` repeated: 19 s and
+  11 s for two renders of 200,000 characters), a title in parentheses that never ends
+  (`[a](b (`). The destination and the title were also copied out of the line before it was clear
+  that there is a link.
+- Where a destination or a title ends is now answered for all positions of the line at once
+  (`LinkScans` in `link.cpp`): the answer for a position follows from the answers for the
+  positions to its right, so one pass from the end of the line fills a table, built when the first
+  `](` asks. The texts are taken out of the line only once the link stands. A single backtick
+  that no later backtick closes is looked for once per line, not once per backtick.
+- The results are unchanged, also where they differ from CommonMark (a title in parentheses that
+  holds `(`, a backslash before a blank in a destination): the random lines named in
+  `013-inline-emphasis.md` give the same links, destinations and titles as before.
+- Tests: `S022_InlineLinks` `ALineRendersInLinearTime` (steps of the inline pass for 25 patterns,
+  `tests/core/line_work.hpp`), `RandomLinesOfSyntaxRenderInLinearTime` (120 lines put together
+  from pieces of syntax with a fixed seed: at most 100 steps per character),
+  `ParenthesesOfADestinationBalanceOrThereIsNoLink`, `ATitleEndsAtItsDelimiterOrThereIsNoLink` and
+  `EmphasisInsideALinkAndAroundALink` (each line checked against commonmark.js 0.31.2 and
+  markdown-it-py 4.2.0). `LinearBracketMatchingPerformance` stays; its line is above the bounds
+  of S007 now and shows as text.
