@@ -319,6 +319,11 @@ TEST(S039_SettingsMenu, UpdateThemeSettingLeavesUnreadableFileUntouched) {
     }
     // Write permissions only (no read permissions)
     std::filesystem::permissions(configPath, std::filesystem::perms::owner_write);
+    // root ignores file permissions (the Debian package runs its tests as root in a container),
+    // and so may a file system: then the file is not unreadable and there is nothing to test.
+    if (std::ifstream(configPath, std::ios::binary).is_open()) {
+        GTEST_SKIP() << "the file stays readable without read permission (running as root?)";
+    }
 
     const auto err = updateThemeSettingInFile(configPath, "dark");
     EXPECT_TRUE(err.has_value());

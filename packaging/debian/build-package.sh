@@ -48,7 +48,20 @@ cmake -S "$src" -B "$build" -G Ninja \
     -DHITOKOTO_BUILD_FUZZERS=OFF \
     -DHITOKOTO_WARNINGS_AS_ERRORS=OFF
 cmake --build "$build"
-QT_QPA_PLATFORM=offscreen ctest --test-dir "$build" --output-on-failure
+# root ignores file permissions, so a test that takes a permission away fails as root although it
+# passes for every user (S039, v0.7.0); the workflow builds as root in its container. As root the
+# tests run as nobody, in a build tree and a home of their own (setpriv comes with util-linux).
+if [ "$(id -u)" -eq 0 ]; then
+    home="$work/home"
+    mkdir "$home"
+    chmod 755 "$work"
+    chown -R nobody:nogroup "$build" "$home"
+    QT_QPA_PLATFORM=offscreen HOME="$home" TMPDIR="$home" \
+        setpriv --reuid=nobody --regid=nogroup --clear-groups \
+        ctest --test-dir "$build" --output-on-failure
+else
+    QT_QPA_PLATFORM=offscreen ctest --test-dir "$build" --output-on-failure
+fi
 
 # Decision 5: the files of the package.
 DESTDIR="$stage" cmake --install "$build" --strip
