@@ -73,7 +73,7 @@ and macOS (Qt 6.12).
 
 Branch `agents/s013-inline-in-linear-time`, from main 0b69199.
 
-- A line above the bounds of S007 (longer than 4,000 characters, or with more than 500 characters
+- A line above the bounds of S007 (longer than 10,000 characters, or with more than 300 characters
   that can start inline syntax) shows as text: no code spans are rendered on it. See
   `007-large-files.md`, "Rework on 2026-11-16".
 - A line renders in linear time. The element itself was linear; each span adds three runs and two

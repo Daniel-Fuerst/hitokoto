@@ -31,7 +31,7 @@ size never decides whether I can use it.
 - Then scrolling stays smooth (no frame above 16 ms after the initial styling has finished)
 
 **Scenario: a line above a bound shows as text**
-- Given a line longer than 4,000 characters, or a line with more than 500 characters that can
+- Given a line longer than 10,000 characters, or a line with more than 300 characters that can
   start inline syntax (`*`, `_`, `~`, `` ` ``, `\` and `[`)
 - When it is shown, with the caret on it or elsewhere
 - Then it shows its characters as they are written: no inline formatting, nothing concealed
@@ -62,8 +62,9 @@ Branch `agents/s013-inline-in-linear-time`, from main 0b69199.
   again, and so does each repaint for every line on screen. A line of 5,000 characters `a*a*a*`
   took 44 ms per key and up to 58 ms, one of 20,000 characters 490 ms; opening a file with such a
   line of 200,000 characters blocked the window for minutes.
-- Two bounds now guard a line (`core::kInlineBounds`): 4,000 characters, and 500 characters that
-  can start inline syntax. The registry counts both in the pass over the line that it makes
+- Two bounds now guard a line (`core::kInlineBounds`): its length, and the number of its
+  characters that can start inline syntax (4,000 and 500 at first, 10,000 and 300 since the inline
+  elements are linear, see below). The registry counts both in the pass over the line that it makes
   anyway, before any inline element runs; above either bound none runs, and the line shows as
   text. Block elements do not depend on the bounds. Nothing is written to the document, so the
   file stays as it is.
@@ -73,9 +74,19 @@ Branch `agents/s013-inline-in-linear-time`, from main 0b69199.
   the length. A bound on the length alone that kept dense lines within the budget would have to
   be so low (about 2,000 characters) that it would take the formatting from ordinary long
   paragraphs written on one line.
-- The numbers come from measurements, with a margin of two to the 50 ms that no key event may
-  take (`docs/performance.md`, 2026-11-16): at the bounds a key takes at most 14 ms on the
-  development VM (Qt 6.12.0 and 6.8.3) and the slowest of 30 keys 26 ms.
+- The numbers come from measurements against the 50 ms that no key event may take
+  (`docs/performance.md`, 2026-11-16). With the bound of 4,000 characters, which the inline
+  elements needed while their work grew with the square of the length, a key at the bounds took at
+  most 14 ms on the development VM (Qt 6.12.0 and 6.8.3) and the slowest of 30 keys 26 ms.
+- Since the inline elements render a line in linear time (rework of S013, S015, S020 and S022 on
+  the same day), the length adds little to a key, and the bound is 10,000 characters. A longer
+  bound would only buy formatting for lines that Qt's layout makes slow anyway (20 ms per key at
+  50,000 characters).
+- The bound on the syntax characters went down to 300 at the same time. With 500 the slowest of
+  30 keys took up to 28 ms on the development VM; a CI runner can be half as fast in laying out
+  text (S031 measured factors of 1.1 to 2), and on such a machine that is at the 50 ms. With 300 a
+  key in a line at the bounds takes at most 8 ms with Qt 6.12.0 and Qt 6.8.3, a key on the line
+  above it 9 ms and 12 ms, and the slowest single key 15 ms and 18 ms.
 - A registry can be given other bounds (`ElementRegistry::setInlineBounds`); tests use small ones.
 - Not covered: a line without any syntax still costs Qt's layout of the whole line on every key
   (about 0.2 µs per character: 4 ms for 10,000 characters, 43 ms for 200,000). See

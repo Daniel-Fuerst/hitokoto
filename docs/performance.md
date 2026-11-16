@@ -95,6 +95,51 @@ Counted in steps (`core::inlineSteps`, three renders of a line), 53 patterns tak
 47 steps per character whatever the length; 40 of them took 59 to 64 times the steps for eight
 times the length before.
 
+With linear elements the length of a line adds little to a key, so the bound on the length rose
+from 4,000 to 10,000 characters. 500 syntax characters of a pattern, then words up to the given
+length; a key in the line, median / slowest of 30, Qt 6.12.0:
+
+| Line | 10,000 | 20,000 | 32,000 | 50,000 | 100,000 characters |
+|---|---|---|---|---|---|
+| 500 links `[a](b) ` | 11 / 13 ms | 13 / 22 ms | 14 / 20 ms | 18 / 20 ms | 30 / 51 ms |
+| 500 `` ` `` (250 code spans) | 8 / 9 ms | 12 / 15 ms | 14 / 26 ms | 19 / 22 ms | 33 / 49 ms |
+| emphasis, code, link, escape and strikethrough in turn | 8 / 17 ms | 12 / 21 ms | 15 / 21 ms | 20 / 31 ms | 34 / 37 ms |
+| words without syntax | 4 / 7 ms | 6 / 11 ms | 8 / 11 ms | 13 / 16 ms | – |
+
+The bound on the syntax characters went from 500 to 300 at the same time. With 500, the slowest
+of 30 keys in a line at the bounds took up to 26 ms with Qt 6.12.0 and 25 ms with Qt 6.8.3 on
+this VM, a key on the line above up to 28 ms (the numbers of the first table of bounds above). A
+CI runner can be half as fast as this VM in laying out text (factors of 1.1 to 2 in the S031
+measurements below), which would put such a key at the 50 ms.
+
+At the bounds as they are now (300 syntax characters of each of thirteen patterns, alone and with
+words or with unbroken text up to 9,990 characters): a key in the line takes at most 8 ms with
+both Qt versions (links), a key on the line above 9 ms and 12 ms; the slowest single key was
+15 ms and 18 ms. One key of 30 on a line above took 49 ms in one run with Qt 6.8.3 and at most
+12 ms in three more runs of the same file.
+
+Opening a file whose third line has 200,000 characters, until the first screen shows / until
+styled (the window does not answer until the first screen shows):
+
+| Line of | main, Qt 6.12.0 | main, Qt 6.8.3 | now, Qt 6.12.0 | now, Qt 6.8.3 |
+|---|---|---|---|---|
+| words without syntax | 0.07 / 0.10 s | 0.07 / 0.08 s | 0.07 / 0.09 s | 0.07 / 0.08 s |
+| `[](` | 22 / 84 s | 28 / 98 s | 0.07 / 0.09 s | 0.06 / 0.08 s |
+| `[a](` | 18 / 66 s | 18 / 67 s | 0.07 / 0.09 s | 0.07 / 0.09 s |
+| `` `a `` | 19 / 63 s | 14 / 46 s | 0.09 / 0.11 s | 0.07 / 0.08 s |
+| `\` | 24 / 82 s | 17 / 58 s | 0.07 / 0.09 s | 0.08 / 0.10 s |
+| `a*` | 90 / 168 s | 82 / 145 s | 3.0 / 3.0 s | 2.7 / 2.7 s |
+| `~~a` | 42 / 75 s | 39 / 68 s | 3.9 / 4.0 s | 3.8 / 3.8 s |
+| `x` (one word, no syntax) | 3.0 / 3.0 s | 3.4 / 3.4 s | 2.8 / 2.8 s | 3.3 / 3.3 s |
+
+`a*` and `~~a` hold no place where a line may break, so they open like one word of 200,000
+characters: the three seconds that remain are Qt's layout of that word, as for `x`.
+
+Text without blanks is a case of its own, with or without syntax and on main as well: Qt lays out
+one long word in a time that grows with the square of its length. A key in a line of 10,000
+characters `x` takes 8 ms, of 20,000 characters 21 ms, of 32,000 characters 45 ms, of 50,000
+characters 100 ms (`docs/stories/unrefined.md`, "Very long lines").
+
 ### 2026-11-09, development VM, S031 (release build, offscreen, Qt 6.12.0)
 
 `s031_paste_*`: Ctrl+V in an empty document until the table view shows all rows, median of five

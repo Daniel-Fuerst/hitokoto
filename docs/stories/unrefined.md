@@ -258,10 +258,14 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   200,000: `BlockLayout` lays out the whole block again on every key, and Qt's layout of one block
   costs about 0.2 µs per character. Opening such a file is quick (a line of 200,000 characters:
   95 ms until styled).
+  A line without blanks is worse, because Qt lays out one long word in a time that grows with the
+  square of its length: 8 ms per key with 10,000 characters `x`, 21 ms with 20,000, 45 ms with
+  32,000 and 100 ms with 50,000 (the same on main 0b69199). A base64 image or a long URL in one
+  line is such text.
 - **hitokoto:** the bounds of S007 (`core::kInlineBounds`) keep the inline formatting from adding
   to this; they do not make the layout of the text itself cheaper. From about 70,000 characters in
   one line a key takes longer than a frame, from about 230,000 longer than the 50 ms that no key
-  event may take.
+  event may take; in text without blanks from about 17,000 and 34,000 characters.
 - **Open:** whether lines of this length matter in practice (minified data, a base64 image in one
   line); if so, how to lay out only the part of a block on screen, or how to show such a line
   shortened. Tables are not measured: a table row of that length goes through the table view.

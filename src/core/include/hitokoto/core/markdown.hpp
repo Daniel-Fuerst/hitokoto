@@ -324,17 +324,21 @@ struct InlineBounds {
 };
 
 /// The bounds every registry starts with. They keep a key typed in a line, or beside it, within the
-/// 50 ms that no key event may take (brief, section 4), with a margin of two. Measured with the
-/// release build on the development VM, Qt 6.12.0 and 6.8.3 (`docs/performance.md`, 2026-11-16):
-/// - 500 syntax characters. What a line costs to lay out and draw grows with its formatted pieces:
+/// 50 ms that no key event may take (brief, section 4), also on a machine half as fast as the
+/// development VM, as a CI runner can be. Measured with the release build on that VM, Qt 6.12.0
+/// and 6.8.3 (`docs/performance.md`, 2026-11-16):
+/// - 300 syntax characters. What a line costs to lay out and draw grows with its formatted pieces:
 ///   about 25 µs for each link `[a](b)`, the dearest element, about 12 µs for each `*` of `a*a*`.
-///   A key in a line of 500 links takes 13 ms, the slowest of 30 keys 26 ms; with 1,000 links
-///   22 ms and up to 47 ms, with 2,000 links 50 ms and up to 81 ms. Text does not come near 500
-///   such characters in one line.
-/// - 4,000 characters. Some syntax reads on to the end of the line each time it starts, as 500
-///   `[](` that never close do. A key in such a line of 4,000 characters takes 12 ms and at most
-///   18 ms, of 8,000 characters 25 ms and up to 34 ms, of 16,000 characters 55 ms.
-inline constexpr InlineBounds kInlineBounds{4000, 500};
+///   A key in a line of 300 links takes 7 to 8 ms, the slowest of 30 keys 12 ms; with 500 links
+///   13 ms and up to 26 ms, with 1,000 links 22 ms and up to 47 ms, with 2,000 links 50 ms and up
+///   to 81 ms. Text does not come near 300 such characters in one line.
+/// - 10,000 characters. The inline elements render a line in linear time, so the length adds
+///   little; what grows is Qt's layout of the block. With 500 links and words up to 10,000
+///   characters a key takes 12 to 13 ms, up to 20,000 characters 13 ms, up to 50,000 characters 18
+///   to 20 ms. At both bounds a key takes at most 8 ms and the slowest one 18 ms. Before the
+///   elements were linear, each of 500 `[](` read on to the end of the line, and the bound was
+///   4,000 characters.
+inline constexpr InlineBounds kInlineBounds{10000, 300};
 
 class ElementRegistry {
 public:
