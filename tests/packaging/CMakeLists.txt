@@ -66,7 +66,8 @@ foreach(name IN ITEMS
         TheCopyrightRefersToCommonLicenses
         CPackMakesNoDeb
         TheRecipeKeepsLfLineEndings
-        TheBuildTakesTheSharedDesktopEntry)
+        TheBuildTakesTheSharedDesktopEntry
+        TheTestsRunWithoutRoot)
     add_test(NAME S036_${name}
         COMMAND ${CMAKE_COMMAND} -DCASE=${name} -DSCRIPT=${s036_script}
                 -DRECIPE_DIR=${PROJECT_SOURCE_DIR}/packaging/debian -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
