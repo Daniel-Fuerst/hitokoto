@@ -94,6 +94,8 @@ foreach(name IN ITEMS
         TheRealLicenceBecomesRtf
         TheNoticeNamesTheQtVersion
         TheRecipeBuildsWithTheCiQt
+        WindowsBuildsWithQtVersion
+        TheInstallerShipsNoImageFormatPlugins
         TheInstallerKeepsItsUpgradeCode
         TheInstallerOffersBothScopes
         TheInstallerAsksForTheLicence

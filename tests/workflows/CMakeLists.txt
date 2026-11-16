@@ -38,7 +38,8 @@ foreach(name IN ITEMS
         AnEmptyIceListReachesTheBuild
         AFailedBuildDoesNotSkipTheOtherChecks
         AReleaseWithoutAnyMsiIsNotStopped
-        TheHandOverOfTheMsiIsCheckedInADryRun)
+        TheHandOverOfTheMsiIsCheckedInADryRun
+        WindowsInstallsAqtinstallFromAPinnedCommit)
     add_test(NAME S037_${name}
         COMMAND ${CMAKE_COMMAND} -DCASE=${name}
                 -DWORKFLOWS_DIR=${PROJECT_SOURCE_DIR}/.github/workflows -P ${s037_cases})
