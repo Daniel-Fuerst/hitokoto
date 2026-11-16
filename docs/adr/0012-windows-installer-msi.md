@@ -93,7 +93,9 @@ Option 3, with WiX 7.0.1 (the version is a setting of the recipe), and:
 - Unsigned, Windows SmartScreen warns about an unknown publisher; a signature can be added later
   without breaking upgrades, because the upgrade code, not the signature, identifies the product.
 - Qt for Windows is the Qt of the Windows CI (6.8.3 while aqtinstall cannot install Qt 6.11 or newer
-  for Windows).
+  for Windows). Since 2026-11-16 that is `QT_VERSION`, the Qt of Linux and macOS, installed with
+  aqtinstall from a fixed commit; ADR 0013 records it and how advisories for the shipped Qt are
+  followed.
 
 ## Reconsider if
 

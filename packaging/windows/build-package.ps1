@@ -64,10 +64,12 @@ if ($installedFiles.Count -ne 1 -or $installedFiles[0] -ne 'bin\hitokoto.exe') {
 Copy-Item (Join-Path $installed 'bin\hitokoto.exe') $stage
 
 # Qt's part, without translations, compiler runtime, software OpenGL, shader compilers and the
-# plugin types hitokoto does not use (they would bring Qt6Network).
+# plugin types hitokoto does not use: generic, networkinformation and tls (they would bring
+# Qt6Network), and imageformats (ADR 0013): hitokoto decodes no image file; its icon is an SVG that
+# QIcon draws through the icon engine of Qt SVG (iconengines\qsvgicon), which stays.
 & (Join-Path $env:QT_ROOT_DIR 'bin\windeployqt.exe') --release --no-translations `
     --no-compiler-runtime --no-opengl-sw --no-system-d3d-compiler --no-system-dxc-compiler `
-    --skip-plugin-types generic,networkinformation,tls (Join-Path $stage 'hitokoto.exe')
+    --skip-plugin-types generic,imageformats,networkinformation,tls (Join-Path $stage 'hitokoto.exe')
 
 # The C++ runtime of the Visual Studio that built it, beside the program (application-local).
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'

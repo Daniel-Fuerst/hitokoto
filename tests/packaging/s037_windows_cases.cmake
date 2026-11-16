@@ -353,6 +353,59 @@ elseif("${CASE}" STREQUAL "TheRecipeBuildsWithTheCiQt")
     file(STRINGS "${RECIPE_DIR}/recipe.txt" recipe_arch REGEX "^qt-arch ")
     expect_eq("${recipe_arch}" "qt-arch ${CMAKE_MATCH_2}" "the recipe's Qt arch against ci.yml")
 
+elseif("${CASE}" STREQUAL "WindowsBuildsWithQtVersion")
+    # Rework on 2026-11-16 (ADR 0013): Windows builds, tests and packages with QT_VERSION of ci.yml,
+    # the Qt of Linux and macOS. Only the job "Linux min Qt" checks the oldest supported Qt.
+    file(STRINGS "${SOURCE_DIR}/.github/workflows/ci.yml" env_line REGEX "^  QT_VERSION: ")
+    if(NOT env_line MATCHES "^  QT_VERSION: \"([0-9]+\\.[0-9]+\\.[0-9]+)\"$")
+        message(FATAL_ERROR "no QT_VERSION in ci.yml: '${env_line}'")
+    endif()
+    set(qt_version "${CMAKE_MATCH_1}")
+    # The rows of the matrices (build-test and bench), the commented-out ones included: a matrix
+    # cannot read env, so each row names the version itself.
+    file(STRINGS "${SOURCE_DIR}/.github/workflows/ci.yml" rows
+         REGEX "^ *#?- { name: (Linux|Windows|macOS), ")
+    set(windows 0)
+    foreach(row IN LISTS rows)
+        if(NOT row MATCHES "name: ([A-Za-z]+), [^}]*qt: \"([0-9.]+)\"")
+            message(FATAL_ERROR "no qt in the row of ci.yml: ${row}")
+        endif()
+        expect_eq("${CMAKE_MATCH_2}" "${qt_version}" "the Qt of ${CMAKE_MATCH_1} against QT_VERSION in the row '${row}'")
+        if(CMAKE_MATCH_1 STREQUAL "Windows")
+            math(EXPR windows "${windows} + 1")
+        endif()
+    endforeach()
+    if(windows EQUAL 0)
+        message(FATAL_ERROR "no row for Windows in ci.yml")
+    endif()
+    file(STRINGS "${RECIPE_DIR}/recipe.txt" recipe REGEX "^qt ")
+    expect_eq("${recipe}" "qt ${qt_version}" "the recipe's Qt against QT_VERSION")
+
+elseif("${CASE}" STREQUAL "TheInstallerShipsNoImageFormatPlugins")
+    # Rework on 2026-11-16 (ADR 0013): hitokoto decodes no image file. Its only image is the icon,
+    # an SVG that QIcon draws through the icon engine of Qt SVG (iconengines/qsvgicon), not through
+    # an image format plugin. windeployqt skips the plugin type, and the file list has none.
+    file(STRINGS "${RECIPE_DIR}/files.txt" files REGEX "^[^#]")
+    foreach(f IN LISTS files)
+        if(f MATCHES "^imageformats/")
+            message(FATAL_ERROR "files.txt lists an image format plugin: ${f}")
+        endif()
+    endforeach()
+    if(NOT "iconengines/qsvgicon.dll" IN_LIST files)
+        message(FATAL_ERROR "files.txt does not list the icon engine iconengines/qsvgicon.dll")
+    endif()
+    file(READ "${RECIPE_DIR}/build-package.ps1" script)
+    if(NOT script MATCHES "--skip-plugin-types ([a-z,]+)")
+        message(FATAL_ERROR "build-package.ps1 calls windeployqt without --skip-plugin-types")
+    endif()
+    string(REPLACE "," ";" skipped "${CMAKE_MATCH_1}")
+    if(NOT "imageformats" IN_LIST skipped)
+        message(FATAL_ERROR "windeployqt deploys image format plugins (--skip-plugin-types ${CMAKE_MATCH_1})")
+    endif()
+    if("iconengines" IN_LIST skipped)
+        message(FATAL_ERROR "windeployqt skips the icon engine the icon needs")
+    endif()
+
 elseif("${CASE}" STREQUAL "TheInstallerKeepsItsUpgradeCode")
     # Decision 6, ADR 0012: one upgrade code, in the recipe; the product code is new per build.
     file(READ "${RECIPE_DIR}/hitokoto.wxs" wxs)

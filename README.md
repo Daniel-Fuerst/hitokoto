@@ -25,6 +25,13 @@ hitokoto --version                # show the version (on Windows a message box, 
 
 Requires a C++20 compiler, CMake 3.25+, and Qt 6.8+ (Core, Gui, Widgets, Svg; Test for tests).
 
+Qt 6.8 is the oldest Qt the code builds and is tested with. Older Qt patch releases have known
+security vulnerabilities that later patch releases fix, so build with the newest patch release of
+your Qt version. Open-source patch releases of a long-term-support Qt end after its first year;
+a current Qt release, such as the one the CI builds with (`QT_VERSION` in
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml)), gets them longer. Qt packages of a
+distribution, such as Debian's, come with the distribution's own security updates.
+
 ```sh
 # Release build
 cmake --preset release

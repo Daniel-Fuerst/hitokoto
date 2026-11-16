@@ -6,7 +6,10 @@
 # skip X.Y.Z <reason>: a version that cannot get an MSI for good; it is released with the Debian
 #   package alone and named in the job summary.
 # ice ICEnn <reason>: a finding of wix msi validate that is accepted on purpose (review O3).
-qt 6.8.3
+# Since 2026-11-16 the Windows row of ci.yml names QT_VERSION, the Qt of Linux and macOS (ADR 0013,
+#   checked by S037_WindowsBuildsWithQtVersion); packaging.yml installs it with aqtinstall from the
+#   commit that ci.yml names.
+qt 6.12.0
 qt-arch win64_msvc2022_64
 wix 7.0.1
 ice ICE57 the Start menu entry lies in ProgramMenuFolder with an HKMU key path; in a package for both scopes (perUserOrMachine) both follow the scope being installed, which ICE57 does not know (first dry run that reached the validation, pull request 45)

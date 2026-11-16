@@ -5,7 +5,7 @@ hitokoto is free software under the GNU General Public License, version 3 or (at
 any later version; see LICENSE.txt. This installation also contains:
 
 Qt @QT_VERSION@ (Qt6Core.dll, Qt6Gui.dll, Qt6Svg.dll, Qt6Widgets.dll and the plugins in the
-folders iconengines, imageformats, platforms and styles)
+folders iconengines, platforms and styles)
   Copyright (C) The Qt Company Ltd. and other contributors.
   Used under the GNU Lesser General Public License version 3 (LGPL-3.0.txt), which builds on the
   GNU General Public License version 3 (LICENSE.txt). The libraries are linked dynamically and can

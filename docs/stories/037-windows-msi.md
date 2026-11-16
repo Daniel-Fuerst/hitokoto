@@ -72,7 +72,8 @@ cleanly.
    and its tests run (`ctest`, platform `offscreen`, benchmarks off) as in the CI's Windows job: the
    build that is packaged is tested, not only an earlier build of the same commit, and a catch-up of
    an older version may meet a newer image. A failing test stops that version. A timing test that
-   fails by chance is handled like in the CI: "Re-run failed jobs".
+   fails by chance is handled like in the CI: "Re-run failed jobs". Since the rework of
+   2026-11-16 the Qt is `QT_VERSION`, the Qt of Linux and macOS (see there).
 5. **What the installer holds.** `cmake --install` of the tag's build, then `windeployqt` (from the
    recipe's Qt) with `--release --no-translations --no-compiler-runtime --no-opengl-sw` on the
    installed `hitokoto.exe`; the C++ runtime as the DLLs of `Microsoft.VC143.CRT` from the Visual
@@ -236,6 +237,9 @@ cleanly.
   the installer's file list, on Linux, Windows and macOS
 - And the lints fail if a job other than the release job gets `contents: write`, if the release job
   does not wait for the Windows job, or if the Windows job can release on a pull request
+- And they fail if Windows builds with another Qt than `QT_VERSION`, if a call of
+  `install-qt-action` that can run on Windows takes aqtinstall from anything but one commit named
+  by its full SHA, or if the installer ships an image format plugin (rework of 2026-11-16)
 
 ## Notes
 
@@ -272,3 +276,40 @@ cleanly.
   `CMakeLists.txt` has no deployment step, and the recipe must work on their source.
 - Translations (`--no-translations`) are left out because hitokoto has no localisation yet; the
   software OpenGL renderer (`--no-opengl-sw`) because hitokoto draws with Qt Widgets only.
+
+## Rework on 2026-11-16
+
+Branch `agents/s037-windows-qt-current`, from main a1a75a8 (ADR 0013, Accepted on 2026-11-16).
+
+- Windows built, tested and packaged with Qt 6.8.3, because aqtinstall 3.3.0, its newest release,
+  cannot install Qt 6.11 or newer for Windows. The open-source Qt 6.8 gets no binary patch release
+  after 6.8.3, and Qt's advisories name 6.8.3 among the affected versions for Qt SVG, Qt Gui and
+  Qt Core, which the MSI ships. Nothing in the project would have moved the Windows Qt.
+- Windows now builds, tests and packages with `QT_VERSION` of `ci.yml` (6.12.0), the Qt of Linux
+  and macOS; the recipe follows (`qt 6.12.0`). The job "Linux min Qt" keeps checking Qt 6.8.3.
+- aqtinstall's fix (its pull request 1000, merged on 2026-03-24) is in no release. Every call of
+  `install-qt-action` that can run on Windows therefore installs aqtinstall from that merge commit,
+  `8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b` (3.3.1.dev92): `ci.yml` names it once in the env
+  `AQT_SOURCE_WINDOWS` and passes it where the runner is Windows, `packaging.yml` names the same
+  commit in `windows-package`. Linux and macOS keep the action's release. Back to a release of
+  aqtinstall once one has the fix.
+- The MSI ships no image format plugin any more (`imageformats/qgif`, `qico`, `qjpeg`, `qsvg`):
+  `windeployqt` skips the plugin type. hitokoto opens no image file, and its icon is an SVG that
+  `QIcon` draws through the icon engine of Qt SVG (`iconengines/qsvgicon`), which stays. With all of
+  its plugins at hand Qt 6.12.0 loads only that engine for the icon; with it alone
+  `tst_s016_app_icon` passes (Qt 6.12.0 and 6.8.3), with neither it nor the image formats it fails.
+  `files.txt` and the third-party notice follow; `install-check.ps1` compares the installation with
+  `files.txt`, so the check job checks the new list.
+- Watching Qt's advisories for the shipped modules and the rule for acting on them are in
+  ADR 0013.
+- Tests: `S037_WindowsBuildsWithQtVersion` (every row of the matrices in `ci.yml`, the
+  commented-out ones included, and the recipe name `QT_VERSION`),
+  `S037_WindowsInstallsAqtinstallFromAPinnedCommit` (every call of `install-qt-action` in `ci.yml`
+  passes `AQT_SOURCE_WINDOWS` on Windows, which is a full SHA with the version in a comment, and
+  `packaging.yml` names the same commit), `S037_TheInstallerShipsNoImageFormatPlugins` (no
+  `imageformats/` in `files.txt`, `iconengines/qsvgicon.dll` in it, `imageformats` among the
+  plugin types `windeployqt` skips).
+- What only Windows shows: whether the commit installs Qt 6.12.0 on the runner, whether the build
+  and the tests pass there with it, and whether `windeployqt` of Qt 6.12.0 delivers exactly the
+  files of `files.txt`. The CI of the pull request and the dry run of "Packaging" on it (the recipe
+  changes) show all three before the merge.
