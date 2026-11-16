@@ -228,3 +228,24 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   every green run. Or the `S030_*` cases without the build right after "Configure" in "Build and
   test" (needs a label for the cases that need the build). Either changes `ci.yml` and is follow-up
   work of its own.
+
+## A theme pick that could not be saved lasts only until the next reload
+
+- **Seen:** 2026-11-16 (rework of S039). When a theme file is picked in the settings flyout and
+  saving it to `config.toml` is refused (the file is not writable, or it sets the theme in a form
+  hitokoto cannot change), the theme is used and "Theme not saved" says why. The next
+  `ThemeManager::reload()` (a change of the system colour scheme, or View › Reload Theme) reads the
+  saved theme first and goes back to it. A built-in theme picked the same way stays
+  (`builtinOverride_`). Before S039 the same happened when `config.toml` was not writable.
+- **hitokoto:** a pick that was not saved holds until the next reload of the theme.
+- **Open:** whether such a pick should hold for the rest of the session, as a built-in theme does,
+  or whether the message should say that it lasts only until the next reload.
+
+## Picking a theme adds a space after `=`
+
+- **Seen:** 2026-11-16 (rework of S039). `theme="light"` in `config.toml` reads
+  `theme= "ember.toml"` after Ember is picked; the rest of the file stays byte for byte.
+- **hitokoto:** when the value follows `=` directly, `updateThemeInSettingsSource` puts one space
+  before the new value.
+- **Open:** whether the spacing of the line should stay as written; it only shows to someone who
+  compares the file before and after.
