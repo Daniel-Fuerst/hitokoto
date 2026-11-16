@@ -232,9 +232,14 @@ elseif("${CASE}" STREQUAL "WindowsInstallsAqtinstallFromAPinnedCommit")
         set(indent -1)
         foreach(line IN LISTS lines)
             if(indent GREATER_EQUAL 0)
-                string(REGEX MATCH "^ *" spaces "${line}")
-                string(LENGTH "${spaces}" depth)
-                if(NOT "${line}" STREQUAL "" AND depth LESS indent)
+                # A line of spaces only counts as blank. CMake before 4.1 refuses a regular
+                # expression that matches an empty string, so the indentation is the group before
+                # the first other character.
+                set(depth ${indent})
+                if(line MATCHES "^( *)[^ ]")
+                    string(LENGTH "${CMAKE_MATCH_1}" depth)
+                endif()
+                if(depth LESS indent)
                     list(APPEND steps "${step}")
                     set(indent -1)
                 else()
