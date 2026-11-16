@@ -271,3 +271,27 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
 - **Open:** whether lines of this length matter in practice (minified data, a base64 image in one
   line); if so, how to lay out only the part of a block on screen, or how to show such a line
   shortened. Tables are not measured: a table row of that length goes through the table view.
+
+## Links and emphasis that differ from CommonMark
+
+- **Seen:** 2026-11-16 (while expectations for S013 and S022 were checked against the reference
+  parsers; the same on main 0b69199). Five lines give another result than CommonMark:
+  `[a](b (c(d))` is a link to `b` with the title `c(d`; `[a](b\ c)` is a link to `b\ c`;
+  `***a* b**` shows `**a` italic and the closing `**` as text; `*a **b* c**` shows `a **b` italic
+  and the closing `**` as text; `****a****` is text.
+- **CommonMark:** a title in parentheses holds `(` or `)` only behind a backslash, so
+  `[a](b (c(d))` is no link. A destination without angle brackets holds no blank, and a backslash
+  escapes only ASCII punctuation, so `[a](b\ c)` is no link. `***a* b**` gives
+  `<strong><em>a</em> b</strong>`, `*a **b* c**` gives `<em>a <em><em>b</em> c</em></em>`,
+  `****a****` gives `<strong><strong>a</strong></strong>`. Checked with commonmark.js 0.31.2 and
+  markdown-it-py 4.2.0 (mode `commonmark`); cmark-gfm (cmarkgfm 2025.10.22) agrees except for
+  `****a****`, which it gives as `<strong>a</strong>`.
+- **hitokoto:** a title in parentheses ends at the first `)` that is not escaped, also when a `(`
+  stands before it, and a backslash before a blank keeps the blank in the destination
+  (`link.cpp`). A run of one, two or three `*` or `_` opens italic, bold, or italic around bold;
+  these openings are not split or regrouped to fit a closing run, and a run of four or more is
+  text (`emphasis.cpp`). S013 "Scope" says that emphasis is a subset of CommonMark's delimiter
+  rules; S022 does not name the two link cases.
+- **Open:** whether the two link cases should follow CommonMark (a line that is a link today
+  would become text); whether emphasis should resolve delimiter runs as CommonMark does (split
+  runs, runs of four and more), and what that means for the markers the active line reveals.
