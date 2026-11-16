@@ -265,7 +265,9 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
 - **hitokoto:** the bounds of S007 (`core::kInlineBounds`) keep the inline formatting from adding
   to this; they do not make the layout of the text itself cheaper. From about 70,000 characters in
   one line a key takes longer than a frame, from about 230,000 longer than the 50 ms that no key
-  event may take; in text without blanks from about 17,000 and 34,000 characters.
+  event may take; in text without blanks from about 17,000 and 34,000 characters. The benchmark
+  gate opens a line of 200,000 characters `a*`, which is one word to Qt, and reports the time
+  (`s007_200k_word_open_styled_ms`, about 3 s).
 - **Open:** whether lines of this length matter in practice (minified data, a base64 image in one
   line); if so, how to lay out only the part of a block on screen, or how to show such a line
   shortened. Tables are not measured: a table row of that length goes through the table view.

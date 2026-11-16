@@ -38,6 +38,8 @@ const std::vector<std::string> kHardKeys = {
     "s028_table_field_typing_max_ms",
     "s028_table_step_max_ms",
     "s028_doc_typing_max_ms",
+    "s007_bound_lines_typing_max_ms",
+    "s007_long_lines_typing_max_ms",
     "s031_paste_outlook_40x10_ms",
     "s031_paste_excel_40x10_ms",
     "s031_paste_outlook_400x10_ms",

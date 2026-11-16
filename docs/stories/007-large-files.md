@@ -48,6 +48,10 @@ size never decides whether I can use it.
   one character more shows as text, concealed, revealed and in a table cell; characters that start
   no syntax do not count; no inline element runs above the bounds; block elements still apply.
 - UI: `tst_s007_large_files` `aLineAboveTheBoundsShowsAsTextAndIsSavedByteForByte`.
+- Bench: `s007_bound_lines_typing_*` (a key in lines at the bounds) and
+  `s007_long_lines_typing_*` (a key in lines above them), each with a hard budget of 50 ms for
+  the slowest key; `s007_200k_lines_open_*` and `s007_200k_word_open_styled_ms` (opening lines of
+  200,000 characters).
 
 ## Notes
 
@@ -88,6 +92,9 @@ Branch `agents/s013-inline-in-linear-time`, from main 0b69199.
   key in a line at the bounds takes at most 8 ms with Qt 6.12.0 and Qt 6.8.3, a key on the line
   above it 9 ms and 12 ms, and the slowest single key 15 ms and 18 ms.
 - A registry can be given other bounds (`ElementRegistry::setInlineBounds`); tests use small ones.
+- The benchmark gate measures a key in lines at the bounds and in lines just above them, with a
+  hard budget of 50 ms for the slowest key, and opening lines of 200,000 characters
+  (`docs/performance.md`, 2026-11-16).
 - Not covered: a line without any syntax still costs Qt's layout of the whole line on every key
   (about 0.2 µs per character: 4 ms for 10,000 characters, 43 ms for 200,000). See
   `unrefined.md`, "Very long lines".

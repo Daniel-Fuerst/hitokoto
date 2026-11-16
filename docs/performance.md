@@ -135,6 +135,25 @@ styled (the window does not answer until the first screen shows):
 `a*` and `~~a` hold no place where a line may break, so they open like one word of 200,000
 characters: the three seconds that remain are Qt's layout of that word, as for `x`.
 
+`hitokoto-bench` measures long lines since then (`s007_*`), three runs on this VM with Qt 6.12.0:
+
+| Measurement | Value | Budget |
+|---|---|---|
+| Key in lines at the bounds, median / p95 / max (`s007_bound_lines_typing_*`) | 5.4–5.8 / 8.2–9.6 / 8.6–26.9 ms | 50 ms max (hard) |
+| Key in lines above the bounds, median / p95 / max (`s007_long_lines_typing_*`) | 4.3–4.4 / 8.7–9.3 / 10.6–18.8 ms | 50 ms max (hard) |
+| Open four lines of 200,000 characters, first screen / styled (`s007_200k_lines_open_*`) | 63–70 / 82–89 ms | – |
+| Open one line of 200,000 characters `a*`, styled (`s007_200k_word_open_styled_ms`) | 3.0–3.1 s | reported only |
+
+The lines at the bounds are seven lines, one for each of `[](`, `[a](`, `a*`, `` `a ``, `\`, `~~a`
+and `[a](b) `: the pattern until the line holds 300 syntax characters, then words up to 9,990
+characters, so they show their formatting. The lines above the bounds repeat each pattern up to
+10,010 characters and show as text. 30 keys in the middle of each line, a character and Backspace
+in turn. The four lines of 200,000 characters are the patterns that hold a place to break a line
+(`[](`, `[a](`, `` `a ``, `\`; median of five opens); the line of `a*` is one word to Qt and is
+opened once, its time is reported and never fails a run. The maxima are compared for information,
+as those of the other typing measurements. With the earlier bound of 500 syntax characters the
+slowest key at the bounds was 27 ms and the p95 19 ms in one run.
+
 Text without blanks is a case of its own, with or without syntax and on main as well: Qt lays out
 one long word in a time that grows with the square of its length. A key in a line of 10,000
 characters `x` takes 8 ms, of 20,000 characters 21 ms, of 32,000 characters 45 ms, of 50,000
