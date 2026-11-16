@@ -7,6 +7,7 @@
 #include "hitokoto/core/text_codec.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -310,6 +311,31 @@ struct ParagraphLink {
     friend bool operator==(const ParagraphLink&, const ParagraphLink&) = default;
 };
 
+/// Above which sizes a line shows no inline formatting (S007). Inline elements run only on a line
+/// within both bounds; a longer or denser line shows its characters as they are written. Block
+/// elements still apply, and the text never changes (ADR 0002).
+struct InlineBounds {
+    /// Characters (UTF-16 code units) in the line.
+    std::size_t lineLength = 0;
+    /// Characters in the line that can start inline syntax: the trigger characters of the
+    /// registered inline elements (for the built-in ones `*`, `_`, `~`, `` ` ``, `\` and `[`).
+    std::size_t syntaxCharacters = 0;
+    friend bool operator==(const InlineBounds&, const InlineBounds&) = default;
+};
+
+/// The bounds every registry starts with. They keep a key typed in a line, or beside it, within the
+/// 50 ms that no key event may take (brief, section 4), with a margin of two. Measured with the
+/// release build on the development VM, Qt 6.12.0 and 6.8.3 (`docs/performance.md`, 2026-11-16):
+/// - 500 syntax characters. What a line costs to lay out and draw grows with its formatted pieces:
+///   about 25 µs for each link `[a](b)`, the dearest element, about 12 µs for each `*` of `a*a*`.
+///   A key in a line of 500 links takes 13 ms, the slowest of 30 keys 26 ms; with 1,000 links
+///   22 ms and up to 47 ms, with 2,000 links 50 ms and up to 81 ms. Text does not come near 500
+///   such characters in one line.
+/// - 4,000 characters. Some syntax reads on to the end of the line each time it starts, as 500
+///   `[](` that never close do. A key in such a line of 4,000 characters takes 12 ms and at most
+///   18 ms, of 8,000 characters 25 ms and up to 34 ms, of 16,000 characters 55 ms.
+inline constexpr InlineBounds kInlineBounds{4000, 500};
+
 class ElementRegistry {
 public:
     /// Registers an element. Earlier registrations win when several elements match a line.
@@ -325,6 +351,10 @@ public:
 
     /// How to show `line`. Never throws for any input.
     [[nodiscard]] LineRender render(std::u16string_view line, const LineContext& context) const;
+    /// The bounds above which `render` and `renderInline` run no inline element on a line
+    /// (`kInlineBounds` unless set). Tests and measurements set others.
+    void setInlineBounds(InlineBounds bounds) noexcept { inlineBounds_ = bounds; }
+    [[nodiscard]] InlineBounds inlineBounds() const noexcept { return inlineBounds_; }
     /// Only the inline elements on `text`, as inside a table cell (S028: cells hold inline content
     /// only, so `- x` stays text). Never throws for any input.
     [[nodiscard]] LineRender renderInline(std::u16string_view text) const;
@@ -381,6 +411,7 @@ private:
     std::array<std::uint64_t, 128> asciiTriggers_{};
     bool hasOtherTriggers_ = false;
     bool hasAlwaysInline_ = false;
+    InlineBounds inlineBounds_ = kInlineBounds;
     std::vector<std::unique_ptr<MultiLineElement>> multiLineElements_;
 };
 
