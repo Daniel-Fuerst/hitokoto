@@ -24,7 +24,7 @@ src/core   all logic: Markdown elements, reveal, codec, file I/O, theme (C++ sta
 | `LineElement` | `markdown.hpp` | One Markdown element: `parse()` (parse rule), `render()` (render rule), `paragraphRole()` and `startsAfterParagraph()` (its paragraph rules, ADR 0006) |
 | `MultiLineElement` | `markdown.hpp` | A block spanning lines (fenced code, tables, front matter): `parse(line, state)` / `parseWithNextLine()` and `render()`; owns every line while open; `documentStartState()` for a block that may only start the document |
 | `InlineElement` | `markdown.hpp` | Adds inline style ranges, inline-code runs and concealed delimiter ranges after block rendering |
-| `ElementRegistry` | `markdown.hpp` | Holds the elements; `render(line, {revealed, blockState, nextLine, setextLevel})` returns a `LineRender`; `renderInline(text)` runs only the inline elements (the text of a table cell, S028); `blockStateAfter()` walks lines without rendering, `paragraphLink()` tells how a line relates to the paragraph above, `documentStart()` the state the first line may be entered with; `renderDocument()` renders a whole document and is the reference for the lazy rendering in the UI (ADR 0006) |
+| `ElementRegistry` | `markdown.hpp` | Holds the elements; `render(line, {revealed, blockState, nextLine, setextLevel})` returns a `LineRender`; `renderInline(text)` runs only the inline elements (the text of a table cell, S028); both run no inline element on a line above the registry's bounds (`InlineBounds`, `kInlineBounds`, `setInlineBounds`; S007); `blockStateAfter()` walks lines without rendering, `paragraphLink()` tells how a line relates to the paragraph above, `documentStart()` the state the first line may be entered with; `renderDocument()` renders a whole document and is the reference for the lazy rendering in the UI (ADR 0006) |
 | `LineRender` | `markdown.hpp` | How one line is shown: heading level, table cells, thematic break, setext underline, closed front matter, block and inline style runs, hidden ranges, decorations |
 | `BlockState` | `markdown.hpp` | Opaque state from one line to the next: the multi-line element that is open (`element`, `value`; `active()`) and, in a field of its own, the paragraph the line belongs to (`paragraph`: 0, or 1 + its content column; ADR 0006) |
 | block rules | `src/core/src/block_rules.hpp` | Internal: the one thematic-break recogniser, setext underlines, the start of blocks hitokoto does not render yet, the content column after a container marker (S023) |
@@ -113,6 +113,9 @@ line element followed by the inline elements; paragraph text that ends in an und
 heading line (`LineContext::setextLevel`, found below it). An inline element declares
 its trigger characters (`triggerCharacters()`, e.g. `` ` `` for inline code); the registry scans
 the line once and runs only the elements whose characters occur, so most lines run none. The
+same scan counts the characters that can start inline syntax: a line with more of them than
+`kInlineBounds` allows, or longer than it allows, runs no inline element and shows as text (S007:
+what a line costs on every key grows with both). The
 registry then removes styled runs under hidden ranges. Inline elements run in registration order
 and see the runs of the earlier ones: emphasis skips the characters that inline code claimed, so
 inline code is registered first (`addInline` documents this). Besides the multi-line state, only

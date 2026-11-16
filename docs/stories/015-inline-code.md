@@ -68,3 +68,11 @@ concealed backticks reserve the padding. Every `inline-code.*` token applies (AD
 
 CI run #18 (pull request #5, 2026-10-25) is green on Linux (Qt 6.12 and 6.8), Windows (Qt 6.8.3)
 and macOS (Qt 6.12).
+
+## Rework on 2026-11-16
+
+Branch `agents/s013-inline-in-linear-time`, from main 0b69199.
+
+- A line above the bounds of S007 (longer than 4,000 characters, or with more than 500 characters
+  that can start inline syntax) shows as text: no code spans are rendered on it. See
+  `007-large-files.md`, "Rework on 2026-11-16".

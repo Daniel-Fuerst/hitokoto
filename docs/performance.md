@@ -31,6 +31,52 @@ local measurements.
 
 ## Measurements
 
+### 2026-11-16, development VM, long lines (S007) (release build, offscreen, Qt 6.12.0 and 6.8.3)
+
+A file of five lines whose third line is one pattern repeated; the caret in the middle of that
+line; 20 or 30 keys (a character and Backspace in turn), each with the repaint, as `typing_*`
+measures them. A probe outside the repository; main 0b69199, Qt 6.12.0, median per key:
+
+| Line of | 1,000 | 2,000 | 5,000 | 10,000 | 20,000 characters |
+|---|---|---|---|---|---|
+| text without syntax | 1.0 ms | 1.6 ms | 2.5 ms | 4.2 ms | 5.9 ms |
+| `a*` | 6.2 ms | 13.9 ms | 44 ms | 138 ms | 487 ms |
+| `[](` | 1.9 ms | 5.2 ms | 26 ms | 100 ms | 362 ms |
+| `[a](b) ` | 3.6 ms | 6.9 ms | 15.6 ms | 33 ms | 84 ms |
+| `` `a `` | 4.9 ms | 8.8 ms | 19.4 ms | 36 ms | 75 ms |
+| `\*` | 5.4 ms | 11.4 ms | 36 ms | 99 ms | 336 ms |
+
+Two costs add up. Up to about 2,000 characters nearly all of the time is Qt's: laying out and
+drawing a line grows with its formatted pieces, about 25 µs for each `[a](b)` and about 12 µs for
+each `*` of `a*` (a concealed marker has a font of its own, a style changes the font). Beyond that
+the core's share grows with the square of the length (the inline elements and the registry's merge
+of their results), and every key renders its line several times: the styler once, each repaint
+once more for the code-block panels and once for the decorations.
+
+The bounds of S007 follow from this (`core::kInlineBounds`; a line above either shows as text).
+The time for a key has to stay under 50 ms with a margin of two, so under about 25 ms for the
+slowest key on this VM:
+
+| Line | Key in the line, median / slowest of 30 | Key on the line above it |
+|---|---|---|
+| 500 links `[a](b) ` (3,500 characters) | 13 / 26 ms | 14 / 23 ms |
+| 1,000 links | 22 / 32 ms | 28 / 47 ms |
+| 2,000 links | 50 / 70 ms | 61 / 81 ms |
+| 500 `[](`, then text without blanks up to 4,000 characters | 12 / 17 ms | 9 / 9 ms |
+| the same up to 8,000 characters | 25 / 33 ms | 18 / 20 ms |
+| the same up to 16,000 characters | 55 / 114 ms | 35 / 50 ms |
+
+A link is the dearest piece per syntax character, and `[](` is the pattern that reads on to the
+end of the line each time it starts. So: at most 500 characters that can start inline syntax, and
+at most 4,000 characters. With the bounds in place, lines at the bounds (500 syntax characters of
+each of twelve patterns, alone and with text up to 3,990 characters) take at most 13 ms per key
+with Qt 6.12.0 and 14 ms with Qt 6.8.3 (links in both); the slowest single key in the line was
+26 ms and 18 ms. A key on the line above, which renders the line again, took at most 14 ms and
+17 ms; the slowest single one 28 ms and, once in 30 keys, 39 ms (the next slowest 25 ms).
+
+A line without any syntax is not helped by the bounds: 43 ms per key (up to 53 ms) with 200,000
+characters, all of it Qt's layout of the block (`docs/stories/unrefined.md`, "Very long lines").
+
 ### 2026-11-09, development VM, S031 (release build, offscreen, Qt 6.12.0)
 
 `s031_paste_*`: Ctrl+V in an empty document until the table view shows all rows, median of five

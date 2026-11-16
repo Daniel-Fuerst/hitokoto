@@ -383,14 +383,32 @@ void ElementRegistry::runInlineElements(std::u16string_view line, const LineCont
     }
     // One table lookup per character tells which inline elements this line can trigger;
     // most lines trigger none.
+    // S007: a line above either bound shows as text; the same pass over the line counts the
+    // characters that can start inline syntax.
+    if (line.size() > inlineBounds_.lineLength) {
+        return;
+    }
     std::uint64_t triggered = 0;
     bool nonAscii = false;
+    std::size_t syntaxCharacters = 0;
     for (const char16_t c : line) {
         if (c < asciiTriggers_.size()) {
-            triggered |= asciiTriggers_[c];
+            const std::uint64_t elements = asciiTriggers_[c];
+            triggered |= elements;
+            syntaxCharacters += elements != 0 ? 1U : 0U;
         } else {
             nonAscii = true;
         }
+    }
+    if (nonAscii && hasOtherTriggers_) {
+        for (const auto& entry : inlineElements_) {
+            for (const char16_t trigger : entry.otherTriggers) {
+                syntaxCharacters += static_cast<std::size_t>(std::count(line.begin(), line.end(), trigger));
+            }
+        }
+    }
+    if (syntaxCharacters > inlineBounds_.syntaxCharacters) {
+        return;
     }
     if (triggered == 0 && !hasAlwaysInline_ && (!nonAscii || !hasOtherTriggers_)) {
         return;

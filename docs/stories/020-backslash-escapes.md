@@ -59,3 +59,11 @@ Backslashes preceding ASCII punctuation characters are concealed when the line i
 with `Role::EscapeMarker` on the active line. Backslashes inside inline code and fenced code blocks
 remain literal. Theming baseline (ADR 0004) is satisfied by `escape.marker` falling back to `colors.marker`.
 All core and UI test suites pass.
+
+## Rework on 2026-11-16
+
+Branch `agents/s013-inline-in-linear-time`, from main 0b69199.
+
+- A line above the bounds of S007 (longer than 4,000 characters, or with more than 500 characters
+  that can start inline syntax) shows as text: no backslash escapes are rendered on it. See
+  `007-large-files.md`, "Rework on 2026-11-16".

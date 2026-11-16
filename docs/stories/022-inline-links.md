@@ -91,3 +91,11 @@ unsupported front matter value (S024) gets the same treatment. Tests:
 `tst_s022_inline_links` `aTitleWithTagsShowsAsItsCharacters` (a title with tags and two spaces, the
 tooltip shows its characters and no image) and the title checks of the other tests compare the
 text the tooltip shows; `tst_s024_front_matter` `theTooltipOfAValueShowsItsCharacters`.
+
+## Rework on 2026-11-16
+
+Branch `agents/s013-inline-in-linear-time`, from main 0b69199.
+
+- A line above the bounds of S007 (longer than 4,000 characters, or with more than 500 characters
+  that can start inline syntax) shows as text: no links are rendered on it. See
+  `007-large-files.md`, "Rework on 2026-11-16".
