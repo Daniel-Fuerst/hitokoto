@@ -5,9 +5,12 @@ GitHub release as its Debian package (S037, ADR 0012). The release of a version 
 when both packages passed their checks; a release published before S037 (0.5.1) stays without an
 MSI. This directory holds the recipe, applied to the source of each version tag:
 
-- `recipe.txt`: the Qt version and arch (the same as the Windows CI), the version of the WiX .NET
-  tool, versions skipped for Windows (`skip X.Y.Z <reason>`; released with the Debian package
-  alone) and validation findings accepted on purpose (`ice ICEnn <reason>`).
+- `recipe.txt`: the Qt version and arch (the same as the Windows CI: `QT_VERSION` of `ci.yml`, the
+  Qt of Linux and macOS), the version of the WiX .NET tool, versions skipped for Windows
+  (`skip X.Y.Z <reason>`; released with the Debian package alone) and validation findings accepted
+  on purpose (`ice ICEnn <reason>`). `packaging.yml` installs that Qt with aqtinstall from the
+  fixed commit `ci.yml` names, because no release of aqtinstall installs Qt 6.11 or newer for
+  Windows yet (ADR 0013).
 - `hitokoto.wxs`: the installer: the upgrade code, both scopes, the dialogs, the Start menu entry
   and the "Open with" entry for `.md`.
 - `files.txt`: the files of the installation; a file more or less makes the build red. The C++
@@ -56,19 +59,20 @@ moving from one to the other means uninstalling first. The installer adds a Star
 offers hitokoto under "Open with" for `.md` files; it never makes itself the default.
 
 What the installation contains besides `hitokoto.exe`: Qt's libraries and plugins (`windeployqt`,
-without translations, the software OpenGL renderer and the shader compilers), the C++ runtime of
+without translations, the software OpenGL renderer, the shader compilers and the image format
+plugins: hitokoto opens no image, and its icon is drawn by the SVG icon engine), the C++ runtime of
 Microsoft Visual C++ beside the program (Windows Update does not update these copies; the next
 version of hitokoto brings newer ones), `LICENSE.txt`, `LGPL-3.0.txt` and `THIRD-PARTY.txt`.
 
 ## Building locally
 
-In a "x64 Native Tools Command Prompt for VS 2022" with PowerShell 7, Qt 6.8.3 for MSVC 2022 64-bit
+In a "x64 Native Tools Command Prompt for VS 2022" with PowerShell 7, Qt 6.12.0 for MSVC 2022 64-bit
 and the WiX tool (`dotnet tool install --global wix --version 7.0.1`, then `wix eula accept wix7`
 and `wix extension add --global WixToolset.UI.wixext/7.0.1`), from the root of a checkout with the
 tags:
 
 ```bat
-set QT_ROOT_DIR=C:\Dev\Qt\6.8.3\msvc2022_64
+set QT_ROOT_DIR=C:\Dev\Qt\6.12.0\msvc2022_64
 set PATH=%QT_ROOT_DIR%\bin;%PATH%
 mkdir msi-work\source
 git archive v0.5.1 | tar -x -C msi-work\source

@@ -13,11 +13,16 @@ concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Qt versions: 6.12 (ADR 0001) where possible. Windows uses 6.8.3, the oldest supported Qt, until
-# an aqtinstall release supports the Qt 6.11+ repository layout for Windows x64 (aqtinstall 3.3.0
-# fails with "Failed to locate XML data"; fixed by miurahr/aqtinstall PR 1000, not yet released).
+# Qt versions: QT_VERSION (ADR 0001) on Linux, Windows and macOS; the job "Linux min Qt" checks the
+# oldest supported Qt. A matrix cannot read env, so its rows name the version themselves (a lint
+# keeps them equal). On Windows, aqtinstall 3.3.0, the newest release, cannot install Qt 6.11 or
+# newer ("Failed to locate XML data"); the fix (miurahr/aqtinstall pull request 1000) is in no
+# release yet, so every call of install-qt-action takes aqtinstall from a fixed commit there, the
+# same as packaging.yml. Back to a release once one has the fix (ADR 0013).
 env:
   QT_VERSION: "6.12.0"
+  # aqtinstall 3.3.1.dev92: master at the merge of pull request 1000 (2026-03-24)
+  AQT_SOURCE_WINDOWS: git+https://github.com/miurahr/aqtinstall.git@8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b
 
 jobs:
   format:
@@ -64,7 +69,7 @@ jobs:
         include:
           - { name: Linux, os: ubuntu-24.04, qt: "6.12.0", arch: linux_gcc_64, werror: "ON" }
           - { name: Linux min Qt, os: ubuntu-24.04, qt: "6.8.3", arch: linux_gcc_64, werror: "ON" }
-          - { name: Windows, os: windows-2022, qt: "6.8.3", arch: win64_msvc2022_64, werror: "OFF" }
+          - { name: Windows, os: windows-2022, qt: "6.12.0", arch: win64_msvc2022_64, werror: "OFF" }
           - { name: macOS, os: macos-15, qt: "6.12.0", arch: clang_64, werror: "ON" }
     steps:
       - uses: actions/checkout@v7
@@ -77,6 +82,7 @@ jobs:
           version: ${{ matrix.qt }}
           arch: ${{ matrix.arch }}
           cache: true
+          aqtsource: ${{ runner.os == 'Windows' && env.AQT_SOURCE_WINDOWS || '' }}
       - name: Configure
         run: cmake --preset ci -DHITOKOTO_WARNINGS_AS_ERRORS=${{ matrix.werror }}
       - name: Build
@@ -99,6 +105,7 @@ jobs:
           version: ${{ env.QT_VERSION }}
           arch: linux_gcc_64
           cache: true
+          aqtsource: ${{ runner.os == 'Windows' && env.AQT_SOURCE_WINDOWS || '' }}
       # Lints production code, tests, benchmarks and fuzzers (fuzzers need their own Clang
       # configure). Each file is linted only in one compilation database.
       - name: Configure
@@ -136,7 +143,7 @@ jobs:
           # Windows and macOS are off until further notice (user decision 2026-10-28): their runners
           # swing by 20-100 % between runs with the same code. S029 covers Linux; the same scheme can
           # follow there later. Their old baselines stay in bench/baselines/.
-          #- { name: Windows, os: windows-2022, qt: "6.8.3", arch: win64_msvc2022_64 }
+          #- { name: Windows, os: windows-2022, qt: "6.12.0", arch: win64_msvc2022_64 }
           #- { name: macOS, os: macos-15, qt: "6.12.0", arch: clang_64 }
     env:
       GATE: build/bench/bench/gate/hitokoto-bench-gate
@@ -188,6 +195,7 @@ jobs:
           version: ${{ matrix.qt }}
           arch: ${{ matrix.arch }}
           cache: true
+          aqtsource: ${{ runner.os == 'Windows' && env.AQT_SOURCE_WINDOWS || '' }}
       - name: Install the base's Qt
         if: steps.kind.outputs.qt_changed == 'true'
         uses: jurplel/install-qt-action@v4
@@ -197,6 +205,7 @@ jobs:
           dir: ${{ runner.temp }}/qt-base
           set-env: false
           cache: true
+          aqtsource: ${{ runner.os == 'Windows' && env.AQT_SOURCE_WINDOWS || '' }}
       - name: Configure
         run: cmake --preset bench
       - name: Build

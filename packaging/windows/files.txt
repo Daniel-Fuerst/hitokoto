@@ -2,7 +2,10 @@
 # more or less makes the build and the check red. windeployqt decides the Qt part and the Visual
 # Studio of the image the C++ runtime part; when either changes on purpose, this list follows.
 # The job summary of every build prints the installed list. Confirmed by the dry run of 0.5.1 on
-# pull request 45 (Qt 6.8.3, Visual C++ runtime 14.44.35112, 2026-11-13).
+# pull request 45 (Qt 6.8.3, Visual C++ runtime 14.44.35112, 2026-11-13). Since 2026-11-16 with
+# Qt 6.12.0 and without image format plugins (ADR 0013): hitokoto decodes no image file, and the
+# icon, an SVG, is drawn by the icon engine iconengines/qsvgicon; the Qt part is unchanged
+# otherwise, to be confirmed by the first dry run with Qt 6.12.0.
 hitokoto.exe
 LICENSE.txt
 LGPL-3.0.txt
@@ -12,10 +15,6 @@ Qt6Gui.dll
 Qt6Svg.dll
 Qt6Widgets.dll
 iconengines/qsvgicon.dll
-imageformats/qgif.dll
-imageformats/qico.dll
-imageformats/qjpeg.dll
-imageformats/qsvg.dll
 platforms/qwindows.dll
 styles/qmodernwindowsstyle.dll
 concrt140.dll
