@@ -67,6 +67,54 @@ private slots:
         QVERIFY(f.saveAndWait(f.dir.filePath(QStringLiteral("copy.md"))));
         QCOMPARE(test::Fixture::readFile(f.dir.filePath(QStringLiteral("copy.md"))).size(), bytes.size() + 16);
     }
+
+    // Rework of 2026-11-16: a line above the bounds (core::kInlineBounds) shows as text. Nothing of
+    // it is concealed or styled, lines within the bounds beside it look as ever, and typing in it
+    // and saving keep every byte (ADR 0002).
+    void aLineAboveTheBoundsShowsAsTextAndIsSavedByteForByte() {
+        test::Fixture f;
+        const QByteArray within = "**bold** and `code`";
+        QByteArray dense;  // more syntax characters than the bound allows
+        for (std::size_t i = 0; i <= core::kInlineBounds.syntaxCharacters / 2; ++i) {
+            dense += "*a* ";
+        }
+        const QByteArray longLine =  // longer than the bound allows
+            "**bold** [link](https://example.com) " +
+            QByteArray(static_cast<qsizetype>(core::kInlineBounds.lineLength), 'x');
+        const QByteArray bytes = within + "\r\n\r\n" + dense + "\n\n" + longLine + "\n\nlast line\n";
+        QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), bytes)));
+        f.settle();
+        const QTextDocument* document = f.editor()->document();
+        QCOMPARE(document->blockCount(), 8);
+        f.placeCaret(6);
+        f.settle();
+
+        const QTextBlock first = document->findBlockByNumber(0);
+        QVERIFY(test::isCollapsed(first, 0));
+        QCOMPARE(test::formatAt(first, 2).fontWeight(), QFont::Bold);
+        for (const int number : {2, 4}) {
+            const QTextBlock block = document->findBlockByNumber(number);
+            QVERIFY2(block.layout()->formats().isEmpty(), qPrintable(QString::number(number)));
+            QVERIFY(!test::isCollapsed(block, 0));
+        }
+
+        // The caret on the line, a key typed in it: still text.
+        f.placeCaret(4, 3);
+        test::keyClick(f.editor(), 'y');
+        f.settle();
+        const QTextBlock typed = document->findBlockByNumber(4);
+        QVERIFY(typed.text().startsWith(QStringLiteral("**by")));
+        QVERIFY(typed.layout()->formats().isEmpty());
+        f.placeCaret(6);
+        f.settle();
+        QVERIFY(document->findBlockByNumber(4).layout()->formats().isEmpty());
+
+        QByteArray expected = bytes;
+        expected.insert(within.size() + 4 + dense.size() + 2 + 3, 'y');
+        const QString copy = f.dir.filePath(QStringLiteral("copy.md"));
+        QVERIFY(f.saveAndWait(copy));
+        QCOMPARE(test::Fixture::readFile(copy), expected);
+    }
 };
 
 QTEST_MAIN(tst_s007_large_files)

@@ -5,7 +5,10 @@
 // registry's block-state shortcut agrees with render(). The whole-document reference (S023, ADR
 // 0006) renders the same text with the same guarantees and the same block states. The YAML of
 // closed front matter, and the whole input as lines, go to the properties parser (S024, ADR 0007):
-// it returns, and every line and column it reports lies in its input.
+// it returns, and every line and column it reports lies in its input. A line above the bounds of
+// S007 shows no inline formatting; it is rendered once more by a registry without the bounds, with
+// the same guarantees, so that the inline elements also see long lines (they render a line in
+// linear time: a run with a large -max_len and a -timeout shows an input that does not).
 #include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/properties.hpp"
 
@@ -39,10 +42,44 @@ void checkProperties(std::span<const std::u16string> lines) {
     }
 }
 
+/// Spans stay inside the line, and no character is covered by two runs or hidden ranges.
+void checkSpans(const hitokoto::core::LineRender& r, std::size_t length, bool mayHide) {
+    std::vector<int> cover(length, 0);
+    for (const auto& run : r.runs) {
+        if (run.span.end() > length)
+            std::abort();
+        for (auto k = run.span.start; k < run.span.end(); ++k)
+            ++cover[k];
+    }
+    for (const auto& h : r.hidden) {
+        if (!mayHide || h.span.end() > length)
+            std::abort();
+        for (auto k = h.span.start; k < h.span.end(); ++k)
+            ++cover[k];
+    }
+    for (const auto& s : r.inlineStyles) {
+        if (s.span.end() > length)
+            std::abort();
+    }
+    for (const auto& d : r.decorations) {
+        if (d.column >= length)
+            std::abort();
+    }
+    for (int c : cover) {
+        if (c > 1)
+            std::abort();
+    }
+}
+
 }  // namespace
 
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     static const auto registry = hitokoto::core::ElementRegistry::withBuiltins();
+    static const auto unbounded = [] {
+        auto r = hitokoto::core::ElementRegistry::withBuiltins();
+        r.setInlineBounds({static_cast<std::size_t>(-1), static_cast<std::size_t>(-1)});
+        return r;
+    }();
     std::u16string text(size / 2, u' ');
     for (std::size_t i = 0; i < text.size(); ++i) {
         text[i] = static_cast<char16_t>(data[2 * i] | (data[2 * i + 1] << 8));
@@ -64,34 +101,23 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         lines.emplace_back(line);
         states.push_back(state);
         for (const auto [revealed, setext] : {std::pair{false, 0}, std::pair{true, 0}, std::pair{false, 2}}) {
-            const auto r = registry.render(line, {revealed, state, nextLine, static_cast<std::uint8_t>(setext)});
-            std::vector<int> cover(line.size(), 0);
-            for (const auto& run : r.runs) {
-                if (run.span.end() > line.size())
-                    std::abort();
-                for (auto k = run.span.start; k < run.span.end(); ++k)
-                    ++cover[k];
-            }
-            for (const auto& h : r.hidden) {
-                if ((!r.table && revealed) || h.span.end() > line.size())
-                    std::abort();
-                for (auto k = h.span.start; k < h.span.end(); ++k)
-                    ++cover[k];
-            }
-            for (const auto& s : r.inlineStyles) {
-                if (s.span.end() > line.size())
-                    std::abort();
-            }
-            for (const auto& d : r.decorations) {
-                if (d.column >= line.size())
-                    std::abort();
-            }
-            for (int c : cover) {
-                if (c > 1)
-                    std::abort();
-            }
+            const hitokoto::core::LineContext context{revealed, state, nextLine, static_cast<std::uint8_t>(setext)};
+            const auto r = registry.render(line, context);
+            checkSpans(r, line.size(), r.table || !revealed);
             if (r.blockState != registry.blockStateAfter(line, state, nextLine))
                 std::abort();
+            const auto bounds = registry.inlineBounds();
+            const bool aboveBounds =
+                line.size() > bounds.lineLength ||
+                static_cast<std::size_t>(std::count_if(line.begin(), line.end(), [](char16_t c) {
+                    return c == u'*' || c == u'_' || c == u'~' || c == u'`' || c == u'\\' || c == u'[';
+                })) > bounds.syntaxCharacters;
+            if (aboveBounds) {
+                const auto u = unbounded.render(line, context);
+                checkSpans(u, line.size(), u.table || !revealed);
+                if (u.blockState != r.blockState)
+                    std::abort();
+            }
         }
         state = registry.blockStateAfter(line, state, nextLine);
         if (nl == std::u16string::npos)

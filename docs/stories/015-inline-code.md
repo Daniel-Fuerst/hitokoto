@@ -68,3 +68,18 @@ concealed backticks reserve the padding. Every `inline-code.*` token applies (AD
 
 CI run #18 (pull request #5, 2026-10-25) is green on Linux (Qt 6.12 and 6.8), Windows (Qt 6.8.3)
 and macOS (Qt 6.12).
+
+## Rework on 2026-11-16
+
+Branch `agents/s013-inline-in-linear-time`, from main 0b69199.
+
+- A line above the bounds of S007 (longer than 10,000 characters, or with more than 300 characters
+  that can start inline syntax) shows as text: no code spans are rendered on it. See
+  `007-large-files.md`, "Rework on 2026-11-16".
+- A line renders in linear time. The element itself was linear; each span adds three runs and two
+  hidden ranges, and the registry compared every run with every hidden range (a line of 200,000
+  characters `` `a ``: 4.6 s for two renders). The registry now looks up where a run starts among
+  the hidden ranges (`013-inline-emphasis.md`, "Rework on 2026-11-16"). The results are unchanged.
+- Tests: `S015_InlineCode` `ALineRendersInLinearTime` (steps of the inline pass for six patterns,
+  `tests/core/line_work.hpp`) and `SpansFollowOneAnotherAndTheLastBacktickStaysText` (checked
+  against commonmark.js 0.31.2 and markdown-it-py 4.2.0).

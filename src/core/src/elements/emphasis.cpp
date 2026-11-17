@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "hitokoto/core/markdown.hpp"
 
+#include "../inline_steps.hpp"
+
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <iterator>
 #include <vector>
@@ -72,8 +75,10 @@ void appendOpenings(std::vector<Opening>& openings, const Delimiter& delimiter, 
     }
 }
 
-std::vector<Delimiter> findDelimiters(std::u16string_view line, const std::vector<bool>& codeCharacters) {
+std::vector<Delimiter> findDelimiters(std::u16string_view line, const std::vector<bool>& codeCharacters,
+                                      detail::InlineSteps& steps) {
     std::vector<Delimiter> delimiters;
+    steps.add(line.size());  // every character is passed once, by the search or one at a time
     for (std::size_t i = 0; i < line.size();) {
         if (codeCharacters[i]) {
             ++i;
@@ -136,29 +141,63 @@ bool ruleOfThreeForbids(const Opening& opening, const Delimiter& closer) {
            (opening.runLength % 3 != 0 || closer.length % 3 != 0);
 }
 
+/// What a closing run looks for in the openings: its marker, how much of the run is left, and
+/// what the rule of 3 needs to know about it. Openings that fit one search need not fit another.
+constexpr std::size_t kSearches = std::size_t{3} * 3 * 3 * 2;
+
+std::size_t searchOf(const Delimiter& closer, std::size_t remaining) noexcept {
+    const std::size_t marker = closer.marker == u'*' ? 0U : closer.marker == u'_' ? 1U : 2U;
+    return ((marker * 3 + (remaining - 1)) * 3 + (closer.length - 1U)) * 2 + (closer.canOpen ? 1U : 0U);
+}
+
 /// A closer pairs with the nearest earlier opening of the same marker that fits into what is left
 /// of the closing run; openings skipped on the way stay literal (CommonMark). A run longer than the
 /// opening closes several nested pairs, inner first.
-std::vector<Pair> matchDelimiters(const std::vector<Delimiter>& delimiters) {
+///
+/// Linear in the number of delimiters, like "process emphasis" of the CommonMark spec with its
+/// `openers_bottom`: a search that found nothing remembers how far down it looked, and the next
+/// search of the same kind stops there, because the openings below did not fit then and have not
+/// changed since. So every opening is looked at once per kind of search, and once more when a pair
+/// forms above it and removes it.
+std::vector<Pair> matchDelimiters(const std::vector<Delimiter>& delimiters, detail::InlineSteps& steps) {
     std::vector<Pair> pairs;
     std::vector<Opening> openings;
+    std::array<std::size_t, kSearches> searchedDownTo{};  // per kind of search: no opening below this index fits
+    std::size_t highestMark = 0;                          // the largest value in searchedDownTo
     for (const auto& delimiter : delimiters) {
         std::size_t closeLength = 0;
         if (delimiter.canClose) {
             while (closeLength < delimiter.length) {
-                const auto opening = std::find_if(openings.rbegin(), openings.rend(), [&](const Opening& candidate) {
-                    return candidate.marker == delimiter.marker &&
-                           candidate.span.length <= delimiter.length - closeLength &&
-                           !ruleOfThreeForbids(candidate, delimiter);
-                });
-                if (opening == openings.rend()) {
+                const std::size_t remaining = delimiter.length - closeLength;
+                std::size_t& bottom = searchedDownTo[searchOf(delimiter, remaining)];
+                std::size_t found = openings.size();
+                for (std::size_t i = openings.size(); i > bottom; --i) {
+                    steps.add();
+                    const Opening& candidate = openings[i - 1];
+                    if (candidate.marker == delimiter.marker && candidate.span.length <= remaining &&
+                        !ruleOfThreeForbids(candidate, delimiter)) {
+                        found = i - 1;
+                        break;
+                    }
+                }
+                if (found == openings.size()) {
+                    bottom = openings.size();
+                    highestMark = std::max(highestMark, bottom);
                     break;
                 }
-                const Span closing{static_cast<std::uint32_t>(delimiter.span.start + closeLength),
-                                   opening->span.length};
-                pairs.push_back({opening->span, closing, opening->style});
-                closeLength += opening->span.length;
-                openings.erase(std::prev(opening.base()), openings.end());
+                const Opening opening = openings[found];
+                const Span closing{static_cast<std::uint32_t>(delimiter.span.start + closeLength), opening.span.length};
+                pairs.push_back({opening.span, closing, opening.style});
+                closeLength += opening.span.length;
+                openings.erase(openings.begin() + static_cast<std::ptrdiff_t>(found), openings.end());
+                if (highestMark > found) {
+                    // Openings that come at these indexes from now on have not been looked at.
+                    for (std::size_t& mark : searchedDownTo) {
+                        mark = std::min(mark, found);
+                    }
+                    highestMark = found;
+                    steps.add(kSearches);
+                }
             }
         }
         if (delimiter.canOpen && closeLength < delimiter.length) {
@@ -166,6 +205,11 @@ std::vector<Pair> matchDelimiters(const std::vector<Delimiter>& delimiters) {
         }
     }
     return pairs;
+}
+
+/// Index of the style's counter in `styleChanges`: bold, italic, strikethrough.
+std::size_t counterOf(InlineStyle style) noexcept {
+    return style == InlineStyle::Bold ? 0U : style == InlineStyle::Italic ? 1U : 2U;
 }
 
 std::uint32_t contextFor(Span span, const std::vector<Span>& contexts) noexcept {
@@ -189,10 +233,12 @@ public:
     [[nodiscard]] std::u16string_view triggerCharacters() const noexcept override { return u"*_~"; }
 
     void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
+        detail::InlineSteps steps;
         std::vector<bool> codeCharacters(line.size(), false);
         for (const auto& span : out.opaqueSpans) {
             if (span.start < line.size()) {
                 const auto end = std::min<std::size_t>(span.end(), line.size());
+                steps.add(end - span.start);
                 std::fill(codeCharacters.begin() + static_cast<std::ptrdiff_t>(span.start),
                           codeCharacters.begin() + static_cast<std::ptrdiff_t>(end), true);
             }
@@ -200,16 +246,18 @@ public:
         for (const auto& h : out.hidden) {
             if (h.span.start < line.size()) {
                 const auto end = std::min<std::size_t>(h.span.end(), line.size());
+                steps.add(end - h.span.start);
                 std::fill(codeCharacters.begin() + static_cast<std::ptrdiff_t>(h.span.start),
                           codeCharacters.begin() + static_cast<std::ptrdiff_t>(end), true);
             }
         }
-        const auto delimiters = findDelimiters(line, codeCharacters);
+        const auto delimiters = findDelimiters(line, codeCharacters, steps);
         if (delimiters.empty()) {
             return;
         }
 
         std::vector<std::vector<Delimiter>> byContext(out.inlineContexts.size() + 1);
+        steps.add(byContext.size() + delimiters.size());
         for (const auto& d : delimiters) {
             byContext[contextFor(d.span, out.inlineContexts)].push_back(d);
         }
@@ -219,24 +267,44 @@ public:
             if (group.empty()) {
                 continue;
             }
-            const auto groupPairs = matchDelimiters(group);
+            const auto groupPairs = matchDelimiters(group, steps);
             pairs.insert(pairs.end(), groupPairs.begin(), groupPairs.end());
         }
         if (pairs.empty()) {
             return;
         }
 
-        std::vector<InlineStyle> styles(line.size(), InlineStyle::None);
-        std::vector<bool> markerCharacters(line.size(), false);
+        // A pair styles the text between its delimiters, and pairs nest: each pair notes where its
+        // style begins and ends, and one pass along the line adds the notes up. Writing the style
+        // pair by pair would visit a character once for every pair around it.
+        const std::size_t length = line.size();
+        std::vector<std::int32_t> styleChanges(3 * (length + 1), 0);
+        std::vector<bool> markerCharacters(length, false);
+        steps.add(pairs.size());
         for (const auto& pair : pairs) {
-            for (std::uint32_t i = pair.opener.end(); i < pair.closer.start; ++i) {
-                styles[i] = styles[i] | pair.style;
+            if (pair.opener.end() < pair.closer.start) {
+                const std::size_t counter = counterOf(pair.style) * (length + 1);
+                ++styleChanges[counter + pair.opener.end()];
+                --styleChanges[counter + pair.closer.start];
             }
             for (const auto& delimiter : {pair.opener, pair.closer}) {
+                steps.add(delimiter.length);
                 std::fill(markerCharacters.begin() + delimiter.start, markerCharacters.begin() + delimiter.end(), true);
             }
         }
+        std::vector<InlineStyle> styles(length, InlineStyle::None);
+        std::array<std::int32_t, 3> open{};
+        steps.add(length);
+        for (std::size_t i = 0; i < length; ++i) {
+            for (std::size_t counter = 0; counter < open.size(); ++counter) {
+                open[counter] += styleChanges[counter * (length + 1) + i];
+            }
+            styles[i] = (open[0] > 0 ? InlineStyle::Bold : InlineStyle::None) |
+                        (open[1] > 0 ? InlineStyle::Italic : InlineStyle::None) |
+                        (open[2] > 0 ? InlineStyle::Strikethrough : InlineStyle::None);
+        }
 
+        steps.add(2 * length);  // the two passes below
         for (std::size_t i = 0; i < line.size();) {
             while (i < line.size() && !markerCharacters[i]) {
                 ++i;

@@ -49,6 +49,9 @@ constexpr std::string_view kReportOnly[] = {"save_10mb_total_ms",
                                             "s028_step_incomplete_max_ms",
                                             "s028_table_field_typing_max_ms",
                                             "s028_table_step_max_ms",
+                                            "s007_bound_lines_typing_max_ms",
+                                            "s007_long_lines_typing_max_ms",
+                                            "s007_200k_word_open_styled_ms",
                                             "startup_p95_ms"};
 
 std::string_view trim(std::string_view s) {
@@ -168,6 +171,8 @@ const std::vector<Budget>& hardBudgets() {
          "no key in the find bar above 50 ms, 1000-row table, highlight all (hard)"},
         {"s028_table_step_max_ms", 50, "no next match above 50 ms, 1000-row table, highlight all (hard)"},
         {"s028_doc_typing_max_ms", 50, "no key event above 50 ms, 10 MB with find open (hard)"},
+        {"s007_bound_lines_typing_max_ms", 50, "no key event above 50 ms, lines at the bounds (hard)"},
+        {"s007_long_lines_typing_max_ms", 50, "no key event above 50 ms, lines above the bounds (hard)"},
         {"s031_paste_outlook_40x10_ms", 50, "paste 400 cells until shown <= 50 ms, Outlook (hard)"},
         {"s031_paste_excel_40x10_ms", 50, "paste 400 cells until shown <= 50 ms, Excel (hard)"},
         {"s031_paste_outlook_400x10_ms", 500, "paste 4,000 cells <= 500 ms, Outlook (hard)"},

@@ -31,6 +31,134 @@ local measurements.
 
 ## Measurements
 
+### 2026-11-16, development VM, long lines (S007) (release build, offscreen, Qt 6.12.0 and 6.8.3)
+
+A file of five lines whose third line is one pattern repeated; the caret in the middle of that
+line; 20 or 30 keys (a character and Backspace in turn), each with the repaint, as `typing_*`
+measures them. A probe outside the repository; main 0b69199, Qt 6.12.0, median per key:
+
+| Line of | 1,000 | 2,000 | 5,000 | 10,000 | 20,000 characters |
+|---|---|---|---|---|---|
+| text without syntax | 1.0 ms | 1.6 ms | 2.5 ms | 4.2 ms | 5.9 ms |
+| `a*` | 6.2 ms | 13.9 ms | 44 ms | 138 ms | 487 ms |
+| `[](` | 1.9 ms | 5.2 ms | 26 ms | 100 ms | 362 ms |
+| `[a](b) ` | 3.6 ms | 6.9 ms | 15.6 ms | 33 ms | 84 ms |
+| `` `a `` | 4.9 ms | 8.8 ms | 19.4 ms | 36 ms | 75 ms |
+| `\*` | 5.4 ms | 11.4 ms | 36 ms | 99 ms | 336 ms |
+
+Two costs add up. Up to about 2,000 characters nearly all of the time is Qt's: laying out and
+drawing a line grows with its formatted pieces, about 25 µs for each `[a](b)` and about 12 µs for
+each `*` of `a*` (a concealed marker has a font of its own, a style changes the font). Beyond that
+the core's share grows with the square of the length (the inline elements and the registry's merge
+of their results), and every key renders its line several times: the styler once, each repaint
+once more for the code-block panels and once for the decorations.
+
+The bounds of S007 follow from this (`core::kInlineBounds`; a line above either shows as text).
+The time for a key has to stay under 50 ms with a margin of two, so under about 25 ms for the
+slowest key on this VM:
+
+| Line | Key in the line, median / slowest of 30 | Key on the line above it |
+|---|---|---|
+| 500 links `[a](b) ` (3,500 characters) | 13 / 26 ms | 14 / 23 ms |
+| 1,000 links | 22 / 32 ms | 28 / 47 ms |
+| 2,000 links | 50 / 70 ms | 61 / 81 ms |
+| 500 `[](`, then text without blanks up to 4,000 characters | 12 / 17 ms | 9 / 9 ms |
+| the same up to 8,000 characters | 25 / 33 ms | 18 / 20 ms |
+| the same up to 16,000 characters | 55 / 114 ms | 35 / 50 ms |
+
+A link is the dearest piece per syntax character, and `[](` is the pattern that reads on to the
+end of the line each time it starts. So: at most 500 characters that can start inline syntax, and
+at most 4,000 characters. With the bounds in place, lines at the bounds (500 syntax characters of
+each of twelve patterns, alone and with text up to 3,990 characters) take at most 13 ms per key
+with Qt 6.12.0 and 14 ms with Qt 6.8.3 (links in both); the slowest single key in the line was
+26 ms and 18 ms. A key on the line above, which renders the line again, took at most 14 ms and
+17 ms; the slowest single one 28 ms and, once in 30 keys, 39 ms (the next slowest 25 ms).
+
+A line without any syntax is not helped by the bounds: 43 ms per key (up to 53 ms) with 200,000
+characters, all of it Qt's layout of the block (`docs/stories/unrefined.md`, "Very long lines").
+
+The inline elements and the registry's merge of their results are linear since the rework of
+S013, S015, S020 and S022 on the same day. The core alone, one render concealed and one revealed
+of one line (a harness outside the repository, an optimised build, with the bounds lifted so that
+the elements run; best of three after the rework):
+
+| Line of | 50,000 | 100,000 | 200,000 characters | Before, 200,000 |
+|---|---|---|---|---|
+| `[](` | 0.6 ms | 1.4 ms | 2.9 ms | 18.9 s |
+| `[a](` | 0.6 ms | 1.2 ms | 2.5 ms | 11.2 s |
+| `a*` | 5.6 ms | 11.9 ms | 27.2 ms | 9.5 s |
+| `` `a `` | 2.9 ms | 5.8 ms | 12.4 ms | 4.6 s |
+| `\` | 2.9 ms | 6.1 ms | 12.9 ms | 6.9 s |
+| `~~a` | 4.1 ms | 8.6 ms | 18.0 ms | 4.1 s |
+
+Counted in steps (`core::inlineSteps`, three renders of a line), 53 patterns take between 3 and
+47 steps per character whatever the length; 40 of them took 59 to 64 times the steps for eight
+times the length before.
+
+With linear elements the length of a line adds little to a key, so the bound on the length rose
+from 4,000 to 10,000 characters. 500 syntax characters of a pattern, then words up to the given
+length; a key in the line, median / slowest of 30, Qt 6.12.0:
+
+| Line | 10,000 | 20,000 | 32,000 | 50,000 | 100,000 characters |
+|---|---|---|---|---|---|
+| 500 links `[a](b) ` | 11 / 13 ms | 13 / 22 ms | 14 / 20 ms | 18 / 20 ms | 30 / 51 ms |
+| 500 `` ` `` (250 code spans) | 8 / 9 ms | 12 / 15 ms | 14 / 26 ms | 19 / 22 ms | 33 / 49 ms |
+| emphasis, code, link, escape and strikethrough in turn | 8 / 17 ms | 12 / 21 ms | 15 / 21 ms | 20 / 31 ms | 34 / 37 ms |
+| words without syntax | 4 / 7 ms | 6 / 11 ms | 8 / 11 ms | 13 / 16 ms | – |
+
+The bound on the syntax characters went from 500 to 300 at the same time. With 500, the slowest
+of 30 keys in a line at the bounds took up to 26 ms with Qt 6.12.0 and 25 ms with Qt 6.8.3 on
+this VM, a key on the line above up to 28 ms (the numbers of the first table of bounds above). A
+CI runner can be half as fast as this VM in laying out text (factors of 1.1 to 2 in the S031
+measurements below), which would put such a key at the 50 ms.
+
+At the bounds as they are now (300 syntax characters of each of thirteen patterns, alone and with
+words or with unbroken text up to 9,990 characters): a key in the line takes at most 8 ms with
+both Qt versions (links), a key on the line above 9 ms and 12 ms; the slowest single key was
+15 ms and 18 ms. One key of 30 on a line above took 49 ms in one run with Qt 6.8.3 and at most
+12 ms in three more runs of the same file.
+
+Opening a file whose third line has 200,000 characters, until the first screen shows / until
+styled (the window does not answer until the first screen shows):
+
+| Line of | main, Qt 6.12.0 | main, Qt 6.8.3 | now, Qt 6.12.0 | now, Qt 6.8.3 |
+|---|---|---|---|---|
+| words without syntax | 0.07 / 0.10 s | 0.07 / 0.08 s | 0.07 / 0.09 s | 0.07 / 0.08 s |
+| `[](` | 22 / 84 s | 28 / 98 s | 0.07 / 0.09 s | 0.06 / 0.08 s |
+| `[a](` | 18 / 66 s | 18 / 67 s | 0.07 / 0.09 s | 0.07 / 0.09 s |
+| `` `a `` | 19 / 63 s | 14 / 46 s | 0.09 / 0.11 s | 0.07 / 0.08 s |
+| `\` | 24 / 82 s | 17 / 58 s | 0.07 / 0.09 s | 0.08 / 0.10 s |
+| `a*` | 90 / 168 s | 82 / 145 s | 3.0 / 3.0 s | 2.7 / 2.7 s |
+| `~~a` | 42 / 75 s | 39 / 68 s | 3.9 / 4.0 s | 3.8 / 3.8 s |
+| `x` (one word, no syntax) | 3.0 / 3.0 s | 3.4 / 3.4 s | 2.8 / 2.8 s | 3.3 / 3.3 s |
+
+`a*` and `~~a` hold no place where a line may break, so they open like one word of 200,000
+characters: the three seconds that remain are Qt's layout of that word, as for `x`.
+
+`hitokoto-bench` measures long lines since then (`s007_*`), three runs on this VM with Qt 6.12.0:
+
+| Measurement | Value | Budget |
+|---|---|---|
+| Key in lines at the bounds, median / p95 / max (`s007_bound_lines_typing_*`) | 5.4–5.8 / 8.2–9.6 / 8.6–26.9 ms | 50 ms max (hard) |
+| Key in lines above the bounds, median / p95 / max (`s007_long_lines_typing_*`) | 4.3–4.4 / 8.7–9.3 / 10.6–18.8 ms | 50 ms max (hard) |
+| Open four lines of 200,000 characters, first screen / styled (`s007_200k_lines_open_*`) | 63–70 / 82–89 ms | – |
+| Open one line of 200,000 characters `a*`, styled (`s007_200k_word_open_styled_ms`) | 3.0–3.1 s | reported only |
+
+The lines at the bounds are seven lines, one for each of `[](`, `[a](`, `a*`, `` `a ``, `\`, `~~a`
+and `[a](b) `: the pattern until the line holds 300 syntax characters, then words up to 9,990
+characters, so they show their formatting. The lines above the bounds repeat each pattern up to
+10,010 characters and show as text. 30 keys in the middle of each line, a character and Backspace
+in turn. The four lines of 200,000 characters are the patterns that hold a place to break a line
+(`[](`, `[a](`, `` `a ``, `\`; median of five opens); the line of `a*` is one word to Qt and is
+opened once, its time is reported and never fails a run. The maxima are compared for information,
+as those of the other typing measurements. With the earlier bound of 500 syntax characters the
+slowest key at the bounds was 27 ms and the p95 19 ms in one run.
+
+Text without blanks is a case of its own, with or without syntax and on main as well: Qt lays out
+one long word in a time that grows with the square of its length. A key in a line of 10,000
+characters `x` takes 8 ms, of 20,000 characters 21 ms, of 32,000 characters 45 ms, of 50,000
+characters 100 ms (`docs/stories/unrefined.md`, "Very long lines").
+
 ### 2026-11-09, development VM, S031 (release build, offscreen, Qt 6.12.0)
 
 `s031_paste_*`: Ctrl+V in an empty document until the table view shows all rows, median of five

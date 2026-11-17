@@ -8,9 +8,9 @@
 // latency (typing, Enter, moving across headings), opening and typing in large tables (S018) and
 // saving (longest UI stall and total, median of --runs saves), moving, entering and typing in a
 // 10 MB code block (S021), and opening and typing in a document of thematic breaks, setext
-// headings and long hard-wrapped paragraphs (S023), and pasting tables in Outlook's and Excel's
-// markup (S031). Compares against a baseline (regression gate for CI) and
-// reports the brief's budgets (section 4); hard budgets fail the run on any machine.
+// headings and long hard-wrapped paragraphs (S023), pasting tables in Outlook's and Excel's
+// markup (S031), and typing in and opening long lines of inline syntax (S007). Compares against a baseline (regression
+// gate for CI) and reports the brief's budgets (section 4); hard budgets fail the run on any machine.
 #include "document_session.hpp"
 #include "editor_widget.hpp"
 #include "find_bar.hpp"
@@ -42,8 +42,10 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstring>
 #include <iterator>
 #include <map>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -196,6 +198,33 @@ QString writeFile(const QTemporaryDir& dir, const QString& name, const QByteArra
     return path;
 }
 
+/// S007: the patterns whose inline rendering took a time growing with the square of the length of
+/// a line, and a link, the element that costs most to lay out and draw.
+constexpr const char* kLinePatterns[] = {"[](", "[a](", "a*", "`a ", "\\", "~~a", "[a](b) "};
+
+/// S007: a paragraph, then one long line for each of `patterns` with a paragraph after it. With
+/// `syntax` > 0 a line repeats its pattern until it holds that many characters that can start
+/// inline syntax and goes on with words up to `length` characters; with `syntax` == 0 it repeats
+/// the pattern up to `length` characters.
+QByteArray longLinesDocument(std::span<const char* const> patterns, std::size_t syntax, qsizetype length) {
+    QByteArray out = "Text before the long lines.\n\n";
+    for (const char* pattern : patterns) {
+        const QByteArray unit(pattern);
+        const auto perUnit = static_cast<std::size_t>(
+            std::count_if(unit.begin(), unit.end(), [](char c) { return std::strchr("*_~`\\[", c) != nullptr; }));
+        QByteArray line;
+        for (std::size_t count = perUnit; line.size() + unit.size() <= length && (syntax == 0 || count <= syntax);
+             count += perUnit) {
+            line += unit;
+        }
+        while (syntax != 0 && line.size() < length) {
+            line += "lorem ipsum dolor sit amet ";
+        }
+        out += line.left(length) + "\n\nText between the long lines.\n\n";
+    }
+    return out;
+}
+
 std::vector<double> measureStartup(const QString& app, const QString& file, int runs) {
     std::vector<double> results;
     for (int i = 0; i < runs; ++i) {
@@ -316,6 +345,34 @@ std::vector<double> measureTyping(ui::MainWindow& w, int keys) {
         }
         e->viewport()->repaint();
         samples.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
+    }
+    return samples;
+}
+
+/// S007: key-to-paint of `keysPerLine` keys typed in the middle of every line of at least
+/// `minLength` characters, a character and Backspace in turn.
+std::vector<double> measureLongLineTyping(ui::MainWindow& w, int minLength, int keysPerLine) {
+    ui::EditorWidget* e = w.editor();
+    std::vector<double> samples;
+    for (QTextBlock block = e->document()->begin(); block.isValid(); block = block.next()) {
+        if (block.length() <= minLength) {
+            continue;
+        }
+        QTextCursor c(block);
+        c.setPosition(block.position() + block.length() / 2);
+        e->setTextCursor(c);
+        e->viewport()->repaint();
+        for (int i = 0; i < keysPerLine; ++i) {
+            QElapsedTimer t;
+            t.start();
+            if (i % 2 == 0) {
+                test::keyClick(e, 'x');
+            } else {
+                test::keyClick(e, Qt::Key_Backspace);
+            }
+            e->viewport()->repaint();
+            samples.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
+        }
     }
     return samples;
 }
@@ -881,6 +938,8 @@ const Budget kBudgets[] = {
     {"s028_table_step_max_ms", 50, "no next match above 50 ms, 1000-row table, highlight all (hard)", true},
     {"s028_doc_typing_p95_ms", 16, "key to screen <= 16 ms (10 MB, highlight all)"},
     {"s028_doc_typing_max_ms", 50, "no key event above 50 ms, 10 MB with find open (hard)", true},
+    {"s007_bound_lines_typing_max_ms", 50, "no key event above 50 ms, lines at the bounds (hard)", true},
+    {"s007_long_lines_typing_max_ms", 50, "no key event above 50 ms, lines above the bounds (hard)", true},
     {"s031_paste_outlook_40x10_ms", 50, "paste 400 cells until shown <= 50 ms, Outlook (hard)", true},
     {"s031_paste_excel_40x10_ms", 50, "paste 400 cells until shown <= 50 ms, Excel (hard)", true},
     {"s031_paste_outlook_400x10_ms", 500, "paste 4,000 cells <= 500 ms, Outlook (hard)", true},
@@ -1142,6 +1201,52 @@ int main(int argc, char* argv[]) {
         w.findBar()->highlightAllAction()->setChecked(false);
         w.findController()->close();
         w.editor()->document()->setModified(false);
+    }
+
+    // S007: long lines of inline syntax. Lines at the bounds (core::kInlineBounds) show their
+    // formatting: as many syntax characters as allowed, then words up to ten characters below the
+    // allowed length, so that a typed character keeps the line within it. Lines ten characters
+    // above the allowed length show as text. A key in either stays under 50 ms.
+    {
+        const std::span<const char* const> patterns(kLinePatterns);
+        const auto atBounds = static_cast<qsizetype>(core::kInlineBounds.lineLength) - 10;
+        const QString bounded = writeFile(dir, QStringLiteral("s007-bounds.md"),
+                                          longLinesDocument(patterns, core::kInlineBounds.syntaxCharacters, atBounds));
+        (void)measureOpen(w, bounded);
+        const auto boundTyping = stats(measureLongLineTyping(w, 1000, 30));
+        r["s007_bound_lines_typing_median_ms"] = boundTyping.median;
+        r["s007_bound_lines_typing_p95_ms"] = boundTyping.p95;
+        r["s007_bound_lines_typing_max_ms"] = boundTyping.max;
+        w.editor()->document()->setModified(false);
+        w.session()->newDocument();
+
+        const QString above =
+            writeFile(dir, QStringLiteral("s007-above.md"), longLinesDocument(patterns, 0, atBounds + 20));
+        (void)measureOpen(w, above);
+        const auto aboveTyping = stats(measureLongLineTyping(w, 1000, 30));
+        r["s007_long_lines_typing_median_ms"] = aboveTyping.median;
+        r["s007_long_lines_typing_p95_ms"] = aboveTyping.p95;
+        r["s007_long_lines_typing_max_ms"] = aboveTyping.max;
+        w.editor()->document()->setModified(false);
+        w.session()->newDocument();
+
+        // Opening lines of 200,000 characters. The patterns that hold a place to break a line
+        // open like text of that length; `a*` and `~~a` are one word to Qt, whose layout takes a
+        // time growing with the square of its length (docs/stories/unrefined.md, "Very long
+        // lines"), so one such line is opened once and its time only reported.
+        constexpr qsizetype kLongLine = 200000;
+        constexpr const char* kBreakable[] = {"[](", "[a](", "`a ", "\\"};
+        const QString huge =
+            writeFile(dir, QStringLiteral("s007-200k.md"), longLinesDocument(kBreakable, 0, kLongLine));
+        const auto openHuge = medianOpen(w, huge, "s007_200k_lines_open");
+        r["s007_200k_lines_open_first_chunk_ms"] = openHuge.firstChunkMs;
+        r["s007_200k_lines_open_styled_ms"] = openHuge.styledMs;
+        w.session()->newDocument();
+        constexpr const char* kOneWord[] = {"a*"};
+        const QString word =
+            writeFile(dir, QStringLiteral("s007-200k-word.md"), longLinesDocument(kOneWord, 0, kLongLine));
+        r["s007_200k_word_open_styled_ms"] = measureOpen(w, word).styledMs;
+        w.session()->newDocument();
     }
 
     // S031: pasting tables in Outlook's and Excel's markup (story: 400 cells within 50 ms, above

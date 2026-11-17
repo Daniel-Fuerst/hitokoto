@@ -3,6 +3,8 @@
 #include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/theme.hpp"
 
+#include "line_work.hpp"
+
 #include <gtest/gtest.h>
 
 #include <iterator>
@@ -341,4 +343,96 @@ TEST(S013_InlineEmphasis, DelimiterRunClosesOrOpensNestedPairsOfDifferentLength)
     EXPECT_EQ(concealed(openingRun), (std::vector<Span>{{0, 3}, {7, 2}, {16, 1}}));
     EXPECT_EQ(openingRun.inlineStyles, (std::vector<InlineStyleRun>{{{3, 4}, InlineStyle::Bold | InlineStyle::Italic},
                                                                     {{9, 7}, InlineStyle::Italic}}));
+}
+
+// Rework of 2026-11-16: a line renders in linear time. Steps of the inline pass are counted
+// (line_work.hpp); the lines are those that took a time growing with the square of their length:
+// delimiters that pair, that nest, that find no opening, and their styles under hidden markers.
+TEST(S013_InlineEmphasis, ALineRendersInLinearTime) {
+    using hitokoto::test::halves;
+    using hitokoto::test::of;
+    for (const auto& pattern : {
+             of("a*", u"a*"),
+             of("~~a", u"~~a"),
+             of("**a** ", u"**a** "),
+             of("_a_ ", u"_a_ "),
+             of("*a ", u"*a "),
+             of("***a*** ", u"***a*** "),
+             of("*a**b***c ", u"*a**b***c "),
+             of("a*b_c~~d", u"a*b_c~~d"),
+             halves("*a .. a*", u"*a ", u"a* "),
+             halves("_a .. a*", u"_a ", u"a* "),
+             halves("**a .. a*", u"**a ", u"a* "),
+             halves("***a .. a**", u"***a ", u"a** "),
+             halves("~~a .. a~~", u"~~a ", u"a~~ "),
+             halves("*a _b ~~c .. c~~ b_ a*", u"*a _b ~~c ", u"c~~ b_ a* "),
+             hitokoto::test::LinePattern{
+                 "# a*", [](std::size_t length) { return u"# " + hitokoto::test::repeated(u"a*", length); }},
+         }) {
+        hitokoto::test::expectLinearWork(pattern);
+    }
+}
+
+// The pairs are the same as before the rework. Each line checked against commonmark.js 0.31.2 and
+// markdown-it-py 4.2.0 (mode commonmark), the lines with `~~` against cmark-gfm (cmarkgfm 2025.10.22).
+TEST(S013_InlineEmphasis, ACloserFindsTheNearestOpeningThatFitsPastOthers) {
+    // <em>a _b c</em> d_: the `_` between the pair stays text, and so does the last one.
+    auto r = show(u"*a _b c* d_");
+    EXPECT_EQ(r.inlineStyles, (std::vector<InlineStyleRun>{{{1, 6}, InlineStyle::Italic}}));
+    EXPECT_EQ(spans(r.hidden), (std::vector<Span>{{0, 1}, {7, 1}}));
+
+    // <em>a <em>b _c</em> d</em>: the first `_` is still there for the last one after `*b _c*`
+    // paired above it and a search for a `*` went past it.
+    r = show(u"_a *b _c* d_");
+    EXPECT_EQ(r.inlineStyles, (std::vector<InlineStyleRun>{
+                                  {{1, 2}, InlineStyle::Italic},
+                                  {{4, 4}, InlineStyle::Italic},
+                                  {{9, 2}, InlineStyle::Italic},
+                              }));
+    EXPECT_EQ(spans(r.hidden), (std::vector<Span>{{0, 1}, {3, 1}, {8, 1}, {11, 1}}));
+
+    // <em>a ~~b</em> c~~: the `~~` inside the pair is gone with it, the last `~~` finds nothing.
+    r = show(u"*a ~~b* c~~");
+    EXPECT_EQ(r.inlineStyles, (std::vector<InlineStyleRun>{{{1, 5}, InlineStyle::Italic}}));
+    EXPECT_EQ(spans(r.hidden), (std::vector<Span>{{0, 1}, {6, 1}}));
+}
+
+TEST(S013_InlineEmphasis, NestedPairsAddUpTheirStyles) {
+    // <em>a <strong>b <del>c</del> b</strong> a</em>
+    auto r = show(u"*a **b ~~c~~ b** a*");
+    EXPECT_EQ(r.inlineStyles, (std::vector<InlineStyleRun>{
+                                  {{1, 2}, InlineStyle::Italic},
+                                  {{5, 2}, InlineStyle::BoldItalic},
+                                  {{9, 1}, InlineStyle::BoldItalicStrikethrough},
+                                  {{12, 2}, InlineStyle::BoldItalic},
+                                  {{16, 2}, InlineStyle::Italic},
+                              }));
+    EXPECT_EQ(spans(r.hidden), (std::vector<Span>{{0, 1}, {3, 2}, {7, 2}, {10, 2}, {14, 2}, {18, 1}}));
+
+    // <strong>a <em>b <strong>c</strong> b</em> a</strong>: bold inside bold stays bold.
+    r = show(u"**a *b **c** b* a**");
+    EXPECT_EQ(r.inlineStyles, (std::vector<InlineStyleRun>{
+                                  {{2, 2}, InlineStyle::Bold},
+                                  {{5, 2}, InlineStyle::BoldItalic},
+                                  {{9, 1}, InlineStyle::BoldItalic},
+                                  {{12, 2}, InlineStyle::BoldItalic},
+                                  {{15, 2}, InlineStyle::Bold},
+                              }));
+
+    // <em><strong>a</strong> b</em>
+    r = show(u"***a** b*");
+    EXPECT_EQ(r.inlineStyles, (std::vector<InlineStyleRun>{
+                                  {{3, 1}, InlineStyle::BoldItalic},
+                                  {{6, 2}, InlineStyle::Italic},
+                              }));
+    EXPECT_EQ(spans(r.hidden), (std::vector<Span>{{0, 3}, {4, 2}, {8, 1}}));
+
+    // <del>a <del>b</del> c</del>
+    r = show(u"~~a ~~b~~ c~~");
+    EXPECT_EQ(r.inlineStyles, (std::vector<InlineStyleRun>{
+                                  {{2, 2}, InlineStyle::Strikethrough},
+                                  {{6, 1}, InlineStyle::Strikethrough},
+                                  {{9, 2}, InlineStyle::Strikethrough},
+                              }));
+    EXPECT_EQ(spans(r.hidden), (std::vector<Span>{{0, 2}, {4, 2}, {7, 2}, {11, 2}}));
 }

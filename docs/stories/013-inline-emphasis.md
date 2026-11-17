@@ -79,3 +79,32 @@ the colour of revealed delimiters come from `[emphasis]` (ADR 0004).
 
 CI run #18 (pull request #5, 2026-10-25) is green on Linux (Qt 6.12 and 6.8), Windows (Qt 6.8.3)
 and macOS (Qt 6.12).
+
+## Rework on 2026-11-16
+
+Branch `agents/s013-inline-in-linear-time`, from main 0b69199.
+
+- A line above the bounds of S007 (longer than 10,000 characters, or with more than 300 characters
+  that can start inline syntax) shows as text: no emphasis are rendered on it. See
+  `007-large-files.md`, "Rework on 2026-11-16".
+- A line renders in linear time. Before, the time grew with the square of the length in three
+  places: a closing run looked through all openings before it again and again (`_a _a … a* a*`),
+  each pair wrote its style on every character between its delimiters (nested pairs), and the
+  registry compared every styled run with every hidden range (`a*a*a*`: 100,000 of each in a line
+  of 200,000 characters, 9.5 s for two renders).
+- Pairing is the same rule as before, made linear like "process emphasis" of the CommonMark spec
+  with its `openers_bottom`: a search that found nothing remembers how far down it looked, per
+  kind of search (marker, what is left of the closing run, and what the rule of 3 asks), and the
+  next search of that kind stops there. Styles are noted where they begin and end and added up in
+  one pass along the line. The registry cuts runs around hidden ranges by looking up where a run
+  starts among the ranges, joined where they overlap (`Cuts` in `element_registry.cpp`).
+- The results are unchanged: 760,000 random lines of syntax characters and of pieces of syntax
+  render to the same `LineRender` as before, in six contexts each (a harness outside the
+  repository). This story's subset is unchanged too: `***a* b**` and `*a **b* c**` still differ
+  from CommonMark, as "Scope" says.
+- Tests: `S013_InlineEmphasis` `ALineRendersInLinearTime` counts the steps of the inline pass
+  (`core::inlineSteps`, `tests/core/line_work.hpp`) for lines of 2,000 and 16,000 characters of
+  15 patterns: eight times the length takes at most eight and a half times the steps (it took 59
+  to 64 times). `ACloserFindsTheNearestOpeningThatFitsPastOthers` and
+  `NestedPairsAddUpTheirStyles` pin results, each checked against commonmark.js 0.31.2 and
+  markdown-it-py 4.2.0, those with `~~` against cmark-gfm (cmarkgfm 2025.10.22).

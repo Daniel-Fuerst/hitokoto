@@ -7,6 +7,7 @@
 #include "hitokoto/core/text_codec.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -310,6 +311,35 @@ struct ParagraphLink {
     friend bool operator==(const ParagraphLink&, const ParagraphLink&) = default;
 };
 
+/// Above which sizes a line shows no inline formatting (S007). Inline elements run only on a line
+/// within both bounds; a longer or denser line shows its characters as they are written. Block
+/// elements still apply, and the text never changes (ADR 0002).
+struct InlineBounds {
+    /// Characters (UTF-16 code units) in the line.
+    std::size_t lineLength = 0;
+    /// Characters in the line that can start inline syntax: the trigger characters of the
+    /// registered inline elements (for the built-in ones `*`, `_`, `~`, `` ` ``, `\` and `[`).
+    std::size_t syntaxCharacters = 0;
+    friend bool operator==(const InlineBounds&, const InlineBounds&) = default;
+};
+
+/// The bounds every registry starts with. They keep a key typed in a line, or beside it, within the
+/// 50 ms that no key event may take (brief, section 4), also on a machine half as fast as the
+/// development VM, as a CI runner can be. Measured with the release build on that VM, Qt 6.12.0
+/// and 6.8.3 (`docs/performance.md`, 2026-11-16):
+/// - 300 syntax characters. What a line costs to lay out and draw grows with its formatted pieces:
+///   about 25 µs for each link `[a](b)`, the dearest element, about 12 µs for each `*` of `a*a*`.
+///   A key in a line of 300 links takes 7 to 8 ms, the slowest of 30 keys 12 ms; with 500 links
+///   13 ms and up to 26 ms, with 1,000 links 22 ms and up to 47 ms, with 2,000 links 50 ms and up
+///   to 81 ms. Text does not come near 300 such characters in one line.
+/// - 10,000 characters. The inline elements render a line in linear time, so the length adds
+///   little; what grows is Qt's layout of the block. With 500 links and words up to 10,000
+///   characters a key takes 12 to 13 ms, up to 20,000 characters 13 ms, up to 50,000 characters 18
+///   to 20 ms. At both bounds a key takes at most 8 ms and the slowest one 18 ms. Before the
+///   elements were linear, each of 500 `[](` read on to the end of the line, and the bound was
+///   4,000 characters.
+inline constexpr InlineBounds kInlineBounds{10000, 300};
+
 class ElementRegistry {
 public:
     /// Registers an element. Earlier registrations win when several elements match a line.
@@ -325,6 +355,10 @@ public:
 
     /// How to show `line`. Never throws for any input.
     [[nodiscard]] LineRender render(std::u16string_view line, const LineContext& context) const;
+    /// The bounds above which `render` and `renderInline` run no inline element on a line
+    /// (`kInlineBounds` unless set). Tests and measurements set others.
+    void setInlineBounds(InlineBounds bounds) noexcept { inlineBounds_ = bounds; }
+    [[nodiscard]] InlineBounds inlineBounds() const noexcept { return inlineBounds_; }
     /// Only the inline elements on `text`, as inside a table cell (S028: cells hold inline content
     /// only, so `- x` stays text). Never throws for any input.
     [[nodiscard]] LineRender renderInline(std::u16string_view text) const;
@@ -381,8 +415,15 @@ private:
     std::array<std::uint64_t, 128> asciiTriggers_{};
     bool hasOtherTriggers_ = false;
     bool hasAlwaysInline_ = false;
+    InlineBounds inlineBounds_ = kInlineBounds;
     std::vector<std::unique_ptr<MultiLineElement>> multiLineElements_;
 };
+
+/// The work the inline pass has done on the calling thread so far, in steps: one for each character
+/// an inline element or the registry's merge of their results looks at, and one for each entry of
+/// a list they walk. A test renders a line, takes the difference and compares it with the length
+/// of the line: a line renders in linear time (S013, S015, S020, S022). The number means nothing else.
+[[nodiscard]] std::uint64_t inlineSteps() noexcept;
 
 /// Built-in elements (each in its own source file).
 std::unique_ptr<LineElement> makeHeadingElement();
