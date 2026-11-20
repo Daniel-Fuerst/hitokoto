@@ -31,6 +31,51 @@ local measurements.
 
 ## Measurements
 
+### 2026-11-20, development VM, S031: formatting before Qt's HTML import (release build, offscreen, Qt 6.12.0 and 6.8.3)
+
+Three costs of Qt's import that the estimate below did not count, all from formatting a pasted table
+does not keep. Qt's import alone (`QTextDocument::setHtml` of the HTML the scan judged `Flat`),
+before (the HTML without style attributes, as on `a394434`) and now (without what only formats,
+`core::htmlWithoutFormatting`), Qt 6.12.0 / 6.8.3:
+
+| Paste | Size | Import may take | Before | Now |
+|---|---|---|---|---|
+| `<style>b ~ span{…}</style>`, 2,000 spans in a cell of four | 28 KB | 25 ms | 464 / 480 ms | 3.1 / 2.6 ms |
+| the same rule, 8,785 empty spans in a row of ten cells | 62 KB | 25 ms | 29.8 / 31.2 s | 14 / 10 ms |
+| the same rule across a comment, or read at `</div>` | 28 KB | 25 ms | 445 to 481 ms | 2.6 to 3.2 ms |
+| `+`, child, descendant, attribute selectors, `:first-child`, `:last-child`, `* ~ *` | 2,000 spans | 25 ms | 4.2 to 8.0 ms | 2.6 to 3.5 ms |
+| tables of 2 x 2 cells, `width` of the first cell different | 10,000 | 2.5 s | 6.9 / 7.7 s | 0.38 / 0.31 s |
+| the same in percent, or on th | 10,000 | 2.5 s | 7.2 to 7.6 s | 0.31 to 0.40 s |
+| the same with one width, or `width` of col or table, or `bgcolor` | 10,000 | 2.5 s | 0.31 to 0.44 s | 0.31 to 0.37 s |
+| `<font size=… color=…>` with the same sum of size and colour | 4,000 in a cell | 25 ms | 141 / 139 ms | 6.6 / 5.6 ms |
+| the same with random sizes and colours | 4,000 in a cell | 25 ms | 17 / 13 ms | 7.3 / 5.7 ms |
+| the same sum, eight fonts in each of 2,000 / 8,000 cells | 0.7 / 2.8 MB | 125 / 500 ms | 2.9 / 5.3 s, 46 / 58 s | 47 / 38 ms, 0.22 / 0.17 s |
+
+A rule `b ~ span` checks each span against every sibling before it, finding each with a search of
+their parent (`QTextHtmlStyleSelector::previousSiblingNode`); a table keeps its column widths in a
+`QList<QTextLength>`, and `QTextFormatCollection::indexForFormat` hashes such a list by its type
+alone, so each table is compared with every one before it; and the hash of a format is the sum of
+the hashes of its properties, an integer by its value and a colour by its RGBA value, so a font size
+and a colour with the same sum share it. Qt 6.8.3 and 6.12.0 have the same code here. In the window
+(Ctrl+V of the HTML until the event loop is idle, Qt 6.8.3), before / now: 8,785 spans 30.8 s / 12
+ms, 2,000 spans 472 / 4 ms, 10,000 tables with different widths 7.4 s / 0.51 s (with one width 0.49
+/ 0.53 s), 4,000 fonts with the same sum 136 / 9 ms, 8,000 cells of them 0.22 s now.
+
+The results stay. Qt's import of the 16 samples, of eight tables in their markup, of 300 random
+mixes of 37 elements, 25 attributes, style rules and tables and of the pastes above gives the same
+blocks with and without what only formats, with both Qt versions; the one difference is a style
+element setting `white-space: pre`. In the editor the samples and the tables in their markup give
+the same Markdown as before; 36 of the 300 mixes, which the estimate of their style rules kept plain
+text, now convert. Of 600 random mixes (four seeds), Qt's import of each the scan lets through took
+at most 65 % of what its cells allow (Qt 6.12.0; 61 % with 6.8.3).
+
+The samples' markup in the estimate, without what only formats: 40 x 10 to 500 x 100 cells cost 54
+to 55 % of what the cells allow with Outlook's markup and 25 to 26 % with Excel's (before 59 % and
+30 %); Outlook's import took 39 to 62 % of its estimate, Excel's 39 to 44 %. Writing the HTML
+without what only formats and scanning it takes 85 to 94 ms for 50,000 cells in Outlook's markup (21
+MB) and 26 to 41 ms for 50,000 in Excel's (5.6 MB), against 50 to 56 ms and 20 ms for removing the
+style attributes and scanning before.
+
 ### 2026-11-20, development VM, S031: bounds on Qt's HTML import (release build, offscreen, Qt 6.12.0 and 6.8.3)
 
 Some pastes make Qt's HTML import build far more than their cells. A first cell spanning 20,000

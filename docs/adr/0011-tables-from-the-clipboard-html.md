@@ -99,6 +99,16 @@ sample-like cells).
   HTML without style attributes as Qt's parser reads it and estimates the import's time from what
   it counts (`core::kPasteHtmlBounds`): Qt's import may take half of what S031 grants the paste's
   cells, otherwise the paste stays plain text without an import. The import itself is unchanged.
+- Second addendum of 2026-11-20 (same rework, before the merge): Qt's import also pays for
+  formatting far beyond the cells, through costs no estimate of counted units can follow (a style
+  rule `b ~ span` checks each span against every sibling before it; tables whose cells differ in
+  width, and formats whose properties add up to the same hash, are each compared with all such
+  formats before them). Qt now gets the HTML without what only formats
+  (`core::htmlWithoutFormatting`, read as the scan reads it): of the attributes only the spans of
+  td and th and `name` and `content` of meta stay, and style elements lose their sheet. This
+  replaces `core::htmlWithoutStyles` and goes one step further on its way: the tables and their
+  text stay the same (samples, tables in their markup, random mixes, both Qt versions), except
+  that a sheet's `white-space` no longer applies, as a style attribute's has not since 2026-11-10.
 
 ## Reconsider if
 
