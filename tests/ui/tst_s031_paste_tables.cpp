@@ -319,7 +319,8 @@ QString inCell(const QString& inner) {
 
 /// The pastes of the rework of 2026-11-20 whose import would take far longer than their cells
 /// allow: a span that makes Qt build a grid of 120,000 positions for 12 cells, an element nested
-/// 2,000 deep, and 100,000 bold words in a cell of four.
+/// 2,000 deep, 100,000 bold words in a cell of four, and a list whose blocks Qt marks again for
+/// each new one (4,000 items, or 4,000 paragraph separators in one item).
 void beyondTheBoundsRows() {
     QTest::addColumn<QString>("html");
     QTest::newRow("span across 20,000 columns")
@@ -328,6 +329,10 @@ void beyondTheBoundsRows() {
     QTest::newRow("2,000 nested div") << inCell(QStringLiteral("<div>").repeated(2000) + QStringLiteral("x") +
                                                 QStringLiteral("</div>").repeated(2000));
     QTest::newRow("100,000 bold words") << inCell(QStringLiteral("<b>x</b>").repeated(100000));
+    QTest::newRow("one list of 4,000 items")
+        << inCell(QStringLiteral("<ul>") + QStringLiteral("<li>x</li>").repeated(4000) + QStringLiteral("</ul>"));
+    QTest::newRow("4,000 paragraph separators in a list item") << inCell(
+        QStringLiteral("<ol><li>") + QStringLiteral("x&#8233;").repeated(4000) + QStringLiteral("</li></ol>"));
 }
 
 /// Pastes with formatting that Qt's import pays for far beyond their cells (rework of 2026-11-20),

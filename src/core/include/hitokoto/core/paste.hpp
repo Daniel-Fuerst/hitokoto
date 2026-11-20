@@ -68,6 +68,7 @@ struct PasteHtmlCosts {
     std::uint64_t positionWithoutCell = 0;  ///< a position of a table's grid that no cell starts on
     std::uint64_t mergeStep = 0;            ///< per position a span covers, times its table's positions
     std::uint64_t imageStep = 0;            ///< an image, per character before it in its block
+    std::uint64_t listBlockStep = 0;        ///< a block that joins a list, per block that joined before
 };
 
 /// How long Qt's import of a paste's HTML may take, and what it costs. S031 grants a paste
@@ -118,6 +119,7 @@ inline constexpr PasteHtmlBounds kPasteHtmlBounds{
         .positionWithoutCell = 7'000'000,
         .mergeStep = 70,
         .imageStep = 130'000,
+        .listBlockStep = 100'000,
     },
     25'000'000'000,
     62'500'000,

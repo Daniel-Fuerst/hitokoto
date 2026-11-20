@@ -674,9 +674,10 @@ TEST(S031_PasteTables, NestingDeeperThanTheBoundStaysPlainText) {
 
 TEST(S031_PasteTables, ElementsQtDoesNotNestStayFlat) {
     // Qt closes a p at the next p and an li at the next li, an end tag closes everything inside its
-    // element, and img, br, hr and meta never hold anything: none of this nests.
+    // element, and img, br, hr and meta never hold anything: none of this nests (300 items are
+    // deeper than the bound if they nested, and few enough for one list).
     EXPECT_EQ(scanHtmlTables(inCell(repeat(u"<p>x", 1000))), HtmlTables::Flat);
-    EXPECT_EQ(scanHtmlTables(inCell(u"<ul>" + repeat(u"<li>x", 1000) + u"</ul>")), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(inCell(u"<ul>" + repeat(u"<li>x", 300) + u"</ul>")), HtmlTables::Flat);
     EXPECT_EQ(scanHtmlTables(inCell(repeat(u"<div><span><b>x</div>", 1000))), HtmlTables::Flat);
     EXPECT_EQ(scanHtmlTables(inCell(repeat(u"x<br>", 1000) + repeat(u"<hr>", 300))), HtmlTables::Flat);
     // Rows and cells without end tags, as older HTML writes them.
@@ -792,6 +793,42 @@ TEST(S031_PasteTables, FormatsQtComparesWithEachOtherLeaveBeforeTheImport) {
     }
     EXPECT_EQ(htmlWithoutFormatting(inCell(u"<a name=_Hlk1>x</a><span id=top>y</span><font face=Arial>z</font>")),
               inCell(u"<a>x</a><span>y</span><font>z</font>"));
+}
+
+TEST(S031_PasteTables, OneLongListStaysPlainText) {
+    // Qt marks every block of a list again for each block that joins it, so one list costs Qt the
+    // square of its items: 4,000 items took 0.4 to 0.6 s, 16,000 items 7 to 11 s.
+    EXPECT_EQ(scanHtmlTables(inCell(u"<ul>" + repeat(u"<li>x</li>", 4000) + u"</ul>")), HtmlTables::OverBudget);
+    EXPECT_EQ(scanHtmlTables(inCell(u"<ol>" + repeat(u"<li>x", 4000) + u"</ol>")), HtmlTables::OverBudget);
+    // 2,000 cells, one of them with a list of 15,908 items (181 KB): 10.5 s.
+    const std::u16string first =
+        u"<tr><td><ul>" + repeat(u"<li>x</li>", 15908) + u"</ul></td>" + repeat(u"<td>a</td>", 9) + u"</tr>";
+    const HtmlScan large =
+        scanHtml(u"<table>" + first + repeat(u"<tr>" + repeat(u"<td>a</td>", 10) + u"</tr>", 199) + u"</table>");
+    EXPECT_EQ(large.cells, 2000U);
+    EXPECT_EQ(large.tables, HtmlTables::OverBudget);
+    // Items of a list inside an item count for the list around it too.
+    EXPECT_EQ(scanHtmlTables(inCell(u"<ul><li>a<ol>" + repeat(u"<li>x</li>", 4000) + u"</ol></li></ul>")),
+              HtmlTables::OverBudget);
+    // Many short lists cost nothing extra, nor do items without a list, and a short list converts.
+    EXPECT_EQ(scanHtmlTables(inCell(repeat(u"<ul><li>x</li></ul>", 1000))), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(inCell(repeat(u"<li>x</li>", 1000))), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(inCell(u"<ol>" + repeat(u"<li>x</li>", 300) + u"</ol>")), HtmlTables::Flat);
+}
+
+TEST(S031_PasteTables, BlocksThatJoinAListCountAsItsItems) {
+    // A paragraph separator, and a line break in a pre, start a new block of the item they are in,
+    // which joins its list: as costly as an item. As an entity too.
+    for (const std::u16string& lines :
+         {repeat(u"x\u2029", 4000), repeat(u"x&#8233;", 4000), u"<pre>" + repeat(u"x\n", 4000) + u"</pre>",
+          u"<pre>" + repeat(u"x&#10;", 4000) + u"</pre>", u"<pre>" + repeat(u"x&#x0A;", 4000) + u"</pre>"}) {
+        EXPECT_EQ(scanHtmlTables(inCell(u"<ul><li>" + lines + u"</li></ul>")), HtmlTables::OverBudget);
+    }
+    // Outside a list, and line breaks outside a pre, which Qt reads as spaces, cost nothing extra.
+    EXPECT_EQ(scanHtmlTables(inCell(u"<pre>" + repeat(u"x\n", 4000) + u"</pre>")), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(inCell(u"<ul><li>a</li></ul><pre>" + repeat(u"x\n", 4000) + u"</pre>")), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(inCell(u"<ul><li>" + repeat(u"x\n", 4000) + u"</li></ul>")), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(inCell(u"<ul><li>" + repeat(u"x&#8217;", 4000) + u"</li></ul>")), HtmlTables::Flat);
 }
 
 TEST(S031_PasteTables, TheScanReadsTagsAsQtDoes) {
