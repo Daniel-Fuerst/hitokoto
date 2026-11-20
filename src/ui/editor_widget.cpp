@@ -979,12 +979,15 @@ bool EditorWidget::pasteTables(const QMimeData* source) {
 
     // HTML: one scan first, so that HTML without a table or with nested tables is never imported
     // (S031 review O1, O9). Excel's plain text only without HTML.
+    // The scan reads the HTML as Qt gets it, without style attributes, and keeps a paste whose
+    // import would take longer than its cells allow as plain text (rework of 2026-11-20).
     QString html;
     if (source->hasHtml()) {
-        html = source->html();
-        if (core::scanHtmlTables(view(html)) != core::HtmlTables::Flat) {
+        const std::u16string withoutStyles = core::htmlWithoutStyles(view(source->html()));
+        if (core::scanHtmlTables(withoutStyles) != core::HtmlTables::Flat) {
             return false;
         }
+        html = toQString(withoutStyles);
     }
 
     // The wait cursor while the paste converts (S031, ADR 0011), on success until the pasted table

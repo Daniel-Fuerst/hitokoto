@@ -202,62 +202,6 @@ std::u16string textBlock(const std::vector<std::u16string>& lines) {
 
 }  // namespace
 
-HtmlScan scanHtml(std::u16string_view html) noexcept {
-    // `<table` or `</table` (`closing`) at `at`, the name ending in a blank, `>` or `/`.
-    const auto tagAt = [html](std::size_t at, bool closing) {
-        constexpr std::u16string_view kName = u"table";
-        std::size_t i = at + (closing ? 2 : 1);
-        if (i + kName.size() > html.size()) {
-            return false;
-        }
-        for (const char16_t c : kName) {
-            const char16_t h = html[i++];
-            if (h != c && h != c - (u'a' - u'A')) {
-                return false;
-            }
-        }
-        if (i == html.size()) {
-            return true;
-        }
-        const char16_t next = html[i];
-        return next == u' ' || next == u'\t' || next == u'\n' || next == u'\r' || next == u'\f' || next == u'>' ||
-               next == u'/';
-    };
-    bool seen = false;
-    int depth = 0;
-    for (std::size_t at = html.find(u'<'); at != std::u16string_view::npos; at = html.find(u'<', at + 1)) {
-        if (html.substr(at, 4) == u"<!--") {
-            const std::size_t end = html.find(u"-->", at + 4);
-            if (end == std::u16string_view::npos) {
-                break;
-            }
-            at = end + 2;
-            continue;
-        }
-        if (at + 1 < html.size() && html[at + 1] == u'/') {
-            if (depth > 0 && tagAt(at, true)) {
-                --depth;
-            }
-        } else if (tagAt(at, false)) {
-            seen = true;
-            if (++depth > 1) {
-                HtmlScan scan;
-                scan.tables = HtmlTables::Nested;
-                scan.allowedPs = kPasteHtmlBounds.floorPs;
-                return scan;
-            }
-        }
-    }
-    HtmlScan scan;
-    scan.tables = seen ? HtmlTables::Flat : HtmlTables::None;
-    scan.allowedPs = kPasteHtmlBounds.floorPs;
-    return scan;
-}
-
-HtmlTables scanHtmlTables(std::u16string_view html) noexcept {
-    return scanHtml(html).tables;
-}
-
 std::u16string htmlWithoutStyles(std::u16string_view html) {
     const auto isSpace = [](char16_t c) { return c == u' ' || c == u'\t' || c == u'\n' || c == u'\r' || c == u'\f'; };
     const auto isLetter = [](char16_t c) { return (c >= u'a' && c <= u'z') || (c >= u'A' && c <= u'Z'); };

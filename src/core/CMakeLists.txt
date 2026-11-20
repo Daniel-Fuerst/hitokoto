@@ -20,6 +20,7 @@ add_library(hitokoto_core STATIC
     src/properties.cpp
     src/find.cpp
     src/paste.cpp
+    src/html_scan.cpp
     src/reveal.cpp
     src/settings.cpp
     src/theme.cpp
