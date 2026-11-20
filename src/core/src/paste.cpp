@@ -202,7 +202,7 @@ std::u16string textBlock(const std::vector<std::u16string>& lines) {
 
 }  // namespace
 
-HtmlTables scanHtmlTables(std::u16string_view html) noexcept {
+HtmlScan scanHtml(std::u16string_view html) noexcept {
     // `<table` or `</table` (`closing`) at `at`, the name ending in a blank, `>` or `/`.
     const auto tagAt = [html](std::size_t at, bool closing) {
         constexpr std::u16string_view kName = u"table";
@@ -241,11 +241,21 @@ HtmlTables scanHtmlTables(std::u16string_view html) noexcept {
         } else if (tagAt(at, false)) {
             seen = true;
             if (++depth > 1) {
-                return HtmlTables::Nested;
+                HtmlScan scan;
+                scan.tables = HtmlTables::Nested;
+                scan.allowedPs = kPasteHtmlBounds.floorPs;
+                return scan;
             }
         }
     }
-    return seen ? HtmlTables::Flat : HtmlTables::None;
+    HtmlScan scan;
+    scan.tables = seen ? HtmlTables::Flat : HtmlTables::None;
+    scan.allowedPs = kPasteHtmlBounds.floorPs;
+    return scan;
+}
+
+HtmlTables scanHtmlTables(std::u16string_view html) noexcept {
+    return scanHtml(html).tables;
 }
 
 std::u16string htmlWithoutStyles(std::u16string_view html) {

@@ -130,6 +130,13 @@ third cell becomes
   milliseconds; the times stay, the tables shrink). Cells count over all pasted tables. While a paste converts,
   hitokoto shows the system's wait cursor. Blocking the UI for a large paste is a recorded
   exception to the brief, section 4 (ADR 0011).
+  Within these times (rework of 2026-11-20): Qt's HTML import may take half of what the cells of a
+  paste are granted, the other half is for the table. Before the import, the HTML is read once as
+  Qt reads it and the import's time estimated from what it holds; a paste whose import would take
+  longer stays plain text, as a nested table does, and Qt's import does not run. The cells are not
+  bounded: what counts is what Qt builds beyond them (the positions a span covers, elements
+  nested in each other, markup, style rules, images in one paragraph, anchor names and font
+  faces). Every sample and tables of up to 50,000 cells in their markup stay well within.
 
 ## Acceptance scenarios
 
@@ -205,6 +212,12 @@ third cell becomes
   block quote or list item
 - When I paste a table
 - Then the plain text is pasted as today (in a cell, as S018 writes pasted text)
+- Given the clipboard holds HTML whose import would take longer than its cells allow: a first
+  cell spanning 20,000 columns above a few rows, an element nested 2,000 deep in a cell, or
+  100,000 bold words in a cell of four
+- When I paste it
+- Then the plain text is pasted at once, without the wait cursor, and Qt's import does not run
+  (rework of 2026-11-20)
 
 **Scenario: paste as plain text**
 - Given the clipboard holds a table from Outlook or Excel's plain text
@@ -279,6 +292,12 @@ No new visible element: the pasted table is an S018 table with its tokens. No ne
   placement.
 - UI: `tst_s031_paste_tables` for every scenario above, pasting through `QMimeData` with the
   samples from `tests/data/s031/`.
+- Rework of 2026-11-20: `S031_PasteTables` for the scan and its estimate (a grid far beyond its
+  cells, spans as tables have them, where the bound sits, nesting, elements Qt does not nest,
+  markup, more cells allowing more, style rules, images in one block, anchor names and font
+  faces, tags read as Qt reads them); `tst_s031_paste_tables` for a paste beyond the bounds and
+  for the samples and tables of up to 50,000 cells in their markup staying within. `fuzz_paste`
+  runs the scan on its input and on the input without style attributes.
 - UI, for the rework of 2026-11-14: data with `text/markdown` before `text/plain` pasted with
   `Ctrl+V` and Paste as Plain Text in the editor and in a cell, and dropped on the editor; data
   with Markdown alone.

@@ -579,6 +579,204 @@ TEST(S031_PasteTables, ScanIsLinearInDeepNesting) {
     EXPECT_EQ(scanHtmlTables(html), HtmlTables::Nested);
 }
 
+// Same result at every size, within bounds (rework of 2026-11-20): Qt's import of a paste's HTML
+// may take half of what S031 grants its cells. The scan reads the HTML as Qt does and estimates the
+// import from what it counts; above the bound the paste stays plain text and Qt's import does not
+// run. The cases below are the shapes whose import grows far beyond their cells.
+namespace {
+
+std::u16string repeat(std::u16string_view s, int n) {
+    std::u16string out;
+    out.reserve(s.size() * static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        out += s;
+    }
+    return out;
+}
+
+/// A table of two rows whose last cell holds `inner`.
+std::u16string inCell(std::u16string_view inner) {
+    return u"<table><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>" + std::u16string(inner) + u"</td></tr></table>";
+}
+
+std::u16string number(std::uint64_t n) {
+    std::u16string out;
+    for (const char c : std::to_string(n)) {
+        out += static_cast<char16_t>(c);
+    }
+    return out;
+}
+
+/// A table of `rows` rows of two cells below a first cell spanning `columns` columns.
+std::u16string spannedTable(std::uint64_t columns, int rows) {
+    return u"<table><tr><td colspan=" + number(columns) + u">a</td><td>b</td></tr>" +
+           repeat(u"<tr><td>1</td><td>2</td></tr>", rows) + u"</table>";
+}
+
+}  // namespace
+
+TEST(S031_PasteTables, AGridFarBeyondItsCellsStaysPlainText) {
+    // A first cell spanning 20,000 columns above 2,000 rows (58 KB): 4,002 cells, but Qt's import
+    // builds 40 million positions and takes minutes.
+    EXPECT_EQ(scanHtmlTables(spannedTable(20000, 2000)), HtmlTables::OverBudget);
+    EXPECT_EQ(scanHtmlTables(spannedTable(20000, 5)), HtmlTables::OverBudget);
+    // A span above Qt's limit counts as Qt's 20,480 columns; one in an entity as that many.
+    EXPECT_EQ(scanHtmlTables(spannedTable(2000000000, 5)), HtmlTables::OverBudget);
+    EXPECT_EQ(scanHtmlTables(u"<table><tr><td colspan='2&#48;000'>a</td><td>b</td></tr>" +
+                             repeat(u"<tr><td>1</td><td>2</td></tr>", 5) + u"</table>"),
+              HtmlTables::OverBudget);
+    // Rows without cells below a wide row, and cells spanning many rows, widen the grid as well.
+    EXPECT_EQ(scanHtmlTables(u"<table><tr>" + repeat(u"<td>x</td>", 1000) + u"</tr>" + repeat(u"<tr></tr>", 100) +
+                             u"</table>"),
+              HtmlTables::OverBudget);
+    EXPECT_EQ(scanHtmlTables(u"<table><tr>" + repeat(u"<td rowspan=1000>r</td>", 100) + u"</tr>" +
+                             repeat(u"<tr><td>1</td><td>2</td></tr>", 1000) + u"</table>"),
+              HtmlTables::OverBudget);
+}
+
+TEST(S031_PasteTables, SpansAsTablesHaveThemConvert) {
+    // A heading across ten columns above 1,000 rows of ten cells, and a first column whose cells
+    // span two rows each: positions and cells grow together.
+    EXPECT_EQ(scanHtmlTables(u"<table><tr><td colspan=10>Heading</td></tr>" +
+                             repeat(u"<tr>" + repeat(u"<td>x</td>", 10) + u"</tr>", 1000) + u"</table>"),
+              HtmlTables::Flat);
+    EXPECT_EQ(
+        scanHtmlTables(u"<table>" +
+                       repeat(u"<tr><td rowspan=2>a</td><td>b</td><td>c</td></tr><tr><td>d</td><td>e</td></tr>", 500) +
+                       u"</table>"),
+        HtmlTables::Flat);
+}
+
+TEST(S031_PasteTables, TheGridBoundSitsWhereItsCostsSay) {
+    // Rows of two cells below a cell spanning 100 columns: each row adds 99 positions no cell
+    // starts on and two cells. The bound sits where their cost reaches what the cells allow.
+    const PasteHtmlBounds& b = kPasteHtmlBounds;
+    const std::uint64_t perRow = 99 * b.costs.positionWithoutCell;
+    const auto rows = static_cast<int>(b.floorPs / perRow);
+    EXPECT_EQ(scanHtmlTables(spannedTable(100, rows / 2)), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(spannedTable(100, rows * 2)), HtmlTables::OverBudget);
+    const HtmlScan scan = scanHtml(spannedTable(100, rows * 2));
+    EXPECT_GT(scan.importPs, scan.allowedPs);
+    EXPECT_EQ(scan.cells, static_cast<std::uint64_t>(2 * rows * 2 + 2));
+}
+
+TEST(S031_PasteTables, NestingDeeperThanTheBoundStaysPlainText) {
+    // 200,000 nested div in a cell (2 MB): each element is checked against all around it.
+    const int deep = 200000;
+    EXPECT_EQ(scanHtmlTables(inCell(repeat(u"<div>", deep) + u"x" + repeat(u"</div>", deep))), HtmlTables::OverBudget);
+    EXPECT_EQ(scanHtmlTables(inCell(repeat(u"<div>", deep) + u"x")), HtmlTables::OverBudget);
+    // The bound counts the elements Qt keeps open: the table, its row and cell are three.
+    const auto inside = static_cast<int>(kPasteHtmlBounds.maxDepth) - 3;
+    EXPECT_EQ(scanHtmlTables(inCell(repeat(u"<span>", inside) + u"x" + repeat(u"</span>", inside))), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(inCell(repeat(u"<span>", inside + 1) + u"x" + repeat(u"</span>", inside + 1))),
+              HtmlTables::OverBudget);
+}
+
+TEST(S031_PasteTables, ElementsQtDoesNotNestStayFlat) {
+    // Qt closes a p at the next p and an li at the next li, an end tag closes everything inside its
+    // element, and img, br, hr and meta never hold anything: none of this nests.
+    EXPECT_EQ(scanHtmlTables(inCell(repeat(u"<p>x", 1000))), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(inCell(u"<ul>" + repeat(u"<li>x", 1000) + u"</ul>")), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(inCell(repeat(u"<div><span><b>x</div>", 1000))), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(inCell(repeat(u"x<br>", 1000) + repeat(u"<hr>", 300))), HtmlTables::Flat);
+    // Rows and cells without end tags, as older HTML writes them.
+    EXPECT_EQ(scanHtmlTables(u"<table>" + repeat(u"<tr><td>a<td>b<td>c", 1000) + u"</table>"), HtmlTables::Flat);
+    // Excel's columns stay open until the first row closes them.
+    EXPECT_EQ(scanHtmlTables(u"<table>" + repeat(u"<col width=64>", 200) +
+                             repeat(u"<tr><td>a</td><td>b</td></tr>", 10) + u"</table>"),
+              HtmlTables::Flat);
+}
+
+TEST(S031_PasteTables, MarkupFarBeyondItsCellsStaysPlainText) {
+    // 100,000 bold words in one cell of four: Qt makes an element and a format for each.
+    EXPECT_EQ(scanHtmlTables(inCell(repeat(u"<b>x</b>", 100000))), HtmlTables::OverBudget);
+    EXPECT_EQ(scanHtmlTables(inCell(repeat(u"<b>x</b>", 1000))), HtmlTables::Flat);
+    // Attributes cost by their length; style attributes leave before the import, and the scan
+    // reads the HTML as Qt gets it.
+    EXPECT_EQ(scanHtmlTables(inCell(u"<span" + repeat(u" a=b", 200000) + u">x</span>")), HtmlTables::OverBudget);
+    const std::u16string styled = inCell(u"<span style='" + repeat(u"color:red;", 200000) + u"'>x</span>");
+    EXPECT_EQ(scanHtmlTables(styled), HtmlTables::OverBudget);
+    EXPECT_EQ(scanHtmlTables(htmlWithoutStyles(styled)), HtmlTables::Flat);
+    // Text, entities and comments are content: they cost Qt less than a plain paste of them.
+    EXPECT_EQ(scanHtmlTables(inCell(repeat(u"word ", 800000))), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(inCell(repeat(u"&amp;", 800000))), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(inCell(u"<!--" + repeat(u"x", 4000000) + u"-->")), HtmlTables::Flat);
+}
+
+TEST(S031_PasteTables, ManyCellsAllowMoreMarkup) {
+    // What a paste may cost grows with its cells: 5,000 rows of ten cells with a link each.
+    const std::u16string row =
+        u"<tr>" + repeat(u"<td><a href='https://example.org/'>x</a> <b>y</b></td>", 10) + u"</tr>";
+    const HtmlScan scan = scanHtml(u"<table>" + repeat(row, 5000) + u"</table>");
+    EXPECT_EQ(scan.tables, HtmlTables::Flat);
+    EXPECT_EQ(scan.cells, 50000U);
+    EXPECT_EQ(scan.allowedPs, 50000 * kPasteHtmlBounds.perCellPs);
+    EXPECT_EQ(scanHtml(u"<table><tr><td>a</td></tr></table>").allowedPs, kPasteHtmlBounds.floorPs);
+}
+
+TEST(S031_PasteTables, StyleRulesForEveryElementStayPlainText) {
+    // Qt checks every selector of a style element against every element after it.
+    std::u16string rules;
+    std::u16string spans;
+    for (std::uint64_t i = 0; i < 2000; ++i) {
+        rules += u".c" + number(i) + u"{color:red}";
+        spans += u"<span class=c" + number(i) + u">x</span>";
+    }
+    EXPECT_EQ(scanHtmlTables(u"<style>" + rules + u"</style>" + inCell(spans)), HtmlTables::OverBudget);
+    // A sheet as Office writes it, inside a comment, which Qt skips; and a short sheet.
+    EXPECT_EQ(scanHtmlTables(u"<style><!--" + rules + u"--></style>" + inCell(spans)), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(u"<style>p{margin:0} td{padding:2px}</style>" + inCell(spans)), HtmlTables::Flat);
+    // Qt also walks up from every element and takes the inherited declarations of each element
+    // around it.
+    EXPECT_EQ(scanHtmlTables(u"<style>*{" + repeat(u"color:red;", 4000) + u"}</style>" +
+                             inCell(repeat(u"<span>x</span>", 1000))),
+              HtmlTables::OverBudget);
+}
+
+TEST(S031_PasteTables, ManyImagesInOneBlockStayPlainText) {
+    // Qt steps over the whole block for each image it inserts.
+    EXPECT_EQ(scanHtmlTables(inCell(repeat(u"<img src=a.png>", 5000))), HtmlTables::OverBudget);
+    EXPECT_EQ(scanHtmlTables(inCell(repeat(u"<img src=a.png>", 100))), HtmlTables::Flat);
+    // One image per cell: each starts its own block.
+    EXPECT_EQ(scanHtmlTables(u"<table>" + repeat(u"<tr>" + repeat(u"<td><img src=a.png></td>", 10) + u"</tr>", 500) +
+                             u"</table>"),
+              HtmlTables::Flat);
+}
+
+TEST(S031_PasteTables, ManyAnchorNamesAndFontFacesStayPlainText) {
+    // Qt keeps an id, the name of a link and the face of a font in a format that takes longer to
+    // store for each such format before it.
+    std::u16string names;
+    std::u16string faces;
+    std::u16string ids;
+    for (std::uint64_t i = 0; i < 5000; ++i) {
+        names += u"<a name=n" + number(i) + u">x</a>";
+        faces += u"<font face=f" + number(i) + u">x</font>";
+        ids += u"<span id=i" + number(i) + u">x</span>";
+    }
+    EXPECT_EQ(scanHtmlTables(inCell(names)), HtmlTables::OverBudget);
+    EXPECT_EQ(scanHtmlTables(inCell(faces)), HtmlTables::OverBudget);
+    EXPECT_EQ(scanHtmlTables(inCell(ids)), HtmlTables::OverBudget);
+    EXPECT_EQ(scanHtmlTables(inCell(u"<a name=_Hlk1>x</a><span id=top>y</span><font face=Arial>z</font>")),
+              HtmlTables::Flat);
+}
+
+TEST(S031_PasteTables, TheScanReadsTagsAsQtDoes) {
+    // A table tag in an attribute value is no table; a blank after `<` and a quoted name are tags.
+    EXPECT_EQ(scanHtmlTables(u"<table><tr><td title=\"<table>\">a</td><td>b</td></tr></table>"), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(u"< table><tr><td>a</td></tr></table>"), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(u"<\"table\"><tr><td>a</td></tr></table>"), HtmlTables::Flat);
+    // A cell span after a value that holds `>` still counts.
+    EXPECT_EQ(scanHtmlTables(u"<table><tr><td title=\"a>b\" colspan=20000>a</td></tr>" +
+                             repeat(u"<tr><td>1</td></tr>", 5) + u"</table>"),
+              HtmlTables::OverBudget);
+    // A cell straight in a table: Qt puts a table of its own there.
+    EXPECT_EQ(scanHtmlTables(u"<table><td>a</td></table>"), HtmlTables::Nested);
+    // An entity in a tag or attribute name: no program writes it, and Qt would decode it.
+    EXPECT_EQ(scanHtmlTables(u"<table><tr><t&#100;>a</td></tr></table>"), HtmlTables::OverBudget);
+    EXPECT_EQ(scanHtmlTables(u"<table><tr><td c&#111;lspan=9>a</td></tr></table>"), HtmlTables::OverBudget);
+}
+
 namespace {
 
 /// `above` for pasteLineInContainer: `lines` from the top of the document to the line above.
