@@ -67,13 +67,7 @@ struct PasteHtmlCosts {
     std::uint64_t endDepthStep = 0;         ///< an end tag, per element it is inside
     std::uint64_t positionWithoutCell = 0;  ///< a position of a table's grid that no cell starts on
     std::uint64_t mergeStep = 0;            ///< per position a span covers, times its table's positions
-    std::uint64_t selector = 0;             ///< reading a selector of a style element
-    std::uint64_t selectorCheck = 0;        ///< a selector checked against a start tag after it
-    std::uint64_t selectorDepthStep = 0;    ///< that check, per element the start tag is inside
-    std::uint64_t declarationStep = 0;      ///< a declaration of a style element, per start tag after
-                                            ///< it and element the start tag is inside
     std::uint64_t imageStep = 0;            ///< an image, per character before it in its block
-    std::uint64_t namedFormat = 0;          ///< an id (a name, a font face), per such attribute before it
 };
 
 /// How long Qt's import of a paste's HTML may take, and what it costs. S031 grants a paste
@@ -97,21 +91,18 @@ struct PasteHtmlBounds {
 ///   the larger the table: 400,000 covered positions in a table of 420,000 took 11 s.
 /// - Nesting: Qt walks up from every element to the root for its style; 4,000 elements nested
 ///   in each other took 170 ms, 8,000 took 760 ms (a sum of depths of 32 million).
-/// - Style elements: each selector is checked against every element after it (2,000 selectors
-///   and 2,000 elements 180 ms), a check walks up as nesting does, and the inherited
-///   declarations of every element around it are collected (1,000 declarations and 1,000
-///   elements 130 ms).
 /// - Images: Qt steps over the block for each image it inserts; 10,000 images in one cell took
 ///   5 s, in 10,000 cells 0.15 s.
-/// - An id, the name of a link, the face of a font: each new one takes longer than the one
-///   before; 10,000 took 1.1 to 1.8 s, 20,000 took 5 to 6 s.
+/// - Not estimated, because they leave before the import (htmlWithoutFormatting): style sheets
+///   and the attributes that only format. A sheet the scan meets is beyond the estimate.
 /// - Not counted: text, entities and comments. They cost Qt 5 to 18 ns a character, less than a
 ///   plain paste of the same text (75 ns a character).
 /// What the cells allow: the samples' markup stays well below it (40 x 10 to 500 x 100 cells with
-/// Outlook's markup 59 % of it in the estimate, with Excel's 30 %; Outlook's import itself took
-/// 57 % of its estimate). Pastes at the bounds (one kind each) took 10 to 40 ms until the table
-/// showed (a table of 2,011 cells 80 ms), except a cell of 4,089 lines (90 ms, the table's layout
-/// of its lines, as on main); just above the bounds the paste stays plain text in 0.3 to 1 ms.
+/// Outlook's markup 55 % of it in the estimate, with Excel's 26 %, both without what only formats;
+/// Outlook's import itself took up to 62 % of its estimate). Pastes at the bounds (one kind each)
+/// took 10 to 40 ms until the table showed (a table of 2,011 cells 80 ms), except a cell of 4,089
+/// lines (90 ms, the table's layout of its lines, as on main); just above the bounds the paste
+/// stays plain text in 0.3 to 1 ms.
 /// `maxDepth` bounds the scan's own work for an end tag; the samples nest at most 10 deep.
 inline constexpr PasteHtmlBounds kPasteHtmlBounds{
     {
@@ -126,12 +117,7 @@ inline constexpr PasteHtmlBounds kPasteHtmlBounds{
         .endDepthStep = 5'000,
         .positionWithoutCell = 7'000'000,
         .mergeStep = 70,
-        .selector = 500'000,
-        .selectorCheck = 60'000,
-        .selectorDepthStep = 22'000,
-        .declarationStep = 30'000,
         .imageStep = 130'000,
-        .namedFormat = 40'000,
     },
     25'000'000'000,
     62'500'000,
@@ -148,29 +134,28 @@ struct HtmlScan {
 };
 
 /// Reads `html` once, as Qt's HTML parser reads it, for its tables and the cost of importing it.
-/// `html` is what Qt imports: the paste without its style attributes (`htmlWithoutStyles`). Linear
-/// in the input, for any input.
+/// `html` is what Qt imports: the paste without what only formats (`htmlWithoutFormatting`); the
+/// text of a style element, a style sheet to Qt, is beyond the estimate. Linear in the input, for
+/// any input.
 [[nodiscard]] HtmlScan scanHtml(std::u16string_view html) noexcept;
 
 /// `scanHtml(html).tables`.
 [[nodiscard]] HtmlTables scanHtmlTables(std::u16string_view html) noexcept;
 
-/// `html` without the style attributes of its tags, before Qt's import: Outlook writes about 1 KB
-/// of markup per cell, most of it inline CSS that Qt parses for every element and that a pasted
-/// table does not need (S031 review (code) O10, Armin, 2026-11-10). Qt 6.12's import ignores
-/// `display: none` anyway, so no text appears or disappears. Only tags change: text, comments and
-/// other attributes stay byte for byte. Linear in the input.
-[[nodiscard]] std::u16string htmlWithoutStyles(std::u16string_view html);
-
 /// The HTML of a paste as Qt imports it (S031, rework of 2026-11-20), read as Qt's HTML parser
-/// reads it: without what only formats. Every attribute leaves its tag except `colspan` and
-/// `rowspan` of td and th and `name` and `content` of meta (Qt's mark of its own HTML, which changes
-/// how it reads spaces), and a style element loses its text, the style sheet Qt would read. A
-/// pasted table keeps only text, lines and spans; Qt's import grows in what formats faster than in
-/// the cells (a rule `b ~ span` before 8,785 spans took 30 s, 10,000 tables whose cells differ in
-/// width 7 s, 64,000 fonts whose size and colour add up to the same number 46 s). Text, comments, end
-/// tags and the kept attributes stay byte for byte; an attribute leaves with the blanks before it,
-/// up to one where a word follows. Linear in the input.
+/// reads it (scanHtml): without what only formats. Every attribute leaves its tag except `colspan`
+/// and `rowspan` of td and th and `name` and `content` of meta (Qt's mark of its own HTML, which
+/// changes how it reads spaces), and a style element loses its text, the style sheet Qt would read.
+/// A pasted table keeps only text, lines and spans; Qt's import grows in what formats faster than
+/// in the cells (a rule `b ~ span` before 8,785 spans took 30 s, 10,000 tables whose cells differ
+/// in width 7 to 8 s, 64,000 fonts whose size and colour add up to the same number 46 to 58 s).
+/// Text, comments, end tags and the kept attributes stay byte for byte; an attribute leaves with
+/// the blanks before it, up to one where a word follows. From an entity in a tag or attribute name
+/// on, which Qt would decode, the rest stays as it is (the scan keeps such a paste plain text).
+/// Style attributes have left before the import since 2026-11-10 (Outlook's inline CSS was half of
+/// it, Armin). Qt's import ignores `display: none` (6.8.3 and 6.12.0), so no text appears or
+/// disappears; what a sheet says about spaces (`white-space`) no longer applies. Linear in the
+/// input.
 [[nodiscard]] std::u16string htmlWithoutFormatting(std::u16string_view html);
 
 /// Whether a paste at `line` lands in a block quote or a list item, so that it stays plain text

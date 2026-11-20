@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S031: one linear scan of a paste's HTML before Qt's import. It reads the HTML as Qt's HTML
 // parser (QTextHtmlParser, the same in Qt 6.8.3 and 6.12.0) reads it, finds the tables, and
-// estimates from what it counts how long the import would take; see kPasteHtmlBounds.
+// estimates from what it counts how long the import would take; see kPasteHtmlBounds. The same
+// reading takes what only formats out of the HTML before the import (htmlWithoutFormatting).
 #include "hitokoto/core/find.hpp"
 #include "hitokoto/core/paste.hpp"
 
@@ -83,8 +84,7 @@ struct Element {
     Kind kind = Kind::Other;
     bool image = false;  // img
     bool lineBreak = false;
-    bool anchor = false;  // a: its name attribute becomes an anchor name
-    bool font = false;    // font: its face attribute becomes a font family list
+    bool meta = false;  // meta: name and content mark Qt's own HTML, which Qt reads spaces in differently
 };
 
 Element classify(std::u16string_view n) noexcept {
@@ -119,40 +119,44 @@ Element classify(std::u16string_view n) noexcept {
         e.lineBreak = true;
     } else if (is(n, u"hr") || is(n, u"meta")) {
         e.kind = Kind::Void;
+        e.meta = is(n, u"meta");
     } else if (is(n, u"style")) {
         e.kind = Kind::Style;
     } else if (is(n, u"div") || is(n, u"blockquote") || is(n, u"center") || is(n, u"ul") || is(n, u"ol") ||
                is(n, u"pre") || is(n, u"h1") || is(n, u"h2") || is(n, u"h3") || is(n, u"h4") || is(n, u"h5") ||
                is(n, u"h6")) {
         e.kind = Kind::Block;
-    } else if (is(n, u"a")) {
-        e.anchor = true;
-    } else if (is(n, u"font")) {
-        e.font = true;
     }
     return e;
 }
 
 /// Whether an element of `kind` starts a block in Qt's import, so that an image after it is in a
-/// new block. Only table elements are certain whatever a style sheet says about `display`.
-bool startsBlock(Kind kind, bool styled) noexcept {
+/// new block. Without style sheets and style attributes an element's display is its own.
+bool startsBlock(Kind kind) noexcept {
     switch (kind) {
         case Kind::Cell:
         case Kind::Row:
         case Kind::Table:
         case Kind::Section:
         case Kind::Caption:
-            return true;
         case Kind::Block:
         case Kind::Paragraph:
         case Kind::ListItem:
         case Kind::DefList:
         case Kind::DefItem:
         case Kind::Body:
-            return !styled;
+            return true;
         default:
             return false;
     }
+}
+
+/// Whether an attribute `key` of element `e` stays in the HTML Qt imports: the spans of a cell, and
+/// the mark of Qt's own HTML. Qt lowers keys with Unicode rules; none of these holds a `k`, the only
+/// letter outside ASCII that lowers to an ASCII one (the Kelvin sign).
+bool keeps(const Element& e, std::u16string_view key) noexcept {
+    return (e.kind == Kind::Cell && (is(key, u"colspan") || is(key, u"rowspan"))) ||
+           (e.meta && (is(key, u"name") || is(key, u"content")));
 }
 
 /// One open element, as Qt's parser keeps it as the parent of what follows.
@@ -257,7 +261,17 @@ std::uint64_t spanValue(std::u16string_view value, std::uint64_t most) noexcept 
 
 class Scanner {
 public:
-    explicit Scanner(std::u16string_view html) : h_(html) {}
+    /// With `out`, the scan also writes the HTML without what only formats there, which is never
+    /// longer than `html` (htmlWithoutFormatting); without it, what only formats is beyond the
+    /// estimate.
+    explicit Scanner(std::u16string_view html, char16_t* out = nullptr) : h_(html), out_(out) {}
+
+    /// Runs the scan and writes what stays; how many characters that is.
+    std::size_t rewrite() noexcept {
+        run();
+        cut(h_.size(), h_.size());
+        return written_;
+    }
 
     HtmlScan run() noexcept {
         const PasteHtmlCosts& c = kPasteHtmlBounds.costs;
@@ -307,30 +321,28 @@ private:
 
     void charge(std::uint64_t ps) noexcept { result_.importPs = add(result_.importPs, ps); }
 
-    /// Text between tags: it adds to the block an image lands in, and inside a style element it
-    /// holds the style sheet.
-    void text(std::size_t from, std::size_t to) noexcept {
-        block_ = add(block_, to - from);
-        if (inStyle_) {
-            for (std::size_t i = from; i < to; ++i) {
-                if (h_[i] == u'{' || h_[i] == u',') {
-                    styleSelectors_ = add(styleSelectors_, 1);
-                } else if (h_[i] == u':') {
-                    styleDeclarations_ = add(styleDeclarations_, 1);
-                }
-            }
+    /// Leaves `html[from, to)` out of what is written; `from` is never before an earlier cut's end.
+    void cut(std::size_t from, std::size_t to) noexcept {
+        if (out_ == nullptr) {
+            return;
         }
+        const auto first = h_.begin() + static_cast<std::ptrdiff_t>(copied_);
+        std::copy(first, h_.begin() + static_cast<std::ptrdiff_t>(from), out_ + written_);
+        written_ += from - copied_;
+        copied_ = to;
     }
 
-    /// A tag ends the text of a style element; Qt reads the sheet at an end tag.
-    void endStyleText() noexcept {
-        if (inStyle_) {
-            inStyle_ = false;
-            selectors_ = add(selectors_, styleSelectors_);
-            declarations_ = add(declarations_, styleDeclarations_);
-            charge(mul(add(styleSelectors_, styleDeclarations_), kPasteHtmlBounds.costs.selector));
-            styleSelectors_ = 0;
-            styleDeclarations_ = 0;
+    /// Text between tags: it adds to the block an image lands in. In a style element, up to the
+    /// next tag (comments do not end it), it is the style sheet Qt reads at the next end tag: it
+    /// leaves, and a sheet the scan meets is beyond the estimate.
+    void text(std::size_t from, std::size_t to) noexcept {
+        block_ = add(block_, to - from);
+        if (inStyle_ && from < to) {
+            if (out_ != nullptr) {
+                cut(from, to);
+            } else {
+                beyond_ = true;
+            }
         }
     }
 
@@ -431,7 +443,7 @@ private:
 
     void endTag() noexcept {
         const PasteHtmlCosts& c = kPasteHtmlBounds.costs;
-        endStyleText();
+        inStyle_ = false;
         std::u16string_view name = word();
         finishTag();
         charge(add(c.endTag, mul(depth(), c.endDepthStep)));
@@ -476,16 +488,15 @@ private:
 
     bool startTag() noexcept {
         const PasteHtmlCosts& c = kPasteHtmlBounds.costs;
-        endStyleText();
+        inStyle_ = false;
         const std::u16string_view name = word();
         if (name.find(u'&') != std::u16string_view::npos) {
             beyond_ = true;  // an entity in a tag name: no HTML that a program writes
             return false;
         }
         const Element e = classify(name);
-        const bool styled = selectors_ > 0 || declarations_ > 0;
 
-        // The element's own cost, its depth and the style rules Qt checks against it.
+        // The element's own cost and its depth.
         switch (e.kind) {
             case Kind::Cell:
                 charge(c.cellTag);
@@ -506,8 +517,6 @@ private:
                 break;
         }
         charge(mul(depth(), c.depthStep));
-        charge(mul(selectors_, add(c.selectorCheck, mul(depth(), c.selectorDepthStep))));
-        charge(mul(mul(declarations_, depth() + 1), c.declarationStep));
 
         // Attributes as Qt's parseAttributes reads them, after a space only.
         std::uint64_t columns = 1;
@@ -579,7 +588,7 @@ private:
             default:
                 break;
         }
-        if (startsBlock(e.kind, styled)) {
+        if (startsBlock(e.kind)) {
             block_ = 0;
         }
         if (e.image) {
@@ -596,12 +605,13 @@ private:
         return !beyond_;
     }
 
-    /// The attributes of a start tag (parseAttributes): their characters, the span of a cell, and
-    /// those that become a list in a character format (id, the name of `a`, the face of `font`),
-    /// which Qt keeps in a way that costs more for each such format before.
+    /// The attributes of a start tag (parseAttributes): their characters and the span of a cell.
+    /// When writing, an attribute that only formats leaves with the blanks before it, up to one
+    /// where a word follows, so that Qt reads the rest of the tag as before.
     bool attributes(const Element& e, std::uint64_t& columns, std::uint64_t& rows) noexcept {
         const PasteHtmlCosts& c = kPasteHtmlBounds.costs;
         while (pos_ < h_.size()) {
+            const std::size_t blank = pos_;
             eatSpace();
             if (at(u'>') || at(u'/')) {
                 break;
@@ -615,20 +625,22 @@ private:
                 beyond_ = true;  // an entity in an attribute name: no HTML that a program writes
                 return false;
             }
+            std::size_t end = pos_;
             eatSpace();
             std::u16string_view value = u"1";
             if (at(u'=')) {
                 ++pos_;
                 eatSpace();
                 value = word();
+                end = pos_;
             }
-            charge(mul(pos_ - keyStart, c.attributeChar));
+            if (!keeps(e, key)) {
+                const bool wordFollows = end < h_.size() && !isSpace(h_[end]) && h_[end] != u'>';
+                cut(wordFollows && keyStart > blank ? blank + 1 : blank, end);
+            }
+            charge(mul(end - keyStart, c.attributeChar));
             if (value.empty()) {
                 continue;
-            }
-            if (is(key, u"id") || (e.anchor && is(key, u"name")) || (e.font && is(key, u"face"))) {
-                namedFormats_ = add(namedFormats_, 1);
-                charge(mul(namedFormats_, c.namedFormat));
             }
             if (e.kind == Kind::Cell) {
                 if (is(key, u"colspan")) {
@@ -642,6 +654,9 @@ private:
     }
 
     std::u16string_view h_;
+    char16_t* out_ = nullptr;
+    std::size_t copied_ = 0;   // h_[0, copied_) is handled: written or cut
+    std::size_t written_ = 0;  // characters written to out_
     std::size_t pos_ = 0;
     HtmlScan result_;
     bool beyond_ = false;
@@ -655,12 +670,7 @@ private:
     std::uint64_t positionsWithoutCell_ = 0;
     std::uint64_t mergeWork_ = 0;
     std::uint64_t block_ = 0;  // characters in the block an image would land in
-    std::uint64_t selectors_ = 0;
-    std::uint64_t styleSelectors_ = 0;
-    std::uint64_t declarations_ = 0;
-    std::uint64_t styleDeclarations_ = 0;
-    bool inStyle_ = false;
-    std::uint64_t namedFormats_ = 0;
+    bool inStyle_ = false;     // in the text of a style element
 };
 
 }  // namespace
@@ -671,6 +681,13 @@ HtmlScan scanHtml(std::u16string_view html) noexcept {
 
 HtmlTables scanHtmlTables(std::u16string_view html) noexcept {
     return scanHtml(html).tables;
+}
+
+std::u16string htmlWithoutFormatting(std::u16string_view html) {
+    std::u16string out(html.size(), u'\0');
+    const std::size_t written = Scanner(html, out.data()).rewrite();
+    out.resize(written);
+    return out;
 }
 
 }  // namespace hitokoto::core
