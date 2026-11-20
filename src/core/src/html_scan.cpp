@@ -65,6 +65,8 @@ std::uint64_t hashOf(std::u16string_view name) noexcept {
 enum class Kind : std::uint8_t {
     Other,      // inline and unknown elements
     Block,      // a block of its own (DisplayBlock in Qt's element table)
+    List,       // ul, ol: a block whose items join one list
+    Pre,        // pre: a block in which a line break starts a new block
     Cell,       // td, th
     Row,        // tr
     Table,      // table
@@ -122,9 +124,12 @@ Element classify(std::u16string_view n) noexcept {
         e.meta = is(n, u"meta");
     } else if (is(n, u"style")) {
         e.kind = Kind::Style;
-    } else if (is(n, u"div") || is(n, u"blockquote") || is(n, u"center") || is(n, u"ul") || is(n, u"ol") ||
-               is(n, u"pre") || is(n, u"h1") || is(n, u"h2") || is(n, u"h3") || is(n, u"h4") || is(n, u"h5") ||
-               is(n, u"h6")) {
+    } else if (is(n, u"ul") || is(n, u"ol")) {
+        e.kind = Kind::List;
+    } else if (is(n, u"pre")) {
+        e.kind = Kind::Pre;
+    } else if (is(n, u"div") || is(n, u"blockquote") || is(n, u"center") || is(n, u"h1") || is(n, u"h2") ||
+               is(n, u"h3") || is(n, u"h4") || is(n, u"h5") || is(n, u"h6")) {
         e.kind = Kind::Block;
     }
     return e;
@@ -140,6 +145,8 @@ bool startsBlock(Kind kind) noexcept {
         case Kind::Section:
         case Kind::Caption:
         case Kind::Block:
+        case Kind::List:
+        case Kind::Pre:
         case Kind::Paragraph:
         case Kind::ListItem:
         case Kind::DefList:
@@ -337,6 +344,9 @@ private:
     /// leaves, and a sheet the scan meets is beyond the estimate.
     void text(std::size_t from, std::size_t to) noexcept {
         block_ = add(block_, to - from);
+        if (lists_ > 0) {
+            joinList(blocksIn(from, to));
+        }
         if (inStyle_ && from < to) {
             if (out_ != nullptr) {
                 cut(from, to);
@@ -417,6 +427,10 @@ private:
             ++rows_;
         } else if (kind == Kind::DefList) {
             ++defLists_;
+        } else if (kind == Kind::List) {
+            ++lists_;
+        } else if (kind == Kind::Pre) {
+            ++pres_;
         }
     }
 
@@ -429,7 +443,61 @@ private:
             --rows_;
         } else if (top.kind == Kind::DefList) {
             --defLists_;
+        } else if (top.kind == Kind::List) {
+            if (--lists_ == 0) {
+                listBlocks_ = 0;
+            }
+        } else if (top.kind == Kind::Pre) {
+            --pres_;
         }
+    }
+
+    /// `n` blocks join the list they are in: Qt marks every block of a list again for each one
+    /// (QTextBlockGroup::blockInserted). Counted from the outermost open list on, so that the
+    /// blocks of a list Qt keeps open count whichever list the scan sees them in.
+    void joinList(std::uint64_t n) noexcept {
+        if (lists_ == 0 || n == 0) {
+            return;
+        }
+        // n blocks after k: n * k + n * (n - 1) / 2 earlier blocks in all.
+        const std::uint64_t pairs = add(mul(n, listBlocks_), mul(n, n - 1) / 2);
+        charge(mul(pairs, kPasteHtmlBounds.costs.listBlockStep));
+        listBlocks_ = add(listBlocks_, n);
+    }
+
+    /// The blocks text starts in a list: a paragraph separator, and in a pre a line break, also as
+    /// a numeric entity (read without bounds on its length, which is never fewer than Qt reads).
+    std::uint64_t blocksIn(std::size_t from, std::size_t to) const noexcept {
+        std::uint64_t n = 0;
+        for (std::size_t i = from; i < to; ++i) {
+            char32_t c = h_[i];
+            if (c == u'&' && i + 1 < to && h_[i + 1] == u'#') {
+                std::size_t j = i + 2;
+                const bool hex = j < to && (h_[j] == u'x' || h_[j] == u'X');
+                j += hex ? 1 : 0;
+                std::uint64_t v = 0;
+                for (; j < to; ++j) {
+                    const char16_t d = h_[j];
+                    std::uint64_t digit = 16;
+                    if (d >= u'0' && d <= u'9') {
+                        digit = static_cast<std::uint64_t>(d - u'0');
+                    } else if (hex && d >= u'a' && d <= u'f') {
+                        digit = static_cast<std::uint64_t>(d - u'a') + 10;
+                    } else if (hex && d >= u'A' && d <= u'F') {
+                        digit = static_cast<std::uint64_t>(d - u'A') + 10;
+                    }
+                    if (digit >= (hex ? 16U : 10U)) {
+                        break;
+                    }
+                    v = std::min<std::uint64_t>(v * (hex ? 16 : 10) + digit, 0x110000);
+                }
+                c = static_cast<char32_t>(v);
+            }
+            if (c == U'\u2029' || (c == U'\n' && pres_ > 0)) {
+                ++n;
+            }
+        }
+        return n;
     }
 
     /// Pops the elements above the nearest one `allowed` accepts; all of them if none does
@@ -588,6 +656,9 @@ private:
             default:
                 break;
         }
+        if (e.kind == Kind::ListItem) {
+            joinList(1);  // an item joins the list it is in
+        }
         if (startsBlock(e.kind)) {
             block_ = 0;
         }
@@ -665,6 +736,9 @@ private:
     std::size_t tables_ = 0;  // open tables (at most one, a second one is nested)
     std::size_t rows_ = 0;
     std::size_t defLists_ = 0;
+    std::size_t lists_ = 0;         // open ul and ol
+    std::size_t pres_ = 0;          // open pre
+    std::uint64_t listBlocks_ = 0;  // blocks that joined a list since the outermost open one
     std::array<char16_t, 64> lower_{};
     Grid grid_;
     std::uint64_t positionsWithoutCell_ = 0;

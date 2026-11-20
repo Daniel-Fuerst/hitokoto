@@ -94,6 +94,11 @@ struct PasteHtmlBounds {
 ///   in each other took 170 ms, 8,000 took 760 ms (a sum of depths of 32 million).
 /// - Images: Qt steps over the block for each image it inserts; 10,000 images in one cell took
 ///   5 s, in 10,000 cells 0.15 s.
+/// - Lists: Qt marks every block of a list again for each block that joins it (an item, and a
+///   block that a paragraph separator, or a line break in a pre, starts in an item); one list of
+///   4,000 items took 0.4 to 0.6 s, 16,000 items 7.4 to 7.6 s, 24,000 items 17 to 18 s, about 60 ns
+///   per pair of blocks. Counted from the outermost open list on, so that a block counts whichever
+///   list Qt adds it to; many short lists cost nothing extra.
 /// - Not estimated, because they leave before the import (htmlWithoutFormatting): style sheets
 ///   and the attributes that only format. A sheet the scan meets is beyond the estimate.
 /// - Not counted: text, entities and comments. They cost Qt 5 to 18 ns a character, less than a
