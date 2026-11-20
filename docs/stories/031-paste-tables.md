@@ -320,3 +320,41 @@ No new visible element: the pasted table is an S018 table with its tokens. No ne
   content S031 is for, not only the fast path for plain cells. `s031_paste_no_table_5000_lines_ms`
   measures a paste of 5,000 lines of code with a span per token, which has HTML but no table (O9);
   it is compared with main and has no budget of its own.
+
+## Rework on 2026-11-20
+
+Branch `agents/s031-paste-within-bounds`, from main 98ef4fe.
+
+- A paste could block the window for minutes with few cells. Qt's HTML import builds more than
+  the cells: a first cell spanning 20,000 columns above 2,000 rows (58 KB, 4,002 cells) made it
+  build a table of 40 million positions, and 2 MB of nested `<div>` in a cell made it check every
+  element against all those around it. Both were still running after 130 s with Qt 6.8.3 and
+  6.12.0; the program had to be ended and what was unsaved was lost. Measured since: the same
+  holds for rows without cells below a wide row, cells spanning many rows, many images in one
+  cell, many anchor names or font faces, style elements with many rules, and markup far beyond
+  the cells (`docs/performance.md`, 2026-11-20).
+- The scan before the import (`core::scanHtml`) now reads the HTML without style attributes, which
+  is what Qt imports, as Qt's parser reads it (the same in Qt 6.8.3 and 6.12.0): every `<` outside
+  a comment is a tag, attributes as Qt splits them, the elements Qt keeps open and those it
+  closes or inserts itself. From what it counts it estimates the import's time
+  (`core::kPasteHtmlBounds`: the cost per element by kind, per character of attributes, per
+  element around each one, per position of a table's grid that no cell starts on, per merged
+  position, per style rule and declaration, per character before an image in its block, per
+  earlier anchor name or font face; measured with both Qt versions). The import may take half of
+  what the rule "Same result at every size" grants the paste's cells; above that the paste stays
+  plain text, as a nested table does. `HtmlTables::OverBudget` says so.
+- The cells are not bounded. Every sample and tables of 40 x 10 to 500 x 100 cells in the markup
+  of the samples stay well within (59 % of what the cells allow with Outlook's markup, 30 % with
+  Excel's, in the estimate), and a whole paste stays linear in the cells (Excel's markup 250,000
+  cells in 13.1 s, 53 µs each). Text, lines and other content of the cells are not counted:
+  they cost Qt less per character than a plain paste of them. A cell of 4,089 lines takes 90 ms,
+  as on main, in the table's layout of its lines.
+- Elements nested more than 256 deep stay plain text whatever they cost; the samples nest at most
+  10 deep. An entity in a tag or attribute name, which no program writes and Qt would decode,
+  keeps a paste plain text too.
+- Pastes just over a bound stay plain text in 0.3 to 1 ms; the two above take 0 and 5 ms instead
+  of more than 130 s. Pastes just under a bound took 10 to 40 ms until the table showed (11 cells
+  spanning 1,000 rows in a table of 2,011 cells: 80 ms). The scan takes 37 ms for 50,000 cells in
+  Outlook's markup (21 MB), at most 0.32 s for 10 MB of any markup tried.
+- Drag and drop, Paste as Plain Text and a paste into a cell never reach Qt's import, as before;
+  `readPastedHtml` is the only place hitokoto hands HTML to it.

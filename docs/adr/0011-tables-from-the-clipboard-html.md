@@ -91,6 +91,14 @@ sample-like cells).
   the table shows, of which the import 20 ms. On the CI runner, with cells like the samples' and
   after the review fixes, 500 cells with Outlook's markup took 48–49 ms and 5,000 cells (50 × 100)
   492–502 ms; the benchmark tables are now 40 × 10, 400 × 10 and 40 × 100 (Armin, 2026-11-10).
+- Addendum of 2026-11-20 (rework of S031): "no size limit" holds for the cells, not for what
+  Qt's import builds beyond them. A first cell spanning 20,000 columns above 2,000 rows (58 KB,
+  4,002 cells) makes Qt build 40 million table positions; 2 MB of nested `<div>` in a cell make it
+  check every element against all those around it; both still ran after 120 s. The scan before
+  the import (`core::scanHtml`, replacing the table count of `core::scanHtmlTables`) now reads the
+  HTML without style attributes as Qt's parser reads it and estimates the import's time from what
+  it counts (`core::kPasteHtmlBounds`): Qt's import may take half of what S031 grants the paste's
+  cells, otherwise the paste stays plain text without an import. The import itself is unchanged.
 
 ## Reconsider if
 

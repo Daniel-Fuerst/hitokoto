@@ -31,6 +31,63 @@ local measurements.
 
 ## Measurements
 
+### 2026-11-20, development VM, S031: bounds on Qt's HTML import (release build, offscreen, Qt 6.12.0 and 6.8.3)
+
+Some pastes make Qt's HTML import build far more than their cells. A first cell spanning 20,000
+columns above 2,000 rows (58 KB, 4,002 cells) and 2 MB of nested `<div>` in a cell were still
+running after 130 s on main with both Qt versions. Pastes repeating one thing, Qt's import alone
+(`ui::readPastedHtml`), the larger of the two Qt versions:
+
+| Paste | Size | Import |
+|---|---|---|
+| `<td colspan=100>` above rows of two cells | 1,000 / 4,000 rows | 0.41 / 2.2 s |
+| 1,000 cells, then rows without cells | 100 / 300 rows | 0.45 / 1.6 s |
+| cells spanning 10,000 rows in a table of 10,000 rows | 10 / 40 of them | 1.2 / 11 s |
+| `<div>` nested in each other | 2,000 / 4,000 / 8,000 | 42 / 170 / 760 ms |
+| `.cN{…}` rules and as many `<span class=cN>` | 1,000 / 2,000 | 47 / 186 ms |
+| `*{…}` with 1,000 declarations, `<span>` 50 deep | 1,000 spans | 0.7 s |
+| `<img>` in one cell / one per cell | 10,000 | 5.1 s / 0.15 s |
+| `<a name>` or `<font face>`, all different | 10,000 / 20,000 | 1.8 / 6.2 s |
+| `<b>x</b>` in one cell | 80,000 / 640,000 | 0.26 / 2.2 s |
+| `<p>x</p>` in one cell | 80,000 / 640,000 | 0.44 / 3.5 s |
+| text, entities, comments | 4 MB / 6.8 MB / 10 MB | 63 / 122 / 49 ms |
+
+The scan before the import (`core::scanHtml`) reads the HTML without style attributes as Qt's
+parser reads it and estimates the import from what it counts, with the costs per unit of
+`core::kPasteHtmlBounds`; above half of what S031 grants the cells the paste stays plain text.
+Estimate against the measured import, for 108 pastes of 40 kinds and sizes: 0.86 to 2 times it
+for 82 of them (below 1 only where a run was slower than other runs of the same paste), up to 5
+times for style elements, whose rules the estimate takes as matching every element, and up to 13
+times for spans that overlap. Pastes just under and just over the bound of one kind each, from
+Ctrl+V until the table shows (median of three):
+
+| Paste just under the bound | Cells | main, 6.12.0 / 6.8.3 | now, 6.12.0 / 6.8.3 |
+|---|---|---|---|
+| `<td colspan=100>` above 33 rows | 68 | 22.2 / 24.0 ms | 22.5 / 23.0 ms |
+| 11 cells spanning 1,000 rows | 2,011 | 82.8 / 79.5 ms | 81.2 / 79.5 ms |
+| 1,000 cells, 7 rows without cells (not shown, too wide) | 1,000 | 27.4 / 27.1 ms | 27.4 / 27.0 ms |
+| 2,460 `<b>x</b>` inside 200 nested spans | 4 | 24.5 / 21.6 ms | 22.8 / 21.5 ms |
+| 6,932 `<b>x</b>` | 4 | 31.8 / 27.5 ms | 31.4 / 29.2 ms |
+| 4,089 `<p>x</p>` (a cell of 4,089 lines) | 4 | 93.2 / 102.1 ms | 89.8 / 93.4 ms |
+| 856 spans and 100 rules | 4 | 10.3 / 10.0 ms | 10.4 / 10.4 ms |
+| 1,578 spans and a rule of 100 declarations | 4 | 42.5 / 32.5 ms | 32.3 / 36.3 ms |
+| 576 images in one cell | 4 | 20.5 / 19.4 ms | 20.9 / 20.7 ms |
+| 1,013 `<a name>` | 4 | 17.5 / 18.9 ms | 17.6 / 18.4 ms |
+
+Just over the bound the same pastes stay plain text in 0.3 to 1.0 ms with both Qt versions; on
+main they took 10 to 93 ms. The two pastes above take 0 ms (the span) and 4 to 5 ms (the nesting:
+removing the style attributes from 2.2 MB) instead of more than 130 s. The cell of 4,089 lines
+takes 90 ms on main as now: the time goes into the table's layout of its lines, which is content,
+not markup; the bound leaves text, lines and other content of the cells alone.
+
+The markup of the samples stays well within: tables of 40 x 10 to 500 x 100 cells cost 59 % of
+what their cells allow with Outlook's markup and 30 % with Excel's, in the estimate (Outlook's
+import itself took 57 % of its estimate). The cells themselves are not bounded: the whole paste
+grows linearly with them, Excel's markup 45 µs per cell at 4,000 cells and 53 µs at 250,000
+(13.1 s), Outlook's 63 µs at 4,000 and 67 µs at 50,000 (3.4 s). The scan takes 37 ms for 50,000
+cells in Outlook's markup (21 MB) and at most 0.32 s for 10 MB of any markup tried, less than a
+plain paste of 10 MB (about 0.85 s).
+
 ### 2026-11-16, development VM, long lines (S007) (release build, offscreen, Qt 6.12.0 and 6.8.3)
 
 A file of five lines whose third line is one pattern repeated; the caret in the middle of that
