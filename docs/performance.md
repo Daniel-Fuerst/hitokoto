@@ -31,6 +31,46 @@ local measurements.
 
 ## Measurements
 
+### 2026-11-20, development VM, S031: lists in Qt's HTML import (release build, offscreen, Qt 6.12.0 and 6.8.3)
+
+Qt marks every block of a list again each time a block joins it (`QTextBlockGroup::blockInserted`
+calls `markBlocksDirty`), so one list costs its import the square of its blocks. Qt's import alone
+of the HTML the scan gets, a cell of a table of four, Qt 6.12.0 (the estimate before this change in
+brackets; the import may take 25 ms):
+
+| Paste | 2,000 | 4,000 | 8,000 |
+|---|---|---|---|
+| one `ul` (or `ol`) of that many items | 71 ms (12 ms) | 384 ms (25 ms) | 1.74 s (49 ms) |
+| items without end tags, or a list inside an item | 71 to 72 ms | 384 to 399 ms | 1.72 to 1.76 s |
+| lines of a `pre` in one item | 71 ms (0.1 ms) | 389 ms (0.1 ms) | 1.73 s (0.1 ms) |
+| that many lists of one item | 14 ms | 28 ms | 61 ms |
+| items without a list, or lines of a `pre` outside a list | 3.6 to 4.9 ms | 7.5 to 24 ms | 16 to 23 ms |
+
+Paragraph separators in an item, also as `&#8233;`, and `&#10;` in a `pre` in an item cost the same
+as the lines of a `pre` (4,000: 374 to 387 ms, 8,000: 1.68 to 1.80 s, both Qt versions); line breaks
+in an item outside a `pre` and `<div>` in an item cost nothing extra. One list of 16,000 items took
+7.4 / 7.6 s (Qt 6.12.0 / 6.8.3), of 24,000 items 17.2 / 17.5 s: about 60 ns per pair of blocks;
+another machine took 10.3 to 10.9 s for 16,000.
+
+The scan now charges each block that joins a list 100 ns for every block that joined before it since
+the outermost open list started. The largest paste of one kind it lets through, and Qt's import of
+it (three runs, both Qt versions, highest share of what the cells allow):
+
+| Form, in a table of | 20 cells | 2,000 cells | 8,000 cells | 50,000 cells |
+|---|---|---|---|---|
+| one list | 644 items, 32 % | 1,336, 34 % | 2,732, 55 % | 6,920, 66 % |
+| a list inside an item | 643, 47 % | 1,334, 49 % | 2,730, 52 % | |
+| lines of a `pre` in an item | 702, 20 % | 1,395, 51 % | 2,791, 55 % | 6,980, 62 % |
+| paragraph separators in an item | 702, 18 % | 1,395, 37 % | 2,791, 52 % | |
+
+The table of 2,000 cells with one list of 15,908 items (181 KB), 10.5 s before, stays plain text in
+2 ms in the window (Qt 6.8.3), the one of 8,000 cells with 63,637 items (724 KB) in 9 ms; the
+largest list let through in 2,000 cells pastes in 51 ms. The verdict of every sample, every table in
+their markup, 900 random mixes (seeds 1 to 6) and the pastes of the formatting rework is the same as
+before; only the list forms above change from Flat to OverBudget. Of the 900 mixes, Qt's import of
+those the scan lets through took at most 86 % of what their cells allow in one run (Qt 6.12.0, 63 to
+74 % on five reruns of the same paste) and 57 % with 6.8.3.
+
 ### 2026-11-20, development VM, S031: formatting before Qt's HTML import (release build, offscreen, Qt 6.12.0 and 6.8.3)
 
 Three costs of Qt's import that the estimate below did not count, all from formatting a pasted table

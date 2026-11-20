@@ -135,11 +135,12 @@ third cell becomes
   Qt reads it and the import's time estimated from what it holds; a paste whose import would take
   longer stays plain text, as a nested table does, and Qt's import does not run. The cells are not
   bounded: what counts is what Qt builds beyond them (the positions a span covers, elements
-  nested in each other, markup, images in one paragraph). Every sample and tables of up to 50,000
-  cells in their markup stay well within. What only formats does not reach the import: of the
-  attributes only the spans of cells stay (and Qt's mark of its own HTML), and style elements lose
-  their style sheet. The cells' text follows the elements alone; what a sheet says about spaces
-  (`white-space`) no longer applies, as style attributes have not since 2026-11-10.
+  nested in each other, markup, images in one paragraph, the blocks of one list). Every sample and
+  tables of up to 50,000 cells in their markup stay well within. What only formats does not reach
+  the import: of the attributes only the spans of cells stay (and Qt's mark of its own HTML), and
+  style elements lose their style sheet. The cells' text follows the elements alone; what a sheet
+  says about spaces (`white-space`) no longer applies, as style attributes have not since
+  2026-11-10.
 
 ## Acceptance scenarios
 
@@ -216,8 +217,8 @@ third cell becomes
 - When I paste a table
 - Then the plain text is pasted as today (in a cell, as S018 writes pasted text)
 - Given the clipboard holds HTML whose import would take longer than its cells allow: a first
-  cell spanning 20,000 columns above a few rows, an element nested 2,000 deep in a cell, or
-  100,000 bold words in a cell of four
+  cell spanning 20,000 columns above a few rows, an element nested 2,000 deep in a cell,
+  100,000 bold words in a cell of four, or one list of 4,000 items in a cell
 - When I paste it
 - Then the plain text is pasted at once, without the wait cursor, and Qt's import does not run
   (rework of 2026-11-20)
@@ -322,6 +323,9 @@ No new visible element: the pasted table is an S018 table with its tokens. No ne
   not changing the cells and for each formatting staying out of the import with the table the
   paste gives without it. `fuzz_paste` checks that only characters leave, in order, and that a
   second pass changes nothing.
+- Rework of 2026-11-20, lists: `S031_PasteTables` for one long list staying plain text and for
+  blocks that join a list counting as its items; `tst_s031_paste_tables` for a list of 4,000
+  items and 4,000 paragraph separators in an item staying plain text without an import.
 - UI, for the rework of 2026-11-14: data with `text/markdown` before `text/plain` pasted with
   `Ctrl+V` and Paste as Plain Text in the editor and in a cell, and dropped on the editor; data
   with Markdown alone.
@@ -414,3 +418,16 @@ Branch `agents/s031-paste-within-bounds`, from main 98ef4fe.
   import alone. The samples' markup costs 55 % (Outlook) and 26 % (Excel) of what the cells allow in
   the estimate; Outlook's import took up to 62 % of its estimate. Of 600 random mixes none that the
   scan lets through imports longer than allowed (at most 65 %).
+- Lists (third part of the rework, before the merge). Qt marks every block of a list again each time
+  a block joins it (`QTextBlockGroup::blockInserted`, Qt 6.8.3 and 6.12.0), so one list costs its
+  import the square of its blocks: 4,000 items in a cell took 0.4 to 0.6 s, 16,000 items 7 to 11 s,
+  a table of 2,000 cells with one list of 15,908 items (181 KB) 10.5 s, while the estimate counted
+  each item alike. A block also joins the list of the item it starts in when a paragraph separator,
+  or a line break in a pre, starts it, as a character or an entity. Many short lists cost nothing
+  extra, nor do line breaks outside a pre. The scan now counts these blocks from the outermost open
+  list on, each at 100 ns per block that joined before it (measured: about 60 ns), so that a block
+  counts whichever list Qt adds it to. The largest list it lets through is about 650 blocks in a
+  table of 20 cells, 1,350 in 2,000, 2,750 in 8,000 and 6,950 in 50,000; their import took at most
+  66 % of what the cells allow, and the list of 15,908 items stays plain text in 2 ms. No sample, no
+  table in their markup and none of 900 random mixes changes its verdict, so what converts stays the
+  same; the import itself is unchanged.

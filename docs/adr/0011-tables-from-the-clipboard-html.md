@@ -109,6 +109,9 @@ sample-like cells).
   replaces `core::htmlWithoutStyles` and goes one step further on its way: the tables and their
   text stay the same (samples, tables in their markup, random mixes, both Qt versions), except
   that a sheet's `white-space` no longer applies, as a style attribute's has not since 2026-11-10.
+- Third addendum of 2026-11-20: Qt marks every block of a list again for each block that joins
+  it, so the scan counts those blocks per open list and charges each one for the blocks before it;
+  one list of thousands of items stays plain text, many short lists convert as before.
 
 ## Reconsider if
 
