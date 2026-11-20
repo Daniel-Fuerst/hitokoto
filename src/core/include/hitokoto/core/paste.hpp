@@ -162,6 +162,17 @@ struct HtmlScan {
 /// other attributes stay byte for byte. Linear in the input.
 [[nodiscard]] std::u16string htmlWithoutStyles(std::u16string_view html);
 
+/// The HTML of a paste as Qt imports it (S031, rework of 2026-11-20), read as Qt's HTML parser
+/// reads it: without what only formats. Every attribute leaves its tag except `colspan` and
+/// `rowspan` of td and th and `name` and `content` of meta (Qt's mark of its own HTML, which changes
+/// how it reads spaces), and a style element loses its text, the style sheet Qt would read. A
+/// pasted table keeps only text, lines and spans; Qt's import grows in what formats faster than in
+/// the cells (a rule `b ~ span` before 8,785 spans took 30 s, 10,000 tables whose cells differ in
+/// width 7 s, 64,000 fonts whose size and colour add up to the same number 46 s). Text, comments, end
+/// tags and the kept attributes stay byte for byte; an attribute leaves with the blanks before it,
+/// up to one where a word follows. Linear in the input.
+[[nodiscard]] std::u16string htmlWithoutFormatting(std::u16string_view html);
+
 /// Whether a paste at `line` lands in a block quote or a list item, so that it stays plain text
 /// (S031 review O4): `line` starts one, continues the paragraph of one (also lazily), or is indented
 /// under a list item after blank lines. `above(i)` is the i-th line above `line` (0 = the line

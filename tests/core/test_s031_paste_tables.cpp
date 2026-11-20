@@ -691,12 +691,14 @@ TEST(S031_PasteTables, MarkupFarBeyondItsCellsStaysPlainText) {
     // 100,000 bold words in one cell of four: Qt makes an element and a format for each.
     EXPECT_EQ(scanHtmlTables(inCell(repeat(u"<b>x</b>", 100000))), HtmlTables::OverBudget);
     EXPECT_EQ(scanHtmlTables(inCell(repeat(u"<b>x</b>", 1000))), HtmlTables::Flat);
-    // Attributes cost by their length; style attributes leave before the import, and the scan
-    // reads the HTML as Qt gets it.
-    EXPECT_EQ(scanHtmlTables(inCell(u"<span" + repeat(u" a=b", 200000) + u">x</span>")), HtmlTables::OverBudget);
+    // Attributes cost by their length; all but the spans of a cell leave before the import, and
+    // the scan reads the HTML as Qt gets it.
+    const std::u16string attributes = inCell(u"<span" + repeat(u" a=b", 200000) + u">x</span>");
+    EXPECT_EQ(scanHtmlTables(attributes), HtmlTables::OverBudget);
+    EXPECT_EQ(scanHtmlTables(htmlWithoutFormatting(attributes)), HtmlTables::Flat);
     const std::u16string styled = inCell(u"<span style='" + repeat(u"color:red;", 200000) + u"'>x</span>");
     EXPECT_EQ(scanHtmlTables(styled), HtmlTables::OverBudget);
-    EXPECT_EQ(scanHtmlTables(htmlWithoutStyles(styled)), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(htmlWithoutFormatting(styled)), HtmlTables::Flat);
     // Text, entities and comments are content: they cost Qt less than a plain paste of them.
     EXPECT_EQ(scanHtmlTables(inCell(repeat(u"word ", 800000))), HtmlTables::Flat);
     EXPECT_EQ(scanHtmlTables(inCell(repeat(u"&amp;", 800000))), HtmlTables::Flat);
@@ -714,23 +716,39 @@ TEST(S031_PasteTables, ManyCellsAllowMoreMarkup) {
     EXPECT_EQ(scanHtml(u"<table><tr><td>a</td></tr></table>").allowedPs, kPasteHtmlBounds.floorPs);
 }
 
-TEST(S031_PasteTables, StyleRulesForEveryElementStayPlainText) {
-    // Qt checks every selector of a style element against every element after it.
-    std::u16string rules;
-    std::u16string spans;
-    for (std::uint64_t i = 0; i < 2000; ++i) {
-        rules += u".c" + number(i) + u"{color:red}";
-        spans += u"<span class=c" + number(i) + u">x</span>";
+TEST(S031_PasteTables, StyleSheetsLeaveBeforeTheImport) {
+    // The text of a style element is a style sheet. Qt checks every selector against every element
+    // after it, and for `b ~ span` against every sibling before each span: 8,785 spans in a cell
+    // took 30 s. The sheet leaves before the import; the paste converts without it.
+    const std::u16string spans = repeat(u"<span/>", 8785);
+    const std::u16string sibling = u"<style>b ~ span{color:red}</style>" + inCell(spans);
+    EXPECT_EQ(htmlWithoutFormatting(sibling), u"<style></style>" + inCell(spans));
+    const HtmlScan without = scanHtml(htmlWithoutFormatting(sibling));
+    EXPECT_EQ(without.tables, HtmlTables::Flat);
+    EXPECT_LT(without.importPs, without.allowedPs);
+    // A sheet the scan still meets is not estimated: the paste stays plain text, also with a short
+    // sheet. A sheet inside a comment, as Office writes it, is no sheet to Qt.
+    EXPECT_EQ(scanHtmlTables(sibling), HtmlTables::OverBudget);
+    EXPECT_EQ(scanHtmlTables(u"<style>p{margin:0} td{padding:2px}</style>" + inCell(u"x")), HtmlTables::OverBudget);
+    EXPECT_EQ(scanHtmlTables(u"<style><!--p{margin:0}--></style>" + inCell(u"x")), HtmlTables::Flat);
+    EXPECT_EQ(scanHtmlTables(u"<style/>p{margin:0}" + inCell(u"x")), HtmlTables::Flat);
+}
+
+TEST(S031_PasteTables, StyleElementsLoseTheTextQtReadsAsTheirSheet) {
+    // Qt's sheet is the text from the start tag to the next tag; a comment does not end it, and Qt
+    // reads it at the next end tag of any element. All of it leaves, the rest stays.
+    const std::vector<std::pair<std::u16string_view, std::u16string_view>> cases = {
+        {u"<style>b ~ span{color:red}</style><p>x</p>", u"<style></style><p>x</p>"},
+        {u"<STYLE type=\"text/css\">a{}<!-- b{} -->c{}</STYLE>", u"<STYLE><!-- b{} --></STYLE>"},
+        {u"<div><style>a{}</div>x", u"<div><style></div>x"},
+        {u"<style>a{}<p>b{}</p>", u"<style><p>b{}</p>"},
+        {u"<style>&lt;a&gt;{}</style>", u"<style></style>"},
+        {u"<style/>a{}", u"<style/>a{}"},
+        {u"<p>style{}</p><!-- <style>a{}</style> -->", u"<p>style{}</p><!-- <style>a{}</style> -->"},
+    };
+    for (const auto& [html, expected] : cases) {
+        EXPECT_EQ(htmlWithoutFormatting(html), expected);
     }
-    EXPECT_EQ(scanHtmlTables(u"<style>" + rules + u"</style>" + inCell(spans)), HtmlTables::OverBudget);
-    // A sheet as Office writes it, inside a comment, which Qt skips; and a short sheet.
-    EXPECT_EQ(scanHtmlTables(u"<style><!--" + rules + u"--></style>" + inCell(spans)), HtmlTables::Flat);
-    EXPECT_EQ(scanHtmlTables(u"<style>p{margin:0} td{padding:2px}</style>" + inCell(spans)), HtmlTables::Flat);
-    // Qt also walks up from every element and takes the inherited declarations of each element
-    // around it.
-    EXPECT_EQ(scanHtmlTables(u"<style>*{" + repeat(u"color:red;", 4000) + u"}</style>" +
-                             inCell(repeat(u"<span>x</span>", 1000))),
-              HtmlTables::OverBudget);
 }
 
 TEST(S031_PasteTables, ManyImagesInOneBlockStayPlainText) {
@@ -743,22 +761,37 @@ TEST(S031_PasteTables, ManyImagesInOneBlockStayPlainText) {
               HtmlTables::Flat);
 }
 
-TEST(S031_PasteTables, ManyAnchorNamesAndFontFacesStayPlainText) {
-    // Qt keeps an id, the name of a link and the face of a font in a format that takes longer to
-    // store for each such format before it.
+TEST(S031_PasteTables, FormatsQtComparesWithEachOtherLeaveBeforeTheImport) {
+    // Qt stores a format after comparing it with every format before it whose hash is the same.
+    // The hash of a list is its type (an id, the name of a link, the face of a font, the widths of
+    // a table's columns), and the hash of a format is a sum (a font's size and its colour add up).
+    // Each such format takes longer than the one before; the attributes leave before the import.
+    const auto hex = [](std::uint64_t n) {
+        std::u16string out = u"#";
+        for (int shift = 20; shift >= 0; shift -= 4) {
+            out += u"0123456789abcdef"[(n >> static_cast<unsigned>(shift)) & 15U];
+        }
+        return out;
+    };
     std::u16string names;
     std::u16string faces;
     std::u16string ids;
-    for (std::uint64_t i = 0; i < 5000; ++i) {
+    std::u16string sums;
+    std::u16string widths;
+    for (std::uint64_t i = 1; i <= 5000; ++i) {
         names += u"<a name=n" + number(i) + u">x</a>";
         faces += u"<font face=f" + number(i) + u">x</font>";
         ids += u"<span id=i" + number(i) + u">x</span>";
+        sums += u"<font size=" + number((std::uint64_t{1} << 24U) - i + 3) + u" color=" + hex(i) + u">x</font>";
+        widths += u"<table><tr><td width=" + number(i) + u">a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></table>";
     }
-    EXPECT_EQ(scanHtmlTables(inCell(names)), HtmlTables::OverBudget);
-    EXPECT_EQ(scanHtmlTables(inCell(faces)), HtmlTables::OverBudget);
-    EXPECT_EQ(scanHtmlTables(inCell(ids)), HtmlTables::OverBudget);
-    EXPECT_EQ(scanHtmlTables(inCell(u"<a name=_Hlk1>x</a><span id=top>y</span><font face=Arial>z</font>")),
-              HtmlTables::Flat);
+    for (const std::u16string& html : {inCell(names), inCell(faces), inCell(ids), inCell(sums), widths}) {
+        const std::u16string without = htmlWithoutFormatting(html);
+        EXPECT_EQ(without.find(u'='), std::u16string::npos);
+        EXPECT_EQ(scanHtmlTables(without), HtmlTables::Flat);
+    }
+    EXPECT_EQ(htmlWithoutFormatting(inCell(u"<a name=_Hlk1>x</a><span id=top>y</span><font face=Arial>z</font>")),
+              inCell(u"<a>x</a><span>y</span><font>z</font>"));
 }
 
 TEST(S031_PasteTables, TheScanReadsTagsAsQtDoes) {
@@ -822,38 +855,49 @@ TEST(S031_PasteTables, ParagraphLinesOfAContainerAreInIt) {
     EXPECT_FALSE(pasteLineInContainer(u"Para", linesAbove({})));
 }
 
-// Review (code) O10, Armin 2026-11-10: style attributes leave the HTML before Qt's import, which
-// halves the import of Outlook's markup (Qt 6.12 ignores display: none, so no text changes).
-// Everything else is kept as it is.
-TEST(S031_PasteTables, StyleAttributesLeaveTheHtmlBeforeTheImport) {
+// Style attributes leave the HTML before Qt's import since 2026-11-10 (Armin), which halves the
+// import of Outlook's markup; since the rework of 2026-11-20 every attribute does but the spans of
+// a cell and the name and content of meta. Qt 6.8.3 and 6.12.0 ignore display: none, so no text
+// changes. Text, comments and end tags are kept as they are.
+TEST(S031_PasteTables, FormattingLeavesTheHtmlBeforeTheImport) {
     const std::vector<std::pair<std::u16string_view, std::u16string_view>> cases = {
         {u"<td style='border:solid #888888 1.0pt' rowspan=2>a</td>", u"<td rowspan=2>a</td>"},
+        {u"<td width=120 colspan=\"2\" class=xl65>a</td>", u"<td colspan=\"2\">a</td>"},
+        {u"<TH WIDTH=\"50%\" ROWSPAN=3>a</TH>", u"<TH ROWSPAN=3>a</TH>"},
         {u"<p class=MsoNormal style=\"margin:0\"><span lang=EN-US style='font-size:11.0pt'>x</span></p>",
-         u"<p class=MsoNormal><span lang=EN-US>x</span></p>"},
-        {u"<TD STYLE='a:b'>x</TD>", u"<TD>x</TD>"},
-        {u"<td style=width:20px>x</td>", u"<td>x</td>"},
+         u"<p><span>x</span></p>"},
+        {u"<font size=16777218 color=#000001 face=Arial>x</font>", u"<font>x</font>"},
+        {u"<a href='https://example.org/' name=_Hlk1>x</a>", u"<a>x</a>"},
+        {u"<div colspan=2 rowspan=2>x</div>", u"<div>x</div>"},
+        {u"<meta name=qrichtext content=1 charset=utf-8>", u"<meta name=qrichtext content=1>"},
         {u"<td\nstyle='a:b'\n colspan=3>x</td>", u"<td\n colspan=3>x</td>"},
-        {u"<img alt='a > b' style='x' src=y>", u"<img alt='a > b' src=y>"},
+        {u"<img alt='a > b' style='x' src=y>", u"<img>"},
         {u"<br style='mso-data-placement:same-cell'>", u"<br>"},
-        {u"<span style='mso-hide:all;display:none'>hidden</span>", u"<span>hidden</span>"},
-        // Kept: other attributes, text, comments.
-        {u"<td data-style='x' xstyle='y'>z</td>", u"<td data-style='x' xstyle='y'>z</td>"},
-        {u"<p>a style='x' b</p>", u"<p>a style='x' b</p>"},
-        {u"<!-- <td style='x'> --><td style='y'>z</td>", u"<!-- <td style='x'> --><td>z</td>"},
-        {u"a < b style='x'", u"a < b style='x'"},
-        {u"<td style='unclosed", u"<td style='unclosed"},
+        {u"<td nowrap colspan=2>x</td>", u"<td colspan=2>x</td>"},
+        {u"<td title=\"a\"colspan=2>x</td>", u"<td colspan=2>x</td>"},
+        {u"<td a=1/>", u"<td />"},
+        {u"<td a=\"1\"/x colspan=2>", u"<td /x colspan=2>"},
+        {u"a < b style='x'", u"a < b"},
+        {u"<td style='unclosed", u"<td"},
+        // Kept byte for byte: text, comments, end tags, a tag with an entity in a name and all after
+        // it (Qt would decode the entity; the scan keeps such a paste plain text).
+        {u"<p>a=b style='x'</p>", u"<p>a=b style='x'</p>"},
+        {u"<!-- <td style='x'> --><td style='y'>z</td class=x>", u"<!-- <td style='x'> --><td>z</td class=x>"},
+        {u"<td width=3>a</td><td c&#111;lspan=9 width=3>b", u"<td>a</td><td c&#111;lspan=9 width=3>b"},
+        {u"<td colspan=2 colspan=3>x</td>", u"<td colspan=2 colspan=3>x</td>"},
     };
     for (const auto& [html, expected] : cases) {
-        EXPECT_EQ(htmlWithoutStyles(html), expected);
+        EXPECT_EQ(htmlWithoutFormatting(html), expected);
+        EXPECT_EQ(htmlWithoutFormatting(expected), expected);
     }
 }
 
-TEST(S031_PasteTables, StyleAttributesLeaveInLinearTime) {
+TEST(S031_PasteTables, FormattingLeavesInLinearTime) {
     std::u16string html;
     std::u16string expected;
     for (int i = 0; i < 100000; ++i) {
-        html += u"<td style='border:solid #888888 1.0pt'><p class=MsoNormal style='margin:0'>x</p></td>";
-        expected += u"<td><p class=MsoNormal>x</p></td>";
+        html += u"<td style='border:solid #888888 1.0pt' width=120><p class=MsoNormal style='margin:0'>x</p></td>";
+        expected += u"<td><p>x</p></td>";
     }
-    EXPECT_EQ(htmlWithoutStyles(html), expected);
+    EXPECT_EQ(htmlWithoutFormatting(html), expected);
 }

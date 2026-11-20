@@ -286,6 +286,10 @@ std::u16string htmlWithoutStyles(std::u16string_view html) {
     return out;
 }
 
+std::u16string htmlWithoutFormatting(std::u16string_view html) {
+    return htmlWithoutStyles(html);
+}
+
 namespace {
 
 /// Whether `line` starts a block quote or a list item (CommonMark 5.1, 5.2), at any indentation.
