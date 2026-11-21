@@ -26,6 +26,7 @@ endfunction()
 
 foreach(t IN ITEMS
         tst_s000_skeleton
+        tst_s000_random_edits
         tst_s001_open
         tst_s002_headings
         tst_s003_bullets
