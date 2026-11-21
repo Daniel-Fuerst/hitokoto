@@ -41,6 +41,13 @@ later story starts from green CI and enforced standards.
   CMake `FetchContent` (tests and benchmarks only). Nothing else.
 - Qt in CI: distribution packages on Linux where new enough, otherwise a pinned Qt installer
   action; record the choice in `docs/architecture.md`.
+- Checks in the build (2026-11-21): `cmake/HitokotoCompilerOptions.cmake` turns on what the
+  toolchain does not turn on by itself, for every target and build type: `/guard:cf` (Control Flow
+  Guard) and `/sdl` with MSVC, `_GLIBCXX_ASSERTIONS` with GCC and Clang (libc++ on macOS ignores
+  it). Stack protector, `_FORTIFY_SOURCE`, RELRO and BIND_NOW stay with the toolchain or the
+  distribution that packages hitokoto (S036 takes Debian's flags). The job "Build and test" checks
+  that the program carries them: on Linux it imports `std::__glibcxx_assert_fail`, on Windows
+  `dumpbin /headers` lists Control Flow Guard. Cost: `docs/performance.md`, 2026-11-21.
 - `.gitattributes`: text files normalised, but test fixtures (`tests/fixtures/**`) marked
   `-text` so CRLF/BOM fixtures stay byte-exact.
 - Creates `README.md` (build/run per OS) and `docs/architecture.md` (layers, interfaces).
