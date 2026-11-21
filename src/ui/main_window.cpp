@@ -110,14 +110,24 @@ MainWindow::MainWindow(const core::ElementRegistry& registry, QWidget* parent)
 MainWindow::~MainWindow() = default;
 
 SaveChoice MainWindow::askSaveInDialog(QWidget* parent, const QString& documentName) {
-    const auto answer = QMessageBox::question(
-        parent, tr("Unsaved changes"), tr("Save changes to %1 before closing it?").arg(documentName),
-        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
-    if (answer == QMessageBox::Save)
-        return SaveChoice::Save;
-    if (answer == QMessageBox::Discard)
-        return SaveChoice::Discard;
-    return SaveChoice::Cancel;
+    // The name shows as its characters: QMessageBox guesses rich text from the text, and a name may
+    // hold a tag (S008, rework of 2026-11-21). Otherwise as QMessageBox::question asks.
+    QMessageBox box(QMessageBox::Question, tr("Unsaved changes"),
+                    tr("Save changes to %1 before closing it?").arg(documentName),
+                    QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, parent);
+    box.setTextFormat(Qt::PlainText);
+    box.setDefaultButton(QMessageBox::Save);
+    if (box.exec() == -1) {
+        return SaveChoice::Cancel;
+    }
+    switch (box.standardButton(box.clickedButton())) {
+        case QMessageBox::Save:
+            return SaveChoice::Save;
+        case QMessageBox::Discard:
+            return SaveChoice::Discard;
+        default:
+            return SaveChoice::Cancel;
+    }
 }
 
 void MainWindow::createMenus() {
