@@ -676,6 +676,27 @@ private slots:
         expectConcealed(editor, 5, "after a line break in a field");
     }
 
+    // A value longer than a QLineEdit holds by default is not cut when its
+    // field is opened and left without a change.
+    void aLongValueOpenedAndLeftStaysWhole() {
+        const QByteArray value(40003, 'v');
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("long.md"), "---\nsummary: " + value + "\n---\nbody\n")));
+        f.placeCaret(3);
+        f.settle();
+        auto* editor = f.editor();
+        auto* view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(view != nullptr);
+        clickBlock(view, onValue(view, 0));
+        auto* edit = inlineEditor(view);
+        QVERIFY(edit != nullptr);
+        QCOMPARE(edit->text().size(), value.size());
+        test::keyClick(edit, Qt::Key_Return);
+        f.settle();
+        QCOMPARE(editor->document()->findBlockByNumber(1).text(),
+                 QStringLiteral("summary: ") + QString::fromLatin1(value));
+    }
+
     // Review O6: selections and held mouse buttons keep the properties block in place.
     void aSelectionAcrossTheBlockKeepsTheProperties() {
         QByteArray document = "---\ntags: [a, b, c]\n---\n";
