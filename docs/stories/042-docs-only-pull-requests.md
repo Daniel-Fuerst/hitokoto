@@ -6,8 +6,9 @@
   macOS, fuzzing, clang-tidy, benchmarks) before it may be merged, and again on main after the
   merge, although nothing that is built changed. Facts checked on main `c8a167f`:
   - `ci.yml` runs on `pull_request` without `types`, so only when a pull request is opened,
-    reopened or gets new commits; a label set later starts no run. `version.yml` already listens to
-    `labeled` and `unlabeled`.
+    reopened or gets new commits; a label set later starts no run. `labeled` and `unlabeled` would
+    fire for every label (the trigger cannot filter by name), and `ci.yml` cancels a running pull
+    request run when a new one starts. "Re-run jobs" repeats a run with its original event payload.
   - Two jobs of `ci.yml` run as a matrix (`build-test`, `bench`). A job skipped as a whole never
     reports the checks of its matrix entries, so required checks with those names would wait
     forever; a job skipped by a condition reports success, and a skipped check counts as passed
@@ -42,14 +43,18 @@ proves that it changed only documentation.
    `docs/theming.md`. Tests reach such a file only through a helper that CMake generates from the
    list (working name `test::docsFile("theming.md")`), so that a name not on the list does not
    compile; the two tests of today use it. A lint fails when a source under `tests/`, `bench/` or
-   `fuzz/` builds a path into `docs/` from the source directory in any other way. So a new test that
-   reads a document cannot be forgotten: it needs the list, and the list excludes the file from
-   decision 2.
-4. **The pull request check.** `ci.yml` also runs on `labeled` and `unlabeled`, so that setting or
-   removing the label starts a new run (the running one is cancelled, as for a new push). A first,
-   light job "Changes" looks at the pull request:
+   `fuzz/` names `docs/` in any other way: it reads the C++ and CMake files there and fails on every
+   string holding `docs/` outside comments and the helper, also relative paths and `file(GLOB …)`.
+   Text that only mentions such a path, such as the front matter `spec: docs/stories/…` in
+   `tst_s024_front_matter`, is allowed by a marker comment on its line. So a new test that reads a
+   document cannot be forgotten: it needs the list, and the list excludes the file from decision 2.
+4. **The pull request check.** `ci.yml` keeps its triggers; it gets no `labeled` or `unlabeled`,
+   which would cancel the running CI whenever any label is set. A first, light job "Changes" reads
+   the pull request's labels as they are when it runs, through the API with read access only, not
+   from the event: so the label set when the pull request is opened works at once, and a label set
+   or removed later takes effect with "Re-run all jobs" (or the next push).
    - Without `version:doc` it does nothing, and every job runs as today, also when only
-     documentation changed.
+     documentation changed (Armin: without the label the builds run).
    - With `version:doc` it lists the files the pull request changes against its base (three-dot
      diff, renames as a removed and an added file, so that a file moved into `docs/` counts with its
      old path). If every file counts as documentation (decision 2), all other jobs of `ci.yml` are
@@ -62,7 +67,10 @@ proves that it changed only documentation.
    main requires "Version label" and "CI result" instead of the ten checks one by one; this is as
    strict, because "CI result" fails whenever any job fails. The ruleset prepared before stays valid
    until then. The implementation delivers the changed ruleset and the steps to apply it; GitHub
-   accepts a required check only after it has run once, which the merge provides.
+   offers a check as required only if it passed in the repository within the past seven days, so
+   the switch is made within a week of a pull request run, or after one more run. As today, the
+   pull request's own `ci.yml` decides its checks; a change to `ci.yml` stays a matter of review,
+   and such a pull request can never be `version:doc`.
 6. **No CI run on main after a documentation merge.** The `push` trigger of `ci.yml` gets a path
    filter: all paths, then `!docs/**`, then each file of the list again (later patterns override
    earlier ones). A merge that changes only documentation starts no CI run on main, so "Version"
@@ -97,12 +105,14 @@ proves that it changed only documentation.
 - When its CI runs
 - Then every job runs as before this story, and "CI result" passes once they all pass
 
-**Scenario: setting or removing the label starts a new run**
+**Scenario: a label set later takes effect with a re-run**
 - Given an open pull request whose CI ran every job
 - When `version:doc` is set (and it changes only documentation)
-- Then a new run starts and skips the jobs as in the first scenario
-- When the label is removed again
-- Then a new run starts and runs every job
+- Then no run starts and the running one is not cancelled
+- When I choose "Re-run all jobs"
+- Then the run reads the label and skips the jobs as in the first scenario
+- When the label is removed and the run is re-run again
+- Then every job runs
 
 **Scenario: "CI result" follows every job**
 - Given a pull request without `version:doc`
@@ -136,15 +146,17 @@ change (workflows, scripts); a merge queue (`merge_group`); changes to "Packagin
 
 ## Tests
 
-- `tests/workflows`: `S042_*` lints over `ci.yml`, test first: the pull request trigger includes
-  `labeled` and `unlabeled`; every job but "Changes" and "CI result" carries the condition on the
+- `tests/workflows`: `S042_*` lints over `ci.yml`, test first: the pull request trigger has no
+  `labeled` or `unlabeled`; "Changes" reads the labels through the API, not from the event; every
+  job but "Changes" and "CI result" carries the condition on the
   result of "Changes"; "CI result" needs every other job and always runs; the push filter of main
   equals `!docs/**` plus the list; the S035 lints still hold ("Version" after a green CI on main).
   Each lint is shown red on a broken copy of the workflow, as the S032 lints are.
 - `tests/version`: `S030_*` cases for `version:doc` (accepted alone, refused beside another version
   label, next version "none").
 - Lint `S042_TestsReadDocsOnlyThroughTheList` over `tests/`, `bench/` and `fuzz/`, red on a sample
-  that builds a path into `docs/` directly; a compile check that the generated helper refuses a name
+  that names `docs/` directly, by a relative path and by `file(GLOB …)`, green on a marked line of
+  text; a compile check that the generated helper refuses a name
   not on the list.
 - `actionlint` and `shellcheck` over the changed workflows without new findings.
 - After the merge, by hand: the first pull request labelled `version:doc` is merged without the

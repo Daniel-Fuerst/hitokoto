@@ -9,32 +9,47 @@ objections:
     category: failure
     severity: major
     title: Every label change starts a run that cancels the running CI, and a re-run sees old labels
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      Armin (2026-11-21): no label events in ci.yml; "Changes" reads the current labels through the
+      API at run time, so a label set when the pull request is opened works at once and one set or
+      removed later takes effect with "Re-run all jobs" (decision 4, scenario).
   - id: O2
     category: premise
     severity: minor
     title: Recognising a documentation pull request by its files alone would need no label events
-    disposition: pending
-    disposition_rationale: null
+    disposition: resolved
+    disposition_rationale: >-
+      Armin (2026-11-21): the label stays as a deliberate claim that the CI checks; without it the
+      builds run. O1, the cost of the label, is fixed.
   - id: O3
     category: threat
     severity: minor
     title: One required check decided by the pull request's own workflow file
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: >-
+      Decision 5 says that the pull request's own ci.yml decides its checks as today, that a change
+      to ci.yml stays a matter of review, and that such a pull request can never be version:doc
+      (Armin, 2026-11-21).
   - id: O4
     category: failure
     severity: minor
     title: The lint finds paths built from the source directory, not every way to read docs/
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      Decision 3: the lint reads the C++ and CMake files under tests/, bench/ and fuzz/ and fails on
+      every string holding docs/ outside comments and the helper, relative paths and file(GLOB)
+      included; text that only mentions a path is allowed by a marker comment on its line (Armin,
+      2026-11-21).
   - id: O5
     category: operational
     severity: minor
     title: A required check can be chosen only after it passed within the last seven days
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      Decision 5: the steps to switch the ruleset say that GitHub offers a required check only if it
+      passed within the past seven days, so the switch follows a pull request run within a week
+      (Armin, 2026-11-21).
 ---
 
 # Review (spec) of S042 — Pull requests that change only documentation skip the build
