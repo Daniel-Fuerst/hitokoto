@@ -194,4 +194,17 @@ std::optional<std::string> encodeUtf8(std::u16string_view text, bool withBom, Li
     return out;
 }
 
+// Placeholders: the red tests of S004 (rework of 2026-11-21) build against them.
+std::size_t findLoneSurrogate(std::u16string_view /*text*/) noexcept {
+    return std::u16string_view::npos;
+}
+
+std::u16string replaceLoneSurrogates(std::u16string_view text) {
+    return std::u16string(text);
+}
+
+TextPlace placeOf(std::u16string_view /*text*/, std::size_t /*offset*/) noexcept {
+    return {};
+}
+
 }  // namespace hitokoto::core

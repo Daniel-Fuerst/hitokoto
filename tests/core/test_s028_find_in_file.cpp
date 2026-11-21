@@ -330,6 +330,16 @@ TEST(S028_FindInFile, NoNormalisation) {
     EXPECT_TRUE(find(u"äpfel", u"äpfel").matches.empty());
 }
 
+// A match is whole code points, also for a search text with half of a character: the caret the
+// find bar leaves on a match never stands inside a pair (S004, rework of 2026-11-21).
+TEST(S028_FindInFile, AMatchNeverHoldsHalfOfACharacter) {
+    const std::u16string doc = u"a\U0001F600b \U0001F600";
+    EXPECT_TRUE(find(doc, std::u16string(1, char16_t{0xD83D})).matches.empty());
+    EXPECT_TRUE(find(doc, std::u16string(1, char16_t{0xDE00})).matches.empty());
+    EXPECT_TRUE(find(doc, std::u16string{u'a', char16_t{0xD83D}}).matches.empty());
+    EXPECT_EQ(find(doc, u"\U0001F600").matches.size(), 2u);
+}
+
 TEST(S028_FindInFile, MatchesDoNotOverlap) {
     EXPECT_EQ(find(u"aaaa", u"aa").sources(), (Strings{"aa", "aa"}));
     const auto s = find(u"aaaa", u"aa");

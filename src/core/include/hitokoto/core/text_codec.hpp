@@ -52,4 +52,34 @@ std::optional<std::string> encodeUtf8(std::u16string_view text, bool withBom, Li
 /// Number of u'\n' characters in `text`.
 std::size_t countBreaks(std::u16string_view text) noexcept;
 
+/// U+FFFD REPLACEMENT CHARACTER: what text entering the editor holds in place of a lone
+/// surrogate.
+inline constexpr char16_t kReplacementCharacter = u'�';
+
+/// Offset of the first lone surrogate in `text`, or std::u16string_view::npos. A lone surrogate
+/// is a high surrogate not followed by a low one, or a low surrogate not preceded by a high one:
+/// half of a character, which UTF-8 cannot encode (encodeUtf8 refuses it).
+std::size_t findLoneSurrogate(std::u16string_view text) noexcept;
+
+/// `text` with each lone surrogate replaced by U+FFFD; pairs and every other code unit stay, so
+/// the length stays the same. Every way into the editor's text passes what it inserts through
+/// this, so that the text can always be saved (S004).
+///
+/// The text is judged on its own: a half at its start or end is replaced, also when the text it
+/// goes next to ends or starts with the other half. Next to an insertion there is no half to
+/// complete: the document holds none (decodeUtf8 refuses one, and everything inserted passes
+/// here), and the caret and a selection never stand inside a pair (Qt moves and hits by whole
+/// characters, find matches whole code points).
+std::u16string replaceLoneSurrogates(std::u16string_view text);
+
+/// A place in a text, both counted from 1: the line (lines end at u'\n') and the column in code
+/// points (a surrogate pair is one column, a lone surrogate one).
+struct TextPlace {
+    std::size_t line = 1;
+    std::size_t column = 1;
+};
+
+/// The line and column of `offset` in `text`; an offset past the end counts as the end.
+TextPlace placeOf(std::u16string_view text, std::size_t offset) noexcept;
+
 }  // namespace hitokoto::core
