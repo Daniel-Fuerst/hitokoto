@@ -1,6 +1,6 @@
 # S040 — Selecting cells, rows and columns in a table
 
-- **Status:** Draft · **Order:** 45 · **Size:** L · **Depends on:** S018, S019, S028, S031
+- **Status:** Draft · **Order:** 46 · **Size:** L · **Depends on:** S018, S019, S028, S031
 - **Basis:** Armin, 2026-11-21: a selection of more than one cell cannot be seen; rows and columns
   cannot be selected, or their selection is not visible. Checked on main `c8a167f` with Qt 6.12.0
   (Linux, offscreen) before this story was written:
