@@ -79,6 +79,14 @@ The edited property is normalized to a quoted key/value or flow list. Comments a
 that property may be replaced; all other YAML and the Markdown body remain untouched. Nested or
 unsupported values can be replaced as quoted text. Duplicate and empty keys are refused.
 
+Addendum (2026-11-22): every written property stays on its
+line. The writer escapes the characters at which `QTextDocument` or a YAML reader starts a new line
+(`\N`, `\L`, `\P`, `\uFDD0`, `\uFDD1`) and half of a surrogate pair read from an escape
+(`\uD83D`); a number or date is written bare only when it reads back as exactly the text entered,
+otherwise as a quoted string. The embedder refuses a line that would still break or could not be
+saved, and text from a field enters as `insertableText` makes it (ADR 0002, addendum of
+2026-11-21).
+
 The user rejected modal editors as too intrusive for a speed-focused, stay-out-of-the-way editor
 and supplied a table-like Obsidian reference. S025 therefore edits keys, scalar values, and
 individual list/tag chips in place with a themed editor overlay. Chip removal and row deletion are
