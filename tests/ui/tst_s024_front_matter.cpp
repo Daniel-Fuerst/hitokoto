@@ -513,6 +513,42 @@ private slots:
         QCOMPARE(editor->toPlainText(), before);
     }
 
+    // One Ctrl+Z in the block takes back the property edit and nothing before
+    // it; the edits of the body before it stay and are undone one at a time.
+    void oneUndoInTheBlockTakesBackOnlyThePropertyEdit() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("note.md"), "---\ndone: true\n---\nfirst line\nsecond line\n")));
+        f.placeCaret(3);
+        f.settle();
+        auto* editor = f.editor();
+        for (int i = 0; i < 6; ++i) {
+            f.placeCaret(3 + i % 2, static_cast<int>(editor->document()->findBlockByNumber(3 + i % 2).length() - 1));
+            test::keyClicks(editor, QStringLiteral(" w%1").arg(i));
+        }
+        const QString typed = editor->toPlainText();
+        QCOMPARE(editor->document()->findBlockByNumber(3).text(), QStringLiteral("first line w0 w2 w4"));
+        QCOMPARE(editor->document()->findBlockByNumber(4).text(), QStringLiteral("second line w1 w3 w5"));
+        f.settle();
+        auto* view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(view != nullptr);
+        clickBlock(view, onValue(view, 0));
+        f.settle();
+        QCOMPARE(editor->document()->findBlockByNumber(1).text(), QStringLiteral("\"done\": false"));
+        test::keyClick(view, Qt::Key_Z, Qt::ControlModifier);
+        f.settle();
+        QCOMPARE(editor->toPlainText(), typed);
+        test::keyClick(view, Qt::Key_Z, Qt::ControlModifier);
+        f.settle();
+        QCOMPARE(editor->document()->findBlockByNumber(1).text(), QStringLiteral("done: true"));
+        QCOMPARE(editor->document()->findBlockByNumber(3).text(), QStringLiteral("first line w0 w2 w4"));
+        QCOMPARE(editor->document()->findBlockByNumber(4).text(), QStringLiteral("second line w1 w3"));
+        test::keyClick(view, Qt::Key_Y, Qt::ControlModifier);
+        test::keyClick(view, Qt::Key_Y, Qt::ControlModifier);
+        f.settle();
+        QCOMPARE(editor->document()->findBlockByNumber(1).text(), QStringLiteral("\"done\": false"));
+        QCOMPARE(editor->document()->findBlockByNumber(4).text(), QStringLiteral("second line w1 w3 w5"));
+    }
+
     // Review O6: selections and held mouse buttons keep the properties block in place.
     void aSelectionAcrossTheBlockKeepsTheProperties() {
         QByteArray document = "---\ntags: [a, b, c]\n---\n";
