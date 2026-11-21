@@ -1,6 +1,8 @@
 # S042 — Pull requests that change only documentation skip the build
 
-- **Status:** Draft · **Order:** 45 · **Size:** S · **Depends on:** S030, S032, S035
+- **Status:** Confirmed (Armin, 2026-11-21, after the review
+  `docs/reviews/042-docs-only-pull-requests-spec.md` and its dispositions) · **Order:** 45 ·
+  **Size:** S · **Depends on:** S030, S032, S035
 - **Basis:** Armin, 2026-11-21, with the specs of S040 and S041: a pull request that changes only
   stories, reviews or other documentation runs the whole CI (builds and tests on Linux, Windows and
   macOS, fuzzing, clang-tidy, benchmarks) before it may be merged, and again on main after the
