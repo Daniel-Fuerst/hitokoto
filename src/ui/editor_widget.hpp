@@ -68,9 +68,9 @@ public:
     /// S024 review O2: front matter as a properties block (on) or as plain text, as in S023 (off).
     void setFrontMatterAsProperties(bool on);
     [[nodiscard]] bool frontMatterAsProperties() const noexcept { return frontMatterAsProperties_; }
-    /// S028 review O8: a table or the front matter with lines in [first, last] shows its source
-    /// while the find bar's current match is there; `untilCaretLeaves` (after Escape, tables): until
-    /// the caret and the anchor have left it. first < 0 releases it.
+    /// S028 review O8: a table with lines in [first, last] shows its source while the find bar's
+    /// current match is there; `untilCaretLeaves` (after Escape): until the caret and the anchor
+    /// have left it. first < 0 releases it.
     void setFindHold(int first, int last, bool untilCaretLeaves);
     /// S028: scrolls so that document position `position` is on screen, without moving the caret.
     void showPosition(int position);
@@ -208,14 +208,15 @@ private:
     qreal pendingShift_ = 0;  ///< height change above the viewport not yet scrolled away
     bool applyingShift_ = false;
     bool resizing_ = false;
-    ScrollAnchor heldAnchor_;        ///< reading position across resizes until the view scrolls
-    bool rangeClamps_ = false;       ///< a new scroll range is about to clamp the value
-    bool followCaret_ = false;       ///< the view follows the caret (no scroll left it off screen)
-    bool followingCaret_ = false;    ///< keepCaretOnScreen is scrolling
-    bool typing_ = false;            ///< inside a key, input method or paste event
-    bool insideEdit_ = false;        ///< between contentsChange and contentsChanged of the document
-    bool caretCheckQueued_ = false;  ///< a caret check waits for the event loop
-    int settlePasses_ = 0;           ///< settleAnchor calls that moved the view since the last restore
+    ScrollAnchor heldAnchor_;           ///< reading position across resizes until the view scrolls
+    bool rangeClamps_ = false;          ///< a new scroll range is about to clamp the value
+    bool followCaret_ = false;          ///< the view follows the caret (no scroll left it off screen)
+    bool followingCaret_ = false;       ///< keepCaretOnScreen is scrolling
+    bool typing_ = false;               ///< inside a key, input method or paste event
+    bool insideEdit_ = false;           ///< between contentsChange and contentsChanged of the document
+    bool propertiesClickHeld_ = false;  ///< a click in front-matter source protected by the properties view
+    bool caretCheckQueued_ = false;     ///< a caret check waits for the event loop
+    int settlePasses_ = 0;              ///< settleAnchor calls that moved the view since the last restore
     /// settleAnchor shows the held reading position again at most this often after a restore. In the
     /// tests, and in probes over several widths and fonts, it took at most one pass; the limit only
     /// ends a back and forth if the layout does not come to rest. After it, the position may be off

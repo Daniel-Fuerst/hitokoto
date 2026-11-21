@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S009 (standing quality gate): the caret never stands in concealed text. Extended for code block
+// S009 (standing quality gate): the caret never stands in concealed text, except source lines
+// represented by the always-visible valid front-matter properties block. Extended for code block
 // fences (S021): a caret anywhere in a block reveals both fences, and no line of it moves.
 // Extended for inline links (S022).
 // Extended for thematic breaks and setext headings (S023): breaks revealed under the caret, underlines
 // while the caret is on their heading; no line moves. Extended for front matter shown as properties
-// (S024): the YAML shows exactly while the caret is in it; only then the lines below move.
+// (S024/S025): valid YAML stays concealed and does not change height as the caret moves.
 // Extended for find highlights (S028): highlights change no geometry and never show a concealed
 // marker; after Escape into a table the caret stays on shown lines.
 #include "find_bar.hpp"
@@ -213,9 +214,8 @@ private slots:
         }
     }
 
-    // S024: the YAML of the front matter shows exactly while the caret is on one of its lines, the
-    // properties block exactly while it is not; the caret is never on a concealed line; no other line
-    // changes height, and the lines below move only when the caret enters or leaves the block.
+    // S025: valid front matter stays graphical while the caret walks; it is never on a concealed
+    // source line, and no other line changes height.
     void frontMatterWhileWalking() {
         constexpr auto document =
             "---\n"                    // 0 front matter
@@ -260,18 +260,18 @@ private slots:
             test::keyClick(editor, kKeys.at(rng.bounded(static_cast<quint32>(kKeys.size()))));
             f.settle();
             const int caretLine = editor->textCursor().blockNumber();
-            const bool inBlock = caretLine <= kClose;
             const QString where = QStringLiteral("step %1, caret on %2").arg(step).arg(caretLine);
-            QVERIFY2((editor->propertiesView() == nullptr) == inBlock, qPrintable(where));
-            QVERIFY2(rectOf(caretLine).height() > 0, qPrintable(where + QStringLiteral(": caret on a concealed line")));
+            QVERIFY2(editor->propertiesView() != nullptr, qPrintable(where));
+            if (caretLine > kClose) {
+                QVERIFY2(rectOf(caretLine).height() > 0,
+                         qPrintable(where + QStringLiteral(": caret on a concealed line")));
+            }
             for (int n = kClose + 1; n < doc->blockCount(); ++n) {
                 const QRectF r = rectOf(n);
                 const QRectF c = concealed.at(static_cast<std::size_t>(n));
                 QVERIFY2(r.height() == c.height(),
                          qPrintable(where + QStringLiteral(": line %1 changed height").arg(n)));
-                if (!inBlock) {
-                    QVERIFY2(r.top() == c.top(), qPrintable(where + QStringLiteral(": line %1 moved").arg(n)));
-                }
+                QVERIFY2(r.top() == c.top(), qPrintable(where + QStringLiteral(": line %1 moved").arg(n)));
             }
         }
     }

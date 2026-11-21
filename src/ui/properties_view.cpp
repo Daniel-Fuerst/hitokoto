@@ -4,10 +4,13 @@
 #include "qt_bridge.hpp"
 
 #include <QAccessibleWidget>
+#include <QContextMenuEvent>
 #include <QDate>
 #include <QDateTime>
 #include <QFontMetricsF>
 #include <QHelpEvent>
+#include <QKeyEvent>
+#include <QLineEdit>
 #include <QLocale>
 #include <QMouseEvent>
 #include <QPaintEvent>
@@ -174,12 +177,14 @@ PropertiesView::PropertiesView(QWidget* parent) : QWidget(parent) {
         return true;
     }();
     (void)factoryInstalled;
-    setFocusPolicy(Qt::NoFocus);
+    setFocusPolicy(Qt::StrongFocus);
+    setMouseTracking(true);
     setAccessibleName(tr("Properties"));
     updateMetrics();
 }
 
 PropertiesView::~PropertiesView() {
+    cancelInlineEditor();
     forgetAccessibleElements();
 }
 
@@ -259,6 +264,7 @@ void PropertiesView::setLook(const Look& look) {
 }
 
 void PropertiesView::reset(std::vector<core::Property> properties) {
+    cancelInlineEditor();
     forgetAccessibleElements();
     properties_ = std::move(properties);
     rows_.clear();
@@ -288,10 +294,14 @@ bool PropertiesView::build(const QElapsedTimer& timer, qint64 nanoseconds) {
 }
 
 void PropertiesView::finishLayout() {
-    // The padding below the last row, or below the title alone.
     const int padding = static_cast<int>(std::round(look_.style.padding));
-    const int bottom = rows_.empty() ? title_.bottom() + 1 : rows_.back().rect.bottom() + 1;
-    setFixedSize(look_.width, std::max(1, bottom + padding));
+    const int spacing = static_cast<int>(std::round(look_.style.rowSpacing));
+    const int top = (rows_.empty() ? title_.bottom() + 1 : rows_.back().rect.bottom() + 1) + spacing;
+    const QFontMetricsF metrics(look_.font);
+    const int buttonWidth = static_cast<int>(std::ceil(metrics.horizontalAdvance(tr("+ Add property")))) + 4;
+    const int buttonHeight = static_cast<int>(std::ceil(line_));
+    addButton_ = QRect(static_cast<int>(std::round(look_.style.padding)), top, buttonWidth, buttonHeight);
+    setFixedSize(look_.width, std::max(1, addButton_.bottom() + 1 + padding));
     laidOut_ = true;
 }
 
@@ -304,7 +314,10 @@ PropertiesView::Row PropertiesView::beginRow(const core::Property& p, int top, i
     const qreal keyColumn = std::min<qreal>(look_.style.keyWidth, width / 2.0);
     row.keyWidth = std::max<qreal>(1, keyColumn - icon_ - 2 * gap_);
     row.valueX = keyColumn;
-    row.valueWidth = std::max<qreal>(1, width - keyColumn);
+    constexpr int kDeleteWidth = 24;
+    row.valueWidth = std::max<qreal>(1, width - keyColumn - kDeleteWidth);
+    row.deleteRect = QRect(look_.width - static_cast<int>(std::round(look_.style.padding)) - kDeleteWidth, top,
+                           kDeleteWidth, static_cast<int>(std::ceil(line_)));
     startText(row.keyText, row.key, row.keyWidth);
     row.valueHeight = line_;
     switch (p.type) {
@@ -313,18 +326,25 @@ PropertiesView::Row PropertiesView::beginRow(const core::Property& p, int top, i
         case core::PropertyType::List:
         case core::PropertyType::Tags: {
             const qreal inset = look_.style.chipPadding + look_.style.chipBorderWidth;
+            const qreal removeWidth = line_ * 0.8;
             qreal x = 0;
             qreal y = 0;
             for (const auto& item : p.items) {
                 const QString text = toQString(item);
-                const qreal w = std::min(row.valueWidth, metrics.horizontalAdvance(text) + 2 * inset);
+                const qreal w = std::min(row.valueWidth, metrics.horizontalAdvance(text) + 2 * inset + removeWidth);
                 if (x > 0 && x + w > row.valueWidth) {
                     x = 0;
                     y += line_ + look_.style.rowSpacing;
                 }
-                row.chips.push_back({QRectF(x, y, w, line_), text});
+                row.chips.push_back({QRectF(x, y, w, line_), QRectF(x + w - removeWidth, y, removeWidth, line_), text});
                 x += w + gap_;
             }
+            const qreal addWidth = line_ + 2 * inset;
+            if (x > 0 && x + addWidth > row.valueWidth) {
+                x = 0;
+                y += line_ + look_.style.rowSpacing;
+            }
+            row.addChipRect = QRectF(x, y, addWidth, line_);
             row.valueHeight = y + line_;
             break;
         }
@@ -358,6 +378,7 @@ bool PropertiesView::continueRow(Row& row, const QElapsedTimer* timer, qint64 na
         row.valueHeight = row.valueText.height;
     }
     row.rect.setHeight(static_cast<int>(std::ceil(std::max(row.keyText.height, row.valueHeight))));
+    row.deleteRect.moveTop(row.rect.top() + (row.rect.height() - row.deleteRect.height()) / 2);
     row.done = true;
     return true;
 }
@@ -425,6 +446,169 @@ int PropertiesView::rowAt(QPoint position) const {
     return position.y() <= row.rect.bottom() + spacing ? index : -1;
 }
 
+QRect PropertiesView::rowDeleteRect(int row) const noexcept {
+    return row >= 0 && static_cast<std::size_t>(row) < rows_.size() ? rows_[static_cast<std::size_t>(row)].deleteRect
+                                                                    : QRect();
+}
+
+QRect PropertiesView::chipRect(int row, int item) const noexcept {
+    if (row < 0 || static_cast<std::size_t>(row) >= rows_.size() || item < 0 ||
+        static_cast<std::size_t>(item) >= rows_[static_cast<std::size_t>(row)].chips.size()) {
+        return {};
+    }
+    const Row& propertyRow = rows_[static_cast<std::size_t>(row)];
+    return propertyRow.chips[static_cast<std::size_t>(item)]
+        .rect.translated(QPointF(propertyRow.rect.left() + propertyRow.valueX, propertyRow.rect.top()))
+        .toRect();
+}
+
+QRect PropertiesView::chipRemoveRect(int row, int item) const noexcept {
+    if (row < 0 || static_cast<std::size_t>(row) >= rows_.size() || item < 0 ||
+        static_cast<std::size_t>(item) >= rows_[static_cast<std::size_t>(row)].chips.size()) {
+        return {};
+    }
+    const Row& propertyRow = rows_[static_cast<std::size_t>(row)];
+    return propertyRow.chips[static_cast<std::size_t>(item)]
+        .removeRect.translated(QPointF(propertyRow.rect.left() + propertyRow.valueX, propertyRow.rect.top()))
+        .toRect();
+}
+
+QRect PropertiesView::chipAddRect(int row) const noexcept {
+    if (row < 0 || static_cast<std::size_t>(row) >= rows_.size()) {
+        return {};
+    }
+    const Row& propertyRow = rows_[static_cast<std::size_t>(row)];
+    return propertyRow.addChipRect
+        .translated(QPointF(propertyRow.rect.left() + propertyRow.valueX, propertyRow.rect.top()))
+        .toRect();
+}
+
+void PropertiesView::openInlineEditor(const QRect& rect, const QString& value) {
+    cancelInlineEditor();
+    inlineEditor_ = new QLineEdit(this);
+    inlineEditor_->setObjectName(QStringLiteral("propertiesInlineEditor"));
+    inlineEditor_->setFont(look_.font);
+    const QColor text = toQColor(look_.style.editorText);
+    const QColor background = toQColor(look_.style.editorBackground);
+    const QColor border = toQColor(look_.style.editorBorder);
+    const QColor focusBorder = toQColor(look_.style.editorFocusBorder);
+    inlineEditor_->setStyleSheet(
+        QStringLiteral("QLineEdit { color: %1; background: %2; border: %3px solid %4; "
+                       "border-radius: %5px; padding: 0 %6px; }"
+                       "QLineEdit:focus { border-color: %7; }")
+            .arg(text.name(QColor::HexArgb), background.name(QColor::HexArgb),
+                 QString::number(look_.style.editorBorderWidth, 'f', 1), border.name(QColor::HexArgb),
+                 QString::number(look_.style.editorRadius, 'f', 1), QString::number(look_.style.editorPadding, 'f', 1),
+                 focusBorder.name(QColor::HexArgb)));
+    inlineEditor_->setGeometry(rect.adjusted(0, 0, -1, -1));
+    inlineEditor_->setText(value);
+    inlineEditor_->installEventFilter(this);
+    connect(inlineEditor_, &QLineEdit::editingFinished, this, &PropertiesView::submitInlineEditor);
+    inlineEditor_->show();
+    inlineEditor_->setFocus(Qt::MouseFocusReason);
+    inlineEditor_->selectAll();
+    submitted_ = false;
+}
+
+void PropertiesView::editKeyOrValue(int row, bool key) {
+    if (row < 0 || static_cast<std::size_t>(row) >= rows_.size()) {
+        return;
+    }
+    const Row& propertyRow = rows_[static_cast<std::size_t>(row)];
+    const QRect rect =
+        key ? QRect(static_cast<int>(propertyRow.rect.left() + icon_ + gap_), propertyRow.rect.top(),
+                    static_cast<int>(propertyRow.valueX - icon_ - 2 * gap_), propertyRow.rect.height())
+            : QRect(static_cast<int>(propertyRow.rect.left() + propertyRow.valueX), propertyRow.rect.top(),
+                    static_cast<int>(propertyRow.valueWidth), propertyRow.rect.height());
+    const core::Property& property = properties_[static_cast<std::size_t>(row)];
+    openInlineEditor(rect, key ? propertyRow.key : toQString(property.text));
+    editingRow_ = row;
+    editingKey_ = key;
+    editingItem_ = -1;
+    addingProperty_ = false;
+}
+
+void PropertiesView::editItem(int row, int item) {
+    if (row < 0 || static_cast<std::size_t>(row) >= rows_.size() || item < 0 ||
+        static_cast<std::size_t>(item) > rows_[static_cast<std::size_t>(row)].chips.size()) {
+        return;
+    }
+    const Row& propertyRow = rows_[static_cast<std::size_t>(row)];
+    const QRect rect =
+        item < static_cast<int>(propertyRow.chips.size())
+            ? propertyRow.chips[static_cast<std::size_t>(item)]
+                  .rect.translated(QPointF(propertyRow.rect.left() + propertyRow.valueX, propertyRow.rect.top()))
+                  .toRect()
+            : propertyRow.addChipRect
+                  .translated(QPointF(propertyRow.rect.left() + propertyRow.valueX, propertyRow.rect.top()))
+                  .toRect();
+    const core::Property& property = properties_[static_cast<std::size_t>(row)];
+    const QString text = item < static_cast<int>(property.items.size())
+                             ? toQString(property.items[static_cast<std::size_t>(item)])
+                             : QString();
+    openInlineEditor(rect, text);
+    editingRow_ = row;
+    editingKey_ = false;
+    editingItem_ = item;
+    addingProperty_ = false;
+}
+
+void PropertiesView::editNewProperty() {
+    openInlineEditor(addButton_, {});
+    editingRow_ = -1;
+    editingKey_ = false;
+    editingItem_ = -1;
+    addingProperty_ = true;
+}
+
+void PropertiesView::submitInlineEditor() {
+    if (inlineEditor_ == nullptr || submitted_) {
+        return;
+    }
+    submitted_ = true;
+    const QString value = inlineEditor_->text();
+    if (addingProperty_) {
+        emit newPropertyCommitted(value);
+    } else if (editingItem_ >= 0) {
+        emit itemEditCommitted(editingRow_, editingItem_, value);
+    } else {
+        emit propertyEditCommitted(editingRow_, editingKey_, value);
+    }
+}
+
+void PropertiesView::finishInlineEdit() {
+    if (inlineEditor_ != nullptr) {
+        inlineEditor_->removeEventFilter(this);
+        inlineEditor_->deleteLater();
+        inlineEditor_ = nullptr;
+    }
+    submitted_ = false;
+    addingProperty_ = false;
+    editingRow_ = -1;
+    editingItem_ = -1;
+    if (isVisible()) {
+        setFocus(Qt::OtherFocusReason);
+    }
+    update();
+}
+
+void PropertiesView::rejectInlineEdit(const QString& message) {
+    if (inlineEditor_ == nullptr) {
+        return;
+    }
+    submitted_ = false;
+    inlineEditor_->setToolTip(message);
+    inlineEditor_->setStyleSheet(inlineEditor_->styleSheet() +
+                                 QStringLiteral(" QLineEdit:focus { border-color: %1; }")
+                                     .arg(toQColor(look_.style.unsupportedText).name(QColor::HexArgb)));
+    inlineEditor_->setFocus(Qt::OtherFocusReason);
+    inlineEditor_->selectAll();
+}
+
+void PropertiesView::cancelInlineEditor() {
+    finishInlineEdit();
+}
+
 // ---- painting -------------------------------------------------------------------------------
 
 void PropertiesView::paintEvent(QPaintEvent* event) {
@@ -459,6 +643,17 @@ void PropertiesView::paintEvent(QPaintEvent* event) {
         }
         paintedTextLines_ += paintRow(painter, *it, properties_[static_cast<std::size_t>(row)], area, row);
     }
+    if (hoveredRow_ >= 0 && static_cast<std::size_t>(hoveredRow_) < rows_.size()) {
+        painter.setPen(toQColor(look_.style.icon));
+        painter.drawText(rows_[static_cast<std::size_t>(hoveredRow_)].deleteRect, Qt::AlignCenter, QStringLiteral("×"));
+    }
+    if (hoveredAdd_) {
+        painter.setBrush(toQColor(look_.style.chipBackground));
+        painter.setPen(Qt::NoPen);
+        painter.drawRoundedRect(addButton_.adjusted(-2, 0, 2, 0), look_.style.chipRadius, look_.style.chipRadius);
+    }
+    painter.setPen(toQColor(look_.style.titleText));
+    painter.drawText(addButton_, Qt::AlignLeft | Qt::AlignVCenter, tr("+ Add property"));
 }
 
 int PropertiesView::paintText(QPainter& painter, const Text& text, QPointF origin, const QRect& area) {
@@ -548,7 +743,20 @@ int PropertiesView::paintRow(QPainter& painter, const Row& row, const core::Prop
                 painter.drawRoundedRect(r.adjusted(border / 2, border / 2, -border / 2, -border / 2), radius, radius);
                 painter.setPen(toQColor(s.chipText));
                 const qreal inset = s.chipPadding + border;
-                painter.drawText(r.adjusted(inset, 0, -inset, 0), Qt::AlignVCenter | Qt::AlignLeft, chip.text);
+                painter.drawText(r.adjusted(inset, 0, -inset - chip.removeRect.width(), 0),
+                                 Qt::AlignVCenter | Qt::AlignLeft, chip.text);
+                painter.drawText(chip.removeRect.translated(value.topLeft()), Qt::AlignCenter, QStringLiteral("×"));
+            }
+            {
+                const QRectF r = row.addChipRect.translated(value.topLeft());
+                const qreal border = s.chipBorderWidth;
+                painter.setPen(border > 0 ? QPen(toQColor(s.chipBorder), border) : QPen(Qt::NoPen));
+                painter.setBrush(toQColor(s.chipBackground));
+                painter.drawRoundedRect(r.adjusted(border / 2, border / 2, -border / 2, -border / 2),
+                                        std::min<qreal>(s.chipRadius, r.height() / 2),
+                                        std::min<qreal>(s.chipRadius, r.height() / 2));
+                painter.setPen(toQColor(s.chipText));
+                painter.drawText(r, Qt::AlignCenter, QStringLiteral("+"));
             }
             break;
         case core::PropertyType::Unsupported: {
@@ -655,6 +863,13 @@ void PropertiesView::paintIcon(QPainter& painter, const QRectF& r, core::Propert
 // ---- mouse, tooltip, accessibility ----------------------------------------------------------
 
 void PropertiesView::mousePressEvent(QMouseEvent* event) {
+    if (inlineEditor_ != nullptr) {
+        submitInlineEditor();
+        if (inlineEditor_ != nullptr) {
+            event->accept();
+            return;
+        }
+    }
     if (event->button() == Qt::LeftButton) {
         pressed_ = true;
         emit pressed(true);
@@ -668,11 +883,118 @@ void PropertiesView::mouseReleaseEvent(QMouseEvent* event) {
         return;
     }
     pressed_ = false;
+    const QPoint position = event->position().toPoint();
     const int row = rowAt(event->position().toPoint());
     const bool extend = (event->modifiers() & Qt::ShiftModifier) != 0;
     emit pressed(false);
-    emit activated(row, extend);
+    if (addButton_.contains(position)) {
+        emit addRequested();
+    } else if (row >= 0) {
+        const Row& activatedRow = rows_[static_cast<std::size_t>(row)];
+        if (activatedRow.deleteRect.contains(position)) {
+            emit deleteRequested(row);
+        } else if (!extend && (properties_[static_cast<std::size_t>(row)].type == core::PropertyType::List ||
+                               properties_[static_cast<std::size_t>(row)].type == core::PropertyType::Tags)) {
+            const QPointF valueOrigin(activatedRow.rect.left() + activatedRow.valueX, activatedRow.rect.top());
+            bool handled = false;
+            for (std::size_t i = 0; i < activatedRow.chips.size(); ++i) {
+                const Chip& chip = activatedRow.chips[i];
+                if (chip.rect.translated(valueOrigin).contains(position)) {
+                    if (chip.removeRect.translated(valueOrigin).contains(position)) {
+                        emit itemDeleteRequested(row, static_cast<int>(i));
+                    } else {
+                        emit itemEditRequested(row, static_cast<int>(i));
+                    }
+                    handled = true;
+                    break;
+                }
+            }
+            if (!handled && activatedRow.addChipRect.translated(valueOrigin).contains(position)) {
+                emit itemEditRequested(row, static_cast<int>(activatedRow.chips.size()));
+                handled = true;
+            }
+            if (!handled && position.x() >= activatedRow.rect.left() + activatedRow.valueX &&
+                position.x() < activatedRow.deleteRect.left()) {
+                emit itemEditRequested(row, static_cast<int>(activatedRow.chips.size()));
+                handled = true;
+            }
+            if (!handled) {
+                emit activated(row, false, position.x() < activatedRow.rect.left() + activatedRow.valueX);
+            }
+        } else {
+            emit activated(row, extend, position.x() < activatedRow.rect.left() + activatedRow.valueX);
+        }
+    }
     event->accept();
+}
+
+void PropertiesView::keyPressEvent(QKeyEvent* event) {
+    if (event->modifiers() == Qt::ControlModifier && event->key() == Qt::Key_Z) {
+        emit undoRequested();
+    } else if (event->modifiers() == Qt::ControlModifier && event->key() == Qt::Key_Y) {
+        emit redoRequested();
+    } else {
+        QWidget::keyPressEvent(event);
+        return;
+    }
+    event->accept();
+}
+
+void PropertiesView::mouseMoveEvent(QMouseEvent* event) {
+    const QPoint position = event->position().toPoint();
+    const int row = rowAt(position);
+    const bool add = addButton_.contains(position);
+    if (row != hoveredRow_ || add != hoveredAdd_) {
+        hoveredRow_ = row;
+        hoveredAdd_ = add;
+        update();
+    }
+    bool action = add;
+    if (row >= 0) {
+        const Row& propertyRow = rows_[static_cast<std::size_t>(row)];
+        action = action || propertyRow.deleteRect.contains(position);
+        const QPointF valueOrigin(propertyRow.rect.left() + propertyRow.valueX, propertyRow.rect.top());
+        action = action || propertyRow.addChipRect.translated(valueOrigin).contains(position);
+        for (const Chip& chip : propertyRow.chips) {
+            action = action || chip.removeRect.translated(valueOrigin).contains(position);
+        }
+    }
+    setCursor(action ? Qt::PointingHandCursor : row >= 0 ? Qt::IBeamCursor : Qt::ArrowCursor);
+    event->accept();
+}
+
+void PropertiesView::leaveEvent(QEvent* event) {
+    if (hoveredRow_ >= 0 || hoveredAdd_) {
+        hoveredRow_ = -1;
+        hoveredAdd_ = false;
+        update();
+    }
+    unsetCursor();
+    QWidget::leaveEvent(event);
+}
+
+bool PropertiesView::eventFilter(QObject* watched, QEvent* event) {
+    if (watched == inlineEditor_) {
+        if (event->type() == QEvent::KeyPress) {
+            auto* key = static_cast<QKeyEvent*>(event);
+            if (key->key() == Qt::Key_Escape) {
+                cancelInlineEditor();
+                return true;
+            }
+            if (key->modifiers() == Qt::ControlModifier && key->key() == Qt::Key_Z) {
+                emit undoRequested();
+                return true;
+            }
+            if (key->modifiers() == Qt::ControlModifier && key->key() == Qt::Key_Y) {
+                emit redoRequested();
+                return true;
+            }
+        } else if (event->type() == QEvent::FocusOut && !submitted_) {
+            submitInlineEditor();
+            return inlineEditor_ != nullptr;
+        }
+    }
+    return QWidget::eventFilter(watched, event);
 }
 
 QString PropertiesView::toolTipText(int row) const {

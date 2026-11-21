@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S024: shows a note's front matter as a properties block (PropertiesView) while the caret is
-// elsewhere, and as its YAML while the caret and the anchor of the selection are both in it. The
-// first line reserves the block's height in BlockLayout (ADR 0003), the other lines are hidden,
-// as a table's are (S018); nothing is ever written from the block (ADR 0002). Building the block
-// takes at most 4 ms on a key and goes on in idle slices (review O7, O8); reading the YAML is done
-// at once (code review O3).
+// S024/S025: keeps valid front matter as a properties block (PropertiesView), regardless of caret,
+// selection or search position. The first line reserves the block's height in BlockLayout
+// (ADR 0003), the other lines are hidden, as a table's are (S018). Normal clicks edit properties
+// through one-step source-range edits; Shift-click may select source text without revealing it.
+// Building the block takes at most 4 ms on a key and goes on in idle slices (review O7, O8); reading
+// YAML is done at once (code review O3).
 #pragma once
 
 #include "block_layout.hpp"
@@ -16,6 +16,7 @@
 #include <QTimer>
 
 #include <optional>
+#include <vector>
 
 class QKeyEvent;
 
@@ -49,14 +50,13 @@ public:
     /// Reading or building goes on in idle slices.
     [[nodiscard]] bool busy() const noexcept { return work_.isActive(); }
 
-    /// The caret or the selection moved: show the YAML or the block.
+    /// The caret or selection moved: valid front matter remains graphical.
     void caretMoved();
+    /// Keeps clicks on source lines represented by a visible properties block out of the editor.
+    bool handleEditorClick(int blockNumber);
     /// A mouse button went down in the editor or on the block (true) or up (false): while one is
     /// held, the block keeps its form (review O6).
     void setMouseHeld(bool held);
-    /// S028 review O8: the YAML shows while the find bar's current match lies in lines
-    /// [first, last] of the front matter; first < 0 releases it.
-    void setFindHold(int first, int last);
     /// A change to the document; lines of the front matter are read again.
     void documentChanged(int position, int charsRemoved, int charsAdded);
     /// The document's blocks are gone (a replaced document): forget them without touching them.
@@ -90,7 +90,21 @@ private:
     void conceal();
     void reveal();
     void read();
-    void activate(int row, bool extend);
+    void activate(int row, bool extend, bool key);
+    void addProperty();
+    void editCommitted(int row, bool key, const QString& value);
+    void itemEditCommitted(int row, int item, const QString& value);
+    void addCommitted(const QString& key);
+    void undoPropertyEdit();
+    void redoPropertyEdit();
+    void deleteProperty(int row);
+    void deleteItem(int row, int item);
+    void replaceProperty(int row, const QString& value, const std::optional<QString>& key = {});
+    void replacePropertyItems(int row, const std::vector<std::u16string>& items,
+                              const std::optional<QString>& key = {});
+    void recordUndoGroup(int stepsBefore);
+    void insertProperty(const QString& key, const QString& value);
+    [[nodiscard]] bool keyExists(std::u16string_view key, int exceptRow = -1) const;
     void updateBadge();
 
     EditorWidget* editor_;
@@ -113,8 +127,8 @@ private:
     bool afterOpening_ = false;  ///< opened while the front matter was being confirmed
     std::optional<core::PropertiesError> error_;
     QTimer work_;
-    int findFirst_ = -1;  ///< S028: lines of the find bar's current match
-    int findLast_ = -1;
+    int propertyUndoSteps_ = 0;
+    int propertyRedoSteps_ = 0;
 };
 
 }  // namespace hitokoto::ui

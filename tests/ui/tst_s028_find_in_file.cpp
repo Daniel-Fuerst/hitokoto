@@ -718,7 +718,7 @@ private slots:
 
     // --- Decision 3 and review O8: front matter ------------------------------------------------
 
-    void aMatchInFrontMatterShowsItsYamlWhileCurrent() {
+    void aMatchInFrontMatterKeepsPropertiesVisible() {
         test::Fixture f;
         QVERIFY(load(f, kFrontMatter));
         QTRY_VERIFY(f.editor()->propertiesView() != nullptr);
@@ -729,7 +729,7 @@ private slots:
         QVERIFY(f.editor()->propertiesView() != nullptr);
         test::keyClick(bar(f)->searchField(), Qt::Key_Return);
         QCOMPARE(controller(f)->countText(), QStringLiteral("1 of 2"));
-        QTRY_VERIFY(f.editor()->propertiesView() == nullptr);  // the YAML shows
+        QTRY_VERIFY(f.editor()->propertiesView() != nullptr);
         QCOMPARE(current(f).start, (core::DocPos{1, 7}));
         test::keyClick(bar(f)->searchField(), Qt::Key_Return);
         QTRY_VERIFY(f.editor()->propertiesView() != nullptr);
@@ -739,7 +739,7 @@ private slots:
     void yamlSyntaxIsNotFoundEvenWithTheCaretInTheBlock() {
         test::Fixture f;
         QVERIFY(load(f, kFrontMatter));
-        f.placeCaret(1, 0);  // the YAML shows
+        f.placeCaret(1, 0);  // the properties view stays visible
         search(f, QStringLiteral("title: Hallo"));
         QVERIFY(waitComplete(f));
         QCOMPARE(controller(f)->matchCount(), 0);

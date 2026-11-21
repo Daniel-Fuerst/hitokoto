@@ -176,6 +176,13 @@ follows the general tokens above.
 | `properties.chip-border-width` | number (px) | Border width of a list item or tag, 0 to 8 | 0 |
 | `properties.chip-radius` | number (px) | Corner radius of a list item or tag, 0 to 32 | `layout.radius` |
 | `properties.chip-padding` | number (px) | Horizontal space inside a list item or tag, 0 to 32 | 4 |
+| `properties.editor-background` | color | Background of an inline property editor | `properties.background` |
+| `properties.editor-text` | color | Text of an inline property editor | `properties.text` |
+| `properties.editor-border` | color | Border of an inline property editor | `colors.border` |
+| `properties.editor-focus-border` | color | Focused border of an inline property editor | `colors.accent` |
+| `properties.editor-border-width` | number (px) | Border width of an inline property editor, 0 to 8 | 1 |
+| `properties.editor-radius` | number (px) | Corner radius of an inline property editor, 0 to 32 | `layout.radius` |
+| `properties.editor-padding` | number (px) | Padding inside an inline property editor, 0 to 32 | 4 |
 | `properties.border` | color | Border of the block | `colors.border` |
 | `properties.border-width` | number (px) | Border width, 0 to 8 | 0 |
 | `properties.radius` | number (px) | Corner radius of the block, 0 to 32 | `layout.radius` |
@@ -244,12 +251,15 @@ A thematic break (`---`, `***`, `___`) is a line across the text column, centred
 Setext headings (text underlined with `===` or `---`) add no tokens: their lines use the heading
 tokens (`headings.*`) like ATX headings, and a revealed underline uses `colors.marker` at body size.
 
-Front matter shown as properties (S024) is a block of its own, embedded in place of the YAML lines:
-a title, then one row per property with a type icon, the key and the value. Lists and tags are
-chips; the key column takes `properties.key-width`, at most half the block; a checkbox is drawn read
-only; a nested value shows its JSON in `properties.unsupported-text`, at most three lines. Margin
-and padding are part of the block's geometry, as for a code block. Invalid YAML stays text and shows
-a badge after its first line (`properties.badge-*`).
+Front matter shown as properties (S024) is a compact table-like block embedded in place of the YAML
+lines: a title, then one row per property with a type icon, key and value. The key column takes
+`properties.key-width`, at most half the block; clicking a checkbox toggles it; lists and tags are
+chips with individual remove controls and an inline add chip; a nested value shows its JSON in
+`properties.unsupported-text`, at most three lines. Clicking a key or value edits it in place
+without a dialog. The compact “+ Add property” action is text-only, like a menu-bar item; a row's
+remove control appears on hover. The editor field uses `properties.editor-*` tokens. Margin and
+padding are part of the block's geometry, as for a code block. Invalid YAML stays text and shows a
+badge after its first line (`properties.badge-*`).
 
 The find bar (S028) sits below the editor. "(light)" and "(dark)" name the fallbacks of the
 built-in light and dark bases; the highlight text colours fall back to fixed values, so the text on a

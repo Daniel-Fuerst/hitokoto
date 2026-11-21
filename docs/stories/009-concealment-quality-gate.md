@@ -49,13 +49,11 @@ depend on it.
   underline is revealed exactly while the caret is on a line of its heading or on the underline;
   no line moves or changes height
 
-**Scenario: front matter shown as properties (S024)**
+**Scenario: front matter stays graphical (S024/S025)**
 - Given front matter with several properties, followed by a heading, a code block and text
 - When the caret walks with arbitrary sequences of Up/Down/Left/Right/Home/End/PageUp/PageDown
-- Then the YAML shows exactly while the caret is on a line of the front matter, the properties
-  block exactly while it is not, and the caret is never on a concealed line
-- And no line other than those of the front matter changes height; the lines below move only when
-  the caret enters or leaves the front matter, as when a table switches to its source (S018)
+- Then valid front matter remains a properties block and its source stays concealed
+- And no line other than those of the front matter changes height; the lines below stay in place
 - And a screen reader reads the properties block as a title and one element per row, `key: value`
 
 **Scenario: table cells (S018)**
@@ -78,10 +76,9 @@ depend on it.
 - When the caret walks with arbitrary sequences of Up/Down/Left/Right/Home/End/PageUp/PageDown and
   the current match moves
 - Then no concealed marker becomes visible under a highlight and no line moves or changes height;
-  only a table or properties block that switches to or from its source for the current match
-  changes height, at that moment
-- And after `Escape` selects a match in a table or front matter, the caret and the selection are
-  only ever on lines that are shown
+  only a table that switches to or from its source for the current match changes height
+- And after `Escape` selects a match in a table or front matter, the table's source may show but
+  front matter stays graphical
 
 **Scenario: flowing paragraphs, soft and hard line breaks (S033)**
 - Given multi-line paragraphs and bullet continuations with leading spaces, trailing spaces,

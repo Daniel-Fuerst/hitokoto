@@ -1738,6 +1738,81 @@ Properties parseProperties(std::span<const std::u16string> yamlLines) {
     return Parser(yamlLines).run();
 }
 
+std::u16string serializePropertyScalar(std::u16string_view text) {
+    constexpr char16_t kHex[] = u"0123456789ABCDEF";
+    std::u16string out;
+    out.reserve(text.size() + 2);
+    out.push_back(u'"');
+    for (const char16_t c : text) {
+        switch (c) {
+            case u'\0':
+                out += u"\\0";
+                break;
+            case u'\a':
+                out += u"\\a";
+                break;
+            case u'\b':
+                out += u"\\b";
+                break;
+            case u'\t':
+                out += u"\\t";
+                break;
+            case u'\n':
+                out += u"\\n";
+                break;
+            case u'\v':
+                out += u"\\v";
+                break;
+            case u'\f':
+                out += u"\\f";
+                break;
+            case u'\r':
+                out += u"\\r";
+                break;
+            case u'"':
+                out += u"\\\"";
+                break;
+            case u'\\':
+                out += u"\\\\";
+                break;
+            default:
+                if (c < 0x20 || c == 0x7f) {
+                    out += u"\\x";
+                    out.push_back(kHex[(c >> 4) & 0x0f]);
+                    out.push_back(kHex[c & 0x0f]);
+                } else {
+                    out.push_back(c);
+                }
+                break;
+        }
+    }
+    out.push_back(u'"');
+    return out;
+}
+
+std::u16string serializePropertyValue(PropertyType type, std::u16string_view text) {
+    if (type == PropertyType::Number || type == PropertyType::Date || type == PropertyType::DateTime) {
+        std::vector<std::u16string> candidate{u"value: " + std::u16string(text)};
+        const Properties parsed = parseProperties(candidate);
+        if (!parsed.error && parsed.rows.size() == 1 && parsed.rows.front().type == type) {
+            return std::u16string(text);
+        }
+    }
+    return serializePropertyScalar(text);
+}
+
+std::u16string serializePropertyList(std::span<const std::u16string> items) {
+    std::u16string out = u"[";
+    for (std::size_t i = 0; i < items.size(); ++i) {
+        if (i != 0) {
+            out += u", ";
+        }
+        out += serializePropertyScalar(items[i]);
+    }
+    out.push_back(u']');
+    return out;
+}
+
 std::vector<PropertyUnit> propertySourceUnits(std::span<const std::u16string> yamlLines) {
     Parser parser(yamlLines);
     if (parser.run().error) {
