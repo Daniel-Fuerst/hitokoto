@@ -890,9 +890,11 @@ void PropertiesView::mouseReleaseEvent(QMouseEvent* event) {
     }
     pressed_ = false;
     const QPoint position = event->position().toPoint();
-    const int row = rowAt(event->position().toPoint());
     const bool extend = (event->modifiers() & Qt::ShiftModifier) != 0;
+    // Releasing the button may read the front matter again and rebuild the rows: the row is taken
+    // after that, so that it indexes the rows as they are now.
     emit pressed(false);
+    const int row = rowAt(position);
     if (addButton_.contains(position)) {
         emit addRequested();
     } else if (row >= 0) {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S024 (ADR 0007): the properties of a note's front matter, read from its YAML with a parser of our
-// own for a subset of YAML 1.2. Read only: nothing here writes YAML (ADR 0002).
+// own for a subset of YAML 1.2. The writers below (S025, ADR 0007) write one property as one line of
+// YAML; nothing here rewrites the front matter as a whole (ADR 0002).
 #pragma once
 
 #include <cstddef>
