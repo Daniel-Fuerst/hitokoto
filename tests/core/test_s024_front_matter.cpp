@@ -49,6 +49,24 @@ Properties parse(std::u16string_view yaml) {
     return parseProperties(linesOf(yaml));
 }
 
+TEST(S025_EditProperties, SerializesScalarsAsQuotedYaml) {
+    EXPECT_EQ(serializePropertyScalar(u"draft: \"yes\"\nnext"), u"\"draft: \\\"yes\\\"\\nnext\"");
+    EXPECT_EQ(serializePropertyScalar(u""), u"\"\"");
+}
+
+TEST(S025_EditProperties, KeepsValidNumberAndDateTypes) {
+    EXPECT_EQ(serializePropertyValue(PropertyType::Number, u"-1.25"), u"-1.25");
+    EXPECT_EQ(serializePropertyValue(PropertyType::Number, u"not a number"), u"\"not a number\"");
+    EXPECT_EQ(serializePropertyValue(PropertyType::Date, u"2026-11-21"), u"2026-11-21");
+    EXPECT_EQ(serializePropertyValue(PropertyType::Date, u"next week"), u"\"next week\"");
+}
+
+TEST(S025_EditProperties, SerializesListsWithoutLosingCommasOrEmptyItems) {
+    const std::vector<std::u16string> items{u"one, two", u"", u"three"};
+    EXPECT_EQ(serializePropertyList(items), u"[\"one, two\", \"\", \"three\"]");
+    EXPECT_EQ(serializePropertyList({}), u"[]");
+}
+
 /// The row with `key`, or a failure.
 const Property* row(const Properties& p, std::u16string_view key) {
     for (const Property& r : p.rows) {
@@ -724,6 +742,8 @@ TEST(S024_FrontMatter, ThemeTokensAreParsed) {
         "badge-font-family = \"Badge Sans\"\nbadge-font-scale = 0.75\ncheckbox = \"#161718\"\n"
         "checkbox-background = \"#191a1b\"\nchip-background = \"#1c1d1e\"\nchip-text = \"#1f2021\"\n"
         "chip-border = \"#222324\"\nchip-border-width = 2\nchip-radius = 5\nchip-padding = 6\n"
+        "editor-background = \"#252627\"\neditor-text = \"#28292a\"\neditor-border = \"#2b2c2d\"\n"
+        "editor-focus-border = \"#2e2f30\"\neditor-border-width = 2\neditor-radius = 5\neditor-padding = 6\n"
         "border = \"#252627\"\nborder-width = 1\nradius = 7\npadding = 9\nmargin = 11\nrow-spacing = 4\n"
         "key-width = 200\nfont-family = \"Props Sans\"\nfont-scale = 0.9\n",
         ColorScheme::Light);
@@ -746,6 +766,13 @@ TEST(S024_FrontMatter, ThemeTokensAreParsed) {
     EXPECT_DOUBLE_EQ(s.chipBorderWidth, 2);
     EXPECT_DOUBLE_EQ(s.chipRadius, 5);
     EXPECT_DOUBLE_EQ(s.chipPadding, 6);
+    EXPECT_EQ(s.editorBackground, (Color{37, 38, 39, 255}));
+    EXPECT_EQ(s.editorText, (Color{40, 41, 42, 255}));
+    EXPECT_EQ(s.editorBorder, (Color{43, 44, 45, 255}));
+    EXPECT_EQ(s.editorFocusBorder, (Color{46, 47, 48, 255}));
+    EXPECT_DOUBLE_EQ(s.editorBorderWidth, 2);
+    EXPECT_DOUBLE_EQ(s.editorRadius, 5);
+    EXPECT_DOUBLE_EQ(s.editorPadding, 6);
     EXPECT_EQ(s.border, (Color{37, 38, 39, 255}));
     EXPECT_DOUBLE_EQ(s.borderWidth, 1);
     EXPECT_DOUBLE_EQ(s.radius, 7);
@@ -757,9 +784,10 @@ TEST(S024_FrontMatter, ThemeTokensAreParsed) {
     EXPECT_DOUBLE_EQ(s.fontScale, 0.9);
 
     for (const char* bad :
-         {"border-width = 9", "chip-border-width = -1", "radius = 33", "chip-radius = 33", "padding = 65",
-          "chip-padding = 33", "margin = 65", "row-spacing = 33", "key-width = 39", "key-width = 1001",
-          "font-scale = 0.4", "badge-font-scale = 2.1", "add-text = \"#000000\""}) {
+         {"border-width = 9", "chip-border-width = -1", "editor-border-width = 9", "radius = 33", "chip-radius = 33",
+          "editor-radius = 33", "padding = 65", "editor-padding = 33", "chip-padding = 33", "margin = 65",
+          "row-spacing = 33", "key-width = 39", "key-width = 1001", "font-scale = 0.4", "badge-font-scale = 2.1",
+          "add-text = \"#000000\""}) {
         EXPECT_TRUE(loadTheme(std::string("[properties]\n") + bad + "\n", ColorScheme::Light).usedFallback) << bad;
     }
 }
@@ -785,6 +813,13 @@ TEST(S024_FrontMatter, ThemeTokensFallBack) {
         EXPECT_DOUBLE_EQ(s.chipBorderWidth, 0);
         EXPECT_DOUBLE_EQ(s.chipRadius, t.radius);
         EXPECT_DOUBLE_EQ(s.chipPadding, 4);
+        EXPECT_EQ(s.editorBackground, t.background);
+        EXPECT_EQ(s.editorText, t.text);
+        EXPECT_EQ(s.editorBorder, t.border);
+        EXPECT_EQ(s.editorFocusBorder, t.accent);
+        EXPECT_DOUBLE_EQ(s.editorBorderWidth, 1);
+        EXPECT_DOUBLE_EQ(s.editorRadius, t.radius);
+        EXPECT_DOUBLE_EQ(s.editorPadding, 4);
         EXPECT_EQ(s.border, t.border);
         EXPECT_DOUBLE_EQ(s.borderWidth, 0);
         EXPECT_DOUBLE_EQ(s.radius, t.radius);

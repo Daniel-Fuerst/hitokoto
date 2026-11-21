@@ -577,6 +577,11 @@ void EditorWidget::paintEvent(QPaintEvent* event) {
 }
 
 void EditorWidget::mouseReleaseEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton && propertiesClickHeld_) {
+        propertiesClickHeld_ = false;
+        event->accept();
+        return;
+    }
     QTextEdit::mouseReleaseEvent(event);
     if (event->button() == Qt::LeftButton) {
         properties_->setMouseHeld(false);  // S024 review O6: the block may switch now
@@ -587,6 +592,11 @@ void EditorWidget::mousePressEvent(QMouseEvent* event) {
     verticalScroller_->stop();
     const QTextCursor hit = cursorForPosition(event->position().toPoint());
     const QTextBlock block = hit.block();
+    if (event->button() == Qt::LeftButton && properties_->handleEditorClick(block.blockNumber())) {
+        propertiesClickHeld_ = true;
+        event->accept();
+        return;
+    }
     const bool wasConcealed = block.isValid() && !styler_->isRevealed(block.blockNumber());
 
     if (event->button() == Qt::LeftButton) {
@@ -632,6 +642,10 @@ void EditorWidget::mousePressEvent(QMouseEvent* event) {
 }
 
 void EditorWidget::mouseMoveEvent(QMouseEvent* event) {
+    if (propertiesClickHeld_) {
+        event->accept();
+        return;
+    }
     const QTextCursor hit = cursorForPosition(event->position().toPoint());
     const QTextBlock block = hit.block();
     const bool isConcealed = block.isValid() && !styler_->isRevealed(block.blockNumber());
@@ -1125,7 +1139,6 @@ void EditorWidget::setFrontMatterAsProperties(bool on) {
 
 void EditorWidget::setFindHold(int first, int last, bool untilCaretLeaves) {
     tables_->setFindHold(first, last, untilCaretLeaves);
-    properties_->setFindHold(untilCaretLeaves ? -1 : first, last);  // after Escape the caret holds the YAML
 }
 
 void EditorWidget::showPosition(int position) {

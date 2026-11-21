@@ -100,7 +100,8 @@ rest of hitokoto, takes `&auml;` as written.
 
 **Front matter.** Closed front matter whose YAML `parseProperties` reads without error, with
 `Options::frontMatterAsProperties` on, is searched as properties, whatever is on screen (caret in the
-block, rows still being built, or the YAML shown for a match). Otherwise it is searched as lines of
+block or rows still being built). It remains a graphical properties block while a match is current.
+Otherwise it is searched as lines of
 text, YAML characters included. As properties, the units are each key, each value and each item of
 a list or tags property, as the core reads them (`Property::key`, `text`, `items`): quotes, escapes
 and folding resolved; numbers, checkboxes, dates and dates with time as written in the YAML
@@ -135,15 +136,15 @@ at or after it, else the first in the document. While typing, the current match 
 if it still matches with the new text, else the next match after its start becomes current
 (Firefox). Next and previous step from the current match.
 
-**Source view of tables and properties while the bar is open** (review O8, Armin). A table or
-properties block shows its source exactly while it holds the current match. When the current match
-leaves it (next or previous, typing in the field, an edit), it shows its cells or rows again at
-once. "Highlight all" never switches an element. `Escape` with the current match in such an element
-selects the match in its source, and the element keeps its source until the caret and the anchor
-have both left it, as a table does today while a typed row is held; then the existing rules of S018
-and S024 apply. Closing without a match, or with the current match elsewhere, returns the element
-at once. If the focus is in a cell editor of a table that switches to its source, the focus goes to
-the find bar if the step came from there, otherwise to the editor at the start of that cell's line.
+**Source view of tables while the bar is open** (review O8, Armin). A table shows its source exactly
+while it holds the current match. When the current match leaves it (next or previous, typing in the
+field, an edit), it shows its cells again at once. "Highlight all" never switches an element.
+`Escape` with the current match in the table selects the match in its source, and the table keeps
+its source until the caret and the anchor have both left it. Properties remain graphical and mark
+the current match in its key, value, or chip. Closing without a match, or with the current match
+elsewhere, returns the table at once. If the focus is in a cell editor of a table that switches to
+its source, the focus goes to the find bar if the step came from there, otherwise to the editor at
+the start of that cell's line.
 
 ## Acceptance scenarios
 
@@ -233,10 +234,10 @@ the find bar if the step came from there, otherwise to the editor at the start o
 - Given front matter shown as properties with `title: "Hallo\tWelt"`, `date: 2026-11-07`,
   `tags: [rot, grün]` and `map: {a: 1}`
 - When I search `Hallo Welt`, `2026-11-07`, `grün` or `a 1`
-- Then the block shows its YAML and the match is highlighted there; for `Hallo Welt` the highlight
-  covers `Hallo\tWelt` in the YAML
+- Then the properties block stays visible and highlights the matching key, value, or chip; for
+  `Hallo Welt` the displayed value is highlighted
 - And `title: "Hallo`, `"a":1` and `Properties` are not found, also while the caret is in the block
-- And when the current match leaves the block, it shows its properties again
+- And moving the current match does not switch the block to or from a source view
 
 **Scenario: highlight all**
 - Given several matches on the screen, one of them in a table shown as cells and one in a property
@@ -315,8 +316,7 @@ the find bar if the step came from there, otherwise to the editor at the start o
 - Then the highlighted line shows no marker pixels (the highlight's text colour applies only to the
   visible parts of the match)
 - And when the current match moves and "Highlight all" changes, no line moves or changes height; only
-  a table or properties block switching to or from its source for the current match changes height,
-  at that moment, as with `Ctrl+Shift+M`
+  only a table switching to or from its source for the current match changes height, at that moment, as with `Ctrl+Shift+M`
 - And after `Escape` into a table or properties block, the caret and selection are only ever on
   lines that are shown
 

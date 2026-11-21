@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S024: the properties block shown in place of a note's front matter: a title, then one row per
-// property with a type icon, the key and the value (Obsidian). It writes nothing: a click asks the
-// editor to put the caret at the value in the YAML (PropertiesEmbedder). One widget paints the rows
-// on screen; each row is an accessible element of its own (an accessible interface per row, not a
-// widget, so that 5,000 properties cost no 5,000 widgets). Rows are laid out in slices (review O8);
-// keys and text values are laid out once into a QTextLayout, a long one across slices, and only
-// their lines on screen are painted (code review O2).
+// S024/S025: the properties block shown in place of a note's front matter: a title, one row per
+// property, and a compact Add property action. Clicking a key or value edits it without revealing
+// the YAML; inline remove controls delete rows and chips. One widget paints the rows on screen; each row is an
+// accessible element of its own (an accessible interface per row, not a widget, so that 5,000
+// properties cost no 5,000 widgets). Rows are laid out in slices (review O8); keys and text values
+// are laid out once into a QTextLayout, a long one across slices, and only their lines on screen are
+// painted (code review O2).
 #pragma once
 
 #include "hitokoto/core/properties.hpp"
@@ -21,6 +21,8 @@
 
 #include <memory>
 #include <vector>
+
+class QLineEdit;
 
 namespace hitokoto::ui {
 
@@ -60,6 +62,18 @@ public:
     [[nodiscard]] bool built() const noexcept { return laidOut_; }
     [[nodiscard]] std::size_t rowCount() const noexcept { return properties_.size(); }
     [[nodiscard]] const core::Property& property(std::size_t row) const { return properties_.at(row); }
+    [[nodiscard]] QRect addButtonRect() const noexcept { return addButton_; }
+    [[nodiscard]] QRect rowDeleteRect(int row) const noexcept;
+    [[nodiscard]] QRect chipRect(int row, int item) const noexcept;
+    [[nodiscard]] QRect chipRemoveRect(int row, int item) const noexcept;
+    [[nodiscard]] QRect chipAddRect(int row) const noexcept;
+
+    /// Starts an in-place editor in a key/value cell, list item, or the compact Add property row.
+    void editKeyOrValue(int row, bool key);
+    void editItem(int row, int item);
+    void editNewProperty();
+    void finishInlineEdit();
+    void rejectInlineEdit(const QString& message);
 
     /// The text a row shows for its value, as its accessible name has it after "key: " (dates in
     /// the system's short format, a checkbox "checked" or "not checked", items joined by ", ",
@@ -86,9 +100,25 @@ public:
     [[nodiscard]] std::vector<QRect> findMarkRects() const;
 
 signals:
-    /// A click released on row `row` (-1: the title or elsewhere in the block); `extend`: with
-    /// Shift, the selection is extended to it.
-    void activated(int row, bool extend);
+    /// A click released on row `row`; `extend`: Shift-click extends the source selection; `key`:
+    /// the key column was clicked rather than the value column.
+    void activated(int row, bool extend, bool key);
+    /// The always-visible button below the rows was activated.
+    void addRequested();
+    /// A visible property cell editor was committed.
+    void propertyEditCommitted(int row, bool key, QString value);
+    /// A list or tag item editor was committed; item == item count means append.
+    void itemEditCommitted(int row, int item, QString value);
+    /// A tag/list chip or its add chip was activated for in-place editing.
+    void itemEditRequested(int row, int item);
+    /// The compact Add property editor was committed.
+    void newPropertyCommitted(QString key);
+    /// A row or list/tag item was removed through its inline remove control.
+    void deleteRequested(int row);
+    void itemDeleteRequested(int row, int item);
+    /// Ctrl+Z/Ctrl+Y while a cell is focused should operate on the Markdown document.
+    void undoRequested();
+    void redoRequested();
     /// A mouse button went down on the block (true) or up again (false).
     void pressed(bool down);
 
@@ -96,7 +126,11 @@ protected:
     void paintEvent(QPaintEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void leaveEvent(QEvent* event) override;
     bool event(QEvent* event) override;
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
     /// A key or a text value laid out for a width: a short one that fits on one line as it is, a
@@ -111,6 +145,7 @@ private:
     };
     struct Chip {
         QRectF rect;  ///< relative to the value's top left
+        QRectF removeRect;
         QString text;
     };
     /// One property as laid out.
@@ -122,6 +157,8 @@ private:
         Text valueText;     ///< text, number, date: the value shown
         QStringList lines;  ///< unsupported: at most three lines of JSON
         std::vector<Chip> chips;
+        QRectF addChipRect;
+        QRect deleteRect;    ///< inline remove control at the right edge
         qreal keyWidth = 0;  ///< of the key's text
         qreal valueX = 0;    ///< where the value starts in the row
         qreal valueWidth = 0;
@@ -147,6 +184,9 @@ private:
     void forgetAccessibleElements();
     [[nodiscard]] int rowAt(QPoint position) const;
     [[nodiscard]] int innerWidth() const;
+    void openInlineEditor(const QRect& rect, const QString& value);
+    void submitInlineEditor();
+    void cancelInlineEditor();
     void updateMetrics();
 
     Look look_;
@@ -155,6 +195,15 @@ private:
     std::vector<FindMark> findMarks_;  ///< S028
     QColor findBackground_;
     QRect title_;
+    QRect addButton_;
+    QLineEdit* inlineEditor_ = nullptr;
+    int editingRow_ = -1;
+    int editingItem_ = -1;
+    bool editingKey_ = false;
+    bool addingProperty_ = false;
+    bool submitted_ = false;
+    int hoveredRow_ = -1;
+    bool hoveredAdd_ = false;
     qreal line_ = 0;  ///< line spacing of the block's font
     qreal gap_ = 0;   ///< width of a space
     qreal icon_ = 0;  ///< size of a type icon

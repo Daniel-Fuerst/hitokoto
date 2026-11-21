@@ -5,12 +5,15 @@
 #include "ui_test_support.hpp"
 
 #include <QAccessible>
+#include <QApplication>
 #include <QDate>
 #include <QDateTime>
+#include <QLineEdit>
 #include <QLocale>
 #include <QScrollBar>
 #include <QTableView>
 #include <QTime>
+#include <QTimer>
 #include <QToolTip>
 
 #include <cmath>
@@ -100,11 +103,26 @@ void clickBlock(QWidget* view, QPoint point, Qt::KeyboardModifiers modifiers = {
     QTest::mouseClick(target, Qt::LeftButton, modifiers, target->mapFrom(view, point));
 }
 
+QLineEdit* inlineEditor(QWidget* view) {
+    return view->findChild<QLineEdit*>(QStringLiteral("propertiesInlineEditor"));
+}
+
+void cancelPropertiesEdit(QWidget* view) {
+    if (QLineEdit* edit = inlineEditor(view); edit != nullptr) {
+        test::keyClick(edit, Qt::Key_Escape);
+    }
+}
+
 /// A point on the value of a row: right of the key column.
 QPoint onValue(QWidget* view, int row) {
     const auto style = core::propertiesStyle(core::builtinTheme(core::ColorScheme::Light));
     const QRect r = rowRect(view, row);
     return {r.left() + static_cast<int>(style.keyWidth) + 8, r.center().y()};
+}
+
+QPoint onKey(QWidget* view, int row) {
+    const QRect r = rowRect(view, row);
+    return {r.left() + 16, r.center().y()};
 }
 
 qreal heightOf(ui::EditorWidget* editor, int blockNumber) {
@@ -229,7 +247,7 @@ private slots:
                               QStringLiteral("text"), QStringLiteral("unsupported")}));
     }
 
-    void theCaretInTheBlockShowsTheYaml() {
+    void movingTheCaretIntoFrontMatterNeverRevealsValidYaml() {
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("note.md"), "---\ntitle: A note\ncount: 1\n---\n# Heading\nbody\n")));
         f.placeCaret(5);
@@ -239,83 +257,204 @@ private slots:
         for (const int line : {0, 1, 2, 3}) {
             f.placeCaret(line);
             f.settle();
-            expectRevealed(editor, 3, "caret in the block");
-            const QTextBlock block = editor->document()->findBlockByNumber(line);
-            QVERIFY(test::formatAt(block, 0).foreground().color() != QColor(Qt::transparent));
+            expectConcealed(editor, 3, "caret in the front matter");
+            QCOMPARE(editor->textCursor().blockNumber(), line);
         }
-        // Edited as text; leaving the block shows the edited value.
-        f.placeCaret(1);
-        test::keyClick(editor, Qt::Key_End);
-        test::keyClicks(editor, QStringLiteral(" edited"));
-        test::keyClick(editor, Qt::Key_Down);
-        test::keyClick(editor, Qt::Key_Down);
-        test::keyClick(editor, Qt::Key_Down);
+        f.placeCaret(4);
         f.settle();
-        QCOMPARE(editor->textCursor().blockNumber(), 4);
-        expectConcealed(editor, 3, "after leaving");
-        if (QTest::currentTestFailed()) {
-            return;
-        }
-        QCOMPARE(names(editor->propertiesView()).value(1), QStringLiteral("title: A note edited"));
-        // Up from the first line below the block: the caret on the closing line, the YAML shown.
         test::keyClick(editor, Qt::Key_Up);
         f.settle();
-        QCOMPARE(editor->textCursor().blockNumber(), 3);
-        expectRevealed(editor, 3, "up into the block");
+        QCOMPARE(editor->textCursor().blockNumber(), 4);
+        expectConcealed(editor, 3, "after moving up from below");
     }
 
-    void aClickOnARowPutsTheCaretAtItsValue() {
+    void clickingAbovePropertiesNeverRevealsValidYaml() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("note.md"), "---\ntitle: A note\n---\nbody\n")));
+        f.placeCaret(3);
+        f.settle();
+        auto* editor = f.editor();
+        QWidget* view = editor->propertiesView();
+        QVERIFY(view != nullptr);
+        const QPoint point(view->width() / 2, view->y() - 1);
+        QTest::mouseClick(editor->viewport(), Qt::LeftButton, Qt::NoModifier, point);
+        f.settle();
+        QCOMPARE(editor->textCursor().blockNumber(), 3);
+        expectConcealed(editor, 2, "after clicking above Properties");
+    }
+
+    void clickingAPropertyEditsItWithoutRevealingTheYaml() {
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("record.md"), kRecord)));
         f.placeCaret(kRecordBody);
         f.settle();
         auto* editor = f.editor();
-        QWidget* view = editor->propertiesView();
+        auto* view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
         QVERIFY(view != nullptr);
-        clickBlock(view, onValue(view, 2));  // branch
+        clickBlock(view, onValue(view, 2));
+        auto* edit = inlineEditor(view);
+        QVERIFY(edit != nullptr);
+        QVERIFY(QApplication::activeModalWidget() == nullptr);
+        edit->selectAll();
+        test::keyClicks(edit, QStringLiteral("updated-branch"));
+        test::keyClick(edit, Qt::Key_Return);
         f.settle();
-        QCOMPARE(editor->textCursor().blockNumber(), 3);
-        QCOMPARE(editor->textCursor().positionInBlock(), 8);
-        expectRevealed(editor, kRecordClose, "after the click");
-
+        expectConcealed(editor, kRecordClose, "after editing a property");
+        QCOMPARE(editor->document()->findBlockByNumber(3).text(), QStringLiteral("\"branch\": \"updated-branch\""));
+        QVERIFY(editor->propertiesView() != nullptr);
+        test::keyClick(view, Qt::Key_Z, Qt::ControlModifier);
+        QVERIFY(editor->document()->isRedoAvailable());
+        QCOMPARE(editor->document()->findBlockByNumber(3).text(),
+                 QStringLiteral("branch: feature/links_references  # Daniel's branch, pull request #21"));
         f.placeCaret(kRecordBody);
         f.settle();
-        view = editor->propertiesView();
-        QVERIFY(view != nullptr);
-        clickBlock(view, onValue(view, 6));  // objections: the value starts on the line below the key
+        QCOMPARE(editor->document()->findBlockByNumber(3).text(),
+                 QStringLiteral("branch: feature/links_references  # Daniel's branch, pull request #21"));
+        expectConcealed(editor, kRecordClose, "after undo");
+        test::keyClick(view, Qt::Key_Y, Qt::ControlModifier);
         f.settle();
-        QCOMPARE(editor->textCursor().blockNumber(), 8);
-        QCOMPARE(editor->textCursor().positionInBlock(), 2);
-
-        f.placeCaret(kRecordBody);
-        f.settle();
-        view = editor->propertiesView();
-        QVERIFY(view != nullptr);
-        const QRect firstRow = rowRect(view, 0);
-        clickBlock(view, QPoint(firstRow.center().x(), firstRow.top() - 2));  // the title
-        f.settle();
-        QCOMPARE(editor->textCursor().blockNumber(), 1);
-        QCOMPARE(editor->textCursor().positionInBlock(), 0);
+        QCOMPARE(editor->document()->findBlockByNumber(3).text(), QStringLiteral("\"branch\": \"updated-branch\""));
+        expectConcealed(editor, kRecordClose, "after redo");
     }
 
-    // Code review O7: a block scalar's first content line, at the content's indentation.
-    void aClickOnABlockScalarPutsTheCaretAtItsContent() {
+    void clickingAnotherCellCommitsTheCurrentInlineEdit() {
         test::Fixture f;
-        QVERIFY(
-            f.open(f.writeFile(QStringLiteral("scalar.md"), "---\ntitle: x\nabstract: |\n  First line\n---\nbody\n")));
-        f.placeCaret(5);
+        QVERIFY(f.open(f.writeFile(QStringLiteral("note.md"), "---\ntitle: first\ncategory: note\n---\nbody\n")));
+        f.placeCaret(4);
+        f.settle();
+        auto* editor = f.editor();
+        auto* view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(view != nullptr);
+
+        clickBlock(view, onValue(view, 0));
+        auto* edit = inlineEditor(view);
+        QVERIFY(edit != nullptr);
+        edit->selectAll();
+        test::keyClicks(edit, QStringLiteral("updated"));
+        QVERIFY(!edit->geometry().contains(onKey(view, 1)));
+        clickBlock(view, onKey(view, 1));
+        f.settle();
+
+        QCOMPARE(editor->document()->findBlockByNumber(1).text(), QStringLiteral("\"title\": \"updated\""));
+        view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(view != nullptr);
+        edit = inlineEditor(view);
+        QVERIFY(edit != nullptr);
+        QCOMPARE(edit->text(), QStringLiteral("category"));
+        test::keyClick(edit, Qt::Key_Escape);
+        expectConcealed(editor, 3, "after switching inline cells");
+    }
+
+    void addPropertyCreatesQuotedMarkdownWithoutShowingSource() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("note.md"), "---\ntitle: x\n---\nbody\n")));
+        f.placeCaret(3);
+        f.settle();
+        auto* editor = f.editor();
+        auto* view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(view != nullptr);
+        clickBlock(view, view->addButtonRect().center());
+        auto* edit = inlineEditor(view);
+        QVERIFY(edit != nullptr);
+        QVERIFY(QApplication::activeModalWidget() == nullptr);
+        test::keyClicks(edit, QStringLiteral("category"));
+        test::keyClick(edit, Qt::Key_Return);
+        f.settle();
+        QCOMPARE(editor->document()->findBlockByNumber(2).text(), QStringLiteral("\"category\": \"\""));
+        expectConcealed(editor, 3, "after adding a property");
+    }
+
+    void editingListItemsCanRemoveATagWithoutShowingSource() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("tags.md"), "---\ntags: [frontmatter, markdown]\n---\nbody\n")));
+        f.placeCaret(3);
         f.settle();
         auto* editor = f.editor();
         QWidget* view = editor->propertiesView();
         QVERIFY(view != nullptr);
-        clickBlock(view, onValue(view, 1));
+        auto* properties = qobject_cast<ui::PropertiesView*>(view);
+        QVERIFY(properties != nullptr);
+        clickBlock(view, properties->chipRemoveRect(0, 1).center());
         f.settle();
-        QCOMPARE(editor->textCursor().blockNumber(), 3);
-        QCOMPARE(editor->textCursor().positionInBlock(), 2);
+        QCOMPARE(editor->document()->findBlockByNumber(1).text(), QStringLiteral("\"tags\": [\"frontmatter\"]"));
+        properties = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(properties != nullptr);
+        QCOMPARE(properties->property(0).items.size(), 1U);
+        expectConcealed(editor, 2, "after deleting a tag");
     }
 
-    // Review O6: a selection with one end outside the block leaves the properties block; a mouse
-    // button held keeps the form; the YAML shows when caret and anchor are both inside.
+    void tagChipsEditAndAddInline() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("tags.md"), "---\ntags: [frontmatter, markdown]\n---\nbody\n")));
+        f.placeCaret(3);
+        f.settle();
+        auto* editor = f.editor();
+        auto* view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(view != nullptr);
+
+        clickBlock(view, view->chipRect(0, 0).center());
+        auto* edit = inlineEditor(view);
+        QVERIFY(edit != nullptr);
+        QVERIFY(QApplication::activeModalWidget() == nullptr);
+        edit->selectAll();
+        test::keyClicks(edit, QStringLiteral("yaml"));
+        test::keyClick(edit, Qt::Key_Return);
+        f.settle();
+        QCOMPARE(editor->document()->findBlockByNumber(1).text(), QStringLiteral("\"tags\": [\"yaml\", \"markdown\"]"));
+
+        clickBlock(view, view->chipAddRect(0).center());
+        edit = inlineEditor(view);
+        QVERIFY(edit != nullptr);
+        test::keyClicks(edit, QStringLiteral("widgets"));
+        test::keyClick(edit, Qt::Key_Return);
+        f.settle();
+        QCOMPARE(editor->document()->findBlockByNumber(1).text(),
+                 QStringLiteral("\"tags\": [\"yaml\", \"markdown\", \"widgets\"]"));
+        expectConcealed(editor, 2, "after editing and adding tags");
+    }
+
+    void deletingAPropertyRemovesOnlyItsSourceRange() {
+        test::Fixture f;
+        QVERIFY(
+            f.open(f.writeFile(QStringLiteral("note.md"), "---\ntitle: first\ncategory: Reference Docs\n---\nbody\n")));
+        f.placeCaret(4);
+        f.settle();
+        auto* editor = f.editor();
+        auto* view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(view != nullptr);
+        auto* properties = qobject_cast<ui::PropertiesView*>(view);
+        QVERIFY(properties != nullptr);
+        clickBlock(view, properties->rowDeleteRect(0).center());
+        f.settle();
+        QCOMPARE(editor->document()->findBlockByNumber(1).text(), QStringLiteral("category: Reference Docs"));
+        properties = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(properties != nullptr);
+        QTRY_COMPARE_WITH_TIMEOUT(properties->rowCount(), 1U, 5000);
+        QCOMPARE(properties->property(0).key, std::u16string(u"category"));
+        expectConcealed(editor, 2, "after deleting a property");
+    }
+
+    void renamingAPropertyKeepsItsValueAndTheBlockConcealed() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("note.md"), "---\ntitle: first\n---\nbody\n")));
+        f.placeCaret(3);
+        f.settle();
+        auto* editor = f.editor();
+        QWidget* view = editor->propertiesView();
+        QVERIFY(view != nullptr);
+        clickBlock(view, onKey(view, 0));
+        auto* edit = inlineEditor(view);
+        QVERIFY(edit != nullptr);
+        QVERIFY(QApplication::activeModalWidget() == nullptr);
+        edit->selectAll();
+        test::keyClicks(edit, QStringLiteral("heading"));
+        test::keyClick(edit, Qt::Key_Return);
+        f.settle();
+        QCOMPARE(editor->document()->findBlockByNumber(1).text(), QStringLiteral("\"heading\": \"first\""));
+        expectConcealed(editor, 2, "after renaming a property");
+    }
+
+    // Review O6: selections and held mouse buttons keep the properties block in place.
     void aSelectionAcrossTheBlockKeepsTheProperties() {
         QByteArray document = "---\ntags: [a, b, c]\n---\n";
         for (int i = 0; i < 40; ++i) {
@@ -372,9 +511,10 @@ private slots:
         QTest::mousePress(target, Qt::LeftButton, {}, target->mapFrom(view, value));
         QCoreApplication::processEvents();
         QVERIFY2(editor->propertiesView() != nullptr, "held");
+        cancelPropertiesEdit(view);
         QTest::mouseRelease(target, Qt::LeftButton, {}, target->mapFrom(view, value));
         f.settle();
-        expectRevealed(editor, 2, "released inside");
+        expectConcealed(editor, 2, "after dismissing the value editor");
     }
 
     void invalidYamlStaysTextWithABadge() {
@@ -578,7 +718,7 @@ private slots:
     }
 
     // Armin, 2026-10-31: after opening, the caret stands on the first line below closed front
-    // matter, so the first screen shows the properties block; Ctrl+Home still shows the YAML.
+    // matter, so the first screen shows the properties block; Ctrl+Home leaves it graphical.
     void openingPutsTheCaretBelowTheFrontMatter() {
         {
             test::Fixture f;
@@ -588,7 +728,7 @@ private slots:
             expectConcealed(f.editor(), 2, "opened");
             test::keyClick(f.editor(), Qt::Key_Home, Qt::ControlModifier);
             f.settle();
-            expectRevealed(f.editor(), 2, "Ctrl+Home");
+            expectConcealed(f.editor(), 2, "Ctrl+Home");
         }
         {
             QByteArray document = "---\n";  // closed in a later slice of the file, confirmed in idle slices
@@ -666,6 +806,7 @@ private slots:
             f.placeCaret(editor->document()->blockCount() - 1);
             f.settle();
             if (QWidget* view = editor->propertiesView()) {
+                cancelPropertiesEdit(editor->propertiesView());
                 clickBlock(view, onValue(view, 0));
                 f.settle();
             }

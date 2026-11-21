@@ -58,7 +58,7 @@ std::optional<std::string> colorValue(const Value& v, Color& out) {
     return std::nullopt;
 }
 
-template <Color Theme::*Member>
+template <Color Theme::* Member>
 std::optional<std::string> applyColor(Theme& t, const Value& v) {
     return colorValue(v, t.*Member);
 }
@@ -84,7 +84,7 @@ std::optional<std::string> applyOptString(Theme& t, const Value& v) {
     return std::nullopt;
 }
 
-template <std::string Theme::*Member>
+template <std::string Theme::* Member>
 std::optional<std::string> applyString(Theme& t, const Value& v) {
     const auto* s = std::get_if<std::string>(&v);
     if (!s) {
@@ -108,7 +108,7 @@ std::optional<std::string> numberIn(const Value& v, double lo, double hi, double
     return std::nullopt;
 }
 
-template <double Theme::*Member, int Lo, int Hi>
+template <double Theme::* Member, int Lo, int Hi>
 std::optional<std::string> applyNumber(Theme& t, const Value& v) {
     return numberIn(v, Lo, Hi, t.*Member);
 }
@@ -291,6 +291,13 @@ const Token kTokens[] = {
     {{"properties", "chip-border-width", "number (px)", "Border width of a list item or tag, 0 to 8", "0"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::chipBorderWidth, 0, 80>},
     {{"properties", "chip-radius", "number (px)", "Corner radius of a list item or tag, 0 to 32", "layout.radius"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::chipRadius, 0, 320>},
     {{"properties", "chip-padding", "number (px)", "Horizontal space inside a list item or tag, 0 to 32", "4"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::chipPadding, 0, 320>},
+    {{"properties", "editor-background", "color", "Background of an inline property editor", "properties.background"}, &applyOptColor<&Theme::properties, &PropertiesTokens::editorBackground>},
+    {{"properties", "editor-text", "color", "Text of an inline property editor", "properties.text"}, &applyOptColor<&Theme::properties, &PropertiesTokens::editorText>},
+    {{"properties", "editor-border", "color", "Border of an inline property editor", "colors.border"}, &applyOptColor<&Theme::properties, &PropertiesTokens::editorBorder>},
+    {{"properties", "editor-focus-border", "color", "Focused border of an inline property editor", "colors.accent"}, &applyOptColor<&Theme::properties, &PropertiesTokens::editorFocusBorder>},
+    {{"properties", "editor-border-width", "number (px)", "Border width of an inline property editor, 0 to 8", "1"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::editorBorderWidth, 0, 80>},
+    {{"properties", "editor-radius", "number (px)", "Corner radius of an inline property editor, 0 to 32", "layout.radius"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::editorRadius, 0, 320>},
+    {{"properties", "editor-padding", "number (px)", "Padding inside an inline property editor, 0 to 32", "4"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::editorPadding, 0, 320>},
     {{"properties", "border", "color", "Border of the block", "colors.border"}, &applyOptColor<&Theme::properties, &PropertiesTokens::border>},
     {{"properties", "border-width", "number (px)", "Border width, 0 to 8", "0"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::borderWidth, 0, 80>},
     {{"properties", "radius", "number (px)", "Corner radius of the block, 0 to 32", "layout.radius"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::radius, 0, 320>},
@@ -846,6 +853,10 @@ PropertiesStyle propertiesStyle(const Theme& t) {
         .chipText = p.chipText.value_or(text),
         .chipBorder = p.chipBorder.value_or(t.border),
         .border = p.border.value_or(t.border),
+        .editorBackground = p.editorBackground.value_or(background),
+        .editorText = p.editorText.value_or(text),
+        .editorBorder = p.editorBorder.value_or(t.border),
+        .editorFocusBorder = p.editorFocusBorder.value_or(t.accent),
         .badgeFontScale = p.badgeFontScale.value_or(1),
         .badgeFontFamily = p.badgeFontFamily.value_or(""),
         .chipBorderWidth = p.chipBorderWidth.value_or(0),
@@ -859,6 +870,9 @@ PropertiesStyle propertiesStyle(const Theme& t) {
         .keyWidth = p.keyWidth.value_or(160),
         .fontScale = p.fontScale.value_or(1),
         .fontFamily = p.fontFamily.value_or(""),
+        .editorBorderWidth = p.editorBorderWidth.value_or(1),
+        .editorRadius = p.editorRadius.value_or(t.radius),
+        .editorPadding = p.editorPadding.value_or(4),
     };
 }
 

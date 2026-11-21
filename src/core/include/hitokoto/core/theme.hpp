@@ -77,9 +77,10 @@ struct ThematicBreakTokens {
 /// Tokens of `[properties]` (S024); resolved by propertiesStyle().
 struct PropertiesTokens {
     std::optional<Color> background, text, keyText, titleText, icon, unsupportedText, badgeText, checkbox,
-        checkboxBackground, chipBackground, chipText, chipBorder, border;
+        checkboxBackground, chipBackground, chipText, chipBorder, border, editorBackground, editorText, editorBorder,
+        editorFocusBorder;
     std::optional<double> badgeFontScale, chipBorderWidth, chipRadius, chipPadding, borderWidth, radius, padding,
-        margin, rowSpacing, keyWidth, fontScale;
+        margin, rowSpacing, keyWidth, fontScale, editorBorderWidth, editorRadius, editorPadding;
     std::optional<std::string> badgeFontFamily, fontFamily;
     friend bool operator==(const PropertiesTokens&, const PropertiesTokens&) = default;
 };
@@ -233,7 +234,7 @@ struct ThematicBreakStyle {
 /// Resolved look of the properties block of front matter (S024).
 struct PropertiesStyle {
     Color background, text, keyText, titleText, icon, unsupportedText, badgeText, checkbox, checkboxBackground,
-        chipBackground, chipText, chipBorder, border;
+        chipBackground, chipText, chipBorder, border, editorBackground, editorText, editorBorder, editorFocusBorder;
     double badgeFontScale = 1;    ///< relative to the editor font
     std::string badgeFontFamily;  ///< empty = editor font
     double chipBorderWidth = 0;
@@ -247,6 +248,9 @@ struct PropertiesStyle {
     double keyWidth = 0;     ///< width of the key column
     double fontScale = 1;    ///< relative to the editor font
     std::string fontFamily;  ///< empty = editor font
+    double editorBorderWidth = 1;
+    double editorRadius = 0;
+    double editorPadding = 0;
     friend bool operator==(const PropertiesStyle&, const PropertiesStyle&) = default;
 };
 

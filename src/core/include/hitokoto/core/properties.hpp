@@ -99,6 +99,13 @@ struct Properties {
 /// throws; linear in the length of the input; nesting deeper than 64 levels is an error.
 [[nodiscard]] Properties parseProperties(std::span<const std::u16string> yamlLines);
 
+/// S025: a safely double-quoted YAML scalar for a property key or text value.
+[[nodiscard]] std::u16string serializePropertyScalar(std::u16string_view text);
+/// S025: preserve a scalar's inferred number or date type when `text` is valid for it.
+[[nodiscard]] std::u16string serializePropertyValue(PropertyType type, std::u16string_view text);
+/// S025: a flow sequence of safely quoted YAML strings.
+[[nodiscard]] std::u16string serializePropertyList(std::span<const std::u16string> items);
+
 /// S028: a run of a unit's text and the source range it comes from, in the YAML lines passed in
 /// ([line, column] to [endLine, endColumn), UTF-16). A run is one to one if its source lies on one
 /// line and has its length; otherwise it is atomic (an escape, `''`, a folded line break).
