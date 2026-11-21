@@ -56,6 +56,22 @@ std::optional<core::Span> bulletSpaceSpan(const core::LineRender& render) {
     }
     return std::nullopt;
 }
+
+QTextCharFormat zeroWidthFormat(const QTextCharFormat& base, QStringView text) {
+    QTextCharFormat format = base;
+    format.setForeground(Qt::transparent);  // theme-lint: allow
+    format.clearProperty(QTextFormat::FontPointSize);
+    format.setProperty(QTextFormat::FontPixelSize, 1);
+    if (text.size() > 1) {
+        // Qt has no invisible characters; cancel the 1 px glyph advances across this range.
+        QFont font = base.font();
+        font.setPixelSize(1);
+        const QFontMetricsF metrics(font);
+        format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
+        format.setFontLetterSpacing(-metrics.horizontalAdvance(text.toString()) / static_cast<qreal>(text.size() - 1));
+    }
+    return format;
+}
 }  // namespace
 
 EditorFormats::EditorFormats(const core::Theme& theme)
@@ -139,7 +155,7 @@ QTextCharFormat EditorFormats::heading(int level) const {
     return heading_[static_cast<std::size_t>(level >= 1 && level <= 6 ? level : 0)];
 }
 
-QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& render) const {
+QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& render, QStringView text) const {
     if (render.headingLevel == 0 && !render.codeBlock && render.runs.empty() && render.inlineStyles.empty() &&
         render.hidden.empty() && render.links.empty() && render.wrapIndent == 0) {
         return {};
@@ -161,7 +177,7 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
         const int lvl = render.runs[0].level != 0 ? render.runs[0].level : render.headingLevel;
         const auto idx = static_cast<std::size_t>(lvl >= 1 && lvl <= 6 ? lvl : 0);
         const QTextCharFormat& hfmt =
-            render.hidden[0].mode == core::HideMode::Collapse ? collapse_[idx] : keepSpace_[idx];
+            render.hidden[0].mode == core::HideMode::KeepSpace ? keepSpace_[idx] : collapse_[idx];
         return {
             {static_cast<int>(render.hidden[0].span.start), static_cast<int>(render.hidden[0].span.length), hfmt},
             {static_cast<int>(render.runs[0].span.start), static_cast<int>(render.runs[0].span.length), heading(lvl)}};
@@ -248,8 +264,14 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
             !isInlineCodeDelimiter(render, start)) {
             const auto idx = static_cast<std::size_t>(
                 render.headingLevel >= 1 && render.headingLevel <= 6 ? render.headingLevel : 0);
-            const QTextCharFormat& fmt = hidden->mode == core::HideMode::Collapse ? collapse_[idx] : keepSpace_[idx];
-            out.append({static_cast<int>(start), static_cast<int>(end - start), fmt});
+            if (hidden->mode == core::HideMode::ZeroWidth) {
+                const QTextCharFormat fmt = zeroWidthFormat(heading_[idx], text.sliced(start, end - start));
+                out.append({static_cast<int>(start), static_cast<int>(end - start), fmt});
+            } else {
+                const QTextCharFormat& fmt =
+                    hidden->mode == core::HideMode::KeepSpace ? keepSpace_[idx] : collapse_[idx];
+                out.append({static_cast<int>(start), static_cast<int>(end - start), fmt});
+            }
             continue;
         }
         if (inlineRun != nullptr && inlineRun->style == core::InlineStyle::Italic && baseRun == nullptr &&
@@ -338,6 +360,8 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
             if (hidden->mode == core::HideMode::Collapse) {
                 format.clearProperty(QTextFormat::FontPointSize);
                 format.setProperty(QTextFormat::FontPixelSize, 1);
+            } else if (hidden->mode == core::HideMode::ZeroWidth) {
+                format = zeroWidthFormat(format, text.sliced(start, end - start));
             }
         }
         if (isBulletSpace) {

@@ -623,7 +623,7 @@ void EditorWidget::mousePressEvent(QMouseEvent* event) {
     }
     const auto column = static_cast<std::uint32_t>(c.positionInBlock());
     for (const auto& h : render.hidden) {
-        if (h.mode == core::HideMode::Collapse && column >= h.span.start && column < h.span.end()) {
+        if (h.mode != core::HideMode::KeepSpace && column >= h.span.start && column < h.span.end()) {
             c.setPosition(block.position() + static_cast<int>(h.span.end()));
             setTextCursor(c);
             break;

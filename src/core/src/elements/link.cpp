@@ -354,7 +354,7 @@ public:
 
             if (!context.revealed) {
                 out.hidden.push_back({marker1, HideMode::Collapse});
-                out.hidden.push_back({marker2, HideMode::Collapse});
+                out.hidden.push_back({marker2, HideMode::ZeroWidth});
             } else {
                 newRuns.push_back({marker1, Role::LinkMarker, 0});
                 newRuns.push_back({marker2, Role::LinkMarker, 0});

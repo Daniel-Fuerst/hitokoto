@@ -42,7 +42,7 @@ TEST(S022_InlineLinks, StandardLinkConcealsDelimitersAndExposesLinkTarget) {
     EXPECT_EQ(r.hidden, (std::vector<HiddenRange>{
                             {{0, 1}, HideMode::KeepSpace},
                             {{2, 1}, HideMode::Collapse},
-                            {{16, 22}, HideMode::Collapse},
+                            {{16, 22}, HideMode::ZeroWidth},
                         }));
 
     // Visible runs: link text at {3, 13}
@@ -71,7 +71,7 @@ TEST(S022_InlineLinks, LinkWithTitleParsesTitleAndConcealsDelimiters) {
     EXPECT_EQ(r.hidden, (std::vector<HiddenRange>{
                             {{0, 1}, HideMode::KeepSpace},
                             {{2, 1}, HideMode::Collapse},
-                            {{18, 56}, HideMode::Collapse},
+                            {{18, 56}, HideMode::ZeroWidth},
                         }));
     EXPECT_EQ(r.runs, (std::vector<StyleRun>{{{3, 15}, Role::LinkText, 0}}));
 }
@@ -92,7 +92,7 @@ TEST(S022_InlineLinks, LinkWithParenthesesInUrlHandlesBalancedParensAndPreserves
     EXPECT_EQ(r.hidden, (std::vector<HiddenRange>{
                             {{0, 1}, HideMode::KeepSpace},
                             {{2, 1}, HideMode::Collapse},
-                            {{31, 59}, HideMode::Collapse},
+                            {{31, 59}, HideMode::ZeroWidth},
                         }));
     EXPECT_EQ(r.runs, (std::vector<StyleRun>{{{3, 28}, Role::LinkText, 0}}));
 }
@@ -110,7 +110,7 @@ TEST(S022_InlineLinks, LinkWithSpacesInUrlInAngleBrackets) {
     EXPECT_EQ(r.hidden, (std::vector<HiddenRange>{
                             {{0, 1}, HideMode::KeepSpace},
                             {{2, 1}, HideMode::Collapse},
-                            {{43, 52}, HideMode::Collapse},
+                            {{43, 52}, HideMode::ZeroWidth},
                         }));
     EXPECT_EQ(r.runs, (std::vector<StyleRun>{{{3, 40}, Role::LinkText, 0}}));
 }
@@ -157,7 +157,7 @@ TEST(S022_InlineLinks, LinkWithBoldItalicsAndCodeInsideBrackets) {
                             {{31, 1}, HideMode::Collapse},
                             {{38, 1}, HideMode::Collapse},
                             {{43, 1}, HideMode::Collapse},
-                            {{60, 22}, HideMode::Collapse},
+                            {{60, 22}, HideMode::ZeroWidth},
                         }));
 }
 
@@ -242,7 +242,7 @@ TEST(S022_InlineLinks, CommonMarkNegativesEmphasisAcrossLinkBoundary) {
         // Hidden ranges cover only '[' and '](/uri)'; neither '*' is hidden
         EXPECT_EQ(r.hidden, (std::vector<HiddenRange>{
                                 {{1, 1}, HideMode::Collapse},
-                                {{6, 7}, HideMode::Collapse},
+                                {{6, 7}, HideMode::ZeroWidth},
                             }));
     }
 
@@ -255,7 +255,7 @@ TEST(S022_InlineLinks, CommonMarkNegativesEmphasisAcrossLinkBoundary) {
         EXPECT_TRUE(r.inlineStyles.empty());
         EXPECT_EQ(r.hidden, (std::vector<HiddenRange>{
                                 {{5, 1}, HideMode::Collapse},
-                                {{14, 7}, HideMode::Collapse},
+                                {{14, 7}, HideMode::ZeroWidth},
                             }));
     }
 
@@ -268,7 +268,7 @@ TEST(S022_InlineLinks, CommonMarkNegativesEmphasisAcrossLinkBoundary) {
         EXPECT_TRUE(r.inlineStyles.empty());
         EXPECT_EQ(r.hidden, (std::vector<HiddenRange>{
                                 {{1, 1}, HideMode::Collapse},
-                                {{4, 4}, HideMode::Collapse},
+                                {{4, 4}, HideMode::ZeroWidth},
                             }));
     }
 }
@@ -282,7 +282,7 @@ TEST(S022_InlineLinks, CommonMarkNegativesLinksInsideLinksForbidden) {
     // Outer '[' and outer '](/uri)' are not hidden
     EXPECT_EQ(r.hidden, (std::vector<HiddenRange>{
                             {{5, 1}, HideMode::Collapse},
-                            {{9, 7}, HideMode::Collapse},
+                            {{9, 7}, HideMode::ZeroWidth},
                         }));
 }
 
@@ -322,7 +322,7 @@ TEST(S022_InlineLinks, BadgeLinkContainingImageDestination) {
     EXPECT_EQ(r.links[0].span, (Span{1, 26}));
     EXPECT_EQ(r.hidden, (std::vector<HiddenRange>{
                             {{0, 1}, HideMode::Collapse},
-                            {{27, 23}, HideMode::Collapse},
+                            {{27, 23}, HideMode::ZeroWidth},
                         }));
 }
 

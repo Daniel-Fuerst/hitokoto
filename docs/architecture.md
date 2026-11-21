@@ -71,8 +71,9 @@ decorations (`Bullet`), never in colours or fonts. The UI maps these to theme fo
 
 Qt has no "invisible" character format. Collapsed markers (`#`) get a 1 px transparent font
 (ADR 0001); kept-space markers (`-`) only a transparent colour, with the bullet dot painted on top,
-so list text does not move when the caret enters the line. Story S009 keeps checking the 1 px
-technique; since S019 it runs on `QTextEdit` with `BlockLayout` (ADR 0003).
+so list text does not move when the caret enters the line. Link syntax uses a zero-width conceal
+format so the hidden destination does not leave a gap before following text. Story S009 keeps
+checking the concealment technique; since S019 it runs on `QTextEdit` with `BlockLayout` (ADR 0003).
 
 ## Adding a Markdown element
 
