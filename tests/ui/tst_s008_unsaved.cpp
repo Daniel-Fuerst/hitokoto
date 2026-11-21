@@ -193,7 +193,11 @@ private slots:
         QCOMPARE(shown.text, QStringLiteral("Save changes to %1 before closing it?").arg(name));
         QCOMPARE(shown.redPixels, 0);
         QCOMPARE(shown.format, Qt::PlainText);
+#ifdef Q_OS_MACOS
+        QVERIFY(shown.title.isEmpty());  // QMessageBox::setWindowTitle ignores the title on macOS
+#else
         QCOMPARE(shown.title, QStringLiteral("Unsaved changes"));
+#endif
         QCOMPARE(shown.icon, QMessageBox::Question);
         QCOMPARE(shown.buttons, QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
         QCOMPARE(shown.defaultButton, QMessageBox::Save);
