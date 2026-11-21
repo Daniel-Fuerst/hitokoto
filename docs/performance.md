@@ -31,6 +31,28 @@ local measurements.
 
 ## Measurements
 
+### 2026-11-21, development VM, S000: libstdc++'s assertions in every build (release build, offscreen, Qt 6.12.0)
+
+`_GLIBCXX_ASSERTIONS` adds a bounds or precondition check to each `operator[]`, `front()`,
+`back()` and similar call of the standard library; it changes no layout and no complexity. Three
+sets of four rounds against main (`hitokoto-bench --runs 10`, `hitokoto-bench-gate --kind pr`), and
+as a control main against itself with the same binaries:
+
+| Set (order) | Keys ok | Hard budget missed | Compared value slower |
+|---|---|---|---|
+| 1 (main, branch, branch, main) | 99 of 102 | `s031_paste_outlook_40x10_ms` 71.8 ms in one branch round | `s031_paste_outlook_40x10_ms` |
+| 2 (branch, main, main, branch) | 100 of 102 | `s007_bound_lines_typing_max_ms` 79 ms, `s028_table_field_typing_max_ms` 807 ms, one branch round each | none |
+| 3 (main, branch, branch, main) | 94 of 102 | `s028_field_typing_max_ms` 114 ms in one branch round | `s018_table_typing_p99_ms`, `s031_paste_excel_40x10_ms` |
+| main against main | 95 of 102 | `s028_field_typing_max_ms`, `s007_bound_lines_typing_max_ms` | four keys, among them `s031_paste_excel_40x10_ms` |
+
+The keys that fail change from set to set, and main against itself fails the same way: on this VM
+(2 vCPU) single keys and the middle rounds take outliers the gate cannot tell from a cost. Over all
+six rounds of each side, the branch's medians are 1 % above main's, p95 8 %, p99 4 % below, maxima
+8 % above; no key has every branch round above every round of main. The core benchmarks
+(`hitokoto_core_bench`, median of three) move between −9 % and +16 % per benchmark, −2 % in the
+median. Control Flow Guard and `/sdl` (MSVC) are not measured: the Windows benchmarks are off. The
+gate of the pull request on the CI's runner decides.
+
 ### 2026-11-20, development VM, S031: lists in Qt's HTML import (release build, offscreen, Qt 6.12.0 and 6.8.3)
 
 Qt marks every block of a list again each time a block joins it (`QTextBlockGroup::blockInserted`

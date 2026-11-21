@@ -313,3 +313,10 @@ Branch `agents/s037-windows-qt-current`, from main a1a75a8 (ADR 0013, Accepted o
   and the tests pass there with it, and whether `windeployqt` of Qt 6.12.0 delivers exactly the
   files of `files.txt`. The CI of the pull request and the dry run of "Packaging" on it (the recipe
   changes) show all three before the merge.
+
+## Note of 2026-11-21
+
+The program in the MSI is built with Control Flow Guard (`/guard:cf`) and `/sdl`
+(`cmake/HitokotoCompilerOptions.cmake`, S000); the job "Build and test" (Windows) checks Control Flow
+Guard with `dumpbin /headers`. A tag built before that change, which the packaging workflow may
+still build with the current recipe, keeps the flags of its own source.
