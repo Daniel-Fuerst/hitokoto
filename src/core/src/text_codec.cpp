@@ -194,4 +194,59 @@ std::optional<std::string> encodeUtf8(std::u16string_view text, bool withBom, Li
     return out;
 }
 
+namespace {
+
+bool isHigh(char16_t c) noexcept {
+    return c >= 0xD800 && c <= 0xDBFF;
+}
+
+bool isLow(char16_t c) noexcept {
+    return c >= 0xDC00 && c <= 0xDFFF;
+}
+
+/// Offset of the first lone surrogate at or after `from`, or npos; `from` is not inside a pair.
+std::size_t nextLoneSurrogate(std::u16string_view text, std::size_t from) noexcept {
+    for (std::size_t i = from; i < text.size(); ++i) {
+        const char16_t c = text[i];
+        if (c < 0xD800 || c > 0xDFFF) {
+            continue;
+        }
+        if (isHigh(c) && i + 1 < text.size() && isLow(text[i + 1])) {
+            ++i;  // a pair
+            continue;
+        }
+        return i;
+    }
+    return std::u16string_view::npos;
+}
+
+}  // namespace
+
+std::size_t findLoneSurrogate(std::u16string_view text) noexcept {
+    return nextLoneSurrogate(text, 0);
+}
+
+std::u16string replaceLoneSurrogates(std::u16string_view text) {
+    std::u16string out(text);
+    for (std::size_t i = nextLoneSurrogate(text, 0); i != std::u16string_view::npos;
+         i = nextLoneSurrogate(text, i + 1)) {
+        out[i] = kReplacementCharacter;
+    }
+    return out;
+}
+
+TextPlace placeOf(std::u16string_view text, std::size_t offset) noexcept {
+    TextPlace place;
+    const std::size_t end = std::min(offset, text.size());
+    for (std::size_t i = 0; i < end; ++i) {
+        if (text[i] == u'\n') {
+            ++place.line;
+            place.column = 1;
+        } else if (!(isLow(text[i]) && i > 0 && isHigh(text[i - 1]))) {
+            ++place.column;  // the second half of a pair is the same column as the first
+        }
+    }
+    return place;
+}
+
 }  // namespace hitokoto::core

@@ -75,7 +75,7 @@ jobs:
         # git before the checkout, so that it is a repository with tags, not an archive.
         run: pacman -Syu --noconfirm --needed git cmake desktop-file-utils
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The commit the CI run passed; empty (the default) for other events.
           ref: ${{ github.event.workflow_run.head_sha }}
@@ -217,7 +217,7 @@ jobs:
 
       - name: Hand the files on
         if: steps.plan.outputs.action == 'publish'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: aur-files
           # A directory relative to the workspace: its content becomes the root of the artifact.
@@ -235,7 +235,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions: {}
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: aur-files
           path: ${{ runner.temp }}/aur-files
@@ -263,13 +263,13 @@ jobs:
       group: aur
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.build.outputs.commit }}
           sparse-checkout: scripts/packaging
           persist-credentials: false
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: aur-files
           path: ${{ runner.temp }}/aur-files
@@ -356,7 +356,7 @@ jobs:
       windows_wix: ${{ steps.windows.outputs.windows_wix }}
       windows_ice: ${{ steps.windows.outputs.windows_ice }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The commit the CI run passed; empty (the default) for other events.
           ref: ${{ github.event.workflow_run.head_sha }}
@@ -445,7 +445,7 @@ jobs:
       matrix:
         version: ${{ fromJSON(needs.debian-plan.outputs.build) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.debian-plan.outputs.commit }}
           fetch-depth: 0  # the history and the tags for the changelog
@@ -510,7 +510,7 @@ jobs:
 
       - name: Hand the package on
         # Only a package that passed every step above reaches the release job.
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: debian-${{ matrix.version }}
           path: |
@@ -533,7 +533,7 @@ jobs:
       matrix:
         version: ${{ fromJSON(needs.debian-plan.outputs.windows_build) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.debian-plan.outputs.commit }}
           fetch-depth: 0  # the tags
@@ -550,11 +550,14 @@ jobs:
           git archive "v$VERSION" | tar -x -C msi-work/source
 
       - name: Install Qt
-        uses: jurplel/install-qt-action@v4
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: ${{ needs.debian-plan.outputs.windows_qt }}
           arch: ${{ needs.debian-plan.outputs.windows_qt_arch }}
           cache: true
+          # aqtsource below wins over aqtversion (the action installs one or the other); the
+          # release stays named so that a call without aqtsource never takes the newest of a series.
+          aqtversion: "==3.3.0"
           # No release of aqtinstall installs Qt 6.11 or newer for Windows; the same commit as
           # AQT_SOURCE_WINDOWS in ci.yml (ADR 0013).
           # aqtinstall 3.3.1.dev92: master at the merge of pull request 1000 (2026-03-24)
@@ -591,7 +594,7 @@ jobs:
           & ./packaging/windows/build-package.ps1 @arguments
 
       - name: Hand the MSIs to the check
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: msi-build-${{ matrix.version }}
           path: |
@@ -617,7 +620,7 @@ jobs:
       matrix:
         version: ${{ fromJSON(needs.debian-plan.outputs.windows_build) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.debian-plan.outputs.commit }}
           sparse-checkout: |
@@ -625,7 +628,7 @@ jobs:
             scripts/packaging
           persist-credentials: false
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: msi-build-${{ matrix.version }}
           path: ${{ runner.temp }}/msi
@@ -644,7 +647,7 @@ jobs:
 
       - name: Logs
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: msi-logs-${{ matrix.version }}
           path: |
@@ -656,7 +659,7 @@ jobs:
       - name: Hand the checked MSI on
         # The MSI itself, unzipped, as the artifact hitokoto-<version>-x64.msi (archive: false names
         # the artifact after the file; Armin, 2026-11-13).
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           archive: false
           path: ${{ runner.temp }}/msi/hitokoto-${{ matrix.version }}-x64.msi
@@ -674,7 +677,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions: {}
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: hitokoto-*-x64.msi
           merge-multiple: true
@@ -719,7 +722,7 @@ jobs:
       # One flat directory, however many versions: a single matched artifact lands directly in the
       # path, several in one directory each (first run on main, 2026-11-13); every file carries
       # its version.
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: debian-*
           merge-multiple: true
@@ -729,7 +732,7 @@ jobs:
       # the artifact hitokoto-<version>-x64.msi; windows-handover checks this in every run).
       # It may find none (review (code) O3): the release step checks every file a version needs,
       # and a version skipped for Windows is released without one.
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: needs.debian-plan.outputs.windows_build != '[]'
         continue-on-error: true
         with:

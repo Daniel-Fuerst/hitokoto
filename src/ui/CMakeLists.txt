@@ -22,6 +22,7 @@ qt_add_library(hitokoto_ui STATIC
     table_model.cpp table_model.hpp
     table_paste.cpp table_paste.hpp
     table_view.cpp table_view.hpp
+    text_input.cpp text_input.hpp
     theme_applier.cpp theme_applier.hpp
     theme_manager.cpp theme_manager.hpp
 )

@@ -8,6 +8,7 @@
 #include "smooth_scroller.hpp"
 #include "table_embedder.hpp"
 #include "table_paste.hpp"
+#include "text_input.hpp"
 #include "theme_applier.hpp"
 
 #include <QAction>
@@ -633,7 +634,7 @@ void EditorWidget::mousePressEvent(QMouseEvent* event) {
     }
     const auto column = static_cast<std::uint32_t>(c.positionInBlock());
     for (const auto& h : render.hidden) {
-        if (h.mode == core::HideMode::Collapse && column >= h.span.start && column < h.span.end()) {
+        if (h.mode != core::HideMode::KeepSpace && column >= h.span.start && column < h.span.end()) {
             c.setPosition(block.position() + static_cast<int>(h.span.end()));
             setTextCursor(c);
             break;
@@ -768,6 +769,16 @@ QString EditorWidget::anchorAt(const QPoint& pos) const {
 }
 
 void EditorWidget::keyPressEvent(QKeyEvent* event) {
+    // A key's text enters the document as insertableText makes it (S004, rework of 2026-11-21).
+    if (const auto key = insertableKey(*event)) {
+        pressKey(key.get());
+        event->setAccepted(key->isAccepted());
+        return;
+    }
+    pressKey(event);
+}
+
+void EditorWidget::pressKey(QKeyEvent* event) {
     // Qt scrolls to the caret of a key from layouts that the edit has not updated yet; that is no
     // scroll of the reader's, and the caret is followed further (S033).
     const QScopedValueRollback<bool> input(typing_, true);
@@ -803,12 +814,16 @@ void EditorWidget::redoEdit() {
 }
 
 void EditorWidget::inputMethodEvent(QInputMethodEvent* event) {
-    const QScopedValueRollback<bool> input(typing_, true);
+    // The committed text enters as insertableText makes it (S004, rework of 2026-11-21).
+    const auto insertable = insertableInput(*event);
+    QInputMethodEvent* input = insertable ? insertable.get() : event;
+    const QScopedValueRollback<bool> inputScope(typing_, true);
     const TableEmbedder::Typing typing(tables_.get());
-    if (!event->commitString().isEmpty()) {
+    if (!input->commitString().isEmpty()) {
         tables_->beforeWritingBelow();
     }
-    QTextEdit::inputMethodEvent(event);
+    QTextEdit::inputMethodEvent(input);
+    event->setAccepted(input->isAccepted());
 }
 
 void EditorWidget::insertFromMimeData(const QMimeData* source) {
@@ -818,10 +833,11 @@ void EditorWidget::insertFromMimeData(const QMimeData* source) {
     }
     const TableEmbedder::Typing typing(tables_.get());
     tables_->beforeWritingBelow();
-    // Qt gets the text alone and so never chooses a format (pastedText).
+    // Qt gets the text alone and so never chooses a format (pastedText), and only text that may
+    // enter the document (insertableText; S004, rework of 2026-11-21).
     QMimeData plain;
     if (const QString text = pastedText(source); !text.isNull()) {
-        plain.setText(text);
+        plain.setText(insertableText(text));
     }
     QTextEdit::insertFromMimeData(&plain);
 }
@@ -1043,7 +1059,9 @@ bool EditorWidget::pasteTables(const QMimeData* source) {
     }
     const core::PasteInsertion insertion = core::placePastedBlocks(*blocks, place);
     const TableEmbedder::NotTyping notTyping(tables_.get());
-    cursor.insertText(toQString(insertion.text));
+    // The cells' text comes from other programs, through Qt's HTML import or as Excel's plain text
+    // (S004, rework of 2026-11-21).
+    cursor.insertText(insertableText(toQString(insertion.text)));
     cursor.setPosition(start + static_cast<int>(insertion.caret));
     setTextCursor(cursor);
     ensureCursorVisible();

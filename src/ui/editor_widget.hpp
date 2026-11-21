@@ -195,6 +195,8 @@ private:
     /// S023: the line of a concealed thematic break (`rect`: the block in viewport coordinates).
     void paintThematicBreak(QPainter& painter, const QTextBlock& block, const QRectF& rect);
     bool handleBulletKey(QKeyEvent* event);
+    /// keyPressEvent for a key whose text may enter the document as it is (text_input.hpp).
+    void pressKey(QKeyEvent* event);
     bool handleBulletEnter(QTextCursor& cursor);
     bool handleBulletTab(QTextCursor& cursor, bool outdent);
     /// S031: pastes the tables of `source` as Markdown tables, if the paste converts; returns

@@ -105,6 +105,11 @@ Every pull request merged into main gives hitokoto its version step (story S030,
 - [`docs/theming.md`](docs/theming.md) — Theme file reference
 - [`docs/performance.md`](docs/performance.md) — Performance budgets and benchmarks
 
+## Security
+
+Please report a vulnerability privately through GitHub (**Security** › **Report a vulnerability**),
+not in a public issue. [`SECURITY.md`](SECURITY.md) says how, and which versions get fixes.
+
 ## License
 
 GPL-3.0-or-later (see [`LICENSE`](LICENSE)). Uses Qt under the LGPLv3.

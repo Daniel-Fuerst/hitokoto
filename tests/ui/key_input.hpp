@@ -35,6 +35,14 @@ inline void keyClicks([[maybe_unused]] QWidget* widget, [[maybe_unused]] const Q
 #endif
 }
 
+/// Presses and releases one key whose text is `text` as it is: several characters, a surrogate
+/// pair, or half of one, as a platform's key may deliver (S004).
+inline void typeKey([[maybe_unused]] QWidget* widget, [[maybe_unused]] const QString& text) {
+#ifndef __clang_analyzer__
+    QTest::sendKeyEvent(QTest::Click, widget, Qt::Key_unknown, text, Qt::NoModifier);
+#endif
+}
+
 /// Types `text` one character at a time, also characters outside ASCII, for which
 /// QTest::keyClicks asserts (S028: "äpfel" in the search field).
 inline void typeText([[maybe_unused]] QWidget* widget, [[maybe_unused]] const QString& text) {

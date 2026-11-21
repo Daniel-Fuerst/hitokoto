@@ -54,6 +54,13 @@ Saving must write exactly the text, byte for byte (S004), including BOM and line
   and alternate streams via `ReplaceFileW` (Windows). Files marked read-only are refused on every
   platform. On macOS the data is flushed with `F_FULLFSYNC`.
 - Other encodings (UTF-16, Latin-1) are out of scope; such files are refused, not altered.
+- Addendum of 2026-11-21 (rework of S004, decided by Armin): decision 4 keeps out of the buffer
+  what a file could hold and the buffer not give back. Text from other ways in (pastes, drops,
+  keys, input methods, a table's cells) can hold what no file can: half of a surrogate pair,
+  which UTF-8 cannot encode, so that no save would succeed. Such text is not refused but repaired
+  where it enters: each half becomes U+FFFD (`core::replaceLoneSurrogates`), visibly; decoding a
+  file still refuses, never repairs. A save that meets a half all the same names its line and
+  column and leaves the file unchanged.
 
 ## Reconsider if
 

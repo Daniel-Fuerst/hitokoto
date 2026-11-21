@@ -568,6 +568,23 @@ elseif("${CASE}" STREQUAL "TheTestsRunWithoutRoot")
     expect_contains("${text}" "setpriv --reuid=nobody --regid=nogroup --clear-groups"
                     "ctest as nobody")
 
+elseif("${CASE}" STREQUAL "ThePackageIsBuiltWithDebiansHardeningFlags")
+    # Debian builds its packages with the flags of dpkg-buildflags (fortify, stack protector,
+    # relro, ...); with hardening=+all also bindnow. CMake reads CXXFLAGS and LDFLAGS from the
+    # environment but not CPPFLAGS, so those go into CXXFLAGS. lintian names a missing one.
+    file(READ "${RECIPE_DIR}/build-package.sh" text)
+    expect_contains("${text}" "export DEB_BUILD_MAINT_OPTIONS=hardening=+all" "all hardening features")
+    expect_contains("${text}" "CXXFLAGS=\"$(dpkg-buildflags --get CXXFLAGS) $(dpkg-buildflags --get CPPFLAGS)\""
+                    "CXXFLAGS with CPPFLAGS")
+    expect_contains("${text}" "LDFLAGS=\"$(dpkg-buildflags --get LDFLAGS)\"" "LDFLAGS")
+    string(FIND "${text}" "dpkg-buildflags" flags_at)
+    string(FIND "${text}" "cmake -S \"$src\"" configure_at)
+    if(configure_at LESS flags_at)
+        message(FATAL_ERROR "build-package.sh configures before it takes the flags")
+    endif()
+    expect_contains("${text}" "lintian -I --fail-on error" "lintian with its informational tags")
+    expect_contains("${text}" "grep -q ' hardening-' \"$out/lintian.txt\"" "a hardening tag fails the build")
+
 else()
     message(FATAL_ERROR "unknown case ${CASE}")
 endif()

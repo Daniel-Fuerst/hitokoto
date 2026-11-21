@@ -216,9 +216,13 @@ core::LineRender BlockStyler::renderFor(const QTextBlock& block) {
     return renderLine(block, nullptr, false);
 }
 
-core::LineRender BlockStyler::renderLine(const QTextBlock& block, core::ParagraphLink* link, bool walk) {
+core::LineRender BlockStyler::renderLine(const QTextBlock& block, core::ParagraphLink* link, bool walk,
+                                         QString* sourceText) {
     ++renderCount_;
     const QString text = block.text();
+    if (sourceText != nullptr) {
+        *sourceText = text;
+    }
     const core::BlockState state = blockStateBefore(block);
     const QTextBlock nextBlock = block.next();
     QString next;
@@ -264,7 +268,8 @@ void BlockStyler::styleBlock(const QTextBlock& block) {
         return;
     }
     core::ParagraphLink link;
-    const auto render = renderLine(block, &link, true);
+    QString text;
+    const auto render = renderLine(block, &link, true, &text);
     QTextBlock mutableBlock = block;
     const auto previousState = cachedBlockState(block);
     const bool blockStateChanged = previousState && *previousState != render.blockState;
@@ -275,7 +280,7 @@ void BlockStyler::styleBlock(const QTextBlock& block) {
         setLevel(mutableBlock, levelOf(block), true);
     }
     updateParagraphAbove(block, render, link);
-    const auto ranges = formats_.ranges(render);
+    const auto ranges = formats_.ranges(render, text);
     // Skip the relayout if nothing was and nothing is formatted (most body lines).
     const bool changed = !(ranges.isEmpty() && layout->formats().isEmpty());
     setStyled(mutableBlock, expectedStyle(block.blockNumber()));

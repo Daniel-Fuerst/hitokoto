@@ -18,7 +18,16 @@ concurrency:
 # keeps them equal). On Windows, aqtinstall 3.3.0, the newest release, cannot install Qt 6.11 or
 # newer ("Failed to locate XML data"); the fix (miurahr/aqtinstall pull request 1000) is in no
 # release yet, so every call of install-qt-action takes aqtinstall from a fixed commit there, the
-# same as packaging.yml. Back to a release once one has the fix (ADR 0013).
+# same as packaging.yml. Back to a release once one has the fix (ADR 0013). Elsewhere aqtversion
+# names one release of aqtinstall (aqtsource, where set, wins).
+#
+# Every action comes from a full commit, its version in a comment beside it: a tag can be moved to
+# other code, a commit cannot (lint S000_EveryActionIsPinnedToACommit). To update an action, take
+# the commit of its new release tag (git ls-remote --tags) and change both.
+
+# No job has a right it does not ask for, whatever the repository's default for the token.
+permissions: {}
+
 env:
   QT_VERSION: "6.12.0"
   # aqtinstall 3.3.1.dev92: master at the merge of pull request 1000 (2026-03-24)
@@ -28,16 +37,21 @@ jobs:
   format:
     name: Format (clang-format)
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check formatting
-        run: clang-format-18 --dry-run --Werror $(git ls-files '*.cpp' '*.hpp')
+        # The file list through xargs, so that no name is split at a space (shellcheck SC2046).
+        run: git ls-files -z '*.cpp' '*.hpp' | xargs -0 clang-format-18 --dry-run --Werror
 
   core-sanitizers:
     name: Core with ASan/UBSan, without Qt (layering check)
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Configure
         run: cmake --preset core-sanitize
       - name: Build
@@ -45,24 +59,94 @@ jobs:
       - name: Test
         run: ctest --preset core-sanitize
 
+  # The whole suite, the UI tests included, under ASan and UBSan on Linux, offscreen. Qt itself is not
+  # instrumented. The UI tests get longer time limits in this build (tests/ui/CMakeLists.txt).
+  ui-sanitizers:
+    name: UI with ASan/UBSan (Linux)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Linux packages
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libegl1 libxkbcommon-x11-0 libxcb-cursor0 ninja-build
+      - name: Install Qt
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: linux_gcc_64
+          cache: true
+          aqtversion: "==3.3.0"
+          aqtsource: ${{ runner.os == 'Windows' && env.AQT_SOURCE_WINDOWS || '' }}
+      - name: Configure
+        run: >-
+          cmake -S . -B build/ui-sanitize -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DHITOKOTO_BUILD_TESTS=ON -DHITOKOTO_WARNINGS_AS_ERRORS=ON
+          -DHITOKOTO_SANITIZE=address,undefined
+      - name: Build
+        run: cmake --build build/ui-sanitize --parallel
+      - name: Test
+        run: ctest --test-dir build/ui-sanitize --output-on-failure
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+  # Each target runs 60 s: 45 s with libFuzzer's defaults, then 15 s with inputs up to 256 KiB and a
+  # limit of 10 s per input, so that cost growing with the length of an input fails the run. The
+  # corpus of each target is kept between runs (actions/cache, keyed by run; a run restores the
+  # newest one its branch or main saved) and merged down to the inputs that add coverage.
   fuzz:
     name: Fuzz core (60 s per target)
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      FUZZERS: fuzz_codec fuzz_render fuzz_theme fuzz_paste fuzz_settings fuzz_find fuzz_table
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Configure
         run: cmake --preset fuzz
       - name: Build
         run: cmake --build --preset fuzz --parallel
+      - name: Corpus of earlier runs
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: fuzz-corpus
+          key: fuzz-corpus-${{ github.run_id }}
+          restore-keys: fuzz-corpus-
       - name: Run fuzzers
         run: |
-          for f in fuzz_codec fuzz_render fuzz_theme fuzz_paste fuzz_settings; do
-            ./build/fuzz/fuzz/$f -max_total_time=60 -print_final_stats=1
+          for f in $FUZZERS; do
+            mkdir -p "fuzz-corpus/$f"
+            "./build/fuzz/fuzz/$f" "fuzz-corpus/$f" -max_total_time=45 -print_final_stats=1
+            "./build/fuzz/fuzz/$f" "fuzz-corpus/$f" -max_total_time=15 -max_len=262144 -timeout=10 \
+              -print_final_stats=1
           done
+      - name: Keep the corpus small
+        run: |
+          for f in $FUZZERS; do
+            mkdir -p "fuzz-corpus-merged/$f"
+            "./build/fuzz/fuzz/$f" -merge=1 "fuzz-corpus-merged/$f" "fuzz-corpus/$f"
+          done
+          rm -rf fuzz-corpus
+          mv fuzz-corpus-merged fuzz-corpus
+          du -sh fuzz-corpus/*
+      - name: Upload the input that failed
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-failure
+          if-no-files-found: ignore
+          path: |
+            crash-*
+            leak-*
+            oom-*
+            timeout-*
 
   build-test:
     name: Build and test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -72,21 +156,49 @@ jobs:
           - { name: Windows, os: windows-2022, qt: "6.12.0", arch: win64_msvc2022_64, werror: "OFF" }
           - { name: macOS, os: macos-15, qt: "6.12.0", arch: clang_64, werror: "ON" }
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Linux packages
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libegl1 libxkbcommon-x11-0 libxcb-cursor0 ninja-build
       - name: Install Qt
-        uses: jurplel/install-qt-action@v4
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: ${{ matrix.qt }}
           arch: ${{ matrix.arch }}
           cache: true
+          aqtversion: "==3.3.0"
           aqtsource: ${{ runner.os == 'Windows' && env.AQT_SOURCE_WINDOWS || '' }}
       - name: Configure
         run: cmake --preset ci -DHITOKOTO_WARNINGS_AS_ERRORS=${{ matrix.werror }}
       - name: Build
         run: cmake --build --preset ci --parallel
+      # The checks of cmake/HitokotoCompilerOptions.cmake reach the program: libstdc++'s assertions
+      # call std::__glibcxx_assert_fail (Linux); Control Flow Guard is a flag of the executable
+      # (Windows). macOS uses libc++, which ignores _GLIBCXX_ASSERTIONS.
+      - name: Checks in the program (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          if ! nm -D --undefined-only build/ci/src/app/hitokoto | grep -q __glibcxx_assert_fail; then
+            echo "hitokoto is built without _GLIBCXX_ASSERTIONS" >&2
+            exit 1
+          fi
+      - name: Checks in the program (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          # The newest MSVC toolset's dumpbin (the image has older toolsets beside it).
+          $dumpbin = & $vswhere -latest -products * -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe' |
+            Sort-Object -Descending | Select-Object -First 1
+          # qt_standard_project_setup() puts executables at the top of the build tree on Windows
+          # (build/ci/Release/hitokoto.exe), not beside their CMakeLists.txt.
+          $exe = Get-ChildItem -Path build/ci -Recurse -Filter hitokoto.exe |
+            Where-Object { $_.FullName -notmatch '\\CMakeFiles\\' } | Select-Object -First 1
+          Write-Output "dumpbin: $dumpbin; program: $($exe.FullName)"
+          if (-not $dumpbin -or -not $exe) { throw "dumpbin ($dumpbin) or hitokoto.exe ($exe) not found" }
+          $headers = & $dumpbin /headers $exe.FullName | Out-String
+          & $dumpbin /loadconfig $exe.FullName | Select-String 'Guard'
+          if ($headers -notmatch 'Control Flow Guard') { throw "$($exe.FullName) is built without Control Flow Guard" }
       - name: Test
         run: ctest --preset ci
         env:
@@ -95,16 +207,19 @@ jobs:
   tidy:
     name: Lint (clang-tidy)
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Linux packages
         run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libegl1 libxkbcommon-x11-0 clang-tidy-18
       - name: Install Qt
-        uses: jurplel/install-qt-action@v4
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: ${{ env.QT_VERSION }}
           arch: linux_gcc_64
           cache: true
+          aqtversion: "==3.3.0"
           aqtsource: ${{ runner.os == 'Windows' && env.AQT_SOURCE_WINDOWS || '' }}
       # Lints production code, tests, benchmarks and fuzzers (fuzzers need their own Clang
       # configure). Each file is linted only in one compilation database.
@@ -148,14 +263,15 @@ jobs:
     env:
       GATE: build/bench/bench/gate/hitokoto-bench-gate
       BENCH: build/bench/bench/hitokoto-bench
-      GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0  # the base commit (first parent of the merge commit, or the merge base)
       - name: Kind of run and base commit
         id: kind
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}  # the labels of the pull request (gh api), this step only
         run: |
           if [ "${{ github.event_name }}" != "pull_request" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
             echo "kind=main" >> "$GITHUB_OUTPUT"
@@ -190,21 +306,23 @@ jobs:
       - name: Linux packages
         run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libegl1 libxkbcommon-x11-0 libxcb-cursor0
       - name: Install Qt
-        uses: jurplel/install-qt-action@v4
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: ${{ matrix.qt }}
           arch: ${{ matrix.arch }}
           cache: true
+          aqtversion: "==3.3.0"
           aqtsource: ${{ runner.os == 'Windows' && env.AQT_SOURCE_WINDOWS || '' }}
       - name: Install the base's Qt
         if: steps.kind.outputs.qt_changed == 'true'
-        uses: jurplel/install-qt-action@v4
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: ${{ steps.kind.outputs.base_qt }}
           arch: ${{ matrix.arch }}
           dir: ${{ runner.temp }}/qt-base
           set-env: false
           cache: true
+          aqtversion: "==3.3.0"
           aqtsource: ${{ runner.os == 'Windows' && env.AQT_SOURCE_WINDOWS || '' }}
       - name: Configure
         run: cmake --preset bench
@@ -274,7 +392,7 @@ jobs:
           exit "$code"
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bench-${{ runner.os == 'Linux' && 'linux' || runner.os }}
           if-no-files-found: ignore
@@ -294,7 +412,7 @@ jobs:
   # keeps the needs complete. Packaging (packaging.yml) follows this workflow by workflow_run.
   version:
     name: Version
-    needs: [format, core-sanitizers, fuzz, build-test, tidy, bench]
+    needs: [format, core-sanitizers, ui-sanitizers, fuzz, build-test, tidy, bench]
     if: >-
       always() && github.event_name == 'push' && github.ref == 'refs/heads/main' &&
       !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')

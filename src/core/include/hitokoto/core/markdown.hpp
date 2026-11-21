@@ -95,6 +95,7 @@ struct InlineStyleRun {
 
 enum class HideMode : std::uint8_t {
     Collapse,   ///< takes (almost) no space; following text moves left
+    ZeroWidth,  ///< takes no space; used for concealed link syntax
     KeepSpace,  ///< invisible but keeps its width (a decoration is drawn there)
 };
 

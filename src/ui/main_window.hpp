@@ -44,6 +44,8 @@ public:
     void setAskSave(AskSaveFn fn) { askSave_ = std::move(fn); }
     void setMessageSink(MessageFn fn) { message_ = std::move(fn); }
     void setPathPicker(PickPathFn fn) { pickPath_ = std::move(fn); }
+    /// The question about unsaved changes the window asks unless a test replaces it (S008).
+    static SaveChoice askSaveInDialog(QWidget* parent, const QString& documentName);
 
     /// Options (no options dialog yet: the defaults in options.hpp apply).
     [[nodiscard]] const Options& options() const noexcept { return options_; }

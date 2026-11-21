@@ -97,7 +97,7 @@ void search(const test::Fixture& f, const QString& text) {
 }
 
 bool waitComplete(const test::Fixture& f, int timeoutMs = 10000) {
-    return QTest::qWaitFor([&] { return controller(f)->isComplete(); }, timeoutMs);
+    return QTest::qWaitFor([&] { return controller(f)->isComplete(); }, timeoutMs * test::kTimeScale);
 }
 
 int positionOf(const test::Fixture& f, core::DocPos p) {
@@ -1391,7 +1391,7 @@ private slots:
         timer.start();
         test::keyClicks(bar(f)->searchField(), QStringLiteral("w"));
         const qint64 keyMs = timer.elapsed();
-        QVERIFY2(keyMs < 200, qPrintable(QStringLiteral("key took %1 ms").arg(keyMs)));
+        QVERIFY2(keyMs < qint64{200} * test::kTimeScale, qPrintable(QStringLiteral("key took %1 ms").arg(keyMs)));
         QVERIFY(!controller(f)->isComplete());
         QTRY_VERIFY(controller(f)->currentMatch().has_value());
         if (!controller(f)->isComplete()) {

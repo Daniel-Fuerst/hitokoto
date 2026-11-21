@@ -31,6 +31,10 @@ Read before any work: `docs/brief.md` (the full brief), `docs/adr/` (accepted de
   the merge: no `VERSION` in `project()`, no `v*` tag by hand (apart from the starting tag
   `v0.3.0`). Builds take it from `git describe` at configure time, so a build keeps the version of
   its last configure.
+- Workflows: every action comes from a full commit with its version as a comment
+  (`uses: owner/repo@<40-digit commit> # vX.Y.Z`), and every job asks for its own `permissions`;
+  the lints `S000_*` in `tests/workflows` enforce it. A new CI job must be added to the required
+  checks of the ruleset of main.
 - UI tests and benchmarks simulate keys with `test::keyClick`/`test::keyClicks` from
   `tests/ui/key_input.hpp`, never with `QTest::key*` directly (the header says why); the lint test
   `S000_KeyInputOnlyThroughTestHelpers` enforces it.
