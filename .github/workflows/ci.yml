@@ -42,7 +42,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check formatting
-        run: clang-format-18 --dry-run --Werror $(git ls-files '*.cpp' '*.hpp')
+        # The file list through xargs, so that no name is split at a space (shellcheck SC2046).
+        run: git ls-files -z '*.cpp' '*.hpp' | xargs -0 clang-format-18 --dry-run --Werror
 
   core-sanitizers:
     name: Core with ASan/UBSan, without Qt (layering check)
