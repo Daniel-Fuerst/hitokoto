@@ -102,9 +102,14 @@ jobs:
         shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          # The newest MSVC toolset's dumpbin (the image has older toolsets beside it).
           $dumpbin = & $vswhere -latest -products * -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe' |
-            Select-Object -First 1
-          $exe = Get-ChildItem -Path build/ci/src/app -Recurse -Filter hitokoto.exe | Select-Object -First 1
+            Sort-Object -Descending | Select-Object -First 1
+          # qt_standard_project_setup() puts executables at the top of the build tree on Windows
+          # (build/ci/Release/hitokoto.exe), not beside their CMakeLists.txt.
+          $exe = Get-ChildItem -Path build/ci -Recurse -Filter hitokoto.exe |
+            Where-Object { $_.FullName -notmatch '\\CMakeFiles\\' } | Select-Object -First 1
+          Write-Output "dumpbin: $dumpbin; program: $($exe.FullName)"
           if (-not $dumpbin -or -not $exe) { throw "dumpbin ($dumpbin) or hitokoto.exe ($exe) not found" }
           $headers = & $dumpbin /headers $exe.FullName | Out-String
           & $dumpbin /loadconfig $exe.FullName | Select-String 'Guard'
