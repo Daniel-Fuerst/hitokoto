@@ -116,7 +116,7 @@ objections:
     disposition: fixed
     disposition_rationale: >-
       Armin (2026-11-21): split in two stories. S040 keeps selecting, showing, deleting, typing and
-      the selection in the editor; S041 (Order 46, M) takes the clipboard formats, copy, cut and
+      the selection in the editor; S041 (M) takes the clipboard formats, copy, cut and
       paste.
 ---
 

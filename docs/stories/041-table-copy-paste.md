@@ -1,6 +1,6 @@
 # S041 — Copying and pasting table cells as Markdown
 
-- **Status:** Draft · **Order:** 46 · **Size:** M · **Depends on:** S031, S040
+- **Status:** Draft · **Order:** 47 · **Size:** M · **Depends on:** S031, S040
 - **Basis:** split from S040 (Armin, 2026-11-21, after the review of S040): what copy, cut and
   paste do with selected cells. Checked on main `c8a167f` and with Armin's clipboard samples on
   Windows (2026-11-21), before this story was written:
