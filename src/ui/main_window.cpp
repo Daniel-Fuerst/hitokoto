@@ -70,16 +70,7 @@ MainWindow::MainWindow(const core::ElementRegistry& registry, QWidget* parent)
         options_.smoothScrolling = settings.smoothScrolling;
     });
 
-    askSave_ = [this](const QString& name) {
-        const auto answer =
-            QMessageBox::question(this, tr("Unsaved changes"), tr("Save changes to %1 before closing it?").arg(name),
-                                  QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
-        if (answer == QMessageBox::Save)
-            return SaveChoice::Save;
-        if (answer == QMessageBox::Discard)
-            return SaveChoice::Discard;
-        return SaveChoice::Cancel;
-    };
+    askSave_ = [this](const QString& name) { return askSaveInDialog(this, name); };
     message_ = [this](const QString& title, const QString& text) {
         auto* box = new QMessageBox(QMessageBox::Warning, title, text, QMessageBox::Ok, this);
         box->setTextFormat(Qt::PlainText);
@@ -117,6 +108,17 @@ MainWindow::MainWindow(const core::ElementRegistry& registry, QWidget* parent)
 }
 
 MainWindow::~MainWindow() = default;
+
+SaveChoice MainWindow::askSaveInDialog(QWidget* parent, const QString& documentName) {
+    const auto answer = QMessageBox::question(
+        parent, tr("Unsaved changes"), tr("Save changes to %1 before closing it?").arg(documentName),
+        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
+    if (answer == QMessageBox::Save)
+        return SaveChoice::Save;
+    if (answer == QMessageBox::Discard)
+        return SaveChoice::Discard;
+    return SaveChoice::Cancel;
+}
 
 void MainWindow::createMenus() {
     QMenu* file = menuBar()->addMenu(tr("&File"));
