@@ -30,7 +30,7 @@ jobs:
       # changes NextVersion.cmake by mistake cannot pass its own check; it is checked with main's
       # rules, and its own apply from the next pull request on. Only scripts/version is checked out,
       # without a stored token; no code of the pull request runs. The labels come from the event.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           sparse-checkout: /scripts/version/
@@ -57,7 +57,7 @@ jobs:
       group: version-tag
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # S035: the commit of the CI run that called this workflow; merges after it wait for
           # their own green CI run.
