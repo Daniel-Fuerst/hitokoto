@@ -125,13 +125,21 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         check(hitokoto::core::tableRowCells(u"| " + escaped + u" |").size() == 1);
     }
 
-    // The scan before Qt's import (review (code) O1, O9): any input, linear, one of three answers.
-    const auto tables = hitokoto::core::scanHtmlTables(text);
-    check(tables == hitokoto::core::HtmlTables::None || tables == hitokoto::core::HtmlTables::Flat ||
-          tables == hitokoto::core::HtmlTables::Nested);
-    if (tables == hitokoto::core::HtmlTables::None) {
-        check(hitokoto::core::scanHtmlTables(text + u"<table>") != hitokoto::core::HtmlTables::None ||
-              text.find(u"<!--") != std::u16string::npos);
+    // The scan before Qt's import: any input, linear, one of four answers; what it allows follows
+    // from the cells, which are tags; a table first is always found. The same for the HTML Qt
+    // gets, without what only formats.
+    const std::u16string withoutFormatting = hitokoto::core::htmlWithoutFormatting(text);
+    for (const std::u16string& html : {text, withoutFormatting}) {
+        const hitokoto::core::HtmlScan scan = hitokoto::core::scanHtml(html);
+        check(scan.tables == hitokoto::core::HtmlTables::None || scan.tables == hitokoto::core::HtmlTables::Flat ||
+              scan.tables == hitokoto::core::HtmlTables::Nested ||
+              scan.tables == hitokoto::core::HtmlTables::OverBudget);
+        check(scan.tables == hitokoto::core::scanHtmlTables(html));
+        check(scan.cells <= static_cast<std::uint64_t>(std::count(html.begin(), html.end(), u'<')));
+        const auto& bounds = hitokoto::core::kPasteHtmlBounds;
+        check(scan.allowedPs == std::max(bounds.floorPs, scan.cells * bounds.perCellPs));
+        check(scan.tables != hitokoto::core::HtmlTables::Flat || scan.importPs <= scan.allowedPs);
+        check(hitokoto::core::scanHtmlTables(u"<table>" + html) != hitokoto::core::HtmlTables::None);
     }
 
     // The container check walks up the input's lines (review (code) O4).
@@ -152,12 +160,18 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         check(escaped == text || escaped.size() == text.size() + 1);
     }
 
-    // The HTML without style attributes (review (code) O10): never longer, and a second pass
+    // The HTML without what only formats: only characters leave, in order, and a second pass
     // changes nothing.
     {
-        const std::u16string withoutStyles = hitokoto::core::htmlWithoutStyles(text);
-        check(withoutStyles.size() <= text.size());
-        check(hitokoto::core::htmlWithoutStyles(withoutStyles) == withoutStyles);
+        std::size_t at = 0;
+        for (const char16_t c : withoutFormatting) {
+            while (at < text.size() && text[at] != c) {
+                ++at;
+            }
+            check(at < text.size());
+            ++at;
+        }
+        check(hitokoto::core::htmlWithoutFormatting(withoutFormatting) == withoutFormatting);
     }
 
     // A cell laid out as plain text (review (code) O10): never longer than its Markdown.

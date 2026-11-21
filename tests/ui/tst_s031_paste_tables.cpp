@@ -311,6 +311,59 @@ void markdownFirstRows() {
     QTest::newRow("another plain text") << QStringLiteral("a **b** c") << QStringLiteral("a b c");
 }
 
+/// A table of two rows whose last cell holds `inner`.
+QString inCell(const QString& inner) {
+    return QStringLiteral("<table><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>") + inner +
+           QStringLiteral("</td></tr></table>");
+}
+
+/// The pastes of the rework of 2026-11-20 whose import would take far longer than their cells
+/// allow: a span that makes Qt build a grid of 120,000 positions for 12 cells, an element nested
+/// 2,000 deep, 100,000 bold words in a cell of four, and a list whose blocks Qt marks again for
+/// each new one (4,000 items, or 4,000 paragraph separators in one item).
+void beyondTheBoundsRows() {
+    QTest::addColumn<QString>("html");
+    QTest::newRow("span across 20,000 columns")
+        << QStringLiteral("<table><tr><td colspan=20000>a</td><td>b</td></tr>") +
+               QStringLiteral("<tr><td>1</td><td>2</td></tr>").repeated(5) + QStringLiteral("</table>");
+    QTest::newRow("2,000 nested div") << inCell(QStringLiteral("<div>").repeated(2000) + QStringLiteral("x") +
+                                                QStringLiteral("</div>").repeated(2000));
+    QTest::newRow("100,000 bold words") << inCell(QStringLiteral("<b>x</b>").repeated(100000));
+    QTest::newRow("one list of 4,000 items")
+        << inCell(QStringLiteral("<ul>") + QStringLiteral("<li>x</li>").repeated(4000) + QStringLiteral("</ul>"));
+    QTest::newRow("4,000 paragraph separators in a list item") << inCell(
+        QStringLiteral("<ol><li>") + QStringLiteral("x&#8233;").repeated(4000) + QStringLiteral("</li></ol>"));
+}
+
+/// Pastes with formatting that Qt's import pays for far beyond their cells (rework of 2026-11-20),
+/// each with the HTML it is without that formatting.
+void formattingRows() {
+    QTest::addColumn<QString>("html");
+    QTest::addColumn<QString>("without");
+    const QString table = QStringLiteral("<table><tr><td%1>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></table>");
+    const QString header =
+        QStringLiteral("<table><tr><th%1>a</th><th>b</th></tr><tr><td>c</td><td>d</td></tr></table>");
+    QString widths;
+    QString percent;
+    QString fonts;
+    QString names;
+    for (int i = 1; i <= 300; ++i) {
+        widths += table.arg(QStringLiteral(" width=%1").arg(i));
+        percent += header.arg(QStringLiteral(" width=\"%1.5%\"").arg(i % 100));
+        fonts += QStringLiteral("<font size=%1 color=#%2>x</font>").arg((1 << 24) - i + 3).arg(i, 6, 16, QChar(u'0'));
+        names += QStringLiteral("<a name=n%1>x</a><span id=i%1>y</span>").arg(i);
+    }
+    QTest::newRow("cell widths") << widths << table.arg(QString()).repeated(300);
+    QTest::newRow("header widths in percent") << percent << header.arg(QString()).repeated(300);
+    QTest::newRow("font sizes and colours") << inCell(fonts) << inCell(QStringLiteral("<font>x</font>").repeated(300));
+    QTest::newRow("anchor names and ids")
+        << inCell(names) << inCell(QStringLiteral("<a>x</a><span>y</span>").repeated(300));
+    QTest::newRow("a sibling rule") << QStringLiteral("<style>b ~ span{color:red}</style>") +
+                                           inCell(QStringLiteral("<span>x</span>").repeated(300))
+                                    << QStringLiteral("<style></style>") +
+                                           inCell(QStringLiteral("<span>x</span>").repeated(300));
+}
+
 /// `depth` tables, each in the first cell of the one around it (review O1).
 QString nestedTables(int depth) {
     QString html;
@@ -682,6 +735,108 @@ private slots:
         QCOMPARE(text(f), inserted(markdown, 10, plain));
         QCOMPARE(ui::pastedHtmlImports(), imports);
         QVERIFY2(ms < 1000, qPrintable(QStringLiteral("paste took %1 ms").arg(ms)));
+    }
+
+    // Rework of 2026-11-20: a paste whose import would take far longer than its cells allow stays
+    // plain text at once, without Qt's import and without the wait cursor.
+    void aPasteBeyondTheBoundsStaysPlainText_data() { beyondTheBoundsRows(); }
+
+    void aPasteBeyondTheBoundsStaysPlainText() {
+        QFETCH(QString, html);
+        const QString markdown = QStringLiteral("Para one.\n\nPara two.\n");
+        test::Fixture f;
+        QVERIFY(openText(f, markdown));
+        f.placeCaret(1);
+        const QString plain = QStringLiteral("x\ty\nz\tw\n");
+        test::putOnClipboard(html, plain);
+        const std::uint64_t imports = ui::pastedHtmlImports();
+        const CursorDuringChanges cursor(f.editor()->document());
+        pressPaste(f.editor());
+        f.settle();
+        QCOMPARE(text(f), inserted(markdown, 10, plain));
+        QCOMPARE(ui::pastedHtmlImports(), imports);
+        QVERIFY(cursor.noWaitCursor());
+    }
+
+    // Rework of 2026-11-20: what only formats leaves the HTML before Qt's import, so a style sheet
+    // no longer changes the cells; here `white-space: pre` made the line break in the first cell a
+    // line of the cell. Style attributes have not reached the import since 2026-11-10.
+    void aStyleSheetDoesNotChangeTheCells() {
+        test::Fixture f;
+        test::putOnClipboard(QStringLiteral("<style>td{white-space:pre}</style><table><tr><td>a\nb</td><td>c</td></tr>"
+                                            "<tr><td>d</td><td>e</td></tr></table>"),
+                             QStringLiteral("a b\tc\nd\te\n"));
+        pressPaste(f.editor());
+        f.settle();
+        QCOMPARE(text(f), QStringLiteral("| a b | c |\n| --- | --- |\n| d | e |"));
+    }
+
+    // Rework of 2026-11-20: the formatting Qt's import pays for far beyond the cells leaves before
+    // the import; the paste gives the table it gives without that formatting, with one import.
+    void formattingStaysOutOfTheImport_data() { formattingRows(); }
+
+    void formattingStaysOutOfTheImport() {
+        QFETCH(QString, html);
+        QFETCH(QString, without);
+        const std::u16string imported = core::htmlWithoutFormatting(std::u16string_view(
+            reinterpret_cast<const char16_t*>(html.utf16()), static_cast<std::size_t>(html.size())));
+        QCOMPARE(QString::fromStdU16String(imported), without);
+        QString expected;
+        {
+            test::Fixture plain;
+            test::putOnClipboard(without, QStringLiteral("x"));
+            pressPaste(plain.editor());
+            plain.settle();
+            expected = text(plain);
+        }
+        QVERIFY(expected.startsWith(QStringLiteral("| a | b |")));
+        test::Fixture f;
+        test::putOnClipboard(html, QStringLiteral("x"));
+        const std::uint64_t imports = ui::pastedHtmlImports();
+        pressPaste(f.editor());
+        f.settle();
+        QCOMPARE(ui::pastedHtmlImports(), imports + 1);
+        QCOMPARE(text(f), expected);
+    }
+
+    // Rework of 2026-11-20: the bounds take nothing S031 converts. Every sample and tables of up to
+    // 50,000 cells in the markup of the samples stay within them.
+    void tablesInTheSamplesMarkupStayWithinTheBounds() {
+        const QStringList samples = {
+            QStringLiteral("excel-quotes"),           QStringLiteral("excel-t6-example"),
+            QStringLiteral("excel-t7-empty"),         QStringLiteral("firefox-t10-one-row"),
+            QStringLiteral("firefox-t11-one-column"), QStringLiteral("firefox-t4-escapes"),
+            QStringLiteral("firefox-t8-web"),         QStringLiteral("firefox-t9-two-tables"),
+            QStringLiteral("outlook-t1-example"),     QStringLiteral("outlook-t2-text-around-break"),
+            QStringLiteral("outlook-t2-text-around"), QStringLiteral("outlook-t4-escapes"),
+            QStringLiteral("outlook-t5-lines"),       QStringLiteral("word-t1-example"),
+            QStringLiteral("word-t3-merged"),
+        };
+        const auto scan = [](const QString& html) {
+            return core::scanHtml(core::htmlWithoutFormatting(std::u16string_view(
+                reinterpret_cast<const char16_t*>(html.utf16()), static_cast<std::size_t>(html.size()))));
+        };
+        for (const QString& name : samples) {
+            const QString html = test::s031Html(name);
+            QVERIFY2(!html.isEmpty(), qPrintable(name));
+            QVERIFY2(scan(html).tables == core::HtmlTables::Flat, qPrintable(name));
+        }
+        QVERIFY(scan(test::s031Html(QStringLiteral("firefox-t12-nested"))).tables == core::HtmlTables::Nested);
+        for (const QString& name : {QStringLiteral("outlook-t1-example"), QStringLiteral("excel-t6-example")}) {
+            for (const auto& [rows, columns] : {std::pair{40, 10}, std::pair{400, 10}, std::pair{40, 100},
+                                                std::pair{500, 100}, std::pair{5000, 10}}) {
+                const QString html = test::s031GeneratedHtml(test::s031Html(name), rows, columns);
+                const core::HtmlScan result = scan(html);
+                const QString what = QStringLiteral("%1 %2 x %3: %4 of %5 ps")
+                                         .arg(name)
+                                         .arg(rows)
+                                         .arg(columns)
+                                         .arg(result.importPs)
+                                         .arg(result.allowedPs);
+                QVERIFY2(result.tables == core::HtmlTables::Flat, qPrintable(what));
+                QCOMPARE(result.cells, static_cast<std::uint64_t>(rows) * static_cast<std::uint64_t>(columns));
+            }
+        }
     }
 
     // Review O9: HTML without a table is not imported; the paste is plain text at once, without

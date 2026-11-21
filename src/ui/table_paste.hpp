@@ -14,6 +14,10 @@ namespace hitokoto::ui {
 
 /// The parts of `html` in source order: text outside tables (one line per block) and tables (each
 /// cell with its span and the lines of its blocks; a table in a cell marks the outer table).
+/// `html` is the paste without what only formats (`core::htmlWithoutFormatting`): Qt imports
+/// Outlook's markup in half the time without its style attributes (docs/performance.md,
+/// 2026-11-10), and the tables and their text stay the same. The editor scans that HTML first
+/// (`core::scanHtml`).
 [[nodiscard]] std::vector<core::PastedPart> readPastedHtml(const QString& html);
 
 /// How often readPastedHtml has run in this process (tests and benchmarks: S031 review O1, O9).

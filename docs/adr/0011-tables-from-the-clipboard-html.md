@@ -91,6 +91,27 @@ sample-like cells).
   the table shows, of which the import 20 ms. On the CI runner, with cells like the samples' and
   after the review fixes, 500 cells with Outlook's markup took 48–49 ms and 5,000 cells (50 × 100)
   492–502 ms; the benchmark tables are now 40 × 10, 400 × 10 and 40 × 100 (Armin, 2026-11-10).
+- Addendum of 2026-11-20 (rework of S031): "no size limit" holds for the cells, not for what
+  Qt's import builds beyond them. A first cell spanning 20,000 columns above 2,000 rows (58 KB,
+  4,002 cells) makes Qt build 40 million table positions; 2 MB of nested `<div>` in a cell make it
+  check every element against all those around it; both still ran after 120 s. The scan before
+  the import (`core::scanHtml`, replacing the table count of `core::scanHtmlTables`) now reads the
+  HTML without style attributes as Qt's parser reads it and estimates the import's time from what
+  it counts (`core::kPasteHtmlBounds`): Qt's import may take half of what S031 grants the paste's
+  cells, otherwise the paste stays plain text without an import. The import itself is unchanged.
+- Second addendum of 2026-11-20 (same rework, before the merge): Qt's import also pays for
+  formatting far beyond the cells, through costs no estimate of counted units can follow (a style
+  rule `b ~ span` checks each span against every sibling before it; tables whose cells differ in
+  width, and formats whose properties add up to the same hash, are each compared with all such
+  formats before them). Qt now gets the HTML without what only formats
+  (`core::htmlWithoutFormatting`, read as the scan reads it): of the attributes only the spans of
+  td and th and `name` and `content` of meta stay, and style elements lose their sheet. This
+  replaces `core::htmlWithoutStyles` and goes one step further on its way: the tables and their
+  text stay the same (samples, tables in their markup, random mixes, both Qt versions), except
+  that a sheet's `white-space` no longer applies, as a style attribute's has not since 2026-11-10.
+- Third addendum of 2026-11-20: Qt marks every block of a list again for each block that joins
+  it, so the scan counts those blocks per open list and charges each one for the blocks before it;
+  one list of thousands of items stays plain text, many short lists convert as before.
 
 ## Reconsider if
 

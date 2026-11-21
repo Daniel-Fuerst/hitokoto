@@ -31,6 +31,148 @@ local measurements.
 
 ## Measurements
 
+### 2026-11-20, development VM, S031: lists in Qt's HTML import (release build, offscreen, Qt 6.12.0 and 6.8.3)
+
+Qt marks every block of a list again each time a block joins it (`QTextBlockGroup::blockInserted`
+calls `markBlocksDirty`), so one list costs its import the square of its blocks. Qt's import alone
+of the HTML the scan gets, a cell of a table of four, Qt 6.12.0 (the estimate before this change in
+brackets; the import may take 25 ms):
+
+| Paste | 2,000 | 4,000 | 8,000 |
+|---|---|---|---|
+| one `ul` (or `ol`) of that many items | 71 ms (12 ms) | 384 ms (25 ms) | 1.74 s (49 ms) |
+| items without end tags, or a list inside an item | 71 to 72 ms | 384 to 399 ms | 1.72 to 1.76 s |
+| lines of a `pre` in one item | 71 ms (0.1 ms) | 389 ms (0.1 ms) | 1.73 s (0.1 ms) |
+| that many lists of one item | 14 ms | 28 ms | 61 ms |
+| items without a list, or lines of a `pre` outside a list | 3.6 to 4.9 ms | 7.5 to 24 ms | 16 to 23 ms |
+
+Paragraph separators in an item, also as `&#8233;`, and `&#10;` in a `pre` in an item cost the same
+as the lines of a `pre` (4,000: 374 to 387 ms, 8,000: 1.68 to 1.80 s, both Qt versions); line breaks
+in an item outside a `pre` and `<div>` in an item cost nothing extra. One list of 16,000 items took
+7.4 / 7.6 s (Qt 6.12.0 / 6.8.3), of 24,000 items 17.2 / 17.5 s: about 60 ns per pair of blocks;
+another machine took 10.3 to 10.9 s for 16,000.
+
+The scan now charges each block that joins a list 100 ns for every block that joined before it since
+the outermost open list started. The largest paste of one kind it lets through, and Qt's import of
+it (three runs, both Qt versions, highest share of what the cells allow):
+
+| Form, in a table of | 20 cells | 2,000 cells | 8,000 cells | 50,000 cells |
+|---|---|---|---|---|
+| one list | 644 items, 32 % | 1,336, 34 % | 2,732, 55 % | 6,920, 66 % |
+| a list inside an item | 643, 47 % | 1,334, 49 % | 2,730, 52 % | |
+| lines of a `pre` in an item | 702, 20 % | 1,395, 51 % | 2,791, 55 % | 6,980, 62 % |
+| paragraph separators in an item | 702, 18 % | 1,395, 37 % | 2,791, 52 % | |
+
+The table of 2,000 cells with one list of 15,908 items (181 KB), 10.5 s before, stays plain text in
+2 ms in the window (Qt 6.8.3), the one of 8,000 cells with 63,637 items (724 KB) in 9 ms; the
+largest list let through in 2,000 cells pastes in 51 ms. The verdict of every sample, every table in
+their markup, 900 random mixes (seeds 1 to 6) and the pastes of the formatting rework is the same as
+before; only the list forms above change from Flat to OverBudget. Of the 900 mixes, Qt's import of
+those the scan lets through took at most 86 % of what their cells allow in one run (Qt 6.12.0, 63 to
+74 % on five reruns of the same paste) and 57 % with 6.8.3.
+
+### 2026-11-20, development VM, S031: formatting before Qt's HTML import (release build, offscreen, Qt 6.12.0 and 6.8.3)
+
+Three costs of Qt's import that the estimate below did not count, all from formatting a pasted table
+does not keep. Qt's import alone (`QTextDocument::setHtml` of the HTML the scan judged `Flat`),
+before (the HTML without style attributes, as on `a394434`) and now (without what only formats,
+`core::htmlWithoutFormatting`), Qt 6.12.0 / 6.8.3:
+
+| Paste | Size | Import may take | Before | Now |
+|---|---|---|---|---|
+| `<style>b ~ span{…}</style>`, 2,000 spans in a cell of four | 28 KB | 25 ms | 464 / 480 ms | 3.1 / 2.6 ms |
+| the same rule, 8,785 empty spans in a row of ten cells | 62 KB | 25 ms | 29.8 / 31.2 s | 14 / 10 ms |
+| the same rule across a comment, or read at `</div>` | 28 KB | 25 ms | 445 to 481 ms | 2.6 to 3.2 ms |
+| `+`, child, descendant, attribute selectors, `:first-child`, `:last-child`, `* ~ *` | 2,000 spans | 25 ms | 4.2 to 8.0 ms | 2.6 to 3.5 ms |
+| tables of 2 x 2 cells, `width` of the first cell different | 10,000 | 2.5 s | 6.9 / 7.7 s | 0.38 / 0.31 s |
+| the same in percent, or on th | 10,000 | 2.5 s | 7.2 to 7.6 s | 0.31 to 0.40 s |
+| the same with one width, or `width` of col or table, or `bgcolor` | 10,000 | 2.5 s | 0.31 to 0.44 s | 0.31 to 0.37 s |
+| `<font size=… color=…>` with the same sum of size and colour | 4,000 in a cell | 25 ms | 141 / 139 ms | 6.6 / 5.6 ms |
+| the same with random sizes and colours | 4,000 in a cell | 25 ms | 17 / 13 ms | 7.3 / 5.7 ms |
+| the same sum, eight fonts in each of 2,000 / 8,000 cells | 0.7 / 2.8 MB | 125 / 500 ms | 2.9 / 5.3 s, 46 / 58 s | 47 / 38 ms, 0.22 / 0.17 s |
+
+A rule `b ~ span` checks each span against every sibling before it, finding each with a search of
+their parent (`QTextHtmlStyleSelector::previousSiblingNode`); a table keeps its column widths in a
+`QList<QTextLength>`, and `QTextFormatCollection::indexForFormat` hashes such a list by its type
+alone, so each table is compared with every one before it; and the hash of a format is the sum of
+the hashes of its properties, an integer by its value and a colour by its RGBA value, so a font size
+and a colour with the same sum share it. Qt 6.8.3 and 6.12.0 have the same code here. In the window
+(Ctrl+V of the HTML until the event loop is idle, Qt 6.8.3), before / now: 8,785 spans 30.8 s / 12
+ms, 2,000 spans 472 / 4 ms, 10,000 tables with different widths 7.4 s / 0.51 s (with one width 0.49
+/ 0.53 s), 4,000 fonts with the same sum 136 / 9 ms, 8,000 cells of them 0.22 s now.
+
+The results stay. Qt's import of the 16 samples, of eight tables in their markup, of 300 random
+mixes of 37 elements, 25 attributes, style rules and tables and of the pastes above gives the same
+blocks with and without what only formats, with both Qt versions; the one difference is a style
+element setting `white-space: pre`. In the editor the samples and the tables in their markup give
+the same Markdown as before; 36 of the 300 mixes, which the estimate of their style rules kept plain
+text, now convert. Of 600 random mixes (four seeds), Qt's import of each the scan lets through took
+at most 65 % of what its cells allow (Qt 6.12.0; 61 % with 6.8.3).
+
+The samples' markup in the estimate, without what only formats: 40 x 10 to 500 x 100 cells cost 54
+to 55 % of what the cells allow with Outlook's markup and 25 to 26 % with Excel's (before 59 % and
+30 %); Outlook's import took 39 to 62 % of its estimate, Excel's 39 to 44 %. Writing the HTML
+without what only formats and scanning it takes 85 to 94 ms for 50,000 cells in Outlook's markup (21
+MB) and 26 to 41 ms for 50,000 in Excel's (5.6 MB), against 50 to 56 ms and 20 ms for removing the
+style attributes and scanning before.
+
+### 2026-11-20, development VM, S031: bounds on Qt's HTML import (release build, offscreen, Qt 6.12.0 and 6.8.3)
+
+Some pastes make Qt's HTML import build far more than their cells. A first cell spanning 20,000
+columns above 2,000 rows (58 KB, 4,002 cells) and 2 MB of nested `<div>` in a cell were still
+running after 130 s on main with both Qt versions. Pastes repeating one thing, Qt's import alone
+(`ui::readPastedHtml`), the larger of the two Qt versions:
+
+| Paste | Size | Import |
+|---|---|---|
+| `<td colspan=100>` above rows of two cells | 1,000 / 4,000 rows | 0.41 / 2.2 s |
+| 1,000 cells, then rows without cells | 100 / 300 rows | 0.45 / 1.6 s |
+| cells spanning 10,000 rows in a table of 10,000 rows | 10 / 40 of them | 1.2 / 11 s |
+| `<div>` nested in each other | 2,000 / 4,000 / 8,000 | 42 / 170 / 760 ms |
+| `.cN{…}` rules and as many `<span class=cN>` | 1,000 / 2,000 | 47 / 186 ms |
+| `*{…}` with 1,000 declarations, `<span>` 50 deep | 1,000 spans | 0.7 s |
+| `<img>` in one cell / one per cell | 10,000 | 5.1 s / 0.15 s |
+| `<a name>` or `<font face>`, all different | 10,000 / 20,000 | 1.8 / 6.2 s |
+| `<b>x</b>` in one cell | 80,000 / 640,000 | 0.26 / 2.2 s |
+| `<p>x</p>` in one cell | 80,000 / 640,000 | 0.44 / 3.5 s |
+| text, entities, comments | 4 MB / 6.8 MB / 10 MB | 63 / 122 / 49 ms |
+
+The scan before the import (`core::scanHtml`) reads the HTML without style attributes as Qt's
+parser reads it and estimates the import from what it counts, with the costs per unit of
+`core::kPasteHtmlBounds`; above half of what S031 grants the cells the paste stays plain text.
+Estimate against the measured import, for 108 pastes of 40 kinds and sizes: 0.86 to 2 times it
+for 82 of them (below 1 only where a run was slower than other runs of the same paste), up to 5
+times for style elements, whose rules the estimate takes as matching every element, and up to 13
+times for spans that overlap. Pastes just under and just over the bound of one kind each, from
+Ctrl+V until the table shows (median of three):
+
+| Paste just under the bound | Cells | main, 6.12.0 / 6.8.3 | now, 6.12.0 / 6.8.3 |
+|---|---|---|---|
+| `<td colspan=100>` above 33 rows | 68 | 22.2 / 24.0 ms | 22.5 / 23.0 ms |
+| 11 cells spanning 1,000 rows | 2,011 | 82.8 / 79.5 ms | 81.2 / 79.5 ms |
+| 1,000 cells, 7 rows without cells (not shown, too wide) | 1,000 | 27.4 / 27.1 ms | 27.4 / 27.0 ms |
+| 2,460 `<b>x</b>` inside 200 nested spans | 4 | 24.5 / 21.6 ms | 22.8 / 21.5 ms |
+| 6,932 `<b>x</b>` | 4 | 31.8 / 27.5 ms | 31.4 / 29.2 ms |
+| 4,089 `<p>x</p>` (a cell of 4,089 lines) | 4 | 93.2 / 102.1 ms | 89.8 / 93.4 ms |
+| 856 spans and 100 rules | 4 | 10.3 / 10.0 ms | 10.4 / 10.4 ms |
+| 1,578 spans and a rule of 100 declarations | 4 | 42.5 / 32.5 ms | 32.3 / 36.3 ms |
+| 576 images in one cell | 4 | 20.5 / 19.4 ms | 20.9 / 20.7 ms |
+| 1,013 `<a name>` | 4 | 17.5 / 18.9 ms | 17.6 / 18.4 ms |
+
+Just over the bound the same pastes stay plain text in 0.3 to 1.0 ms with both Qt versions; on
+main they took 10 to 93 ms. The two pastes above take 0 ms (the span) and 4 to 5 ms (the nesting:
+removing the style attributes from 2.2 MB) instead of more than 130 s. The cell of 4,089 lines
+takes 90 ms on main as now: the time goes into the table's layout of its lines, which is content,
+not markup; the bound leaves text, lines and other content of the cells alone.
+
+The markup of the samples stays well within: tables of 40 x 10 to 500 x 100 cells cost 59 % of
+what their cells allow with Outlook's markup and 30 % with Excel's, in the estimate (Outlook's
+import itself took 57 % of its estimate). The cells themselves are not bounded: the whole paste
+grows linearly with them, Excel's markup 45 µs per cell at 4,000 cells and 53 µs at 250,000
+(13.1 s), Outlook's 63 µs at 4,000 and 67 µs at 50,000 (3.4 s). The scan takes 37 ms for 50,000
+cells in Outlook's markup (21 MB) and at most 0.32 s for 10 MB of any markup tried, less than a
+plain paste of 10 MB (about 0.85 s).
+
 ### 2026-11-16, development VM, long lines (S007) (release build, offscreen, Qt 6.12.0 and 6.8.3)
 
 A file of five lines whose third line is one pattern repeated; the caret in the middle of that

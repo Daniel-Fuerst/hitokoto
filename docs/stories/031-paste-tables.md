@@ -130,6 +130,17 @@ third cell becomes
   milliseconds; the times stay, the tables shrink). Cells count over all pasted tables. While a paste converts,
   hitokoto shows the system's wait cursor. Blocking the UI for a large paste is a recorded
   exception to the brief, section 4 (ADR 0011).
+  Within these times (rework of 2026-11-20): Qt's HTML import may take half of what the cells of a
+  paste are granted, the other half is for the table. Before the import, the HTML is read once as
+  Qt reads it and the import's time estimated from what it holds; a paste whose import would take
+  longer stays plain text, as a nested table does, and Qt's import does not run. The cells are not
+  bounded: what counts is what Qt builds beyond them (the positions a span covers, elements
+  nested in each other, markup, images in one paragraph, the blocks of one list). Every sample and
+  tables of up to 50,000 cells in their markup stay well within. What only formats does not reach
+  the import: of the attributes only the spans of cells stay (and Qt's mark of its own HTML), and
+  style elements lose their style sheet. The cells' text follows the elements alone; what a sheet
+  says about spaces (`white-space`) no longer applies, as style attributes have not since
+  2026-11-10.
 
 ## Acceptance scenarios
 
@@ -205,6 +216,25 @@ third cell becomes
   block quote or list item
 - When I paste a table
 - Then the plain text is pasted as today (in a cell, as S018 writes pasted text)
+- Given the clipboard holds HTML whose import would take longer than its cells allow: a first
+  cell spanning 20,000 columns above a few rows, an element nested 2,000 deep in a cell,
+  100,000 bold words in a cell of four, or one list of 4,000 items in a cell
+- When I paste it
+- Then the plain text is pasted at once, without the wait cursor, and Qt's import does not run
+  (rework of 2026-11-20)
+
+**Scenario: formatting does not reach Qt's import**
+- Given the clipboard holds a table whose HTML has formatting that Qt's import pays for far
+  beyond the cells: a style element with a rule `b ~ span` before many spans in a cell, tables
+  whose cells differ in width, fonts whose size and colour add up to the same number, or many
+  anchor names and ids
+- When I paste it
+- Then the table is converted as the same HTML without that formatting gives it, with one import
+  and within the times of the rule "Same result at every size"
+- Given a table with a style element whose rule sets `white-space: pre` on the cells, and a line
+  break in a cell's source text
+- When I paste it
+- Then the line break is a space, as without the rule (rework of 2026-11-20)
 
 **Scenario: paste as plain text**
 - Given the clipboard holds a table from Outlook or Excel's plain text
@@ -279,6 +309,23 @@ No new visible element: the pasted table is an S018 table with its tokens. No ne
   placement.
 - UI: `tst_s031_paste_tables` for every scenario above, pasting through `QMimeData` with the
   samples from `tests/data/s031/`.
+- Rework of 2026-11-20: `S031_PasteTables` for the scan and its estimate (a grid far beyond its
+  cells, spans as tables have them, where the bound sits, nesting, elements Qt does not nest,
+  markup, more cells allowing more, style rules, images in one block, anchor names and font
+  faces, tags read as Qt reads them); `tst_s031_paste_tables` for a paste beyond the bounds and
+  for the samples and tables of up to 50,000 cells in their markup staying within. `fuzz_paste`
+  runs the scan on its input and on the input without what only formats.
+- Rework of 2026-11-20, formatting: `S031_PasteTables` for style sheets leaving before the import
+  (and a sheet the scan still meets keeping the paste plain text), the text Qt reads as a style
+  element's sheet, formats Qt compares with each other (anchor names, ids, font faces, widths,
+  font sizes and colours with the same sum), the attributes that leave and stay with the rest of
+  the HTML byte for byte, and doing so in linear time; `tst_s031_paste_tables` for a style sheet
+  not changing the cells and for each formatting staying out of the import with the table the
+  paste gives without it. `fuzz_paste` checks that only characters leave, in order, and that a
+  second pass changes nothing.
+- Rework of 2026-11-20, lists: `S031_PasteTables` for one long list staying plain text and for
+  blocks that join a list counting as its items; `tst_s031_paste_tables` for a list of 4,000
+  items and 4,000 paragraph separators in an item staying plain text without an import.
 - UI, for the rework of 2026-11-14: data with `text/markdown` before `text/plain` pasted with
   `Ctrl+V` and Paste as Plain Text in the editor and in a cell, and dropped on the editor; data
   with Markdown alone.
@@ -301,3 +348,86 @@ No new visible element: the pasted table is an S018 table with its tokens. No ne
   content S031 is for, not only the fast path for plain cells. `s031_paste_no_table_5000_lines_ms`
   measures a paste of 5,000 lines of code with a span per token, which has HTML but no table (O9);
   it is compared with main and has no budget of its own.
+
+## Rework on 2026-11-20
+
+Branch `agents/s031-paste-within-bounds`, from main 98ef4fe.
+
+- A paste could block the window for minutes with few cells. Qt's HTML import builds more than
+  the cells: a first cell spanning 20,000 columns above 2,000 rows (58 KB, 4,002 cells) made it
+  build a table of 40 million positions, and 2 MB of nested `<div>` in a cell made it check every
+  element against all those around it. Both were still running after 130 s with Qt 6.8.3 and
+  6.12.0; the program had to be ended and what was unsaved was lost. Measured since: the same
+  holds for rows without cells below a wide row, cells spanning many rows, many images in one
+  cell, many anchor names or font faces, style elements with many rules, and markup far beyond
+  the cells (`docs/performance.md`, 2026-11-20).
+- The scan before the import (`core::scanHtml`) now reads the HTML without style attributes, which
+  is what Qt imports, as Qt's parser reads it (the same in Qt 6.8.3 and 6.12.0): every `<` outside
+  a comment is a tag, attributes as Qt splits them, the elements Qt keeps open and those it
+  closes or inserts itself. From what it counts it estimates the import's time
+  (`core::kPasteHtmlBounds`: the cost per element by kind, per character of attributes, per
+  element around each one, per position of a table's grid that no cell starts on, per merged
+  position, per style rule and declaration, per character before an image in its block, per
+  earlier anchor name or font face; measured with both Qt versions). The import may take half of
+  what the rule "Same result at every size" grants the paste's cells; above that the paste stays
+  plain text, as a nested table does. `HtmlTables::OverBudget` says so.
+- The cells are not bounded. Every sample and tables of 40 x 10 to 500 x 100 cells in the markup
+  of the samples stay well within (59 % of what the cells allow with Outlook's markup, 30 % with
+  Excel's, in the estimate), and a whole paste stays linear in the cells (Excel's markup 250,000
+  cells in 13.1 s, 53 µs each). Text, lines and other content of the cells are not counted:
+  they cost Qt less per character than a plain paste of them. A cell of 4,089 lines takes 90 ms,
+  as on main, in the table's layout of its lines.
+- Elements nested more than 256 deep stay plain text whatever they cost; the samples nest at most
+  10 deep. An entity in a tag or attribute name, which no program writes and Qt would decode,
+  keeps a paste plain text too.
+- Pastes just over a bound stay plain text in 0.3 to 1 ms; the two above take 0 and 5 ms instead
+  of more than 130 s. Pastes just under a bound took 10 to 40 ms until the table showed (11 cells
+  spanning 1,000 rows in a table of 2,011 cells: 80 ms). The scan takes 37 ms for 50,000 cells in
+  Outlook's markup (21 MB), at most 0.32 s for 10 MB of any markup tried.
+- Drag and drop, Paste as Plain Text and a paste into a cell never reach Qt's import, as before;
+  `readPastedHtml` is the only place hitokoto hands HTML to it.
+- Formatting (second part of the rework, before the merge). Three more costs of Qt's import grew
+  faster than anything the estimate counted, all from formatting a pasted table does not keep: a
+  style element with a rule `b ~ span` made Qt check each span against every sibling before it,
+  finding each with a search of their parent (8,785 empty spans in one cell of a row of ten, 62 KB:
+  30 s); tables whose cells differ in width (also in percent, also th) are stored with a list of
+  column widths whose hash is its type, so each table was compared with all before it (10,000 tables
+  of four cells: 7 to 8 s, where the import may take 2.5 s); and the hash of a format is the sum of
+  its properties, so fonts whose size and colour add up to the same number all shared one hash
+  (8,000 cells with eight such fonts: 46 to 58 s). Other selectors (`+`, child, descendant,
+  attribute selectors, `:first-child`, `:last-child`, `* ~ *`) stayed linear, a `width` of `col` or
+  `table` costs nothing extra; measured with Qt 6.8.3 and 6.12.0 (`docs/performance.md`, 2026-11-20,
+  formatting).
+- Before the scan, `core::htmlWithoutFormatting` writes the HTML as Qt imports it, read with the
+  same reading as the scan: of the attributes only `colspan` and `rowspan` of td and th stay, and
+  `name` and `content` of meta, Qt's mark of its own HTML, which changes how it reads spaces; a
+  style element loses its text up to the next tag, across comments, which is what Qt reads as its
+  sheet at the next end tag. Text, comments, end tags and the kept attributes stay byte for byte. It
+  replaces `core::htmlWithoutStyles`, whose own reading of quotes could differ from Qt's. The
+  estimate no longer counts style rules and declarations or anchor names and font faces; a sheet the
+  scan still meets keeps the paste plain text.
+- The results stay: Qt's import of every sample, of tables in their markup and of 300 random mixes
+  of elements, attributes and style rules gives the same blocks with and without what only formats,
+  with Qt 6.8.3 and 6.12.0, and the samples give the same Markdown in the editor. The one difference
+  is a sheet that sets `white-space` (a line break in a cell's source then made a line of the cell;
+  now it is a space), as for style attributes since 2026-11-10; Qt's import ignores `display: none`,
+  so no text appears or disappears. Pastes that the estimate of a sheet kept plain text before now
+  convert (36 of the 300 mixes).
+- The three pastes above now take 10 to 14 ms (the spans; the table of one row stays plain text), as
+  long as tables with one width (the widths) and 0.2 s instead of 46 to 58 s (the fonts), Qt's
+  import alone. The samples' markup costs 55 % (Outlook) and 26 % (Excel) of what the cells allow in
+  the estimate; Outlook's import took up to 62 % of its estimate. Of 600 random mixes none that the
+  scan lets through imports longer than allowed (at most 65 %).
+- Lists (third part of the rework, before the merge). Qt marks every block of a list again each time
+  a block joins it (`QTextBlockGroup::blockInserted`, Qt 6.8.3 and 6.12.0), so one list costs its
+  import the square of its blocks: 4,000 items in a cell took 0.4 to 0.6 s, 16,000 items 7 to 11 s,
+  a table of 2,000 cells with one list of 15,908 items (181 KB) 10.5 s, while the estimate counted
+  each item alike. A block also joins the list of the item it starts in when a paragraph separator,
+  or a line break in a pre, starts it, as a character or an entity. Many short lists cost nothing
+  extra, nor do line breaks outside a pre. The scan now counts these blocks from the outermost open
+  list on, each at 100 ns per block that joined before it (measured: about 60 ns), so that a block
+  counts whichever list Qt adds it to. The largest list it lets through is about 650 blocks in a
+  table of 20 cells, 1,350 in 2,000, 2,750 in 8,000 and 6,950 in 50,000; their import took at most
+  66 % of what the cells allow, and the list of 15,908 items stays plain text in 2 ms. No sample, no
+  table in their markup and none of 900 random mixes changes its verdict, so what converts stays the
+  same; the import itself is unchanged.

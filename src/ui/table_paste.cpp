@@ -92,9 +92,7 @@ void readFrame(QTextFrame* frame, std::vector<core::PastedPart>& parts) {
 std::vector<core::PastedPart> readPastedHtml(const QString& html) {
     ++imports;
     NoResourceDocument document;
-    // Without its style attributes, Qt imports Outlook's markup in half the time; the tables and
-    // their text stay the same (S031 review (code) O10).
-    document.setHtml(toQString(core::htmlWithoutStyles(view(html))));
+    document.setHtml(html);
     std::vector<core::PastedPart> parts;
     readFrame(document.rootFrame(), parts);
     return parts;
