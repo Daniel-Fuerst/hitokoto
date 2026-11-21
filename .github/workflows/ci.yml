@@ -87,6 +87,28 @@ jobs:
         run: cmake --preset ci -DHITOKOTO_WARNINGS_AS_ERRORS=${{ matrix.werror }}
       - name: Build
         run: cmake --build --preset ci --parallel
+      # The checks of cmake/HitokotoCompilerOptions.cmake reach the program: libstdc++'s assertions
+      # call std::__glibcxx_assert_fail (Linux); Control Flow Guard is a flag of the executable
+      # (Windows). macOS uses libc++, which ignores _GLIBCXX_ASSERTIONS.
+      - name: Checks in the program (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          if ! nm -D --undefined-only build/ci/src/app/hitokoto | grep -q __glibcxx_assert_fail; then
+            echo "hitokoto is built without _GLIBCXX_ASSERTIONS" >&2
+            exit 1
+          fi
+      - name: Checks in the program (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $dumpbin = & $vswhere -latest -products * -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe' |
+            Select-Object -First 1
+          $exe = Get-ChildItem -Path build/ci/src/app -Recurse -Filter hitokoto.exe | Select-Object -First 1
+          if (-not $dumpbin -or -not $exe) { throw "dumpbin ($dumpbin) or hitokoto.exe ($exe) not found" }
+          $headers = & $dumpbin /headers $exe.FullName | Out-String
+          & $dumpbin /loadconfig $exe.FullName | Select-String 'Guard'
+          if ($headers -notmatch 'Control Flow Guard') { throw "$($exe.FullName) is built without Control Flow Guard" }
       - name: Test
         run: ctest --preset ci
         env:
