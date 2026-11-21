@@ -60,6 +60,9 @@ constexpr auto kRecord =
 constexpr int kRecordClose = 26;
 constexpr int kRecordBody = 30;
 
+/// Four properties of different types and one body line.
+constexpr auto kSimple = "---\ntitle: A note\ncount: 5\ndone: true\ntags: [one, two]\n---\nbody line\n";
+
 QAccessibleInterface* accessible(QWidget* view) {
     return QAccessible::queryAccessibleInterface(view);
 }
@@ -452,6 +455,62 @@ private slots:
         f.settle();
         QCOMPARE(editor->document()->findBlockByNumber(1).text(), QStringLiteral("\"heading\": \"first\""));
         expectConcealed(editor, 2, "after renaming a property");
+    }
+
+    // The Return that commits a field ends there; it does not also break the
+    // line at the text caret, wherever that is.
+    void aReturnInAFieldChangesNothingButTheProperty_data() {
+        QTest::addColumn<bool>("caretAtTheStart");
+        QTest::newRow("caret in a body line") << false;
+        QTest::newRow("caret at the start of the document") << true;
+    }
+    void aReturnInAFieldChangesNothingButTheProperty() {
+        QFETCH(bool, caretAtTheStart);
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("note.md"), kSimple)));
+        f.placeCaret(6, 4);
+        f.settle();
+        auto* editor = f.editor();
+        const QString expected =
+            editor->toPlainText().replace(QStringLiteral("count: 5"), QStringLiteral("\"count\": 7"));
+        if (caretAtTheStart) {
+            QTextCursor start(editor->document());
+            editor->setTextCursor(start);
+        }
+        auto* view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(view != nullptr);
+        clickBlock(view, onValue(view, 1));
+        auto* edit = inlineEditor(view);
+        QVERIFY(edit != nullptr);
+        edit->selectAll();
+        test::keyClicks(edit, QStringLiteral("7"));
+        test::keyClick(edit, Qt::Key_Return);
+        f.settle();
+        QCOMPARE(editor->toPlainText(), expected);
+        expectConcealed(editor, 5, "after a Return in a field");
+    }
+
+    // While the block has the keyboard focus, keys it does not use change
+    // nothing; before, they reached the editor and changed the body at the text caret.
+    void keysWhileTheBlockHasTheFocusChangeNothing() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("note.md"), kSimple)));
+        f.placeCaret(6, 4);
+        f.settle();
+        auto* editor = f.editor();
+        auto* view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(view != nullptr);
+        clickBlock(view, onValue(view, 2));  // the checkbox
+        f.settle();
+        QCOMPARE(editor->document()->findBlockByNumber(3).text(), QStringLiteral("\"done\": false"));
+        QCOMPARE(QApplication::focusWidget(), view);
+        const QString before = editor->toPlainText();
+        test::keyClicks(view, QStringLiteral("xy"));
+        test::keyClick(view, Qt::Key_Backspace);
+        test::keyClick(view, Qt::Key_Delete);
+        test::keyClick(view, Qt::Key_Return);
+        f.settle();
+        QCOMPARE(editor->toPlainText(), before);
     }
 
     // Review O6: selections and held mouse buttons keep the properties block in place.
