@@ -38,6 +38,17 @@ trap 'rm -rf "$work"' EXIT
 build="$work/build"
 stage="$work/stage"
 
+# Debian's build flags, as debhelper passes them: fortify, stack protector, stack clash and branch
+# protection, relro, and with hardening=+all also bindnow. CMake reads CXXFLAGS and LDFLAGS from
+# the environment when it configures, but not CPPFLAGS, so those join CXXFLAGS. CMake's Release
+# flags (-O3 -DNDEBUG) come after them on the command line.
+export DEB_BUILD_MAINT_OPTIONS=hardening=+all
+CXXFLAGS="$(dpkg-buildflags --get CXXFLAGS) $(dpkg-buildflags --get CPPFLAGS)"
+LDFLAGS="$(dpkg-buildflags --get LDFLAGS)"
+export CXXFLAGS LDFLAGS
+echo "CXXFLAGS=$CXXFLAGS"
+echo "LDFLAGS=$LDFLAGS"
+
 # Decision 4: Release, the version of the tag, tests on, benchmarks and fuzzers off.
 cmake -S "$src" -B "$build" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
@@ -113,13 +124,19 @@ deb="$out/hitokoto_${version}-1_amd64.deb"
 dpkg-deb --root-owner-group -Zxz --build "$stage" "$deb"
 dpkg-deb --info "$deb"
 
-# Decision 5: no lintian error; the warnings go to lintian.txt for the job summary.
+# Decision 5: no lintian error; the warnings go to lintian.txt for the job summary. With -I lintian
+# also names the informational tags, among them a missing hardening feature (hardening-no-*), which
+# fails the build as well.
 set +e
-lintian --fail-on error "$deb" > "$out/lintian.txt" 2>&1
+lintian -I --fail-on error "$deb" > "$out/lintian.txt" 2>&1
 status=$?
 set -e
 cat "$out/lintian.txt"
 if [ "$status" -ne 0 ]; then
     echo "lintian reports an error (exit $status)" >&2
+    exit 1
+fi
+if grep -q ' hardening-' "$out/lintian.txt"; then
+    echo "lintian reports a missing hardening feature" >&2
     exit 1
 fi

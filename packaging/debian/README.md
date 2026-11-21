@@ -79,8 +79,9 @@ beside the AUR jobs and independent of them:
    releases nothing, and a missed run is caught up by the next one.
 2. `debian-package`, one job per version: generates the changelog (from 0.3.0 on, one entry per
    version tag, the merged pull requests with number and title) and the release notes from Git,
-   builds and tests the source of the tag in `debian:trixie` with this recipe, assembles the
-   package, runs `lintian` (no error allowed), then installs, starts and purges the package in a
+   builds and tests the source of the tag in `debian:trixie` with this recipe and Debian's build
+   flags (`dpkg-buildflags`, `hardening=+all`), assembles the package, runs `lintian -I` (no error
+   and no missing hardening feature allowed), then installs, starts and purges the package in a
    fresh `debian:trixie`. A failing version leaves the others alone.
 3. `debian-release`, the only job that may write: for each checked package it deletes a draft of
    the tag left by a failed run, creates the release as a draft with the package and

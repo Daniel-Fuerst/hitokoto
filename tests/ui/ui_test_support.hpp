@@ -25,6 +25,14 @@
 
 namespace hitokoto::test {
 
+/// Factor for the time limits inside the UI tests. A build with sanitizers (HITOKOTO_SANITIZE, the
+/// CI's job ui-sanitizers) runs several times slower; what a limit guards is the same there.
+#ifdef HITOKOTO_TESTS_UNDER_SANITIZERS
+inline constexpr int kTimeScale = 4;
+#else
+inline constexpr int kTimeScale = 1;
+#endif
+
 inline const core::ElementRegistry& registry() {
     static const core::ElementRegistry r = core::ElementRegistry::withBuiltins();
     return r;

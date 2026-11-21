@@ -169,7 +169,7 @@ elseif("${CASE}" STREQUAL "AReleaseWithoutAnyMsiIsNotStopped")
     # Review (code) O3: when no Windows check passed, the download of windows-* finds nothing; a
     # version skipped for Windows is still released. The release step checks every file it needs.
     list(JOIN job_debian-release "\n" release)
-    if(NOT release MATCHES "\n      - uses: actions/download-artifact@v8\n        if: [^\n]*\n        continue-on-error: true\n        with:\n          pattern: hitokoto-\\*-x64.msi\n")
+    if(NOT release MATCHES "\n      - uses: actions/download-artifact@[0-9a-f]+ # v8\\.[0-9.]+\n        if: [^\n]*\n        continue-on-error: true\n        with:\n          pattern: hitokoto-\\*-x64.msi\n")
         message(FATAL_ERROR "the download of windows-* in debian-release may stop the release")
     endif()
 
