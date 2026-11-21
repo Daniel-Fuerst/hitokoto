@@ -295,3 +295,21 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
 - **Open:** whether the two link cases should follow CommonMark (a line that is a link today
   would become text); whether emphasis should resolve delimiter runs as CommonMark does (split
   runs, runs of four and more), and what that means for the markers the active line reveals.
+
+## Cutting the blank line below a table
+
+- **Seen:** 2026-11-15, in the rework of S028, and checked again on main `c8a167f` on 2026-11-21
+  while writing S040: lines of a table are selected (in the source view, `Ctrl+Shift+M`) together
+  with the blank line below the table and cut or deleted. The paragraph after the table then shows
+  as a row of the table; a fresh window with the same text shows it as a paragraph, because opening
+  adds a blank line before it and marks the document modified (S018, "files from other editors").
+- **GFM:** a line without a pipe directly below a table's rows is another row of the table; only a
+  blank line or the start of another block ends it (`| a | b |` / `|---|---|` / `middle` gives a
+  table whose body row holds `middle` and an empty cell; checked with cmark-gfm 0.29.0.gfm).
+- **hitokoto:** typing below a table adds a blank line first (S018, "writing below a table"), and
+  opening a file adds one (S018, "files from other editors"); cutting or deleting the blank line
+  does neither, so the line below joins the table. The table view shows that row with the right
+  height.
+- **Open:** whether cutting or deleting the blank line below a table should keep the next line a
+  paragraph (a blank line added in the same undo step, as typing does) or join it to the table as
+  GFM reads the text; what undo and the source view show then.

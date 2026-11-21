@@ -51,6 +51,8 @@ story ID (see "Conventions").
 | 42 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
 | 43 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |
 | 44 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | Open |
+| 45 | [S040](040-table-selection.md) | Selecting cells, rows and columns in a table | S018, S019, S028, S031 | L | Draft |
+| 46 | [S041](041-table-copy-paste.md) | Copying and pasting table cells as Markdown | S031, S040 | M | Draft |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 
