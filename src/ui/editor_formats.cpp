@@ -65,7 +65,7 @@ QTextCharFormat zeroWidthFormat(const QTextCharFormat& base, QStringView text) {
     if (text.size() > 1) {
         // Qt has no invisible characters; cancel the 1 px glyph advances across this range.
         QFont font = base.font();
-        font.setPixelSize(1);
+        font.setPixelSize(1);  // theme-lint: allow (concealment mechanism, not styling)
         const QFontMetricsF metrics(font);
         format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
         format.setFontLetterSpacing(-metrics.horizontalAdvance(text.toString()) / static_cast<qreal>(text.size() - 1));
@@ -264,7 +264,7 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
             !isInlineCodeDelimiter(render, start)) {
             const auto idx = static_cast<std::size_t>(
                 render.headingLevel >= 1 && render.headingLevel <= 6 ? render.headingLevel : 0);
-            if (hidden->mode == core::HideMode::ZeroWidth) {
+            if (hidden->mode == core::HideMode::ZeroWidth && text.size() >= static_cast<qsizetype>(end)) {
                 const QTextCharFormat fmt = zeroWidthFormat(heading_[idx], text.sliced(start, end - start));
                 out.append({static_cast<int>(start), static_cast<int>(end - start), fmt});
             } else {
@@ -360,7 +360,7 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
             if (hidden->mode == core::HideMode::Collapse) {
                 format.clearProperty(QTextFormat::FontPointSize);
                 format.setProperty(QTextFormat::FontPixelSize, 1);
-            } else if (hidden->mode == core::HideMode::ZeroWidth) {
+            } else if (hidden->mode == core::HideMode::ZeroWidth && text.size() >= static_cast<qsizetype>(end)) {
                 format = zeroWidthFormat(format, text.sliced(start, end - start));
             }
         }
