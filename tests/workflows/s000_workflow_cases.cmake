@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# S000: lints over every workflow file: actions come from a fixed commit. Run with cmake -P; the
-# files are read as text (no YAML parser).
+# S000: lints over every workflow file: actions come from a fixed commit, and the token of a job
+# has only the rights the job asks for. Run with cmake -P; the files are read as text (no YAML
+# parser).
 #   -DCASE=<name>            the case below
 #   -DWORKFLOWS_DIR=<dir>    .github/workflows
 #   -DSOURCE_DIR=<dir>       the source tree (fuzz/CMakeLists.txt)
@@ -118,6 +119,60 @@ elseif("${CASE}" STREQUAL "AqtinstallIsPinnedToOneVersion")
     if(count EQUAL 0)
         message(FATAL_ERROR "no call of install-qt-action found: the lint reads nothing")
     endif()
+
+elseif("${CASE}" STREQUAL "EveryWorkflowStartsWithoutPermissions")
+    # The token of a job has no right the job does not ask for, whatever the repository's default.
+    foreach(name IN LISTS workflows)
+        read_workflow("${name}" lines)
+        set(seen_permissions FALSE)
+        foreach(line IN LISTS lines)
+            if(line MATCHES "^permissions:(.*)$")
+                string(STRIP "${CMAKE_MATCH_1}" value)
+                expect_eq("${value}" "{}" "${name}: top-level permissions")
+                set(seen_permissions TRUE)
+            elseif(line MATCHES "^jobs:")
+                break()
+            endif()
+        endforeach()
+        if(NOT seen_permissions)
+            message(FATAL_ERROR "${name} does not set 'permissions: {}' before its jobs")
+        endif()
+    endforeach()
+
+elseif("${CASE}" STREQUAL "EveryCiJobAsksForItsPermissions")
+    read_workflow(ci.yml ci)
+    jobs("${ci}" job)
+    foreach(id IN LISTS job_ids)
+        set(found FALSE)
+        foreach(line IN LISTS job_${id})
+            if(line MATCHES "^    permissions:")
+                set(found TRUE)
+                break()
+            endif()
+        endforeach()
+        if(NOT found)
+            message(FATAL_ERROR "ci.yml: the job ${id} does not set its permissions")
+        endif()
+    endforeach()
+
+elseif("${CASE}" STREQUAL "OnlyTheStepThatCallsGhHasTheToken")
+    # A token in the env of a job reaches every step, actions and the code under test included.
+    foreach(name IN LISTS workflows)
+        read_workflow("${name}" lines)
+        jobs("${lines}" job)
+        foreach(id IN LISTS job_ids)
+            set(in_job_env FALSE)
+            foreach(line IN LISTS job_${id})
+                if(line MATCHES "^    env:")
+                    set(in_job_env TRUE)
+                elseif(line MATCHES "^    [A-Za-z_-]+:")
+                    set(in_job_env FALSE)
+                elseif(in_job_env AND line MATCHES "\\$\\{\\{ *(github\\.token|secrets\\.)")
+                    message(FATAL_ERROR "${name}: the job ${id} gives a token to all its steps: '${line}'")
+                endif()
+            endforeach()
+        endforeach()
+    endforeach()
 
 else()
     message(FATAL_ERROR "unknown case ${CASE}")
