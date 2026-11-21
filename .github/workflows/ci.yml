@@ -24,6 +24,10 @@ concurrency:
 # Every action comes from a full commit, its version in a comment beside it: a tag can be moved to
 # other code, a commit cannot (lint S000_EveryActionIsPinnedToACommit). To update an action, take
 # the commit of its new release tag (git ls-remote --tags) and change both.
+
+# No job has a right it does not ask for, whatever the repository's default for the token.
+permissions: {}
+
 env:
   QT_VERSION: "6.12.0"
   # aqtinstall 3.3.1.dev92: master at the merge of pull request 1000 (2026-03-24)
@@ -33,6 +37,8 @@ jobs:
   format:
     name: Format (clang-format)
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check formatting
@@ -41,6 +47,8 @@ jobs:
   core-sanitizers:
     name: Core with ASan/UBSan, without Qt (layering check)
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Configure
@@ -53,6 +61,8 @@ jobs:
   fuzz:
     name: Fuzz core (60 s per target)
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Configure
@@ -68,6 +78,8 @@ jobs:
   build-test:
     name: Build and test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -101,6 +113,8 @@ jobs:
   tidy:
     name: Lint (clang-tidy)
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Linux packages
@@ -155,7 +169,6 @@ jobs:
     env:
       GATE: build/bench/bench/gate/hitokoto-bench-gate
       BENCH: build/bench/bench/hitokoto-bench
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -163,6 +176,8 @@ jobs:
       - name: Kind of run and base commit
         id: kind
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}  # the labels of the pull request (gh api), this step only
         run: |
           if [ "${{ github.event_name }}" != "pull_request" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
             echo "kind=main" >> "$GITHUB_OUTPUT"
