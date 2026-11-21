@@ -163,6 +163,10 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
         activeThemePath_ = entry.builtinScheme.has_value() ? QString() : QFileInfo(entry.path).absoluteFilePath();
         emit themeEntrySelected(entry);
     });
+    connect(settingsMenu_, &SettingsMenu::smoothScrollingChanged, this, [this](bool on) {
+        setSmoothScrolling(on);
+        emit smoothScrollingChanged(on);
+    });
     positionToolbar();
 }
 
@@ -488,6 +492,7 @@ void EditorWidget::setThemeConfigDir(const QString& dir) {
         const core::SettingsLoadResult loaded = core::loadSettingsFile(std::filesystem::path(cfgPath.toStdU16String()));
         setFrontMatterAsProperties(loaded.settings.frontMatterAsProperties);
         setSmoothScrolling(loaded.settings.smoothScrolling);
+        settingsMenu_->setSmoothScrolling(loaded.settings.smoothScrolling);
         emit settingsLoaded(loaded.settings);
         if (!loaded.diagnostics.empty()) {
             emit settingsProblemsFound(cfgPath, ThemeManager::formatSettingsDiagnostics(loaded));

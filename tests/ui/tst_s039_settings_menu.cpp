@@ -6,12 +6,15 @@
 #include "settings_menu.hpp"
 #include "ui_test_support.hpp"
 
+#include <QAbstractButton>
 #include <QApplication>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QFont>
+#include <QFrame>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPalette>
@@ -63,6 +66,39 @@ bool pickTheme(test::Fixture& f, const QString& name) {
 class tst_s039_settings_menu : public QObject {
     Q_OBJECT
 private slots:
+    void feelCategoryContainsReusableSmoothScrollingToggle() {
+        test::Fixture f;
+        f.editor()->setThemeConfigDir(f.dir.path());
+        QVERIFY(f.open(f.writeFile(QStringLiteral("notes.md"), "one\ntwo\nthree")));
+        f.settle();
+
+        auto* settingsBtn = toolbarButton(f.editor(), "openSettingsButton");
+        QVERIFY(settingsBtn != nullptr);
+        QTest::mouseClick(settingsBtn, Qt::LeftButton);
+        f.settle();
+
+        auto* feelLabel = f.editor()->settingsMenu()->findChild<QLabel*>(QStringLiteral("feelLabel"));
+        QVERIFY(feelLabel != nullptr);
+        QCOMPARE(feelLabel->text(), QStringLiteral("Feel"));
+        QVERIFY(feelLabel->font().weight() >= QFont::DemiBold);
+        QVERIFY(f.editor()->settingsMenu()->findChild<QFrame*>(QStringLiteral("feelSectionRule")) != nullptr);
+        QVERIFY(f.editor()->settingsMenu()->findChild<QFrame*>(QStringLiteral("appearanceSectionRule")) != nullptr);
+
+        auto* toggle = f.editor()->settingsMenu()->findChild<QAbstractButton*>(QStringLiteral("smoothScrollingToggle"));
+        QVERIFY(toggle != nullptr);
+        QVERIFY(toggle->isCheckable());
+        QCOMPARE(toggle->isChecked(), f.editor()->isSmoothScrollingEnabled());
+
+        QTest::mouseClick(toggle, Qt::LeftButton);
+        f.settle();
+        QVERIFY(!toggle->isChecked());
+        QVERIFY(!f.editor()->isSmoothScrollingEnabled());
+
+        const core::SettingsLoadResult loaded = core::loadSettingsFile(
+            std::filesystem::path(f.dir.filePath(QStringLiteral("config.toml")).toStdU16String()));
+        QVERIFY(!loaded.settings.smoothScrolling);
+    }
+
     void settingsButtonOpensAndClosesSettingsMenuWithDebugInfo() {
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("notes.md"), "one\ntwo\nthree")));

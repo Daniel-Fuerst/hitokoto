@@ -638,6 +638,127 @@ std::optional<IoError> updateThemeSettingInFile(const std::filesystem::path& pat
     return writeFileAtomically(path, updated.source);
 }
 
+std::optional<IoError> updateEditorBoolSettingInFile(const std::filesystem::path& path, std::string_view key,
+                                                     bool value) {
+    if (path.empty()) {
+        return IoError{"settings path is empty"};
+    }
+    if (key != "smooth-scrolling" && key != "front-matter-as-properties" && key != "report-blank-lines-added") {
+        return IoError{"unknown editor setting"};
+    }
+
+    const ReadResult read = readFile(path);
+    std::string source;
+    if (read.bytes) {
+        source = *read.bytes;
+    } else if (std::filesystem::exists(path) && read.error) {
+        return *read.error;
+    }
+
+    const std::string_view lineEnd = source.find("\r\n") != std::string_view::npos ? "\r\n" : "\n";
+    const std::string valueText = value ? "true" : "false";
+    bool inEditor = false;
+    bool sawEditor = false;
+    bool found = false;
+    std::size_t editorEnd = source.size();
+    std::size_t pos = 0;
+    while (pos <= source.size()) {
+        const std::size_t nl = source.find('\n', pos);
+        const std::size_t lineFinish = nl == std::string_view::npos ? source.size() : nl;
+        std::string line = source.substr(pos, lineFinish - pos);
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        const std::size_t first = line.find_first_not_of(" \t");
+        if (first != std::string::npos && line[first] == '[') {
+            const std::size_t close = line.find(']', first);
+            if (close != std::string::npos) {
+                const std::string name = line.substr(first + 1, close - first - 1);
+                inEditor = (name == "editor");
+                if (inEditor) {
+                    sawEditor = true;
+                    editorEnd = source.size();
+                } else if (sawEditor && editorEnd == source.size()) {
+                    editorEnd = pos;
+                }
+            }
+        } else if (inEditor && first != std::string::npos) {
+            const std::size_t equals = line.find('=');
+            if (equals != std::string::npos) {
+                std::string lineKey = line.substr(first, equals - first);
+                while (!lineKey.empty() && (lineKey.back() == ' ' || lineKey.back() == '\t')) {
+                    lineKey.pop_back();
+                }
+                if (lineKey == key) {
+                    const std::size_t afterEquals = equals + 1;
+                    std::size_t comment = line.find('#', afterEquals);
+                    std::size_t valueEnd = comment == std::string::npos ? line.size() : comment;
+                    while (valueEnd > afterEquals && (line[valueEnd - 1] == ' ' || line[valueEnd - 1] == '\t')) {
+                        --valueEnd;
+                    }
+                    std::size_t valueStart = afterEquals;
+                    while (valueStart < valueEnd && (line[valueStart] == ' ' || line[valueStart] == '\t')) {
+                        ++valueStart;
+                    }
+                    const std::string leading = line.substr(0, afterEquals);
+                    const std::string separator =
+                        valueStart > afterEquals ? std::string(valueStart - afterEquals, ' ') : std::string(" ");
+                    const std::string suffix = comment == std::string::npos ? std::string() : line.substr(comment);
+                    const std::string changedLine =
+                        leading + separator + valueText + (comment == std::string::npos ? std::string() : " " + suffix);
+                    const std::size_t replaceLength = (nl == std::string::npos ? lineFinish - pos : nl - pos + 1);
+                    const std::string replacement =
+                        changedLine + (nl == std::string::npos ? std::string() : std::string(lineEnd));
+                    source.replace(pos, replaceLength, replacement);
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (nl == std::string::npos) {
+            break;
+        }
+        pos = nl + 1;
+    }
+
+    if (!found) {
+        const std::string entry = std::string(key) + " = " + valueText + std::string(lineEnd);
+        if (sawEditor) {
+            if (editorEnd == source.size()) {
+                if (!source.empty() && source.back() != '\n' && source.back() != '\r') {
+                    source += lineEnd;
+                }
+                source += entry;
+            } else {
+                source.insert(editorEnd, entry);
+            }
+        } else {
+            if (!source.empty() && source.back() != '\n' && source.back() != '\r') {
+                source += lineEnd;
+            }
+            if (!source.empty()) {
+                source += lineEnd;
+            }
+            source += "[editor]" + std::string(lineEnd);
+            source += entry;
+        }
+    }
+
+    const SettingsLoadResult changed = parseSettings(source);
+    bool parsedValue = false;
+    if (key == "smooth-scrolling") {
+        parsedValue = changed.settings.smoothScrolling;
+    } else if (key == "front-matter-as-properties") {
+        parsedValue = changed.settings.frontMatterAsProperties;
+    } else {
+        parsedValue = changed.settings.reportBlankLinesAdded;
+    }
+    if (parsedValue != value) {
+        return IoError{"changing the setting alone would not preserve the other settings"};
+    }
+    return writeFileAtomically(path, source);
+}
+
 std::optional<ColorScheme> builtinSchemeFromSetting(std::string_view themeSetting) {
     const std::string lower = toLowerAsciiString(trimBlanks(themeSetting));
     if (lower == "light" || lower == "hitokoto light") {

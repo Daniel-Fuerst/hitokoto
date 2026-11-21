@@ -119,6 +119,24 @@ bool ThemeManager::saveSelectedTheme(const QString& configDir, const ThemeEntry&
     return true;
 }
 
+bool ThemeManager::saveEditorBoolSetting(const QString& configDir, std::string_view key, bool value, QString* error) {
+    const QString cfgPath = configFilePath(configDir);
+    if (cfgPath.isEmpty()) {
+        if (error != nullptr) {
+            *error = QStringLiteral("there is no configuration folder");
+        }
+        return false;
+    }
+    const auto err = core::updateEditorBoolSettingInFile(std::filesystem::path(cfgPath.toStdU16String()), key, value);
+    if (err.has_value()) {
+        if (error != nullptr) {
+            *error = QString::fromStdString(err->message);
+        }
+        return false;
+    }
+    return true;
+}
+
 std::optional<ThemeEntry> ThemeManager::loadSavedThemeEntry(const QString& configDir) {
     const QString cfgPath = configFilePath(configDir);
     if (cfgPath.isEmpty() || !QFileInfo::exists(cfgPath)) {
