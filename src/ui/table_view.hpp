@@ -31,12 +31,16 @@ public:
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
+    void inputMethodEvent(QInputMethodEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
     void insertFromMimeData(const QMimeData* source) override;
     void scrollContentsBy(int dx, int dy) override;
     void wheelEvent(QWheelEvent* event) override;
 
 private:
+    /// keyPressEvent for a key whose text may enter the cell as it is (text_input.hpp).
+    void pressKey(QKeyEvent* event);
+
     TableView* view_;
 };
 

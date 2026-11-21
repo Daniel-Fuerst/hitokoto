@@ -2,12 +2,97 @@
 // S004: save and save-as write the text byte for byte, through the real editor widget.
 #include "ui_test_support.hpp"
 
+#include "hitokoto/core/markdown.hpp"
+
+#include <QClipboard>
 #include <QDir>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QInputMethodEvent>
+#include <QMimeData>
+#include <QPlainTextEdit>
+#include <QTableView>
 
 #include <new>
 #include <random>
+#include <type_traits>
 
 using namespace hitokoto;
+
+namespace {
+
+// Rework of 2026-11-21: half of a character (a lone surrogate) does not enter the text.
+const QString kHigh(QChar(0xD83D));  // the first half of U+1F600
+const QString kLow(QChar(0xDE00));   // its second half
+const QString kFffd(QChar(0xFFFD));
+const QString kEmoji = kHigh + kLow;  // U+1F600 as a whole
+
+/// Whether `text` holds half of a character, which UTF-8 cannot hold.
+bool holdsHalf(const QString& text) {
+    for (qsizetype i = 0; i < text.size(); ++i) {
+        if (text.at(i).isHighSurrogate() && i + 1 < text.size() && text.at(i + 1).isLowSurrogate()) {
+            ++i;
+        } else if (text.at(i).isSurrogate()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// Opens `markdown` from a file and waits until it is styled.
+bool openText(test::Fixture& f, const QString& markdown) {
+    if (!f.open(f.writeFile(QStringLiteral("doc.md"), markdown.toUtf8()))) {
+        return false;
+    }
+    f.settle();
+    return true;
+}
+
+/// Saves to a new file; true when it was written.
+bool saves(test::Fixture& f) {
+    QSignalSpy done(f.session(), &ui::DocumentSession::saveFinished);
+    QSignalSpy failed(f.session(), &ui::DocumentSession::saveFailed);
+    f.session()->save(f.dir.filePath(QStringLiteral("saved.md")));
+    return QTest::qWaitFor([&] { return !done.isEmpty() || !failed.isEmpty(); }, 30000) && !done.isEmpty();
+}
+
+/// The text with the caret in the second cell of the body row of `| a | b |`, with the cell's
+/// editor open and its text selected; the editor, or nullptr.
+QPlainTextEdit* openCell(test::Fixture& f) {
+    QTableView* view = f.editor()->tableViewAt(0);
+    if (view == nullptr) {
+        return nullptr;
+    }
+    view->setCurrentIndex(view->model()->index(1, 0));
+    view->edit(view->model()->index(1, 0));
+    QCoreApplication::processEvents();
+    auto* cell = qobject_cast<QPlainTextEdit*>(QApplication::focusWidget());
+    if (cell != nullptr) {
+        cell->selectAll();
+    }
+    return cell;
+}
+
+void commitInputMethod(QWidget* target, const QString& commit) {
+    QInputMethodEvent event;
+    event.setCommitString(commit);
+    QCoreApplication::sendEvent(target, &event);
+    QCoreApplication::processEvents();
+}
+
+/// A drag event at `at`: Qt 6.12 adds constructors taking QPointF and deprecates those taking
+/// QPoint; Qt 6.8 has only the latter (as in tst_s031_paste_tables).
+template <typename Event>
+Event dragEvent(QPointF at, const QMimeData* data) {
+    if constexpr (std::is_constructible_v<Event, QPointF, Qt::DropActions, const QMimeData*, Qt::MouseButtons,
+                                          Qt::KeyboardModifiers>) {
+        return Event(at, Qt::CopyAction, data, Qt::LeftButton, Qt::NoModifier);
+    } else {
+        return Event(at.toPoint(), Qt::CopyAction, data, Qt::LeftButton, Qt::NoModifier);
+    }
+}
+
+}  // namespace
 
 class tst_s004_save : public QObject {
     Q_OBJECT
@@ -175,6 +260,217 @@ private slots:
             QVERIFY(f.saveAndWait(out));
             QCOMPARE(test::Fixture::readFile(out), bytes);
         }
+    }
+
+    // Rework of 2026-11-21. Scenario: half of a character does not enter the text. Each way text
+    // comes into the editor inserts U+FFFD for it; whole characters, emoji included, stay.
+    void halfACharacterIsPastedAsTheReplacementCharacter_data() {
+        QTest::addColumn<QString>("way");
+        QTest::newRow("Ctrl+V") << QStringLiteral("paste");
+        QTest::newRow("Paste as Plain Text") << QStringLiteral("plain");
+        QTest::newRow("drop") << QStringLiteral("drop");
+    }
+
+    void halfACharacterIsPastedAsTheReplacementCharacter() {
+        QFETCH(QString, way);
+        const QString markdown = QStringLiteral("One.\n\nTwo.\n");
+        test::Fixture f;
+        QVERIFY(openText(f, markdown));
+        const QString pasted = QStringLiteral("a") + kHigh + QStringLiteral("x") + kLow + QStringLiteral("b") + kEmoji;
+        const QString expected =
+            QStringLiteral("a") + kFffd + QStringLiteral("x") + kFffd + QStringLiteral("b") + kEmoji;
+        f.placeCaret(1);
+        if (way == QStringLiteral("drop")) {
+            QMimeData data;
+            data.setText(pasted);
+            const QPoint at = f.editor()->cursorRect(f.editor()->textCursor()).center();
+            QWidget* viewport = f.editor()->viewport();
+            auto enter = dragEvent<QDragEnterEvent>(QPointF(at), &data);
+            QCoreApplication::sendEvent(viewport, &enter);
+            auto move = dragEvent<QDragMoveEvent>(QPointF(at), &data);
+            QCoreApplication::sendEvent(viewport, &move);
+            QDropEvent drop(QPointF(at), Qt::CopyAction, &data, Qt::LeftButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(viewport, &drop);
+        } else {
+            auto* data = new QMimeData;
+            data->setText(pasted);
+            QApplication::clipboard()->setMimeData(data);
+            if (way == QStringLiteral("plain")) {
+                test::keyClick(f.editor(), Qt::Key_V, Qt::ControlModifier | Qt::ShiftModifier);
+            } else {
+                test::keyClick(f.editor(), Qt::Key_V, Qt::ControlModifier);
+            }
+        }
+        f.settle();
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("One.\n") + expected + QStringLiteral("\nTwo.\n"));
+        QVERIFY(saves(f));
+    }
+
+    // A table pasted from HTML (a character reference to half of one) or from Excel's plain text.
+    void halfACharacterInAPastedTableIsTheReplacementCharacter_data() {
+        QTest::addColumn<QString>("html");
+        QTest::addColumn<QString>("plain");
+        QTest::newRow("HTML") << QStringLiteral(
+                                     "<table><tr><td>a</td><td>b</td></tr>"
+                                     "<tr><td>c&#xD83D;d</td><td>e&#xDE00;</td></tr></table>")
+                              << QStringLiteral("a\tb\ncd\te\n");
+        QTest::newRow("Excel's plain text")
+            << QString() << QStringLiteral("a\tb\nc") + kHigh + QStringLiteral("d\te") + kLow + QStringLiteral("\n");
+    }
+
+    void halfACharacterInAPastedTableIsTheReplacementCharacter() {
+        QFETCH(QString, html);
+        QFETCH(QString, plain);
+        test::Fixture f;
+        QVERIFY(openText(f, QStringLiteral("One.\n\nTwo.\n")));
+        f.placeCaret(1);
+        auto* data = new QMimeData;
+        if (!html.isEmpty()) {
+            data->setHtml(html);
+        }
+        data->setText(plain);
+        QApplication::clipboard()->setMimeData(data);
+        test::keyClick(f.editor(), Qt::Key_V, Qt::ControlModifier);
+        f.settle();
+        const QString text = f.editor()->toPlainText();
+        QVERIFY2(text.contains(QStringLiteral("| c") + kFffd + QStringLiteral("d | e") + kFffd + QStringLiteral(" |")),
+                 qPrintable(text.toUtf8().toPercentEncoding(" |\n")));
+        QVERIFY(!holdsHalf(text));
+        QVERIFY(saves(f));
+    }
+
+    // A key's text, also a key that brings only half a character: its text is typed with U+FFFD
+    // for the half (Qt alone types nothing for a text that starts with a half).
+    void halfACharacterIsTypedAsTheReplacementCharacter_data() {
+        QTest::addColumn<QString>("typed");
+        QTest::addColumn<QString>("expected");
+        QTest::newRow("after a letter") << QStringLiteral("a") + kHigh << QStringLiteral("a") + kFffd;
+        QTest::newRow("a second half") << kLow << kFffd;
+        QTest::newRow("a whole emoji stays") << kEmoji << kEmoji;
+    }
+
+    void halfACharacterIsTypedAsTheReplacementCharacter() {
+        QFETCH(QString, typed);
+        QFETCH(QString, expected);
+        test::Fixture f;
+        QVERIFY(openText(f, QStringLiteral("One.\n")));
+        f.placeCaret(0, 3);
+        test::typeKey(f.editor(), typed);
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("One") + expected + QStringLiteral(".\n"));
+        QVERIFY(saves(f));
+    }
+
+    void halfACharacterIsCommittedByAnInputMethodAsTheReplacementCharacter() {
+        test::Fixture f;
+        QVERIFY(openText(f, QStringLiteral("One.\n")));
+        f.placeCaret(0, 3);
+        commitInputMethod(f.editor(), kLow + QStringLiteral("x") + kHigh + kEmoji);
+        QCOMPARE(f.editor()->toPlainText(),
+                 QStringLiteral("One") + kFffd + QStringLiteral("x") + kFffd + kEmoji + QStringLiteral(".\n"));
+        QVERIFY(saves(f));
+    }
+
+    // In a cell of a shown table (S018), by each way into the cell, and a value the cell hands to
+    // the table: the cell's line gets U+FFFD.
+    void halfACharacterInACellIsTheReplacementCharacter_data() {
+        QTest::addColumn<QString>("way");
+        QTest::newRow("Ctrl+V") << QStringLiteral("paste");
+        QTest::newRow("Paste as Plain Text") << QStringLiteral("plain");
+        QTest::newRow("key") << QStringLiteral("key");
+        QTest::newRow("input method") << QStringLiteral("input method");
+        QTest::newRow("value") << QStringLiteral("value");
+    }
+
+    void halfACharacterInACellIsTheReplacementCharacter() {
+        QFETCH(QString, way);
+        test::Fixture f;
+        QVERIFY(openText(f, QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2 |\n\nafter\n")));
+        const QString input = QStringLiteral("x") + kHigh + QStringLiteral("y") + kEmoji;
+        const QString expected = QStringLiteral("x") + kFffd + QStringLiteral("y") + kEmoji;
+        if (way == QStringLiteral("value")) {
+            QTableView* view = f.editor()->tableViewAt(0);
+            QVERIFY(view != nullptr);
+            QVERIFY(view->model()->setData(view->model()->index(1, 0), input, Qt::EditRole));
+        } else {
+            QPlainTextEdit* cell = openCell(f);
+            QVERIFY(cell != nullptr);
+            if (way == QStringLiteral("paste") || way == QStringLiteral("plain")) {
+                auto* data = new QMimeData;
+                data->setText(input);
+                QApplication::clipboard()->setMimeData(data);
+                test::keyClick(cell, Qt::Key_V,
+                               way == QStringLiteral("plain") ? Qt::ControlModifier | Qt::ShiftModifier
+                                                              : Qt::KeyboardModifiers(Qt::ControlModifier));
+            } else if (way == QStringLiteral("key")) {
+                test::typeKey(cell, input);
+            } else {
+                commitInputMethod(cell, input);
+            }
+            QCoreApplication::processEvents();
+            QCOMPARE(cell->toPlainText(), expected);
+            test::keyClick(cell, Qt::Key_Backtab);  // commits, as in S018
+        }
+        f.settle();
+        const std::u16string row =
+            core::replaceTableCell(u"| 1 | 2 |", 0, core::tableCellFromText(expected.toStdU16String()));
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("| a | b |\n| --- | --- |\n") +
+                                                QString::fromStdU16String(row) + QStringLiteral("\n\nafter\n"));
+        QVERIFY(saves(f));
+    }
+
+    // The caret moves over a character outside the BMP as a whole, and Backspace deletes it whole:
+    // an insertion never stands inside a pair (the reason a half at an insertion's edge has no
+    // partner, text_codec.hpp).
+    void theCaretNeverStandsInsideAPair() {
+        test::Fixture f;
+        QVERIFY(openText(f, QStringLiteral("a") + kEmoji + kEmoji + QStringLiteral("b\n")));
+        f.placeCaret(0, 1);
+        test::keyClick(f.editor(), Qt::Key_Right);
+        QCOMPARE(f.editor()->textCursor().position(), 3);
+        test::keyClick(f.editor(), Qt::Key_Right, Qt::ShiftModifier);
+        QCOMPARE(f.editor()->textCursor().position(), 5);
+        test::keyClick(f.editor(), Qt::Key_Left);
+        test::keyClick(f.editor(), Qt::Key_Backspace);
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("a") + kEmoji + QStringLiteral("b\n"));
+        test::keyClick(f.editor(), Qt::Key_Delete);
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("ab\n"));
+    }
+
+    // Scenario: a save that still meets half of a character (a way in that no one knows of) names
+    // its line and column; text and file stay as they are.
+    void aSaveThatMeetsHalfACharacterNamesItsLineAndColumn_data() {
+        QTest::addColumn<bool>("now");
+        QTest::newRow("save") << false;
+        QTest::newRow("saveNow") << true;
+    }
+
+    void aSaveThatMeetsHalfACharacterNamesItsLineAndColumn() {
+        QFETCH(bool, now);
+        test::Fixture f;
+        const QString path = f.writeFile(QStringLiteral("notes.md"),
+                                         "# old\r\n\r\nab\xF0\x9F\x98\x80"
+                                         "cde\r\n");
+        QVERIFY(f.open(path));
+        f.settle();
+        QTextCursor cursor(f.editor()->document()->findBlockByNumber(2));
+        cursor.setPosition(cursor.block().position() + 7);  // after "ab", the emoji and "cde"
+        cursor.insertText(kHigh);                           // past every way in, as a test can
+        const QString text = f.editor()->toPlainText();
+        QSignalSpy failed(f.session(), &ui::DocumentSession::saveFailed);
+        QString message;
+        if (now) {
+            QVERIFY(!f.session()->saveNow(path, &message));
+        } else {
+            f.session()->save(path);
+            QTRY_COMPARE(failed.size(), 1);
+            message = failed.first().at(1).toString();
+        }
+        QVERIFY2(message.contains(QStringLiteral("line 3, column 7")), qPrintable(message));
+        QVERIFY2(message.startsWith(QStringLiteral("notes.md: ")), qPrintable(message));
+        QCOMPARE(f.editor()->toPlainText(), text);
+        QVERIFY(f.editor()->document()->isModified());
+        QCOMPARE(test::Fixture::readFile(path), QByteArray("# old\r\n\r\nab\xF0\x9F\x98\x80"
+                                                           "cde\r\n"));
     }
 };
 

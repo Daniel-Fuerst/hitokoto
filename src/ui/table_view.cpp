@@ -5,6 +5,7 @@
 #include "editor_widget.hpp"
 #include "qt_bridge.hpp"
 #include "table_model.hpp"
+#include "text_input.hpp"
 
 #include <QAbstractTextDocumentLayout>
 #include <QAction>
@@ -12,6 +13,7 @@
 #include <QContextMenuEvent>
 #include <QEvent>
 #include <QHeaderView>
+#include <QInputMethodEvent>
 #include <QKeyEvent>
 #include <QMenu>
 #include <QMimeData>
@@ -78,6 +80,16 @@ void CellEditor::wheelEvent(QWheelEvent* event) {
 }
 
 void CellEditor::keyPressEvent(QKeyEvent* event) {
+    // A key's text enters the cell as insertableText makes it (S004, rework of 2026-11-21).
+    if (const auto key = insertableKey(*event)) {
+        pressKey(key.get());
+        event->setAccepted(key->isAccepted());
+        return;
+    }
+    pressKey(event);
+}
+
+void CellEditor::pressKey(QKeyEvent* event) {
     if (view_ != nullptr && view_->cellKey(event, this)) {
         return;
     }
@@ -87,6 +99,16 @@ void CellEditor::keyPressEvent(QKeyEvent* event) {
         return;
     }
     QPlainTextEdit::keyPressEvent(event);
+}
+
+void CellEditor::inputMethodEvent(QInputMethodEvent* event) {
+    // The committed text enters the cell as insertableText makes it (S004, rework of 2026-11-21).
+    if (const auto input = insertableInput(*event)) {
+        QPlainTextEdit::inputMethodEvent(input.get());
+        event->setAccepted(input->isAccepted());
+        return;
+    }
+    QPlainTextEdit::inputMethodEvent(event);
 }
 
 void CellEditor::contextMenuEvent(QContextMenuEvent* event) {
@@ -105,10 +127,11 @@ void CellEditor::contextMenuEvent(QContextMenuEvent* event) {
 }
 
 void CellEditor::insertFromMimeData(const QMimeData* source) {
-    // As in the editor (S031): the text alone, so that Qt never chooses a format.
+    // As in the editor (S031): the text alone, so that Qt never chooses a format, and only text
+    // that may enter the document (insertableText; S004, rework of 2026-11-21).
     QMimeData plain;
     if (const QString text = EditorWidget::pastedText(source); !text.isNull()) {
-        plain.setText(text);
+        plain.setText(insertableText(text));
     }
     QPlainTextEdit::insertFromMimeData(&plain);
 }

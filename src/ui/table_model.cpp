@@ -3,6 +3,7 @@
 
 #include "editor_formats.hpp"
 #include "qt_bridge.hpp"
+#include "text_input.hpp"
 
 #include <QColor>
 #include <QFont>
@@ -195,7 +196,9 @@ bool TableModel::setData(const QModelIndex& index, const QVariant& value, int ro
     if (role != Qt::EditRole || !index.isValid() || index.row() >= rowCount() || index.column() >= columnCount()) {
         return false;
     }
-    QString text = value.toString();
+    // The value a cell hands over enters the document as insertableText makes it (S004, rework of
+    // 2026-11-21), whatever way it came into the cell.
+    QString text = insertableText(value.toString());
     while (!text.isEmpty() && (text.back() == u' ' || text.back() == u'\t')) {
         text.chop(1);  // GFM padding: written with the next character (S018)
     }

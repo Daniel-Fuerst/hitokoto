@@ -61,6 +61,8 @@ third cell becomes
 - **The plain text of a paste** (rework of 2026-11-14, `agents/sec-o1-cell-front-matter`).
   Wherever a paste or a drop does not convert, the plain text of the data is inserted character
   for character, in the editor and in a cell of a shown table; Qt is handed that text alone.
+  Half of a character (a lone surrogate) becomes U+FFFD, here and in a converted table (S004,
+  rework of 2026-11-21).
   Before, Qt chose the format: when the first format of the data was `text/markdown`, it read the
   Markdown and inserted what it shows of it (`a **b** c` arrived as `a b c`, an image as the
   object character U+FFFC, a link without its destination), and Qt 6.8.0 to 6.8.3 ended the

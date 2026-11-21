@@ -108,6 +108,101 @@ TEST(S004_Save, UnpairedSurrogateIsRejected) {
     EXPECT_FALSE(encodeUtf8(std::u16string_view(bad, 3), false, LineEnding::LF));
 }
 
+// Rework of 2026-11-21: half of a character does not enter the text; it becomes U+FFFD, so that
+// the text can always be saved, and a save that still meets one names where it is.
+namespace {
+
+constexpr char16_t kHigh = 0xD83D;  // the first half of U+1F600 (an emoji)
+constexpr char16_t kLow = 0xDE00;   // its second half
+constexpr char16_t kFffd = 0xFFFD;
+
+std::u16string units(std::initializer_list<char16_t> list) {
+    return {list};
+}
+
+}  // namespace
+
+TEST(S004_Save, AFirstHalfWithoutItsSecondBecomesTheReplacementCharacter) {
+    EXPECT_EQ(replaceLoneSurrogates(units({u'a', kHigh, u'b'})), units({u'a', kFffd, u'b'}));
+    EXPECT_EQ(replaceLoneSurrogates(units({kHigh, kHigh, kLow})), units({kFffd, kHigh, kLow}));
+}
+
+TEST(S004_Save, ASecondHalfWithoutItsFirstBecomesTheReplacementCharacter) {
+    EXPECT_EQ(replaceLoneSurrogates(units({u'a', kLow, u'b'})), units({u'a', kFffd, u'b'}));
+    EXPECT_EQ(replaceLoneSurrogates(units({kHigh, kLow, kLow})), units({kHigh, kLow, kFffd}));
+    EXPECT_EQ(replaceLoneSurrogates(units({kLow, kHigh})), units({kFffd, kFffd}));
+}
+
+// The text is judged on its own (decision of the rework, text_codec.hpp): a half at either edge
+// has no partner in the text it goes next to, which holds no halves.
+TEST(S004_Save, AHalfAtEitherEdgeBecomesTheReplacementCharacter) {
+    EXPECT_EQ(replaceLoneSurrogates(units({kLow, u'x', kHigh})), units({kFffd, u'x', kFffd}));
+    EXPECT_EQ(replaceLoneSurrogates(units({kHigh})), units({kFffd}));
+    EXPECT_EQ(replaceLoneSurrogates(units({kLow})), units({kFffd}));
+}
+
+TEST(S004_Save, PairsAndEveryOtherCharacterStay) {
+    const std::u16string text = u"a\U0001F600b\n一�﻿ \U0010FFFF\U00010000 # x";
+    EXPECT_EQ(replaceLoneSurrogates(text), text);
+    EXPECT_EQ(findLoneSurrogate(text), std::u16string_view::npos);
+    EXPECT_EQ(replaceLoneSurrogates(u""), u"");
+}
+
+TEST(S004_Save, TheFirstLoneSurrogateIsFound) {
+    EXPECT_EQ(findLoneSurrogate(units({u'a', kHigh, kLow, u'b', kLow, kHigh})), 4u);
+    EXPECT_EQ(findLoneSurrogate(units({u'a', u'b', kHigh})), 2u);
+    EXPECT_EQ(findLoneSurrogate(units({kLow})), 0u);
+}
+
+// Property: whatever code units arrive, the result has the same length, differs only where a
+// lone surrogate was, holds none, encodes as UTF-8 and stays as it is when passed again.
+TEST(S004_Save, PropertyReplacedTextAlwaysEncodes) {
+    std::mt19937 rng(20261121);
+    const char16_t pool[] = {u'a', u'\n', u' ', 0x00E4, 0x4E00, kHigh, kLow, 0xDBFF, 0xDC00, 0xD800, 0xDFFF, kFffd};
+    for (int iteration = 0; iteration < 20000; ++iteration) {
+        std::u16string text(rng() % 16, u'a');
+        for (auto& c : text) {
+            c = pool[rng() % std::size(pool)];
+        }
+        const std::u16string out = replaceLoneSurrogates(text);
+        ASSERT_EQ(out.size(), text.size());
+        ASSERT_EQ(findLoneSurrogate(out), std::u16string_view::npos);
+        ASSERT_TRUE(encodeUtf8(out, false, LineEnding::LF).has_value()) << "iteration " << iteration;
+        ASSERT_EQ(replaceLoneSurrogates(out), out);
+        const std::size_t first = findLoneSurrogate(text);
+        ASSERT_EQ(encodeUtf8(text, false, LineEnding::LF).has_value(), first == std::u16string_view::npos);
+        for (std::size_t i = 0; i < text.size(); ++i) {
+            if (out[i] != text[i]) {
+                ASSERT_EQ(out[i], kFffd);
+                ASSERT_GE(i, first);
+            }
+        }
+        if (first != std::u16string_view::npos) {
+            ASSERT_EQ(out[first], kFffd);
+        }
+    }
+}
+
+TEST(S004_Save, APlaceIsItsLineAndColumnInCharacters) {
+    // "ab", then a line with an emoji (one column, two code units), x and a lone half.
+    const std::u16string text = units({u'a', u'b', u'\n', kHigh, kLow, u'x', kHigh, u'\n', u'z'});
+    EXPECT_EQ(placeOf(text, 0).line, 1u);
+    EXPECT_EQ(placeOf(text, 0).column, 1u);
+    EXPECT_EQ(placeOf(text, 1).column, 2u);
+    EXPECT_EQ(placeOf(text, 2).line, 1u);
+    EXPECT_EQ(placeOf(text, 2).column, 3u);  // the line break itself ends line 1
+    EXPECT_EQ(placeOf(text, 3).line, 2u);
+    EXPECT_EQ(placeOf(text, 3).column, 1u);
+    EXPECT_EQ(placeOf(text, 5).column, 2u);  // x: the emoji before it is one column
+    const TextPlace lone = placeOf(text, findLoneSurrogate(text));
+    EXPECT_EQ(lone.line, 2u);
+    EXPECT_EQ(lone.column, 3u);
+    EXPECT_EQ(placeOf(text, 8).line, 3u);
+    EXPECT_EQ(placeOf(text, 8).column, 1u);
+    EXPECT_EQ(placeOf(text, 99).line, 3u);  // past the end: the end
+    EXPECT_EQ(placeOf(text, 99).column, 2u);
+}
+
 // Property: every valid UTF-8 byte string decodes and encodes back unchanged.
 TEST(S004_Save, PropertyRandomValidUtf8RoundTrips) {
     std::mt19937 rng(20261024);
