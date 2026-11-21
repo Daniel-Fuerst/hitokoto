@@ -6,6 +6,8 @@
 #include "properties_view.hpp"
 #include "qt_bridge.hpp"
 
+#include "hitokoto/core/text_codec.hpp"
+
 #include <QElapsedTimer>
 #include <QFontMetricsF>
 #include <QKeyEvent>
@@ -670,6 +672,17 @@ void PropertiesEmbedder::replacePropertyItems(int row, const std::vector<std::u1
 }
 
 void PropertiesEmbedder::writeLines(const QTextBlock& start, const QTextBlock& end, const QString& lines) {
+    // Each line is one property line; QTextCursor::insertText would start a new block at any of
+    // these characters inside it (ADR 0002), and the writer escapes them. Half of a surrogate pair
+    // could not be saved: the writer escapes it, the fields pass insertableText.
+    const QString body = lines.endsWith(QLatin1Char('\n')) ? lines.chopped(1) : lines;
+    const bool breaks = std::any_of(body.cbegin(), body.cend(), [](QChar c) {
+        return c == QLatin1Char('\n') || c == QLatin1Char('\r') || c == QChar::ParagraphSeparator ||
+               c == QChar(0xFDD0) || c == QChar(0xFDD1);
+    });
+    if (breaks || core::findLoneSurrogate(hitokoto::ui::view(lines)) != std::u16string_view::npos) {
+        return;
+    }
     QTextCursor cursor(editor_->document());
     cursor.beginEditBlock();
     cursor.setPosition(start.position());

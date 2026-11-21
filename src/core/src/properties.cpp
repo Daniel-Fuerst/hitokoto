@@ -1793,6 +1793,21 @@ std::u16string serializePropertyScalar(std::u16string_view text) {
             case u'\\':
                 out += u"\\\\";
                 break;
+            // Characters at which QTextDocument starts a new line (ADR 0002), or which YAML readers
+            // break or fold a line at, stay on the written line as escapes.
+            case u'\u0085':
+                out += u"\\N";
+                break;
+            case u'\u2028':
+                out += u"\\L";
+                break;
+            case u'\u2029':
+                out += u"\\P";
+                break;
+            case u'\uFDD0':
+            case u'\uFDD1':
+                escape16(out, c);
+                break;
             default:
                 if (c < 0x20 || c == 0x7f) {
                     out += u"\\x";
@@ -1812,7 +1827,9 @@ std::u16string serializePropertyValue(PropertyType type, std::u16string_view tex
     if (type == PropertyType::Number || type == PropertyType::Date || type == PropertyType::DateTime) {
         std::vector<std::u16string> candidate{u"value: " + std::u16string(text)};
         const Properties parsed = parseProperties(candidate);
-        if (!parsed.error && parsed.rows.size() == 1 && parsed.rows.front().type == type) {
+        // Bare only as entered: a comment or a line break after the value would leave the line.
+        if (!parsed.error && parsed.rows.size() == 1 && parsed.rows.front().type == type &&
+            parsed.rows.front().text == text) {
             return std::u16string(text);
         }
     }
