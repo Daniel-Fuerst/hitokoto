@@ -61,6 +61,27 @@ TEST(S025_EditProperties, KeepsValidNumberAndDateTypes) {
     EXPECT_EQ(serializePropertyValue(PropertyType::Date, u"next week"), u"\"next week\"");
 }
 
+// Half of a surrogate pair read from an escape in the file is written back as
+// that escape, so that the line can be saved as UTF-8; a whole pair stays as it is.
+TEST(S025_EditProperties, HalfOfACharacterIsWrittenAsAnEscape) {
+    const std::u16string high(1, char16_t{0xD83D});
+    const std::u16string low(1, char16_t{0xDE00});
+    EXPECT_EQ(serializePropertyScalar(u"smile" + high), u"\"smile\\uD83D\"");
+    EXPECT_EQ(serializePropertyScalar(low + u"x"), u"\"\\uDE00x\"");
+    EXPECT_EQ(serializePropertyScalar(low + high), u"\"\\uDE00\\uD83D\"");
+    EXPECT_EQ(serializePropertyScalar(high + low), u"\"" + high + low + u"\"");
+    const std::vector<std::u16string> texts{u"smile" + high, low + high, high + high + low};
+    for (const std::u16string& text : texts) {
+        const std::u16string written = serializePropertyScalar(text);
+        EXPECT_EQ(findLoneSurrogate(written), std::u16string_view::npos) << narrow(written);
+        const Properties properties = parse(u"tags: [" + written + u"]");
+        ASSERT_FALSE(properties.error);
+        ASSERT_EQ(properties.rows.size(), 1U);
+        ASSERT_EQ(properties.rows.front().items.size(), 1U);
+        EXPECT_EQ(properties.rows.front().items.front(), text);
+    }
+}
+
 TEST(S025_EditProperties, SerializesListsWithoutLosingCommasOrEmptyItems) {
     const std::vector<std::u16string> items{u"one, two", u"", u"three"};
     EXPECT_EQ(serializePropertyList(items), u"[\"one, two\", \"\", \"three\"]");

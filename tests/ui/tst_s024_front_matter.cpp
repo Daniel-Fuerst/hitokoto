@@ -6,11 +6,14 @@
 
 #include <QAccessible>
 #include <QApplication>
+#include <QClipboard>
 #include <QDate>
 #include <QDateTime>
+#include <QInputMethodEvent>
 #include <QLineEdit>
 #include <QLocale>
 #include <QScrollBar>
+#include <QSignalSpy>
 #include <QTableView>
 #include <QTime>
 #include <QTimer>
@@ -62,6 +65,14 @@ constexpr int kRecordBody = 30;
 
 /// Four properties of different types and one body line.
 constexpr auto kSimple = "---\ntitle: A note\ncount: 5\ndone: true\ntags: [one, two]\n---\nbody line\n";
+
+/// Saves to a new file; true when it was written (a refused save emits saveFailed).
+bool saves(test::Fixture& f) {
+    QSignalSpy done(f.session(), &ui::DocumentSession::saveFinished);
+    QSignalSpy failed(f.session(), &ui::DocumentSession::saveFailed);
+    f.session()->save(f.dir.filePath(QStringLiteral("saved.md")));
+    return QTest::qWaitFor([&] { return !done.isEmpty() || !failed.isEmpty(); }, 30000) && !done.isEmpty();
+}
 
 QAccessibleInterface* accessible(QWidget* view) {
     return QAccessible::queryAccessibleInterface(view);
@@ -547,6 +558,73 @@ private slots:
         f.settle();
         QCOMPARE(editor->document()->findBlockByNumber(1).text(), QStringLiteral("\"done\": false"));
         QCOMPARE(editor->document()->findBlockByNumber(4).text(), QStringLiteral("second line w1 w3 w5"));
+    }
+
+    // Text from a field enters the document as text from the editor does (S004):
+    // half of a surrogate pair becomes U+FFFD, and the document can still be saved.
+    void halfOfACharacterFromAFieldDoesNotStopTheSave_data() {
+        QTest::addColumn<int>("way");
+        QTest::addColumn<bool>("key");
+        QTest::newRow("paste into a value") << 0 << false;
+        QTest::newRow("paste into a key") << 0 << true;
+        QTest::newRow("input method") << 1 << false;
+        QTest::newRow("a key's text") << 2 << false;
+    }
+    void halfOfACharacterFromAFieldDoesNotStopTheSave() {
+        QFETCH(int, way);
+        QFETCH(bool, key);
+        const QString high(QChar(0xD83D));
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("note.md"), kSimple)));
+        f.placeCaret(6);
+        f.settle();
+        auto* editor = f.editor();
+        auto* view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(view != nullptr);
+        clickBlock(view, key ? onKey(view, 0) : onValue(view, 0));
+        auto* edit = inlineEditor(view);
+        QVERIFY(edit != nullptr);
+        edit->selectAll();
+        if (way == 0) {
+            QApplication::clipboard()->setText(QStringLiteral("half ") + high + QStringLiteral(" here"));
+            test::keyClick(edit, Qt::Key_V, Qt::ControlModifier);
+        } else if (way == 1) {
+            QInputMethodEvent event;
+            event.setCommitString(QStringLiteral("half ") + high + QStringLiteral(" here"));
+            QCoreApplication::sendEvent(edit, &event);
+        } else {
+            test::keyClicks(edit, QStringLiteral("half "));
+            test::typeKey(edit, QStringLiteral("k") + high);
+        }
+        QVERIFY(edit->text().contains(high));  // the field itself keeps what it was given
+        test::keyClick(edit, Qt::Key_Return);
+        f.settle();
+        const QString line = editor->document()->findBlockByNumber(1).text();
+        QVERIFY2(!line.contains(high), qPrintable(line));
+        QVERIFY2(line.contains(QChar(0xFFFD)), qPrintable(line));
+        QVERIFY(saves(f));
+    }
+
+    // Half of a surrogate pair written in the file as an escape stays an escape
+    // when the property is written back, so that the document can be saved.
+    void anEscapedHalfOfACharacterIsWrittenBackAsAnEscape() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("note.md"), "---\ntags: [\"smile\\uD83D\", two]\n---\nbody\n")));
+        f.placeCaret(3);
+        f.settle();
+        auto* editor = f.editor();
+        auto* view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(view != nullptr);
+        clickBlock(view, view->chipRect(0, 1).center());
+        auto* edit = inlineEditor(view);
+        QVERIFY(edit != nullptr);
+        edit->selectAll();
+        test::keyClicks(edit, QStringLiteral("three"));
+        test::keyClick(edit, Qt::Key_Return);
+        f.settle();
+        QCOMPARE(editor->document()->findBlockByNumber(1).text(),
+                 QStringLiteral("\"tags\": [\"smile\\uD83D\", \"three\"]"));
+        QVERIFY(saves(f));
     }
 
     // Review O6: selections and held mouse buttons keep the properties block in place.
