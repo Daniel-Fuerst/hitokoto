@@ -5,6 +5,7 @@
 #include "block_styler.hpp"
 #include "editor_widget.hpp"
 #include "hitokoto/core/file_io.hpp"
+#include "hitokoto/core/text_codec.hpp"
 #include "qt_bridge.hpp"
 
 #include <QCoreApplication>
@@ -19,6 +20,8 @@
 #include <filesystem>
 #include <iterator>
 #include <new>
+#include <string>
+#include <string_view>
 #include <utility>
 
 namespace hitokoto::ui {
@@ -54,6 +57,19 @@ qsizetype cutAfter(const QString& text, qsizetype from, qsizetype size) {
 
 QString describe(const QString& path, const std::string& message) {
     return QStringLiteral("%1: %2").arg(QFileInfo(path).fileName(), QString::fromStdString(message));
+}
+
+/// Why `text` could not be encoded: the place of the first half of a character, which no way into
+/// the editor lets in (S004, rework of 2026-11-21), should one still be there.
+QString unencodable(const QString& path, std::u16string_view text) {
+    const std::size_t at = core::findLoneSurrogate(text);
+    if (at == std::u16string_view::npos) {
+        return QStringLiteral("internal error: text could not be encoded");
+    }
+    const core::TextPlace place = core::placeOf(text, at);
+    return describe(path, "line " + std::to_string(place.line) + ", column " + std::to_string(place.column) +
+                              " holds half of a character (a lone surrogate), which UTF-8 cannot store. Delete it "
+                              "and save again; the file was not changed.");
 }
 
 }  // namespace
@@ -381,7 +397,7 @@ DocumentSession::WriteOutcome DocumentSession::write(Snapshot s, const QString& 
         }
         const auto bytes = core::encodeUtf8(view(s.text), s.format.hasBom, s.format.ending, s.perBreak);
         if (!bytes) {
-            return {false, QStringLiteral("internal error: text could not be encoded")};
+            return {false, unencodable(path, view(s.text))};
         }
         if (const auto err = core::writeFileAtomically(toPath(path), *bytes)) {
             return {false, describe(path, err->message)};
