@@ -933,10 +933,9 @@ void PropertiesView::keyPressEvent(QKeyEvent* event) {
         emit undoRequested();
     } else if (event->modifiers() == Qt::ControlModifier && event->key() == Qt::Key_Y) {
         emit redoRequested();
-    } else {
-        QWidget::keyPressEvent(event);
-        return;
     }
+    // Every other key ends here: unaccepted, Qt would hand it to the editor, which would change
+    // the body at its text caret while the writer looks at the block.
     event->accept();
 }
 
@@ -979,6 +978,12 @@ bool PropertiesView::eventFilter(QObject* watched, QEvent* event) {
             auto* key = static_cast<QKeyEvent*>(event);
             if (key->key() == Qt::Key_Escape) {
                 cancelInlineEditor();
+                return true;
+            }
+            // Return commits here and goes no further: QLineEdit leaves it unaccepted, and the
+            // editor would break the line at its text caret.
+            if (key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter) {
+                submitInlineEditor();
                 return true;
             }
             if (key->modifiers() == Qt::ControlModifier && key->key() == Qt::Key_Z) {
