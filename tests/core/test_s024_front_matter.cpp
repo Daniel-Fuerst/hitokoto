@@ -61,6 +61,24 @@ TEST(S025_EditProperties, KeepsValidNumberAndDateTypes) {
     EXPECT_EQ(serializePropertyValue(PropertyType::Date, u"next week"), u"\"next week\"");
 }
 
+// QTextDocument starts a new line at U+2029, U+FDD0 and U+FDD1 (ADR 0002), and
+// YAML readers break or fold a line at U+2028 and U+0085. Each is written as its YAML 1.2 escape, so
+// that the value stays on its line and reads back as it was entered.
+TEST(S025_EditProperties, LineBreakingCharactersAreWrittenAsEscapes) {
+    EXPECT_EQ(serializePropertyScalar(u"a\u2029---\u2029b"), u"\"a\\P---\\Pb\"");
+    EXPECT_EQ(serializePropertyScalar(u"a\u2028b"), u"\"a\\Lb\"");
+    EXPECT_EQ(serializePropertyScalar(u"a\u0085b"), u"\"a\\Nb\"");
+    EXPECT_EQ(serializePropertyScalar(u"a\uFDD0b\uFDD1c"), u"\"a\\uFDD0b\\uFDD1c\"");
+    const std::vector<std::u16string> texts{u"First paragraph.\u2029Second paragraph.", u"x\u2028y\u0085z",
+                                            u"\uFDD0\uFDD1", u"\u2029\u2029"};
+    for (const std::u16string& text : texts) {
+        const Properties properties = parse(u"key: " + serializePropertyScalar(text));
+        ASSERT_FALSE(properties.error);
+        ASSERT_EQ(properties.rows.size(), 1U);
+        EXPECT_EQ(properties.rows.front().text, text);
+    }
+}
+
 // Half of a surrogate pair read from an escape in the file is written back as
 // that escape, so that the line can be saved as UTF-8; a whole pair stays as it is.
 TEST(S025_EditProperties, HalfOfACharacterIsWrittenAsAnEscape) {
@@ -80,6 +98,18 @@ TEST(S025_EditProperties, HalfOfACharacterIsWrittenAsAnEscape) {
         ASSERT_EQ(properties.rows.front().items.size(), 1U);
         EXPECT_EQ(properties.rows.front().items.front(), text);
     }
+}
+
+// A number or date is written bare only as it was entered; a comment or a line
+// break after it would leave the line, so such text is written as a quoted string.
+TEST(S025_EditProperties, ANumberOrDateIsWrittenBareOnlyAsEntered) {
+    EXPECT_EQ(serializePropertyValue(PropertyType::Number, u"5"), u"5");
+    EXPECT_EQ(serializePropertyValue(PropertyType::Number, u"5 #\n---"), u"\"5 #\\n---\"");
+    EXPECT_EQ(serializePropertyValue(PropertyType::Number, u"5 #\u2029---"), u"\"5 #\\P---\"");
+    EXPECT_EQ(serializePropertyValue(PropertyType::Number, u"5 # note"), u"\"5 # note\"");
+    EXPECT_EQ(serializePropertyValue(PropertyType::Date, u"2026-11-21 # due"), u"\"2026-11-21 # due\"");
+    EXPECT_EQ(serializePropertyValue(PropertyType::DateTime, u"2026-11-21T10:00:00 #\n---"),
+              u"\"2026-11-21T10:00:00 #\\n---\"");
 }
 
 TEST(S025_EditProperties, SerializesListsWithoutLosingCommasOrEmptyItems) {

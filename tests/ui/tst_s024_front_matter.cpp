@@ -627,6 +627,55 @@ private slots:
         QVERIFY(saves(f));
     }
 
+    // A paragraph separator, or a comment and a line break after a number,
+    // stays inside the written line; the front matter keeps its closing line and every property.
+    void lineBreaksInAFieldStayInsideTheProperty_data() {
+        QTest::addColumn<int>("row");
+        QTest::addColumn<bool>("key");
+        QTest::addColumn<QString>("text");
+        QTest::addColumn<QString>("line");
+        const QChar ps(QChar::ParagraphSeparator);
+        QTest::newRow("number with a comment") << 1 << false << QStringLiteral("5 #") + ps + QStringLiteral("---")
+                                               << QStringLiteral("\"count\": \"5 #\\P---\"");
+        QTest::newRow("text") << 0 << false
+                              << QStringLiteral("First") + ps + QStringLiteral("---") + ps + QStringLiteral("second")
+                              << QStringLiteral("\"title\": \"First\\P---\\Psecond\"");
+        QTest::newRow("key") << 0 << true << QStringLiteral("a") + ps + QStringLiteral("---")
+                             << QStringLiteral("\"a\\P---\": \"A note\"");
+        QTest::newRow("U+FDD0") << 0 << false << QStringLiteral("a") + QChar(0xFDD0) + QStringLiteral("b")
+                                << QStringLiteral("\"title\": \"a\\uFDD0b\"");
+    }
+    void lineBreaksInAFieldStayInsideTheProperty() {
+        QFETCH(int, row);
+        QFETCH(bool, key);
+        QFETCH(QString, text);
+        QFETCH(QString, line);
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("note.md"), kSimple)));
+        f.placeCaret(6);
+        f.settle();
+        auto* editor = f.editor();
+        auto* view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(view != nullptr);
+        const int blocks = editor->document()->blockCount();
+        clickBlock(view, key ? onKey(view, row) : onValue(view, row));
+        auto* edit = inlineEditor(view);
+        QVERIFY(edit != nullptr);
+        edit->selectAll();
+        edit->insert(text);
+        test::keyClick(edit, Qt::Key_Return);
+        f.settle();
+        QCOMPARE(editor->document()->blockCount(), blocks);
+        QCOMPARE(editor->document()->findBlockByNumber(1 + row).text(), line);
+        QCOMPARE(editor->document()->findBlockByNumber(5).text(), QStringLiteral("---"));
+        view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(view != nullptr);
+        QTRY_COMPARE_WITH_TIMEOUT(view->rowCount(), 4U, 5000);
+        const core::Property& property = view->property(static_cast<std::size_t>(row));
+        QCOMPARE(QString::fromStdU16String(key ? property.key : property.text), text);
+        expectConcealed(editor, 5, "after a line break in a field");
+    }
+
     // Review O6: selections and held mouse buttons keep the properties block in place.
     void aSelectionAcrossTheBlockKeepsTheProperties() {
         QByteArray document = "---\ntags: [a, b, c]\n---\n";
