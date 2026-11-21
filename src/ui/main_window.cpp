@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <string_view>
 
 namespace hitokoto::ui {
 namespace {
@@ -68,6 +69,17 @@ MainWindow::MainWindow(const core::ElementRegistry& registry, QWidget* parent)
         options_.reportBlankLinesAdded = settings.reportBlankLinesAdded;
         options_.frontMatterAsProperties = settings.frontMatterAsProperties;
         options_.smoothScrolling = settings.smoothScrolling;
+    });
+    connect(editor_, &EditorWidget::smoothScrollingChanged, this, [this](bool on) {
+        options_.smoothScrolling = on;
+        editor_->setSmoothScrolling(on);
+        QString error;
+        if (!ThemeManager::saveEditorBoolSetting(editor_->themeConfigDir(), std::string_view("smooth-scrolling"), on,
+                                                 &error)) {
+            showMessage(tr("Setting not saved"),
+                        tr("Smooth scrolling could not be saved to %1: %2")
+                            .arg(ThemeManager::configFilePath(editor_->themeConfigDir()), error));
+        }
     });
 
     askSave_ = [this](const QString& name) { return askSaveInDialog(this, name); };

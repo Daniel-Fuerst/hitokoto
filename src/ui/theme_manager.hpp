@@ -11,6 +11,7 @@
 #include <QStringList>
 
 #include <optional>
+#include <string_view>
 
 class QApplication;
 
@@ -40,6 +41,9 @@ public:
     /// Persists the selected theme entry to `<configDir>/config.toml`, preserving existing settings. On failure the
     /// file is left as it was and `error` (if given) says why.
     static bool saveSelectedTheme(const QString& configDir, const ThemeEntry& entry, QString* error = nullptr);
+    /// Persists one boolean `[editor]` setting without replacing the rest of config.toml.
+    static bool saveEditorBoolSetting(const QString& configDir, std::string_view key, bool value,
+                                      QString* error = nullptr);
     /// Resolves the persisted theme entry from `<configDir>/config.toml`, if configured and found.
     static std::optional<ThemeEntry> loadSavedThemeEntry(const QString& configDir);
     /// Built-in themes plus any valid/discoverable `.toml` theme files in `configDir` (and `<configDir>/themes`).

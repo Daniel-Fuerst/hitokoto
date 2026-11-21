@@ -2,13 +2,16 @@
 #include "settings_menu.hpp"
 
 #include "qt_bridge.hpp"
+#include "toggle_switch.hpp"
 
 #include <QAbstractItemView>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QFont>
 #include <QFontDatabase>
+#include <QFrame>
 #include <QGridLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QPaintEvent>
 #include <QPainter>
@@ -37,6 +40,23 @@ QLabel* makeLabel(const QString& text, QWidget* parent, const char* objectName =
     return label;
 }
 
+QWidget* makeSectionRow(const QString& text, QLabel*& label, QFrame*& rule, QWidget* parent, const char* labelName,
+                        const char* ruleName) {
+    auto* row = new QWidget(parent);
+    auto* layout = new QHBoxLayout(row);
+    layout->setContentsMargins(0, 0, 0, 0);
+    label = makeLabel(text, row, labelName);
+    rule = new QFrame(row);
+    rule->setObjectName(QString::fromLatin1(ruleName));
+    rule->setFrameShape(QFrame::HLine);
+    rule->setFrameShadow(QFrame::Plain);
+    rule->setFixedHeight(1);
+    rule->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    layout->addWidget(label, 0);
+    layout->addWidget(rule, 1);
+    return row;
+}
+
 }  // namespace
 
 SettingsMenu::SettingsMenu(QWidget* parent) : QWidget(parent) {
@@ -48,7 +68,8 @@ SettingsMenu::SettingsMenu(QWidget* parent) : QWidget(parent) {
     mainLayout_ = new QVBoxLayout(this);
     titleLabel_ = makeLabel(tr("Settings"), this, "settingsTitleLabel");
 
-    appearanceLabel_ = makeLabel(tr("Appearance"), this);
+    QWidget* appearanceRow = makeSectionRow(tr("Appearance"), appearanceLabel_, appearanceRule_, this,
+                                            "appearanceLabel", "appearanceSectionRule");
     themeKeyLabel_ = makeLabel(tr("Theme"), this);
     themeCombo_ = new QComboBox(this);
     themeCombo_->setObjectName(QStringLiteral("themeSelector"));
@@ -66,6 +87,17 @@ SettingsMenu::SettingsMenu(QWidget* parent) : QWidget(parent) {
     appearanceLayout_->addWidget(themeCombo_, 0, 1);
     appearanceLayout_->setColumnStretch(1, 1);
 
+    QWidget* feelRow = makeSectionRow(tr("Feel"), feelLabel_, feelRule_, this, "feelLabel", "feelSectionRule");
+    smoothScrollingKeyLabel_ = makeLabel(tr("Smooth scrolling"), this);
+    smoothScrollingToggle_ = new ToggleSwitch(this);
+    smoothScrollingToggle_->setObjectName(QStringLiteral("smoothScrollingToggle"));
+    smoothScrollingToggle_->setAccessibleName(tr("Smooth scrolling"));
+    connect(smoothScrollingToggle_, &QAbstractButton::toggled, this, &SettingsMenu::smoothScrollingChanged);
+    feelLayout_ = new QGridLayout;
+    feelLayout_->addWidget(smoothScrollingKeyLabel_, 0, 0, Qt::AlignLeft | Qt::AlignVCenter);
+    feelLayout_->addWidget(smoothScrollingToggle_, 0, 1, Qt::AlignRight | Qt::AlignVCenter);
+    feelLayout_->setColumnStretch(1, 1);
+
     QString version = QCoreApplication::applicationVersion();
     if (version.isEmpty()) {
         version = QStringLiteral(HITOKOTO_UI_VERSION);
@@ -74,8 +106,10 @@ SettingsMenu::SettingsMenu(QWidget* parent) : QWidget(parent) {
     versionLabel_ = makeLabel(versionText, this, "settingsVersionLabel");
 
     mainLayout_->addWidget(titleLabel_);
-    mainLayout_->addWidget(appearanceLabel_);
+    mainLayout_->addWidget(appearanceRow);
     mainLayout_->addLayout(appearanceLayout_);
+    mainLayout_->addWidget(feelRow);
+    mainLayout_->addLayout(feelLayout_);
     mainLayout_->addWidget(versionLabel_, 0, Qt::AlignRight);
 
     applyTheme(core::builtinTheme(core::ColorScheme::Light));
@@ -125,8 +159,15 @@ void SettingsMenu::setAvailableThemes(const QList<ThemeEntry>& entries, const QS
     adjustSize();
 }
 
+void SettingsMenu::setSmoothScrolling(bool on) noexcept {
+    if (smoothScrollingToggle_->isChecked() != on) {
+        smoothScrollingToggle_->setChecked(on);
+    }
+}
+
 void SettingsMenu::applyTheme(const core::Theme& theme) {
     style_ = core::toolbarStyle(theme);
+    smoothScrollingToggle_->applyTheme(theme);
 
     QFont uiFont = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
     if (!theme.uiFontFamily.empty()) {
@@ -136,9 +177,13 @@ void SettingsMenu::applyTheme(const core::Theme& theme) {
         uiFont.setPointSizeF(theme.uiFontSize);
     }
     setFont(uiFont);
-    for (QLabel* label : {appearanceLabel_, themeKeyLabel_}) {
+    for (QLabel* label : {themeKeyLabel_, smoothScrollingKeyLabel_}) {
         label->setFont(uiFont);
     }
+    QFont sectionFont = uiFont;
+    sectionFont.setWeight(QFont::DemiBold);
+    appearanceLabel_->setFont(sectionFont);
+    feelLabel_->setFont(sectionFont);
     themeCombo_->setFont(uiFont);
     if (QAbstractItemView* view = themeCombo_->view()) {
         view->setFont(uiFont);
@@ -157,9 +202,16 @@ void SettingsMenu::applyTheme(const core::Theme& theme) {
     const QColor textColor = toQColor(theme.text);
     const QColor mutedColor = toQColor(theme.textMuted);
     setLabelColor(titleLabel_, textColor);
-    setLabelColor(appearanceLabel_, mutedColor);
+    setLabelColor(appearanceLabel_, toQColor(theme.accent));
     setLabelColor(themeKeyLabel_, mutedColor);
+    setLabelColor(feelLabel_, toQColor(theme.accent));
+    setLabelColor(smoothScrollingKeyLabel_, mutedColor);
     setLabelColor(versionLabel_, mutedColor);
+    for (QFrame* rule : {appearanceRule_, feelRule_}) {
+        QPalette rulePalette = rule->palette();
+        rulePalette.setColor(QPalette::WindowText, toQColor(theme.border));
+        rule->setPalette(rulePalette);
+    }
 
     const int pad = std::max(8, static_cast<int>(std::lround(style_.padding * 2.0)));
     const int gap = std::max(4, static_cast<int>(std::lround(style_.spacing)));

@@ -25,6 +25,7 @@ qt_add_library(hitokoto_ui STATIC
     text_input.cpp text_input.hpp
     theme_applier.cpp theme_applier.hpp
     theme_manager.cpp theme_manager.hpp
+    toggle_switch.cpp toggle_switch.hpp
 )
 add_library(hitokoto::ui ALIAS hitokoto_ui)
 target_include_directories(hitokoto_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

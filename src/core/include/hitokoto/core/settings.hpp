@@ -59,6 +59,9 @@ struct SettingsSourceUpdate {
 [[nodiscard]] std::optional<IoError> saveSettingsFile(const std::filesystem::path& path, const Settings& settings);
 [[nodiscard]] std::optional<IoError> updateThemeSettingInFile(const std::filesystem::path& path,
                                                               std::string_view theme);
+/// Changes one boolean key in `[editor]` while preserving all other source bytes.
+[[nodiscard]] std::optional<IoError> updateEditorBoolSettingInFile(const std::filesystem::path& path,
+                                                                   std::string_view key, bool value);
 [[nodiscard]] std::optional<ColorScheme> builtinSchemeFromSetting(std::string_view themeSetting);
 
 }  // namespace hitokoto::core
