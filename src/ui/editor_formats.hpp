@@ -8,6 +8,7 @@
 #include <QFont>
 #include <QList>
 #include <QStringList>
+#include <QStringView>
 #include <QTextCharFormat>
 #include <QTextLayout>
 
@@ -43,7 +44,7 @@ public:
     [[nodiscard]] QTextCharFormat heading(int level) const;
 
     /// Format ranges for one line, ready for QTextLayout::setFormats().
-    [[nodiscard]] QList<QTextLayout::FormatRange> ranges(const core::LineRender& render) const;
+    [[nodiscard]] QList<QTextLayout::FormatRange> ranges(const core::LineRender& render, QStringView text = {}) const;
 
 private:
     /// Font size of text at heading `level` (0 = body text).

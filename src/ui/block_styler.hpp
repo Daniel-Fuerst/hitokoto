@@ -112,8 +112,9 @@ private:
     void onContentsChange(int position, int charsRemoved, int charsAdded);
     /// `renderFor`, and the line's link to the paragraph above when `link` is given (S023). Only
     /// styling walks a paragraph to find its setext level; other callers (painting, tables) get the
-    /// level the line is shown with.
-    [[nodiscard]] core::LineRender renderLine(const QTextBlock& block, core::ParagraphLink* link, bool walk);
+    /// level the line is shown with. Writes the source line to `sourceText` when requested.
+    [[nodiscard]] core::LineRender renderLine(const QTextBlock& block, core::ParagraphLink* link, bool walk,
+                                              QString* sourceText = nullptr);
     void styleRange(int first, int last);
     void restyleRevealRange(int first, int last);
     void styleBlock(const QTextBlock& block);

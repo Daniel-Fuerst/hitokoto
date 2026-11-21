@@ -164,6 +164,25 @@ private slots:
         QCOMPARE(test::formatAt(block0, 16).foreground().color(), qcolor(theme.marker));
     }
 
+    void textImmediatelyAfterLinkHasNoConcealedSyntaxGap() {
+        constexpr auto content =
+            "[What exactly is Frontmatter](https://daily-dev-tips.com/posts/what-exactly-is-frontmatter)"
+            "/Directly after the link\nsecond line\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("links.md"), content)));
+        f.placeCaret(1);
+        f.settle();
+
+        const auto block = f.editor()->document()->firstBlock();
+        const auto line = block.layout()->lineAt(0);
+        const int linkTextEnd = block.text().indexOf(QStringLiteral("]("));
+        const int suffixStart = block.text().indexOf(QStringLiteral("/Directly"));
+        QVERIFY(linkTextEnd > 0);
+        QVERIFY(suffixStart > linkTextEnd);
+        const qreal gap = line.cursorToX(suffixStart) - line.cursorToX(linkTextEnd);
+        QVERIFY2(qAbs(gap) <= 1.0, qPrintable(QStringLiteral("concealed link syntax occupies %1 px").arg(gap)));
+    }
+
     void customThemeLinkTokensApply() {
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("link.md"), "[Link](https://example.com)\nsecond\n")));
