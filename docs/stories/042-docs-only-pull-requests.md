@@ -18,8 +18,9 @@
   - Two tests read a file under `docs/`: `test_s005_theme` and `test_s024_front_matter` open
     `docs/theming.md` to check that every theme token is documented. A change to that file can
     turn the CI red, so it is not documentation in the sense of this story.
-  - The ruleset prepared for main requires ten checks one by one: "Version label" and nine jobs of
-    `ci.yml`, among them the four matrix entries of "Build and test".
+  - The ruleset prepared for main requires "Version label" and every job of `ci.yml` one by one,
+    among them the four matrix entries of "Build and test"; a job added to `ci.yml` (pull request 65
+    adds "UI with ASan/UBSan (Linux)") is one more such check.
 
 ## Story
 
@@ -64,13 +65,15 @@ proves that it changed only documentation.
    runs. It passes when every job passed, or when "Changes" found a pull request with `version:doc`
    that changes only documentation and every other job was skipped; in every other case it fails (a
    failed or cancelled job, or a wrong `version:doc`). After the merge of this story, the ruleset of
-   main requires "Version label" and "CI result" instead of the ten checks one by one; this is as
-   strict, because "CI result" fails whenever any job fails. The ruleset prepared before stays valid
-   until then. The implementation delivers the changed ruleset and the steps to apply it; GitHub
-   offers a check as required only if it passed in the repository within the past seven days, so
-   the switch is made within a week of a pull request run, or after one more run. As today, the
-   pull request's own `ci.yml` decides its checks; a change to `ci.yml` stays a matter of review,
-   and such a pull request can never be `version:doc`.
+   main requires "Version label" and "CI result" instead of the checks of `ci.yml` one by one,
+   however many jobs it has by then; this is as strict, because "CI result" fails whenever any job
+   fails. The ruleset prepared before stays valid until then. The implementation delivers the
+   changed ruleset and the steps to apply it; GitHub offers a check as required only if it passed in
+   the repository within the past seven days, so the switch is made within a week of a pull request
+   run, or after one more run. As today, the pull request's own `ci.yml` decides its checks; a
+   change to `ci.yml` stays a matter of review, and such a pull request can never be `version:doc`.
+   Every job of `ci.yml` is in the `needs` of "CI result", also jobs added later; a lint checks it
+   (see "Tests").
 6. **No CI run on main after a documentation merge.** The `push` trigger of `ci.yml` gets a path
    filter: all paths, then `!docs/**`, then each file of the list again (later patterns override
    earlier ones). A merge that changes only documentation starts no CI run on main, so "Version"
@@ -79,6 +82,12 @@ proves that it changed only documentation.
    path filter and the list disagree. GitHub runs a filtered workflow anyway when a push holds more
    than 1,000 commits, and does not run it when a diff of more than 3,000 files has its matching
    files beyond the first 3,000; neither happens with merges of pull requests here.
+7. **The workflow rules apply to the new jobs.** Once the lints over all workflows of pull request 65
+   are on main (`tests/workflows/s000_workflow_cases.cmake`), "Changes" and "CI result" meet them as
+   every job does: each `uses:` on a full commit SHA with its version in a comment (`# vX.Y.Z`), its
+   own `permissions` per job ("Changes" `contents: read` and `pull-requests: read` for the labels,
+   "CI result" none), and `GH_TOKEN` only in the `env` of the step that calls `gh`, never in the
+   job's `env`.
 
 ## Acceptance scenarios
 
@@ -159,5 +168,7 @@ change (workflows, scripts); a merge queue (`merge_group`); changes to "Packagin
   text; a compile check that the generated helper refuses a name
   not on the list.
 - `actionlint` and `shellcheck` over the changed workflows without new findings.
+- Once on main, the lints over all workflows of pull request 65 (`s000_workflow_cases.cmake`) hold
+  for "Changes" and "CI result" (decision 7).
 - After the merge, by hand: the first pull request labelled `version:doc` is merged without the
   build, and no CI run starts on main; the result is recorded in this story.
