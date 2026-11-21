@@ -1739,11 +1739,29 @@ Properties parseProperties(std::span<const std::u16string> yamlLines) {
 }
 
 std::u16string serializePropertyScalar(std::u16string_view text) {
-    constexpr char16_t kHex[] = u"0123456789ABCDEF";
+    static constexpr char16_t kHex[] = u"0123456789ABCDEF";
+    const auto escape16 = [](std::u16string& out, char16_t c) {
+        out += u"\\u";
+        for (int shift = 12; shift >= 0; shift -= 4) {
+            out.push_back(kHex[(c >> shift) & 0x0f]);
+        }
+    };
     std::u16string out;
     out.reserve(text.size() + 2);
     out.push_back(u'"');
-    for (const char16_t c : text) {
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        const char16_t c = text[i];
+        // Half of a surrogate pair is written as its escape, so that the line can be saved as UTF-8
+        // and reads back as it was; a whole pair stays as it is.
+        if (c >= 0xD800 && c <= 0xDBFF && i + 1 < text.size() && text[i + 1] >= 0xDC00 && text[i + 1] <= 0xDFFF) {
+            out.push_back(c);
+            out.push_back(text[++i]);
+            continue;
+        }
+        if (c >= 0xD800 && c <= 0xDFFF) {
+            escape16(out, c);
+            continue;
+        }
         switch (c) {
             case u'\0':
                 out += u"\\0";

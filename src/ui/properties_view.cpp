@@ -2,6 +2,7 @@
 #include "properties_view.hpp"
 
 #include "qt_bridge.hpp"
+#include "text_input.hpp"
 
 #include <QAccessibleWidget>
 #include <QContextMenuEvent>
@@ -566,7 +567,8 @@ void PropertiesView::submitInlineEditor() {
         return;
     }
     submitted_ = true;
-    const QString value = inlineEditor_->text();
+    // The field's text enters the document as the editor's does (S004).
+    const QString value = insertableText(inlineEditor_->text());
     if (addingProperty_) {
         emit newPropertyCommitted(value);
     } else if (editingItem_ >= 0) {
