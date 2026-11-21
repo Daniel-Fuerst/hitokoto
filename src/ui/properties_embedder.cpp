@@ -613,7 +613,7 @@ void PropertiesEmbedder::deleteProperty(int row) {
     }
     const std::size_t startLine = 1 + view_->property(static_cast<std::size_t>(row)).keyLine;
     const std::size_t endLine = row + 1 < static_cast<int>(view_->rowCount())
-                                    ? 1 + view_->property(static_cast<std::size_t>(row + 1)).keyLine
+                                    ? 1 + view_->property(static_cast<std::size_t>(row) + 1).keyLine
                                     : static_cast<std::size_t>(close_);
     QTextBlock start = editor_->document()->findBlockByNumber(static_cast<int>(startLine));
     QTextBlock end = editor_->document()->findBlockByNumber(static_cast<int>(endLine));
@@ -659,7 +659,7 @@ void PropertiesEmbedder::replaceProperty(int row, const QString& value, const st
     const QString line = toQString(core::serializePropertyScalar(propertyKey)) + QStringLiteral(": ") + encodedValue;
     const std::size_t startLine = 1 + property.keyLine;
     const std::size_t endLine = row + 1 < static_cast<int>(view_->rowCount())
-                                    ? 1 + view_->property(static_cast<std::size_t>(row + 1)).keyLine
+                                    ? 1 + view_->property(static_cast<std::size_t>(row) + 1).keyLine
                                     : static_cast<std::size_t>(close_);
     QTextBlock start = editor_->document()->findBlockByNumber(static_cast<int>(startLine));
     QTextBlock end = editor_->document()->findBlockByNumber(static_cast<int>(endLine));
@@ -687,7 +687,7 @@ void PropertiesEmbedder::replacePropertyItems(int row, const std::vector<std::u1
                          toQString(core::serializePropertyList(items));
     const std::size_t startLine = 1 + property.keyLine;
     const std::size_t endLine = row + 1 < static_cast<int>(view_->rowCount())
-                                    ? 1 + view_->property(static_cast<std::size_t>(row + 1)).keyLine
+                                    ? 1 + view_->property(static_cast<std::size_t>(row) + 1).keyLine
                                     : static_cast<std::size_t>(close_);
     QTextBlock start = editor_->document()->findBlockByNumber(static_cast<int>(startLine));
     QTextBlock end = editor_->document()->findBlockByNumber(static_cast<int>(endLine));
