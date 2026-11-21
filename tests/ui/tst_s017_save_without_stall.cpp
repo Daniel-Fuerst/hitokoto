@@ -99,7 +99,8 @@ private slots:
         const qint64 stall = bestOfThreeSaveStallMs(f, path);
         QCOMPARE(done.size(), 3);
         qInfo("10 MB: one-shot copy %lld ms, longest UI stall while saving %lld ms (best of 3)", copyMs, stall);
-        QVERIFY2(stall < std::max<qint64>(copyMs / 2, 16), qPrintable(QString::number(stall)));
+        QVERIFY2(stall < std::max<qint64>(copyMs / 2, qint64{16} * test::kTimeScale),
+                 qPrintable(QString::number(stall)));
         QCOMPARE(test::Fixture::readFile(path), bytes);
     }
 
@@ -166,12 +167,12 @@ private slots:
         f.session()->save(f.dir.filePath(QStringLiteral("copy.md")));
         QElapsedTimer t;
         t.start();
-        while (!snapshotTaken && t.elapsed() < 10000) {
+        while (!snapshotTaken && t.elapsed() < qint64{10000} * test::kTimeScale) {
             insertAtBlock(f.editor(), 0, QStringLiteral("top\n"));  // sets the copy back every time
             QCoreApplication::processEvents();
         }
         QVERIFY2(snapshotTaken, "continuous inserts at the top starved the save");
-        QVERIFY2(t.elapsed() < 5000, qPrintable(QString::number(t.elapsed())));
+        QVERIFY2(t.elapsed() < qint64{5000} * test::kTimeScale, qPrintable(QString::number(t.elapsed())));
         QVERIFY(QTest::qWaitFor([&] { return !done.isEmpty(); }, 120000));
     }
 
