@@ -310,3 +310,6 @@ unchanged.
   beside emphasis keep their look (checked with commonmark.js 0.31.2 and markdown-it-py 4.2.0); the
   file and the cell editor's text stay as they were. Core: `tableCellImport` for images, code spans,
   autolinks, escapes and `<br>`.
+- Fuzz target `fuzz_table` (rework of S000 on 2026-11-21): arbitrary lines and cell texts through
+  the table helpers; cells inside their line, plain layout never longer than the Markdown, cell
+  Markdown on one line, replacing a cell keeps the rest of the line byte for byte.

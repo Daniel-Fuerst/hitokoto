@@ -433,6 +433,9 @@ fallbacks keep the contrast whatever a theme sets for `colors.text`.
   that removes lines and makes a table text, shows a table's source or makes a new table: every
   line and table view where a fresh window with the same text, caret and search draws it, with
   the bar open and closed).
+- Fuzz target `fuzz_find` (rework of S000 on 2026-11-21): arbitrary search texts and documents;
+  segments cover each unit, matches stay inside their units and the document and never hold half
+  of a character, two slices that resume find what one scan finds, the context keeps its length.
 
 ## Implementation
 
