@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <climits>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <utility>
 
@@ -502,6 +503,9 @@ void PropertiesView::openInlineEditor(const QRect& rect, const QString& value) {
                  QString::number(look_.style.editorRadius, 'f', 1), QString::number(look_.style.editorPadding, 'f', 1),
                  focusBorder.name(QColor::HexArgb)));
     inlineEditor_->setGeometry(rect.adjusted(0, 0, -1, -1));
+    // A QLineEdit holds 32,767 characters by default and setText cuts the rest; a value the block
+    // shows in full must come back whole.
+    inlineEditor_->setMaxLength(std::numeric_limits<int>::max());
     inlineEditor_->setText(value);
     inlineEditor_->installEventFilter(this);
     connect(inlineEditor_, &QLineEdit::editingFinished, this, &PropertiesView::submitInlineEditor);
