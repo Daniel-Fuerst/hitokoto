@@ -9,74 +9,115 @@ objections:
     category: failure
     severity: major
     title: Shift+Space selects a row while the caret types in a cell, and the next letter replaces a cell
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      Armin (2026-11-21): typed text, a paste of text and committed input method text replace no
+      selected cell; the selection ends and the text goes where the caret was before it began
+      (decision 11). A Shift held too long costs a space, not a cell.
   - id: O2
     category: design
     severity: major
     title: Preferring text/markdown on paste also takes other programs' Markdown, which can differ from their text
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      Armin (2026-11-21): text/markdown is preferred only for hitokoto's own copies, which carry the
+      marker application/x-hitokoto-copy; other programs paste as before (S031). Moved to S041,
+      decision 5. Armin adds that Obsidian puts only HTML and text/plain on the clipboard, its
+      text/plain being the Markdown without blank lines (S041, basis).
   - id: O3
     category: premise
     severity: minor
     title: The end cell is marked and typed into, where Excel keeps the start cell active
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      Armin (2026-11-21): Word, not Excel, is the model. No cell is marked as the active one; a cell
+      selected as a cell shows the selection colours over its whole area, text shows as text
+      (decisions 1 and 2). Escape ends the selection; an arrow key without Shift moves the caret as
+      if there had been no selection, from where it was before; Tab, Shift+Tab and Ctrl+Shift+M
+      count from there (decision 9). The end cell's frame and its two tokens are gone.
   - id: O4
     category: failure
     severity: minor
     title: The plain text on the Windows clipboard has CRLF, not LF
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      text/markdown holds LF, checked by a test on all three platforms; should a platform convert
+      it, its convention applies; text/plain follows the platform, as Qt writes it (S041, decision
+      3; Armin, 2026-11-21).
   - id: O5
     category: failure
     severity: minor
     title: The find bar edits nothing; what ends a selection of cells is not listed correctly
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      Decision 9 lists what ends a selection: undo, redo, the add and delete controls of S018,
+      Ctrl+Shift+M and a table rebuilt after a change of its lines; the find bar is no longer named
+      (Armin, 2026-11-21).
   - id: O6
     category: failure
     severity: minor
     title: Pasting cells can need more than the 255 columns a table may have
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      A paste that would need more than 255 columns changes nothing (S041, decision 7; Armin,
+      2026-11-21).
   - id: O7
     category: failure
     severity: minor
     title: Delete Row and Delete Column with every row or column selected are not defined
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      With every column selected, Delete Column keeps the first; with only the header row selected,
+      Delete Row is disabled and its keys do nothing; with the whole table selected, Delete Row
+      removes every body row (decision 10). Armin (2026-11-21): to be tried in practice; in addition
+      Delete and Backspace with the whole table selected remove the table with its header and the
+      blank line below it.
   - id: O8
     category: design
     severity: minor
     title: The column areas move every table down; the story does not weigh that
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      Armin (2026-11-21): the area is the existing gap between the control and the table, from the
+      first pixel after the control up to and including the table's border pixel (2 px plus
+      table.border-width); the layout does not change, and the token for the area's size is gone.
+      Widened only if practice asks for it; the context menu selects rows and columns meanwhile
+      (decision 6).
   - id: O9
     category: failure
     severity: minor
     title: The row areas can lie outside the editor when its padding is small
-    disposition: pending
-    disposition_rationale: null
+    disposition: resolved
+    disposition_rationale: >-
+      With the area inside the existing gap (O8) it lies against the table and is visible wherever
+      the table is; the story adds no space to the left. Whether the delete-row control is cut off
+      by a small editor padding is a question about S018, not this story.
   - id: O10
     category: operational
     severity: minor
     title: What a screen reader gets for selected cells is not said (S009)
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      The selection is held in the table view's selection model, so that Qt's accessible table
+      interface reports it; a scenario and S009's test cover it (decision 13; Armin, 2026-11-21).
   - id: O11
     category: failure
     severity: minor
     title: The "text the cell shows" of the tab-separated copy is not defined
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      The text of a field is the cell text the find bar searches (S028, "Table cells"): inline
+      elements concealed, \| as |, <br> as a line break, entities as written (S041, decision 4;
+      Armin, 2026-11-21).
   - id: O12
     category: cost
     severity: minor
     title: Size L for a story that also changes copy and paste for the whole editor
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: >-
+      Armin (2026-11-21): split in two stories. S040 keeps selecting, showing, deleting, typing and
+      the selection in the editor; S041 (Order 46, M) takes the clipboard formats, copy, cut and
+      paste.
 ---
 
 # Review (spec) of S040 — Selecting cells, rows and columns in a table
