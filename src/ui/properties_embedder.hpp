@@ -102,7 +102,9 @@ private:
     void replaceProperty(int row, const QString& value, const std::optional<QString>& key = {});
     void replacePropertyItems(int row, const std::vector<std::u16string>& items,
                               const std::optional<QString>& key = {});
-    void recordUndoGroup(int stepsBefore);
+    /// Replaces the document's text from the start of `start` to the start of `end` (the same
+    /// block to insert) by `lines`, in one undo step.
+    void writeLines(const QTextBlock& start, const QTextBlock& end, const QString& lines);
     void insertProperty(const QString& key, const QString& value);
     [[nodiscard]] bool keyExists(std::u16string_view key, int exceptRow = -1) const;
     void updateBadge();
@@ -127,8 +129,6 @@ private:
     bool afterOpening_ = false;  ///< opened while the front matter was being confirmed
     std::optional<core::PropertiesError> error_;
     QTimer work_;
-    int propertyUndoSteps_ = 0;
-    int propertyRedoSteps_ = 0;
 };
 
 }  // namespace hitokoto::ui

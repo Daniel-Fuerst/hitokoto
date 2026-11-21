@@ -583,28 +583,14 @@ void PropertiesEmbedder::addCommitted(const QString& key) {
     insertProperty(key, {});
 }
 
+// One Ctrl+Z, one step: a property edit is one edit block of the document, and what came before it
+// stays for the next Ctrl+Z.
 void PropertiesEmbedder::undoPropertyEdit() {
-    if (propertyUndoSteps_ <= 0) {
-        editor_->undoEdit();
-        return;
-    }
-    const int steps = std::exchange(propertyUndoSteps_, 0);
-    for (int i = 0; i < steps; ++i) {
-        editor_->undoEdit();
-    }
-    propertyRedoSteps_ = steps;
+    editor_->undoEdit();
 }
 
 void PropertiesEmbedder::redoPropertyEdit() {
-    if (propertyRedoSteps_ <= 0) {
-        editor_->redoEdit();
-        return;
-    }
-    const int steps = std::exchange(propertyRedoSteps_, 0);
-    for (int i = 0; i < steps; ++i) {
-        editor_->redoEdit();
-    }
-    propertyUndoSteps_ = steps;
+    editor_->redoEdit();
 }
 
 void PropertiesEmbedder::deleteProperty(int row) {
@@ -620,14 +606,7 @@ void PropertiesEmbedder::deleteProperty(int row) {
     if (!start.isValid() || !end.isValid()) {
         return;
     }
-    const int stepsBefore = editor_->document()->availableUndoSteps();
-    QTextCursor cursor(editor_->document());
-    cursor.beginEditBlock();
-    cursor.setPosition(start.position());
-    cursor.setPosition(end.position(), QTextCursor::KeepAnchor);
-    cursor.removeSelectedText();
-    cursor.endEditBlock();
-    recordUndoGroup(stepsBefore);
+    writeLines(start, end, {});
 }
 
 void PropertiesEmbedder::deleteItem(int row, int item) {
@@ -666,14 +645,7 @@ void PropertiesEmbedder::replaceProperty(int row, const QString& value, const st
     if (!start.isValid() || !end.isValid()) {
         return;
     }
-    const int stepsBefore = editor_->document()->availableUndoSteps();
-    QTextCursor cursor(editor_->document());
-    cursor.beginEditBlock();
-    cursor.setPosition(start.position());
-    cursor.setPosition(end.position(), QTextCursor::KeepAnchor);
-    cursor.insertText(line + QLatin1Char('\n'));
-    cursor.endEditBlock();
-    recordUndoGroup(stepsBefore);
+    writeLines(start, end, line + QLatin1Char('\n'));
 }
 
 void PropertiesEmbedder::replacePropertyItems(int row, const std::vector<std::u16string>& items,
@@ -694,19 +666,20 @@ void PropertiesEmbedder::replacePropertyItems(int row, const std::vector<std::u1
     if (!start.isValid() || !end.isValid()) {
         return;
     }
-    const int stepsBefore = editor_->document()->availableUndoSteps();
+    writeLines(start, end, line + QLatin1Char('\n'));
+}
+
+void PropertiesEmbedder::writeLines(const QTextBlock& start, const QTextBlock& end, const QString& lines) {
     QTextCursor cursor(editor_->document());
     cursor.beginEditBlock();
     cursor.setPosition(start.position());
     cursor.setPosition(end.position(), QTextCursor::KeepAnchor);
-    cursor.insertText(line + QLatin1Char('\n'));
+    if (lines.isEmpty()) {
+        cursor.removeSelectedText();
+    } else {
+        cursor.insertText(lines);
+    }
     cursor.endEditBlock();
-    recordUndoGroup(stepsBefore);
-}
-
-void PropertiesEmbedder::recordUndoGroup(int stepsBefore) {
-    propertyUndoSteps_ = std::max(1, editor_->document()->availableUndoSteps() - stepsBefore);
-    propertyRedoSteps_ = 0;
 }
 
 void PropertiesEmbedder::insertProperty(const QString& key, const QString& value) {
@@ -719,13 +692,7 @@ void PropertiesEmbedder::insertProperty(const QString& key, const QString& value
     }
     const QString line = toQString(core::serializePropertyScalar(hitokoto::ui::view(key))) + QStringLiteral(": ") +
                          toQString(core::serializePropertyScalar(hitokoto::ui::view(value))) + QLatin1Char('\n');
-    const int stepsBefore = editor_->document()->availableUndoSteps();
-    QTextCursor cursor(editor_->document());
-    cursor.beginEditBlock();
-    cursor.setPosition(closing.position());
-    cursor.insertText(line);
-    cursor.endEditBlock();
-    recordUndoGroup(stepsBefore);
+    writeLines(closing, closing, line);
 }
 
 }  // namespace hitokoto::ui
