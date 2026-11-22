@@ -9,19 +9,7 @@
 using namespace hitokoto;
 
 namespace {
-QByteArray largeDocument(qsizetype target) {
-    QByteArray out;
-    out.reserve(target + 512);
-    int i = 0;
-    while (out.size() < target) {
-        ++i;
-        out += QByteArray(1 + i % 3, '#') + " Section " + QByteArray::number(i) + "\n\n";
-        out +=
-            "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore.\n\n";
-        out += "- first item of the list\n- second item of the list\n\n";
-    }
-    return out;
-}
+using test::largeDocument;
 }  // namespace
 
 class tst_s007_large_files : public QObject {

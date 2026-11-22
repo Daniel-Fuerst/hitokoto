@@ -8,6 +8,8 @@
 #include "hitokoto/core/text_codec.hpp"
 #include "hitokoto/core/theme.hpp"
 
+#include "support.hpp"
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -20,18 +22,9 @@
 using namespace hitokoto::core;
 
 namespace {
-const ElementRegistry& registry() {
-    static const ElementRegistry r = ElementRegistry::withBuiltins();
-    return r;
-}
+using hitokoto::test::registry;
 
-std::string narrow(std::u16string_view text) {
-    std::string out;
-    for (const char16_t c : text) {
-        out += c < 0x80 ? static_cast<char>(c) : '?';
-    }
-    return out;
-}
+using hitokoto::test::narrow;
 
 /// The lines of `text` (split at '\n'; a final '\n' ends the last line).
 std::vector<std::u16string> linesOf(std::u16string_view text) {

@@ -14,9 +14,7 @@
 using namespace hitokoto;
 
 namespace {
-QColor qcolor(const core::Color& c) {
-    return {c.r, c.g, c.b, c.a};
-}
+using test::qcolor;
 
 /// A block's rectangle in viewport coordinates (logical pixels).
 QRectF viewportRect(ui::EditorWidget* editor, const QTextBlock& block) {
@@ -61,45 +59,9 @@ int expectedThickness(ui::EditorWidget* editor, double borderWidth) {
     return std::max(1, static_cast<int>(std::lround(borderWidth * dpr)));
 }
 
-std::vector<std::u16string> linesOf(const QTextDocument* doc) {
-    std::vector<std::u16string> lines;
-    for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
-        lines.push_back(b.text().toStdU16String());
-    }
-    return lines;
-}
+using test::linesOf;
 
-/// Every line as the styler renders it and as it is formatted equals the whole-document reference
-/// (ADR 0006); empty if so, else the first difference.
-QString differenceFromTheReference(ui::EditorWidget* editor) {
-    const auto* doc = editor->document();
-    const QTextCursor cursor = editor->textCursor();
-    const int anchor = doc->findBlock(cursor.anchor()).blockNumber();
-    const auto reference =
-        test::registry().renderDocument(linesOf(doc), core::revealedLines(anchor, cursor.blockNumber()));
-    auto& styler = editor->styler();
-    for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
-        auto got = styler.renderFor(b);
-        auto want = reference.at(static_cast<std::size_t>(b.blockNumber()));
-        if (!got.table && b.layout()->formats() != styler.formats().ranges(got)) {
-            return QStringLiteral("line %1 \"%2\" is formatted for another render").arg(b.blockNumber()).arg(b.text());
-        }
-        got.blockState = {};
-        want.blockState = {};
-        if (!(got == want)) {
-            return QStringLiteral("line %1 \"%2\" differs (heading %3/%4, break %5/%6, underline %7/%8)")
-                .arg(b.blockNumber())
-                .arg(b.text())
-                .arg(got.headingLevel)
-                .arg(want.headingLevel)
-                .arg(got.thematicBreak)
-                .arg(want.thematicBreak)
-                .arg(got.setextUnderline)
-                .arg(want.setextUnderline);
-        }
-    }
-    return {};
-}
+using test::differenceFromTheReference;
 
 QColor lineColour() {
     // thematic-break.border falls back to colors.border.

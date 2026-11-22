@@ -4,6 +4,7 @@
 #include "hitokoto/core/theme.hpp"
 
 #include "line_work.hpp"
+#include "support.hpp"
 
 #include <gtest/gtest.h>
 
@@ -13,14 +14,9 @@
 using namespace hitokoto::core;
 
 namespace {
-const ElementRegistry& registry() {
-    static const ElementRegistry r = ElementRegistry::withBuiltins();
-    return r;
-}
+using hitokoto::test::registry;
 
-LineRender show(std::u16string_view line, bool revealed = false) {
-    return registry().render(line, {revealed});
-}
+using hitokoto::test::show;
 }  // namespace
 
 // The exact example reported by the user: 20 escaped ASCII punctuation characters.

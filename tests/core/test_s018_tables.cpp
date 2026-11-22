@@ -4,6 +4,8 @@
 #include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/theme.hpp"
 
+#include "support.hpp"
+
 #include <gtest/gtest.h>
 
 #include <string>
@@ -13,10 +15,7 @@
 using namespace hitokoto::core;
 
 namespace {
-const ElementRegistry& registry() {
-    static const ElementRegistry r = ElementRegistry::withBuiltins();
-    return r;
-}
+using hitokoto::test::registry;
 
 /// Renders `lines` top to bottom, each with the next line as lookahead.
 std::vector<LineRender> showAll(const std::vector<std::u16string>& lines) {
@@ -39,14 +38,7 @@ std::vector<std::u16string> cellTexts(std::u16string_view line) {
     return texts;
 }
 
-/// ASCII text of a line for failure messages; other characters as '?'.
-std::string narrow(std::u16string_view text) {
-    std::string out;
-    for (const char16_t c : text) {
-        out += c < 0x80 ? static_cast<char>(c) : '?';
-    }
-    return out;
-}
+using hitokoto::test::narrow;
 }  // namespace
 
 TEST(S018_Tables, RecognizesHeaderDelimiterAndBodyRows) {
