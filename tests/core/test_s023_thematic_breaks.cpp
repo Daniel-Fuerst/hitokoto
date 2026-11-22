@@ -355,6 +355,23 @@ TEST(S023_ThematicBreaks, InlineHtmlIsParagraphTextAndATableRow) {
     EXPECT_TRUE(table[3].thematicBreak);
 }
 
+// A lone tag after a blank line starts an HTML block of type 7 only if it is complete: attribute
+// names, unquoted, single- and double-quoted values, blanks around `=`, `/>` and closing tags. The
+// line is then no paragraph text, and `---` below it underlines nothing. Checked against
+// markdown-it-py 4.2.0 (an html_block, or a paragraph that `---` makes a heading).
+TEST(S023_ThematicBreaks, OnlyACompleteLoneTagStartsAnHtmlBlock) {
+    for (const auto& tag : {u"<x a>", u"<x a=1>", u"<x a=\"1\">", u"<x a='1'>", u"<x a = \"1\">", u"<x _:a.b-c=1>",
+                            u"<x a/>", u"<x a=1 />", u"</x  >", u"<x-1 a>"}) {
+        const std::vector<std::u16string> lines{u"", tag, u"---"};
+        EXPECT_EQ(showAll(lines)[1].headingLevel, 0) << context(lines) << ": an HTML block";
+    }
+    for (const auto& text :
+         {u"<x a=\"1>", u"</x a>", u"<x a=1> y", u"<x a=\"1\"b=\"2\">", u"<x a=>", u"<x a=`b`>", u"<x 1a>"}) {
+        const std::vector<std::u16string> lines{u"", text, u"---"};
+        EXPECT_EQ(showAll(lines)[1].headingLevel, 2) << context(lines) << ": paragraph text";
+    }
+}
+
 // Review O3 (code): an empty list item may not interrupt a paragraph (CommonMark 5.2), and nothing
 // starts four or more columns past a paragraph's content column; such lines continue the paragraph.
 // Checked against commonmark.js 0.31.2 and markdown-it-py 4.2.0.
