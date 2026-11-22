@@ -3,6 +3,8 @@
 #include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/theme.hpp"
 
+#include "support.hpp"
+
 #include <gtest/gtest.h>
 
 #include <memory>
@@ -10,10 +12,7 @@
 using namespace hitokoto::core;
 
 namespace {
-const ElementRegistry& registry() {
-    static const ElementRegistry r = ElementRegistry::withBuiltins();
-    return r;
-}
+using hitokoto::test::registry;
 
 LineRender show(std::u16string_view line, BlockState state = {}, bool revealed = false) {
     return registry().render(line, {revealed, state});

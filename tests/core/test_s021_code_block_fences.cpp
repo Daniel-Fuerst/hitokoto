@@ -4,6 +4,8 @@
 #include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/theme.hpp"
 
+#include "support.hpp"
+
 #include <gtest/gtest.h>
 
 #include <string>
@@ -12,10 +14,7 @@
 using namespace hitokoto::core;
 
 namespace {
-const ElementRegistry& registry() {
-    static const ElementRegistry r = ElementRegistry::withBuiltins();
-    return r;
-}
+using hitokoto::test::registry;
 
 std::u16string languageOf(std::u16string_view line, bool revealed = false) {
     return registry().render(line, {revealed, {}}).codeLanguage;

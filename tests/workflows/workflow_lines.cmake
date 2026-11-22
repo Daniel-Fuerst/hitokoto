@@ -2,11 +2,7 @@
 # Helpers of the workflow lints (S035, S036): the workflow files are read as text, without a YAML
 # parser. Included by the case files; they set WORKFLOWS_DIR.
 
-function(expect_eq actual expected what)
-    if(NOT "${actual}" STREQUAL "${expected}")
-        message(FATAL_ERROR "${what}: '${actual}', expected '${expected}'")
-    endif()
-endfunction()
+include("${CMAKE_CURRENT_LIST_DIR}/../cmake/expect.cmake")
 
 # The lines of a workflow file as a CMake list, carriage returns removed. Semicolons and square
 # brackets would break CMake lists, so they are stored as @SC@, @LB@ and @RB@.

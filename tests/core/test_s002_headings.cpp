@@ -3,6 +3,8 @@
 #include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/reveal.hpp"
 
+#include "support.hpp"
+
 #include <gtest/gtest.h>
 
 #include <random>
@@ -10,13 +12,8 @@
 using namespace hitokoto::core;
 
 namespace {
-const ElementRegistry& registry() {
-    static const ElementRegistry r = ElementRegistry::withBuiltins();
-    return r;
-}
-LineRender show(std::u16string_view line, bool revealed = false) {
-    return registry().render(line, {revealed});
-}
+using hitokoto::test::registry;
+using hitokoto::test::show;
 }  // namespace
 
 TEST(S002_Headings, MarkerHiddenWhenCursorElsewhere) {

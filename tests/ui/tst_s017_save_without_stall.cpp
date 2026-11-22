@@ -13,19 +13,7 @@
 using namespace hitokoto;
 
 namespace {
-QByteArray largeDocument(qsizetype target) {
-    QByteArray out;
-    out.reserve(target + 512);
-    int i = 0;
-    while (out.size() < target) {
-        ++i;
-        out += QByteArray(1 + i % 3, '#') + " Section " + QByteArray::number(i) + "\n\n";
-        out +=
-            "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore.\n\n";
-        out += "- first item of the list\n- second item of the list\n\n";
-    }
-    return out;
-}
+using test::largeDocument;
 
 /// The longest gap between 1 ms timer ticks while `run()` executes (the UI thread's longest stall).
 /// `run()` must keep the event loop running without sleeping: QTest::qWaitFor() sleeps 10 ms

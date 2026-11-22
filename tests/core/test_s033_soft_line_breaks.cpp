@@ -3,6 +3,8 @@
 #include "hitokoto/core/find.hpp"
 #include "hitokoto/core/markdown.hpp"
 
+#include "support.hpp"
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -12,10 +14,7 @@
 using namespace hitokoto::core;
 
 namespace {
-const ElementRegistry& registry() {
-    static const ElementRegistry r = ElementRegistry::withBuiltins();
-    return r;
-}
+using hitokoto::test::registry;
 
 std::vector<LineRender> showAll(const std::vector<std::u16string>& lines, LineRange revealed = {}) {
     return registry().renderDocument(lines, revealed);

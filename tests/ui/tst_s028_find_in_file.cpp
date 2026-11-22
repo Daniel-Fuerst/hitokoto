@@ -124,9 +124,7 @@ QRect matchRect(const test::Fixture& f, const core::FindMatch& m) {
     return QRect(QPoint(ra.left(), ra.top()), QPoint(rb.left(), ra.bottom()));
 }
 
-QColor qcolor(const core::Color& c) {
-    return {c.r, c.g, c.b, c.a};
-}
+using test::qcolor;
 
 /// How many pixels of `rect` in `image` have exactly `color`.
 int pixelsOf(const QImage& image, const QRect& rect, const QColor& color) {

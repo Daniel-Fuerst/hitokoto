@@ -5,9 +5,7 @@
 using namespace hitokoto;
 
 namespace {
-QColor qcolor(const core::Color& c) {
-    return {c.r, c.g, c.b, c.a};
-}
+using test::qcolor;
 }  // namespace
 
 class tst_s020_backslash_escapes : public QObject {

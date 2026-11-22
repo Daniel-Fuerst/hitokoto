@@ -15,6 +15,8 @@ endforeach()
 file(REMOVE_RECURSE "${WORK_DIR}")
 file(MAKE_DIRECTORY "${WORK_DIR}")
 
+include("${CMAKE_CURRENT_LIST_DIR}/../cmake/expect.cmake")
+
 # Code review O5: git commands of these cases never follow a repository named by the environment
 # (git hooks set GIT_DIR, for example); otherwise the throwaway repository below would be the
 # caller's repository.
@@ -24,31 +26,6 @@ endforeach()
 
 set(next_script "${SCRIPTS_DIR}/NextVersion.cmake")
 set(four_labels "version:major, version:minor, version:patch, version:none")
-
-function(expect_eq actual expected what)
-    if(NOT "${actual}" STREQUAL "${expected}")
-        message(FATAL_ERROR "${what}: '${actual}', expected '${expected}'")
-    endif()
-endfunction()
-
-# CMake wraps long messages, so runs of white space count as one space.
-function(expect_contains text part what)
-    string(REGEX REPLACE "[ \t\r\n]+" " " flat_text "${text}")
-    string(REGEX REPLACE "[ \t\r\n]+" " " flat_part "${part}")
-    string(FIND "${flat_text}" "${flat_part}" pos)
-    if(pos EQUAL -1)
-        message(FATAL_ERROR "${what}: '${part}' not in\n${text}")
-    endif()
-endfunction()
-
-# Writes the items of a list one per line (an empty list gives an empty file).
-function(write_lines file)
-    set(text "")
-    foreach(item IN LISTS ARGN)
-        string(APPEND text "${item}\n")
-    endforeach()
-    file(WRITE "${file}" "${text}")
-endfunction()
 
 # Runs NextVersion.cmake. Named arguments: MODE, TAGS (list), LABELS (list), CANDIDATES (text).
 # Sets <prefix>_CODE (exit code), <prefix>_OUTPUT (content of the output file, stripped) and

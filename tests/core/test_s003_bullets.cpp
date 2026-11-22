@@ -3,6 +3,8 @@
 #include "hitokoto/core/bullet.hpp"
 #include "hitokoto/core/markdown.hpp"
 
+#include "support.hpp"
+
 #include <gtest/gtest.h>
 
 #include <string>
@@ -11,13 +13,7 @@
 using namespace hitokoto::core;
 
 namespace {
-const ElementRegistry& registry() {
-    static const ElementRegistry r = ElementRegistry::withBuiltins();
-    return r;
-}
-LineRender show(std::u16string_view line, bool revealed = false) {
-    return registry().render(line, {revealed});
-}
+using hitokoto::test::show;
 
 // A test-only element: proves that a new element is added without touching existing ones.
 class ShoutElement final : public LineElement {
@@ -33,14 +29,7 @@ public:
     }
 };
 
-/// ASCII text of a line for failure messages; other characters as '?'.
-std::string narrow(std::u16string_view text) {
-    std::string out;
-    for (const char16_t c : text) {
-        out += c < 0x80 ? static_cast<char>(c) : '?';
-    }
-    return out;
-}
+using hitokoto::test::narrow;
 }  // namespace
 
 TEST(S003_Bullets, DotReplacesMarkerWhenCursorElsewhere) {
