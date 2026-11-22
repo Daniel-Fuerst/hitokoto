@@ -141,6 +141,7 @@ bool isOctalDigit(char16_t c) noexcept {
 }
 
 /// The value of a number of the core schema, or nothing if `s` is none.
+// NOLINTNEXTLINE(readability-function-cognitive-complexity): above the threshold when the check came in
 std::optional<double> number(std::u16string_view s) {
     std::u16string_view body = s;
     bool negative = false;
@@ -1350,6 +1351,7 @@ private:
 
     /// A flow sequence or mapping at p (`[` or `{`); p ends after its closing bracket. `entries`:
     /// collect the keys of the top-level mapping.
+    // NOLINTNEXTLINE(readability-function-cognitive-complexity): above the threshold when the check came in
     std::size_t flowCollection(Pos& p, int depth, std::vector<TopEntry>* entries) {
         const Pos open = p;
         if (tooDeep(depth, p.line)) {

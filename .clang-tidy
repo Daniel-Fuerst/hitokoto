@@ -13,6 +13,13 @@ Checks: >
   modernize-use-equals-default,
   readability-redundant-string-cstr,
   readability-container-size-empty,
-  misc-unused-using-decls
+  misc-unused-using-decls,
+  readability-function-cognitive-complexity
+CheckOptions:
+  # A function above 50 fails; those above it when the check came in carry NOLINTNEXTLINE. Split one
+  # and remove its line; lower the threshold when none is left above the new value.
+  readability-function-cognitive-complexity.Threshold: 50
+  # QtTest's QVERIFY and QCOMPARE would count as branches in every test.
+  readability-function-cognitive-complexity.IgnoreMacros: true
 WarningsAsErrors: '*'
 HeaderFilterRegex: '.*/(src|tests|bench|fuzz)/.*'

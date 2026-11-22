@@ -373,6 +373,7 @@ std::optional<std::vector<PasteBlock>> pastedTablesToMarkdown(std::span<const Pa
     return blocks;
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity): above the threshold when the check came in
 std::optional<PastedTable> parseExcelPlainText(std::u16string_view text) {
     struct Row {
         std::vector<std::u16string> fields;
