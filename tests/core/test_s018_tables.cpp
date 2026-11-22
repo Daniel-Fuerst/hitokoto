@@ -2,6 +2,7 @@
 // S018: Markdown pipe tables (ADR 0005). Expectations checked against cmark-gfm 0.29.0.gfm
 // (Python cmarkgfm 2025.10.22) on 2026-10-27.
 #include "hitokoto/core/markdown.hpp"
+#include "hitokoto/core/table.hpp"
 #include "hitokoto/core/theme.hpp"
 
 #include <gtest/gtest.h>

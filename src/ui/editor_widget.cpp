@@ -2,6 +2,8 @@
 #include "editor_widget.hpp"
 
 #include "floating_toolbar.hpp"
+#include "hitokoto/core/bullet.hpp"
+#include "hitokoto/core/table.hpp"
 #include "properties_embedder.hpp"
 #include "qt_bridge.hpp"
 #include "settings_menu.hpp"

@@ -5,6 +5,7 @@
 #include "hitokoto/core/find.hpp"
 
 #include "hitokoto/core/properties.hpp"
+#include "hitokoto/core/table.hpp"
 
 #include <algorithm>
 #include <array>

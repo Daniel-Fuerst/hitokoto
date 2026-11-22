@@ -5,6 +5,7 @@
 #include "block_styler.hpp"
 #include "editor_widget.hpp"
 #include "hitokoto/core/file_io.hpp"
+#include "hitokoto/core/table.hpp"
 #include "hitokoto/core/text_codec.hpp"
 #include "qt_bridge.hpp"
 

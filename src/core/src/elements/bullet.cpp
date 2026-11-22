@@ -2,6 +2,7 @@
 // S003: bullet list items ('-', '*', '+'). Indentation is treated as nesting depth; there are
 // no indented code blocks in this version. Thematic breaks ("---", "* * *") are not items.
 // S023: a bullet with text opens paragraph text at its content column (ADR 0006).
+#include "hitokoto/core/bullet.hpp"
 #include "hitokoto/core/markdown.hpp"
 
 #include "../block_rules.hpp"

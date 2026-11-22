@@ -2,6 +2,7 @@
 // S018: GitHub Flavored Markdown pipe tables (GFM 0.29 section 4.10, ADR 0005), following
 // cmark-gfm where the spec leaves room. The UI shows table lines in a table view; the lines carry
 // no formats of their own.
+#include "hitokoto/core/table.hpp"
 #include "hitokoto/core/markdown.hpp"
 
 #include "../block_rules.hpp"

@@ -5,6 +5,7 @@
 // longer than its Markdown; cell Markdown made from text stays on one line; replacing a cell keeps
 // the rest of the line byte for byte; the column helpers keep a row on one line.
 #include "hitokoto/core/markdown.hpp"
+#include "hitokoto/core/table.hpp"
 
 #include <algorithm>
 #include <cstdint>

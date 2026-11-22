@@ -2,6 +2,7 @@
 #include "table_model.hpp"
 
 #include "editor_formats.hpp"
+#include "hitokoto/core/table.hpp"
 #include "qt_bridge.hpp"
 #include "text_input.hpp"
 

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S003: bullets render as dots through the same element mechanism as headings.
+#include "hitokoto/core/bullet.hpp"
 #include "hitokoto/core/markdown.hpp"
 
 #include <gtest/gtest.h>
