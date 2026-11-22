@@ -145,13 +145,12 @@ follows the general tokens above.
 | `table.text` | color | Text colour of table body cells | `colors.text` |
 | `table.header-text` | color | Text colour of table header cells | `table.text` |
 | `table.header-weight` | number | Font weight of table header cells, 100 to 900 | `headings.weight` |
-| `table.border` | color | Outer border, cell grid lines and row/column controls | `colors.border` |
+| `table.border` | color | Outer border, cell grid lines and add-row/column controls | `colors.border` |
 | `table.border-width` | number (px) | Width of table and cell borders, 0 to 8 | 1 |
 | `table.radius` | number (px) | Corner radius of the outer table border, 0 to 32 | `layout.radius` |
 | `table.padding` | number (px) | Horizontal and vertical space inside cells, 0 to 64 | `layout.spacing` |
 | `table.font-family` | string | Font family of table cells; "" = editor font | "" |
 | `table.font-scale` | number | Font size of table cells relative to the editor font, 0.5 to 2 | 1 |
-| `escape.marker` | color | Backslash when revealed | `colors.marker` |
 | `escape.marker` | color | Backslash when revealed | `colors.marker` |
 | `link.text` | color | Colour of link text | `colors.accent` |
 | `link.marker` | color | Delimiters and destination when revealed | `colors.marker` |
@@ -228,7 +227,7 @@ follows the general tokens above.
 | `find.active-icon` | color | Icon of a pressed button or a toggle that is on | `colors.selection-text` |
 | `find.current-background` | color | Current match | #ffd43b (light), #c99a06 (dark) |
 | `find.current-text` | color | Text of the current match | #1a1a1a |
-| `find.match-background` | color | Other matches (highlight all); cells, property keys and values, and chips with a match | #fff3bf (light), #5c4a12 (dark) |
+| `find.match-background` | color | Other matches (highlight all); cells, values and chips with a match | #fff3bf (light), #5c4a12 (dark) |
 | `find.match-text` | color | Text of other matches | #1a1a1a (light), #f1f1f1 (dark) |
 | `menu-bar.background` | color | Background of the top menu bar | `colors.background` |
 | `menu-bar.border` | color | Line below the top menu bar | `colors.border` |
@@ -245,7 +244,7 @@ follows the general tokens above.
 | `menu-bar.item-padding-horizontal` | number (px) | Horizontal space inside each menu bar item pill, 0 to 32 | `layout.spacing` |
 | `menu-bar.item-padding-vertical` | number (px) | Vertical space inside each menu bar item pill, 0 to 32 | 4 |
 | `menu-bar.font-family` | string | Font family of the menu bar; "" = UI font | "" |
-| `menu-bar.font-scale` | number | Size of the menu bar relative to the UI font, 0.5 to 2 | 1 |
+| `menu-bar.font-scale` | number | Font size of the menu bar relative to the UI font, 0.5 to 2 | 1 |
 
 A thematic break (`---`, `***`, `___`) is a line across the text column, centred vertically in its block.
 Setext headings (text underlined with `===` or `---`) add no tokens: their lines use the heading
