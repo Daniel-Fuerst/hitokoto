@@ -469,7 +469,7 @@ private slots:
         test::keyClicks(edit, QStringLiteral("heading"));
         test::keyClick(edit, Qt::Key_Return);
         f.settle();
-        QCOMPARE(editor->document()->findBlockByNumber(1).text(), QStringLiteral("\"heading\": \"first\""));
+        QCOMPARE(editor->document()->findBlockByNumber(1).text(), QStringLiteral("\"heading\": first"));
         expectConcealed(editor, 2, "after renaming a property");
     }
 
@@ -646,7 +646,7 @@ private slots:
                               << QStringLiteral("First") + ps + QStringLiteral("---") + ps + QStringLiteral("second")
                               << QStringLiteral("\"title\": \"First\\P---\\Psecond\"");
         QTest::newRow("key") << 0 << true << QStringLiteral("a") + ps + QStringLiteral("---")
-                             << QStringLiteral("\"a\\P---\": \"A note\"");
+                             << QStringLiteral("\"a\\P---\": A note");
         QTest::newRow("U+FDD0") << 0 << false << QStringLiteral("a") + QChar(0xFDD0) + QStringLiteral("b")
                                 << QStringLiteral("\"title\": \"a\\uFDD0b\"");
     }

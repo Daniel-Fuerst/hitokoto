@@ -13,9 +13,11 @@
 
 #include <QFont>
 #include <QObject>
+#include <QTextBlock>
 #include <QTimer>
 
 #include <optional>
+#include <utility>
 #include <vector>
 
 class QKeyEvent;
@@ -99,13 +101,22 @@ private:
     void redoPropertyEdit();
     void deleteProperty(int row);
     void deleteItem(int row, int item);
-    void replaceProperty(int row, const QString& value, const std::optional<QString>& key = {});
-    void replacePropertyItems(int row, const std::vector<std::u16string>& items,
-                              const std::optional<QString>& key = {});
+    void editItem(int row, int item);
+    void replaceProperty(int row, const QString& value);
+    void replacePropertyItems(int row, const std::vector<std::u16string>& items);
+    void renameProperty(int row, const QString& key);
+    /// Whether the row's lines hold it alone, so that an edit can replace them; otherwise shows why
+    /// not (a flow mapping: its entries share a line).
+    [[nodiscard]] bool editable(int row);
+    /// The blocks from the row's key line to the line after its value.
+    [[nodiscard]] std::pair<QTextBlock, QTextBlock> ownLines(int row) const;
     /// Replaces the document's text from the start of `start` to the start of `end` (the same
     /// block to insert) by `lines`, in one undo step. Refuses lines that would leave their
     /// property or could not be saved.
     void writeLines(const QTextBlock& start, const QTextBlock& end, const QString& lines);
+    /// Replaces the document's characters [from, to) by `text` in one undo step, with the checks of
+    /// writeLines.
+    void writeText(int from, int to, const QString& text);
     void insertProperty(const QString& key, const QString& value);
     [[nodiscard]] bool keyExists(std::u16string_view key, int exceptRow = -1) const;
     void updateBadge();

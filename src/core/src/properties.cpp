@@ -513,6 +513,10 @@ struct TopEntry {
     std::size_t keyLine = 0;
     std::size_t valueLine = 0;
     std::size_t valueColumn = 0;
+    std::size_t keyColumn = 0;     ///< S025: the key's source on keyLine, quotes included ...
+    std::size_t keyEndColumn = 0;  ///< ... up to here
+    std::size_t endLine = 0;       ///< S025: the line after the value's last line
+    bool ownLines = false;         ///< S025: an entry of the top block mapping
 };
 
 /// A key found at the start of a mapping entry.
@@ -888,7 +892,13 @@ private:
             }
             const std::size_t keyIndex = keyNode(*key);
             if (entries != nullptr) {
-                entries->push_back(TopEntry{key->text, value, keyIndex, i, valuePos.line, valuePos.col});
+                // The value ends before next_; blank and comment lines after it are skipped below.
+                std::size_t keyEnd = key->colon;
+                while (keyEnd > key->start.col && isWhite(t[keyEnd - 1])) {
+                    --keyEnd;
+                }
+                entries->push_back(TopEntry{key->text, value, keyIndex, i, valuePos.line, valuePos.col, key->start.col,
+                                            keyEnd, next_, true});
             }
             map.keys.push_back(std::move(name));
             map.keyNodes.push_back(keyIndex);
@@ -1414,7 +1424,8 @@ private:
                         return addNull();
                     }
                     if (entries != nullptr) {
-                        entries->push_back(TopEntry{k.text, value, key, keyPos.line, valuePos.line, valuePos.col});
+                        entries->push_back(
+                            TopEntry{k.text, value, key, keyPos.line, valuePos.line, valuePos.col, 0, 0, 0, false});
                     }
                     node.keys.push_back(std::move(name));
                     node.keyNodes.push_back(key);
@@ -1554,6 +1565,10 @@ private:
         p.keyLine = e.keyLine;
         p.valueLine = e.valueLine;
         p.valueColumn = e.valueColumn;
+        p.keyColumn = e.keyColumn;
+        p.keyEndColumn = e.keyEndColumn;
+        p.endLine = e.endLine;
+        p.ownLines = e.ownLines;
         const Node& v = nodes_[e.value];
         const bool tags = e.key == u"tags";
         const bool listKey = e.key == u"aliases" || e.key == u"cssclasses";

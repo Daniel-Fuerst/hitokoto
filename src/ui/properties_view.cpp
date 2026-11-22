@@ -611,6 +611,13 @@ void PropertiesView::rejectInlineEdit(const QString& message) {
     inlineEditor_->selectAll();
 }
 
+void PropertiesView::refuseEdit(int row, const QString& message) {
+    const QRect rect = row >= 0 && static_cast<std::size_t>(row) < rows_.size()
+                           ? rows_[static_cast<std::size_t>(row)].rect
+                           : addButton_;
+    QToolTip::showText(mapToGlobal(rect.center()), message, this, rect);
+}
+
 void PropertiesView::cancelInlineEditor() {
     finishInlineEdit();
 }

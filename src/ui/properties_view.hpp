@@ -74,6 +74,8 @@ public:
     void editNewProperty();
     void finishInlineEdit();
     void rejectInlineEdit(const QString& message);
+    /// Shows `message` as a tooltip at the row (-1: at Add property) for an edit that is not made.
+    void refuseEdit(int row, const QString& message);
 
     /// The text a row shows for its value, as its accessible name has it after "key: " (dates in
     /// the system's short format, a checkbox "checked" or "not checked", items joined by ", ",
