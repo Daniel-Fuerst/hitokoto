@@ -173,11 +173,6 @@ class TableElement final : public MultiLineElement {
 public:
     [[nodiscard]] std::string_view id() const noexcept override { return "table"; }
 
-    [[nodiscard]] std::optional<BlockLine> parse(std::u16string_view line,
-                                                 std::uint32_t state) const noexcept override {
-        return parseWithNextLine(line, state, {});
-    }
-
     [[nodiscard]] std::optional<BlockLine> parseWithNextLine(std::u16string_view line, std::uint32_t state,
                                                              std::u16string_view nextLine) const noexcept override {
         if (state == 0) {

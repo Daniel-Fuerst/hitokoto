@@ -270,7 +270,6 @@ namespace {
 /// text run around its runs (brief, section 5: adding an element never edits the core loop).
 class HighlightElement final : public InlineElement {
 public:
-    [[nodiscard]] std::string_view id() const noexcept override { return "test-highlight"; }
     [[nodiscard]] std::u16string_view triggerCharacters() const noexcept override { return u"="; }
     void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
         const auto open = line.find(u"==");

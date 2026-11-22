@@ -222,7 +222,6 @@ public:
     LineElement& operator=(const LineElement&) = delete;
     virtual ~LineElement() = default;
 
-    [[nodiscard]] virtual std::string_view id() const noexcept = 0;
     /// Parse rule: does this line belong to the element?
     [[nodiscard]] virtual std::optional<LineMatch> parse(std::u16string_view line) const = 0;
     /// Render rule: how to show a matched line.
@@ -258,7 +257,6 @@ public:
     InlineElement& operator=(const InlineElement&) = delete;
     virtual ~InlineElement() = default;
 
-    [[nodiscard]] virtual std::string_view id() const noexcept = 0;
     /// Characters that can start this element. The registry scans each line once and skips the
     /// element on lines that contain none of them. Empty (the default) = run on every line.
     [[nodiscard]] virtual std::u16string_view triggerCharacters() const noexcept { return {}; }
@@ -286,15 +284,11 @@ public:
     /// Parse rule. `state` is 0 outside a block: return a BlockLine if `line` opens one, else
     /// nullopt. Inside, `state` is the element's state from the previous line: return the line's
     /// BlockLine, or nullopt if the block ended before `line` (the line is then parsed afresh).
-    /// Runs for every line above the visible ones, so it must be cheap and must not allocate.
-    [[nodiscard]] virtual std::optional<BlockLine> parse(std::u16string_view line,
-                                                         std::uint32_t state) const noexcept = 0;
-    /// Parse rule with one-line lookahead (default: ignores `nextLine` and calls `parse`).
+    /// `nextLine` is the line below, for an element that opens only with it (a table's delimiter
+    /// row); empty where the caller has none. Runs for every line above the visible ones, so it
+    /// must be cheap and must not allocate.
     [[nodiscard]] virtual std::optional<BlockLine> parseWithNextLine(std::u16string_view line, std::uint32_t state,
-                                                                     std::u16string_view nextLine) const noexcept {
-        (void)nextLine;
-        return parse(line, state);
-    }
+                                                                     std::u16string_view nextLine) const noexcept = 0;
     /// Render rule: how to show a line the parse rule accepted.
     virtual void render(std::u16string_view line, const BlockLine& parsed, const LineContext& context,
                         LineRender& out) const = 0;

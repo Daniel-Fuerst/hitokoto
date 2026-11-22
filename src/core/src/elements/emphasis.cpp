@@ -229,7 +229,6 @@ std::uint32_t contextFor(Span span, const std::vector<Span>& contexts) noexcept 
 
 class EmphasisElement final : public InlineElement {
 public:
-    [[nodiscard]] std::string_view id() const noexcept override { return "emphasis"; }
     [[nodiscard]] std::u16string_view triggerCharacters() const noexcept override { return u"*_~"; }
 
     void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {

@@ -175,8 +175,8 @@ namespace {
 class MathBlock final : public MultiLineElement {
 public:
     [[nodiscard]] std::string_view id() const noexcept override { return "test-math"; }
-    [[nodiscard]] std::optional<BlockLine> parse(std::u16string_view line,
-                                                 std::uint32_t state) const noexcept override {
+    [[nodiscard]] std::optional<BlockLine> parseWithNextLine(std::u16string_view line, std::uint32_t state,
+                                                             std::u16string_view /*nextLine*/) const noexcept override {
         const bool delimiter = line == u"$$";
         if (state == 0) {
             return delimiter ? std::optional<BlockLine>{BlockLine{1, true}} : std::nullopt;

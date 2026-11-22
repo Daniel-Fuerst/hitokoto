@@ -25,8 +25,6 @@ std::int64_t contentColumn(std::u16string_view line, const LineMatch& match) noe
 
 class BulletElement final : public LineElement {
 public:
-    [[nodiscard]] std::string_view id() const noexcept override { return "bullet"; }
-
     [[nodiscard]] std::optional<LineMatch> parse(std::u16string_view line) const override {
         std::size_t i = 0;
         std::uint32_t column = 0;

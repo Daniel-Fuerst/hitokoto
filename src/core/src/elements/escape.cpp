@@ -18,7 +18,6 @@ bool isAsciiPunctuation(char16_t c) noexcept {
 
 class EscapeElement final : public InlineElement {
 public:
-    [[nodiscard]] std::string_view id() const noexcept override { return "escape"; }
     [[nodiscard]] std::u16string_view triggerCharacters() const noexcept override { return u"\\"; }
 
     void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {

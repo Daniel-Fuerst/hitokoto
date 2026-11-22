@@ -22,7 +22,6 @@ public:
     void applyStyle(const core::ToolbarStyle& style);
     [[nodiscard]] const core::ToolbarStyle& toolbarStyle() const noexcept { return style_; }
     void setSettingsOpen(bool open);
-    [[nodiscard]] bool isSettingsOpen() const;
 
 signals:
     void createTableRequested();
