@@ -59,6 +59,32 @@ private slots:
         QCOMPARE(test::formatAt(block, 7).foreground().color(), qcolor(*theme.inlineCode.marker));
     }
 
+    // The box covers the code and the concealed backticks, so the padding after each backtick lies
+    // inside it on both sides.
+    void theBoxCoversThePaddingOnBothSides() {
+        test::Fixture f;
+        auto theme = core::builtinTheme(core::ColorScheme::Light);
+        theme.inlineCode.padding = 10;
+        theme.inlineCode.radius = 0;
+        theme.inlineCode.borderWidth = 0;
+        theme.inlineCode.background = core::Color{0x20, 0x40, 0x60, 0xff};
+        f.window->applyTheme(theme);
+        QVERIFY(f.open(f.writeFile(QStringLiteral("box.md"), "x `code` y\nplain\n")));
+        f.placeCaret(1);
+        f.settle();
+        const auto block = f.editor()->document()->firstBlock();
+        const auto cursorAt = [&](int column) {
+            QTextCursor c(block);
+            c.setPosition(block.position() + column);
+            return f.editor()->cursorRect(c);
+        };
+        const qreal y = cursorAt(4).center().y();
+        // Columns: 2 and 7 the backticks, 3 to 6 the code, 9 the y.
+        QTRY_COMPARE(pixel(f.editor(), cursorAt(3).x() - 5, y), qcolor(*theme.inlineCode.background));
+        QTRY_COMPARE(pixel(f.editor(), cursorAt(7).x() + 5, y), qcolor(*theme.inlineCode.background));
+        QVERIFY(pixel(f.editor(), cursorAt(9).x() + 5, y) != qcolor(*theme.inlineCode.background));
+    }
+
     void inlineCodeUsesThemeCodeFamilyOrSystemFixedFont() {
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("inline-code.md"), "text `code` text\n")));
