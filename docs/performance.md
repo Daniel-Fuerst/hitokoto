@@ -55,6 +55,57 @@ on the CI runner decides. Sections that only compare a change with main on the s
 
 ## Measurements
 
+### 2026-11-22, development VM, the shortcuts of EditorFormats::ranges (release build, offscreen, Qt 6.12.0)
+
+`EditorFormats::ranges()` takes seven shortcuts beside its general path: three for whole lines
+(nothing to format, a lone concealed bullet, a plain heading) and four for pieces (bullet space,
+a hidden range, plain italic, heading text). Commit 18a0ec3 added them for `open_10mb_styled_ms`
+without numbers per shortcut. Measured on the branch that puts the general path into one function
+(`formatFor`, `composedFormat`), with a switch per shortcut that is not committed.
+
+`ranges()` alone, over every line of a document rendered beforehand (concealed, light theme;
+median of 18 passes, three processes): the 10 MB document of `hitokoto-bench` (427,204 lines,
+headings, a paragraph and two bullets per section) and the Markdown files of the repository
+repeated to 10.7 MB (166,051 lines, with emphasis, code, links and tables).
+
+| Shortcuts switched off | Bench document | Repository Markdown |
+|---|---|---|
+| none (main 83256b0) | 31.6 ms | 104.9 ms |
+| none (branch) | 29.5 ms | 103.9 ms |
+| nothing to format | 26.8 ms | 104.7 ms |
+| lone concealed bullet | 34.0 ms | 104.5 ms |
+| plain heading | 33.8 ms | 105.3 ms |
+| bullet space | 30.3 ms | 108.7 ms |
+| hidden range | 30.2 ms | 124.0 ms |
+| plain italic | 30.1 ms | 103.6 ms |
+| heading text | 30.3 ms | 102.4 ms |
+| the three for whole lines | 36.0 ms | 103.9 ms |
+| the four for pieces | 29.7 ms | 124.1 ms |
+| all seven | 79.3 ms | 134.1 ms |
+
+The shortcuts stand in for each other: a bullet line the whole-line shortcut does not take goes
+to the shortcuts for its pieces, and the reverse. Alone, only the one for hidden ranges saves more
+than the spread of the passes (about 3 ms): 20 ms on the repository's Markdown. All seven save
+50 ms on the bench document (about 120 ns per line) and 30 ms on the repository's Markdown.
+
+End to end, `open_10mb_styled_ms` (`hitokoto-bench` reduced to the opening of 10 MB, median of
+five openings per process; four interleaved rounds, median, min–max):
+
+| Build | Styled |
+|---|---|
+| main 83256b0 | 3.83 s (3.70–3.98) |
+| branch, all shortcuts | 4.01 s (3.94–4.15) |
+| branch, without the three for whole lines | 4.05 s (3.87–4.08) |
+| branch, without the four for pieces | 3.94 s (3.86–3.98) |
+| branch, without the one for hidden ranges | 3.91 s (3.74–3.99) |
+| branch, without any | 4.25 s (4.23–4.46) |
+
+Only all seven together save more than the VM's spread: 0.24 s of 4 s, of which `ranges()` itself
+is about 50 ms; the rest falls after it, when the styler hands the formats to the line's layout
+(without the shortcuts each piece gets a format of its own instead of one made per theme; not
+measured separately). The rounds of main and the branch overlap (the switch is read per piece in
+the measured build); the bench gate on the branch itself compares them.
+
 ### 2026-11-21, development VM, S000: libstdc++'s assertions in every build (release build, offscreen, Qt 6.12.0)
 
 `_GLIBCXX_ASSERTIONS` adds a bounds or precondition check to each `operator[]`, `front()`,
