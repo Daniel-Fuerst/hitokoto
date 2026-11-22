@@ -6,6 +6,7 @@ qt_add_library(hitokoto_ui STATIC
     block_styler.cpp block_styler.hpp
     block_user_state.hpp
     document_session.cpp document_session.hpp
+    editor_painters.cpp editor_painters.hpp
     editor_formats.cpp editor_formats.hpp
     editor_widget.cpp editor_widget.hpp
     view_anchor.cpp view_anchor.hpp
