@@ -156,13 +156,23 @@ QTextCharFormat EditorFormats::heading(int level) const {
 }
 
 QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& render, QStringView text) const {
-    if (render.headingLevel == 0 && !render.codeBlock && render.runs.empty() && render.inlineStyles.empty() &&
-        render.hidden.empty() && render.links.empty() && render.wrapIndent == 0) {
+    return rangesOf(render, text, true);
+}
+
+QList<QTextLayout::FormatRange> EditorFormats::rangesWithoutShortcuts(const core::LineRender& render,
+                                                                      QStringView text) const {
+    return rangesOf(render, text, false);
+}
+
+QList<QTextLayout::FormatRange> EditorFormats::rangesOf(const core::LineRender& render, QStringView text,
+                                                        bool shortcuts) const {
+    if (shortcuts && render.headingLevel == 0 && !render.codeBlock && render.runs.empty() &&
+        render.inlineStyles.empty() && render.hidden.empty() && render.links.empty() && render.wrapIndent == 0) {
         return {};
     }
-    if (render.headingLevel == 0 && !render.codeBlock && render.runs.empty() && render.inlineStyles.empty() &&
-        render.links.empty() && render.hidden.size() == 1 && render.decorations.size() == 1 &&
-        render.decorations[0].kind == core::DecorationKind::Bullet &&
+    if (shortcuts && render.headingLevel == 0 && !render.codeBlock && render.runs.empty() &&
+        render.inlineStyles.empty() && render.links.empty() && render.hidden.size() == 1 &&
+        render.decorations.size() == 1 && render.decorations[0].kind == core::DecorationKind::Bullet &&
         render.hidden[0].mode == core::HideMode::KeepSpace &&
         render.hidden[0].span == (core::Span{render.decorations[0].column, 1})) {
         const auto col = render.decorations[0].column;
@@ -171,9 +181,9 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
         }
         return {{static_cast<int>(col), 1, keepSpace_[0]}};
     }
-    if (!render.codeBlock && render.inlineStyles.empty() && render.links.empty() && render.wrapIndent == 0 &&
-        render.hidden.size() == 1 && render.runs.size() == 1 && render.runs[0].role == core::Role::HeadingText &&
-        render.hidden[0].span.end() == render.runs[0].span.start) {
+    if (shortcuts && !render.codeBlock && render.inlineStyles.empty() && render.links.empty() &&
+        render.wrapIndent == 0 && render.hidden.size() == 1 && render.runs.size() == 1 &&
+        render.runs[0].role == core::Role::HeadingText && render.hidden[0].span.end() == render.runs[0].span.start) {
         const int lvl = render.runs[0].level != 0 ? render.runs[0].level : render.headingLevel;
         const auto idx = static_cast<std::size_t>(lvl >= 1 && lvl <= 6 ? lvl : 0);
         const QTextCharFormat& hfmt =
@@ -255,13 +265,13 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
             continue;
         }
 
-        if (isBulletSpace && baseRun == nullptr && inlineRun == nullptr && hidden == nullptr && link == nullptr &&
-            render.headingLevel == 0 && !render.codeBlock) {
+        if (shortcuts && isBulletSpace && baseRun == nullptr && inlineRun == nullptr && hidden == nullptr &&
+            link == nullptr && render.headingLevel == 0 && !render.codeBlock) {
             out.append({static_cast<int>(start), static_cast<int>(end - start), bulletSpace_});
             continue;
         }
-        if (hidden != nullptr && baseRun == nullptr && link == nullptr && !render.codeBlock && !isBulletSpace &&
-            !isInlineCodeDelimiter(render, start)) {
+        if (shortcuts && hidden != nullptr && baseRun == nullptr && link == nullptr && !render.codeBlock &&
+            !isBulletSpace && !isInlineCodeDelimiter(render, start)) {
             const auto idx = static_cast<std::size_t>(
                 render.headingLevel >= 1 && render.headingLevel <= 6 ? render.headingLevel : 0);
             if (hidden->mode == core::HideMode::ZeroWidth && text.size() >= static_cast<qsizetype>(end)) {
@@ -274,12 +284,12 @@ QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& re
             }
             continue;
         }
-        if (inlineRun != nullptr && inlineRun->style == core::InlineStyle::Italic && baseRun == nullptr &&
+        if (shortcuts && inlineRun != nullptr && inlineRun->style == core::InlineStyle::Italic && baseRun == nullptr &&
             hidden == nullptr && link == nullptr && render.headingLevel == 0 && !render.codeBlock && !isBulletSpace) {
             out.append({static_cast<int>(start), static_cast<int>(end - start), italic0_});
             continue;
         }
-        if (baseRun != nullptr && baseRun->role == core::Role::HeadingText && inlineRun == nullptr &&
+        if (shortcuts && baseRun != nullptr && baseRun->role == core::Role::HeadingText && inlineRun == nullptr &&
             hidden == nullptr && link == nullptr && !render.codeBlock && !isBulletSpace) {
             const int lvl = baseRun->level != 0 ? baseRun->level : render.headingLevel;
             out.append({static_cast<int>(start), static_cast<int>(end - start), heading(lvl)});

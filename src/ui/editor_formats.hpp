@@ -44,8 +44,14 @@ public:
 
     /// Format ranges for one line, ready for QTextLayout::setFormats().
     [[nodiscard]] QList<QTextLayout::FormatRange> ranges(const core::LineRender& render, QStringView text = {}) const;
+    /// The same ranges without the shortcuts ranges() takes for common lines: every piece of the
+    /// line through the general path. A test compares the two.
+    [[nodiscard]] QList<QTextLayout::FormatRange> rangesWithoutShortcuts(const core::LineRender& render,
+                                                                         QStringView text = {}) const;
 
 private:
+    [[nodiscard]] QList<QTextLayout::FormatRange> rangesOf(const core::LineRender& render, QStringView text,
+                                                           bool shortcuts) const;
     /// Font size of text at heading `level` (0 = body text).
     [[nodiscard]] double textSize(int level) const;
 
