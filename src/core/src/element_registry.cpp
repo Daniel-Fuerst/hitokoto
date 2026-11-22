@@ -468,15 +468,36 @@ void ElementRegistry::runInlineElements(std::u16string_view line, const LineCont
     if (triggered == 0 && !hasAlwaysInline_ && (!nonAscii || !hasOtherTriggers_)) {
         return;
     }
+    detail::InlineSteps steps;
+    InlineScan scan(line.size());
     for (std::size_t i = 0; i < inlineElements_.size(); ++i) {
         const auto& entry = inlineElements_[i];
         const bool run = entry.always || ((triggered >> i) & 1U) != 0 ||
                          (nonAscii && hasOtherTriggers_ && !entry.otherTriggers.empty() &&
                           line.find_first_of(entry.otherTriggers) != std::u16string_view::npos);
         if (run) {
-            entry.element->render(line, context, out);
+            steps.add(scan.update(out));
+            entry.element->render(line, context, scan, out);
         }
     }
+}
+
+std::size_t InlineScan::update(const LineRender& out) {
+    std::size_t marked = 0;
+    const auto mark = [this, &marked](Span span, std::uint8_t flag) {
+        const std::size_t end = std::min<std::size_t>(span.end(), flags_.size());
+        for (std::size_t i = span.start; i < end; ++i) {
+            flags_[i] |= flag;
+        }
+        marked += end > span.start ? end - span.start : 0;
+    };
+    for (; opaqueSeen_ < out.opaqueSpans.size(); ++opaqueSeen_) {
+        mark(out.opaqueSpans[opaqueSeen_], kOpaque);
+    }
+    for (; hiddenSeen_ < out.hidden.size(); ++hiddenSeen_) {
+        mark(out.hidden[hiddenSeen_].span, kHidden);
+    }
+    return marked;
 }
 
 LineRender ElementRegistry::render(std::u16string_view line, const LineContext& context) const {
