@@ -4,6 +4,8 @@
 
 #include <QImage>
 
+#include <utility>
+
 using namespace hitokoto;
 
 namespace {
@@ -192,6 +194,35 @@ private slots:
         QCOMPARE(f.editor()->toPlainText(), QStringLiteral("- milk\n"));
         const QTextCursor c = f.editor()->textCursor();
         QCOMPARE(c.positionInBlock(), 6);
+    }
+
+    // Shift+Tab takes away one level: two spaces, or the one space there is.
+    void shiftTabOutdentsByTwoSpacesOrTheOneThereIs() {
+        for (const auto& [line, outdented] :
+             {std::pair{"   - milk\n", " - milk\n"}, std::pair{" - milk\n", "- milk\n"}}) {
+            test::Fixture f;
+            QVERIFY(f.open(f.writeFile(QStringLiteral("outdent.md"), line)));
+            f.placeCaret(0, 5);
+            test::keyClick(f.editor(), Qt::Key_Backtab);
+            f.settle();
+            QCOMPARE(f.editor()->toPlainText(), QString::fromLatin1(outdented));
+        }
+    }
+
+    // Tab over a selection of several lines indents the bullet items in it and leaves other lines.
+    void tabOverSeveralLinesIndentsOnlyTheItems() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("lines.md"), "- a\nb\n- c\n")));
+        QTextCursor c(f.editor()->document());
+        c.setPosition(0);
+        c.setPosition(8, QTextCursor::KeepAnchor);
+        f.editor()->setTextCursor(c);
+        test::keyClick(f.editor(), Qt::Key_Tab);
+        f.settle();
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("  - a\nb\n  - c\n"));
+        test::keyClick(f.editor(), Qt::Key_Backtab);
+        f.settle();
+        QCOMPARE(f.editor()->toPlainText(), QStringLiteral("- a\nb\n- c\n"));
     }
 
     void bulletPointsHaveDefaultIndentComparedToParagraphs() {
