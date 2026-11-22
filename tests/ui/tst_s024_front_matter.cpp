@@ -226,6 +226,48 @@ private slots:
         QCOMPARE(properties->toolTipText(0), QString());
     }
 
+    // S024 code review O10: each row is an accessible element of the block, without a widget of
+    // its own: it knows its block and its place, is read-only, and lies where the block draws it.
+    void eachRowIsAnAccessibleElementOfTheBlock() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("record.md"), kRecord)));
+        f.placeCaret(kRecordBody);
+        f.settle();
+        QWidget* view = f.editor()->propertiesView();
+        QAccessibleInterface* block = accessible(view);
+        QVERIFY(block != nullptr);
+        QCOMPARE(block->role(), QAccessible::List);
+        QCOMPARE(block->childCount(), 8);
+        for (int i = 0; i < block->childCount(); ++i) {
+            QAccessibleInterface* element = block->child(i);
+            QVERIFY(element != nullptr);
+            QVERIFY(element->isValid());
+            QCOMPARE(element->parent(), block);
+            QCOMPARE(block->indexOfChild(element), i);
+            QCOMPARE(element->role(), i == 0 ? QAccessible::StaticText : QAccessible::ListItem);
+            QVERIFY(element->state().readOnly);
+            QVERIFY(!element->state().invisible);
+            QCOMPARE(element->object(), nullptr);
+            QCOMPARE(element->window(), view->window()->windowHandle());
+            QCOMPARE(element->childCount(), 0);
+            QCOMPARE(element->child(0), nullptr);
+            QCOMPARE(element->indexOfChild(block), -1);
+            QCOMPARE(element->childAt(0, 0), nullptr);
+            const QString name = element->text(QAccessible::Name);
+            element->setText(QAccessible::Name, QStringLiteral("changed"));
+            QCOMPARE(element->text(QAccessible::Name), name);
+            QCOMPARE(element->text(QAccessible::Value), QString());
+            const QRect rect = element->rect();
+            QVERIFY(!rect.isEmpty());
+            QCOMPARE(block->childAt(rect.center().x(), rect.center().y()), element);
+        }
+        QCOMPARE(block->child(-1), nullptr);
+        QCOMPARE(block->child(block->childCount()), nullptr);
+        QCOMPARE(block->indexOfChild(block), -1);
+        const QRect whole = block->rect();
+        QCOMPARE(block->childAt(whole.right() + 10, whole.bottom() + 10), nullptr);
+    }
+
     void eachTypeHasItsLook() {
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("types.md"),
