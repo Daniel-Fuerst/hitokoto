@@ -589,6 +589,7 @@ void TableView::moveToNeighbour(bool backward) {
     }
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity): above the threshold when the check came in
 bool TableView::cellKey(QKeyEvent* event, CellEditor* editor) {
     // S018, "kept from the first version": the caret is always in a cell's text; these keys move
     // between cells, leave the table or change rows and columns.

@@ -505,6 +505,7 @@ LineRender ElementRegistry::render(std::u16string_view line, const LineContext& 
     return render(line, context, link);
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity): above the threshold when the check came in
 LineRender ElementRegistry::render(std::u16string_view line, const LineContext& context, ParagraphLink& link) const {
     using Kind = Classified::Kind;
     LineRender out;
@@ -639,6 +640,7 @@ LineRender ElementRegistry::renderInline(std::u16string_view text) const {
     return out;
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity): above the threshold when the check came in
 std::vector<LineRender> ElementRegistry::renderDocument(std::span<const std::u16string> lines,
                                                         LineRange revealed) const {
     // ADR 0006: the reference for the lazy rendering in the UI. States from above, front matter

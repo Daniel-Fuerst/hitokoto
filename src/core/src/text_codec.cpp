@@ -61,6 +61,7 @@ std::size_t countBreaks(std::u16string_view text) noexcept {
     return static_cast<std::size_t>(std::count(text.begin(), text.end(), u'\n'));
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity): above the threshold when the check came in
 DecodeResult decodeUtf8(std::string_view bytes) {
     DecodedText out;
     std::size_t i = 0;

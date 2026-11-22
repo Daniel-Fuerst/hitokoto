@@ -522,6 +522,7 @@ void BlockLayout::layoutContinuationBlock(const QTextBlock& prev, const QTextBlo
     }
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity): above the threshold when the check came in
 int BlockLayout::layoutParagraphChain(const QTextBlock& target, bool emitNow, ChainScope scope) const {
     if (!target.isValid()) {
         return -1;

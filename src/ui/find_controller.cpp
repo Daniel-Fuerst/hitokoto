@@ -1167,6 +1167,7 @@ void FindController::updateBar() {
     bar_->setNoMatch(open_ && complete_ && !query_.findsNothing() && matchCount() == 0);
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity): above the threshold when the check came in
 void FindController::updateHighlights() {
     shown_.clear();
     selections_.clear();
@@ -1241,6 +1242,7 @@ void FindController::updateHighlights() {
     editor_->setExtraSelections(selections_);
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity): above the threshold when the check came in
 void FindController::updateEmbeddedMarks() {
     // Highlight all in tables shown as cells and in the properties block (review O7): only what is
     // on screen (code review O8), the key, value or chip that holds a match (code review O3).

@@ -467,6 +467,7 @@ std::optional<IoError> saveSettingsFile(const std::filesystem::path& path, const
     return writeFileAtomically(path, serializeSettings(settings));
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity): above the threshold when the check came in
 SettingsSourceUpdate updateThemeInSettingsSource(std::string_view source, std::string_view newTheme) {
     const auto refuse = [](std::string message) { return SettingsSourceUpdate{{}, IoError{std::move(message)}}; };
     if (hasControlCharacters(newTheme)) {
