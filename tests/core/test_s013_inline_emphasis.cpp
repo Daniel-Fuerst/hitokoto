@@ -266,7 +266,8 @@ namespace {
 class HighlightElement final : public InlineElement {
 public:
     [[nodiscard]] std::u16string_view triggerCharacters() const noexcept override { return u"="; }
-    void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
+    void render(std::u16string_view line, const LineContext& context, const InlineScan& /*scan*/,
+                LineRender& out) const override {
         const auto open = line.find(u"==");
         const auto close = open == std::u16string_view::npos ? open : line.find(u"==", open + 2);
         if (close == std::u16string_view::npos) {

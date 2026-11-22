@@ -27,7 +27,7 @@ src/core   all logic: Markdown elements, reveal, codec, file I/O, theme (C++ sta
 |---|---|---|
 | `LineElement` | `markdown.hpp` | One Markdown element: `parse()` (parse rule), `render()` (render rule), `paragraphRole()` and `startsAfterParagraph()` (its paragraph rules, ADR 0006) |
 | `MultiLineElement` | `markdown.hpp` | A block spanning lines (fenced code, tables, front matter): `parseWithNextLine(line, state, nextLine)` and `render()`; owns every line while open; `documentStartState()` for a block that may only start the document |
-| `InlineElement` | `markdown.hpp` | Adds inline style ranges, inline-code runs and concealed delimiter ranges after block rendering |
+| `InlineElement`, `InlineScan` | `markdown.hpp` | Adds inline style ranges, inline-code runs and concealed delimiter ranges after block rendering; `InlineScan` tells it which characters the elements before it made opaque or hidden |
 | `ElementRegistry` | `markdown.hpp` | Holds the elements; `render(line, {revealed, blockState, nextLine, setextLevel})` returns a `LineRender`; `renderInline(text)` runs only the inline elements (the text of a table cell, S028); both run no inline element on a line above the registry's bounds (`InlineBounds`, `kInlineBounds`, `setInlineBounds`; S007); `blockStateAfter()` walks lines without rendering, `paragraphLink()` tells how a line relates to the paragraph above, `documentStart()` the state the first line may be entered with; `renderDocument()` renders a whole document and is the reference for the lazy rendering in the UI (ADR 0006) |
 | `LineRender` | `markdown.hpp` | How one line is shown: heading level, table cells, thematic break, setext underline, closed front matter, block and inline style runs, hidden ranges, decorations |
 | `BlockState` | `markdown.hpp` | Opaque state from one line to the next: the multi-line element that is open (`element`, `value`; `active()`) and, in a field of its own, the paragraph the line belongs to (`paragraph`: 0, or 1 + its content column; ADR 0006) |
@@ -129,8 +129,10 @@ same scan counts the characters that can start inline syntax: a line with more o
 `kInlineBounds` allows, or longer than it allows, runs no inline element and shows as text (S007:
 what a line costs on every key grows with both). The
 registry then removes styled runs under hidden ranges. Inline elements run in registration order
-and see the runs of the earlier ones: emphasis skips the characters that inline code claimed, so
-inline code is registered first (`addInline` documents this). Besides the multi-line state, only
+and see the runs of the earlier ones; which characters those made opaque (code spans, link
+syntax) or hidden, the registry marks once per line in an `InlineScan` and hands to each element.
+Emphasis skips the characters that inline code claimed, so inline code is registered before it
+(`addInline` documents this). Besides the multi-line state, only
 the paragraph context connects two elements (ADR 0006): which lines are paragraph text and at
 which content column, carried in `BlockState::paragraph` from above, and the setext level from
 below; elements contribute to it only through their declared paragraph role.

@@ -249,6 +249,32 @@ public:
     }
 };
 
+/// What the elements registered before an inline element have claimed on its line, one entry per
+/// character: inside an opaque span (a code span, link syntax; `LineRender::opaqueSpans`) or
+/// hidden (`LineRender::hidden`, also by a block element). The registry builds it once per line
+/// and adds what each inline element claims before the next one runs, so no element walks the
+/// spans of the others itself.
+class InlineScan {
+public:
+    explicit InlineScan(std::size_t length) : flags_(length, 0) {}
+
+    /// Character `i` lies in an opaque span.
+    [[nodiscard]] bool isOpaque(std::size_t i) const noexcept { return (flags_[i] & kOpaque) != 0; }
+    /// Character `i` lies in an opaque span or is hidden.
+    [[nodiscard]] bool isTaken(std::size_t i) const noexcept { return flags_[i] != 0; }
+
+    /// Takes in the opaque spans and hidden ranges `out` gained since the last call (the parts
+    /// within the line); returns how many characters it marked.
+    std::size_t update(const LineRender& out);
+
+private:
+    static constexpr std::uint8_t kOpaque = 1;
+    static constexpr std::uint8_t kHidden = 2;
+    std::vector<std::uint8_t> flags_;
+    std::size_t opaqueSeen_ = 0;
+    std::size_t hiddenSeen_ = 0;
+};
+
 /// An inline Markdown element that decorates text spans without owning or changing the source.
 class InlineElement {
 public:
@@ -260,7 +286,10 @@ public:
     /// Characters that can start this element. The registry scans each line once and skips the
     /// element on lines that contain none of them. Empty (the default) = run on every line.
     [[nodiscard]] virtual std::u16string_view triggerCharacters() const noexcept { return {}; }
-    virtual void render(std::u16string_view line, const LineContext& context, LineRender& out) const = 0;
+    /// Adds this element's runs, hidden ranges and spans to `out`; `scan` tells what the elements
+    /// before it claimed on the line.
+    virtual void render(std::u16string_view line, const LineContext& context, const InlineScan& scan,
+                        LineRender& out) const = 0;
 };
 
 /// Result of a multi-line element's parse rule for one line.
