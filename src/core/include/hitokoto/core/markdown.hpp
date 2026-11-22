@@ -148,8 +148,8 @@ struct LineRender {
     bool thematicBreak = false;        ///< thematic break (S023); concealed, the UI draws a horizontal line
     std::uint8_t setextUnderline = 0;  ///< 1 or 2: the line underlines a setext heading of that level (S023)
     bool frontMatter = false;          ///< line of closed front matter, delimiters included (S024)
-    bool flowsToNext = false;          ///< soft line break: the next line continues this paragraph (S032)
-    bool hardBreak = false;            ///< hard line break (2+ spaces or `\`) before the next paragraph line (S032)
+    bool flowsToNext = false;          ///< soft line break: the next line continues this paragraph (S033)
+    bool hardBreak = false;            ///< hard line break (2+ spaces or `\`) before the next paragraph line (S033)
     BlockState blockState;             ///< state to pass when rendering the next line
     std::vector<TableCell> cells;      ///< cells of a table header or body row
     std::vector<StyleRun> runs;
@@ -178,11 +178,11 @@ struct LineContext {
     /// that level, found by walking the lines below (`ElementRegistry::paragraphLink`); else 0.
     /// Ignored on lines that are no paragraph text.
     std::uint8_t setextLevel = 0;
-    /// S032 (ADR 0006): true if the caret or selection is on any line of this line's paragraph (or
+    /// S033 (ADR 0006): true if the caret or selection is on any line of this line's paragraph (or
     /// its setext underline), so the paragraph's source lines and hard-break markers are revealed
     /// even when `revealed` is false for inline elements on this line.
     bool paragraphRevealed = false;
-    /// S032: line after `nextLine` in the document (so `render` can tell whether `nextLine` opens a
+    /// S033: line after `nextLine` in the document (so `render` can tell whether `nextLine` opens a
     /// pipe table or continues this paragraph).
     std::u16string_view nextNextLine{};
 
