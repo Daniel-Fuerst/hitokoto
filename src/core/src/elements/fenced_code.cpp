@@ -74,8 +74,8 @@ class FencedCodeElement final : public MultiLineElement {
 public:
     [[nodiscard]] std::string_view id() const noexcept override { return "fenced-code"; }
 
-    [[nodiscard]] std::optional<BlockLine> parse(std::u16string_view line,
-                                                 std::uint32_t state) const noexcept override {
+    [[nodiscard]] std::optional<BlockLine> parseWithNextLine(std::u16string_view line, std::uint32_t state,
+                                                             std::u16string_view /*nextLine*/) const noexcept override {
         const Fence fence = fenceAt(line);
         if (state == 0) {
             // The info string of a backtick fence must not contain a backtick.

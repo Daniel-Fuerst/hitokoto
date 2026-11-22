@@ -171,10 +171,6 @@ void FloatingToolbar::setSettingsOpen(bool open) {
     settingsButton_->update();
 }
 
-bool FloatingToolbar::isSettingsOpen() const {
-    return settingsButton_->isChecked();
-}
-
 void FloatingToolbar::applyStyle(const core::ToolbarStyle& style) {
     style_ = style;
     updateLayout();

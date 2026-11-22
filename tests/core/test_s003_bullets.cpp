@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S003: bullets render as dots through the same element mechanism as headings.
+#include "hitokoto/core/bullet.hpp"
 #include "hitokoto/core/markdown.hpp"
 
 #include <gtest/gtest.h>
@@ -21,7 +22,6 @@ LineRender show(std::u16string_view line, bool revealed = false) {
 // A test-only element: proves that a new element is added without touching existing ones.
 class ShoutElement final : public LineElement {
 public:
-    [[nodiscard]] std::string_view id() const noexcept override { return "shout"; }
     [[nodiscard]] std::optional<LineMatch> parse(std::u16string_view line) const override {
         if (line.size() >= 2 && line.substr(0, 2) == u"! ") {
             return LineMatch{{0, 2}, 0, 0};

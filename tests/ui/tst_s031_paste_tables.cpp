@@ -3,6 +3,7 @@
 // through the clipboard with the samples of tests/data/s031/samples: HTML as Qt hands it to the
 // editor on Windows and the plain text, so the tests run alike on every platform.
 #include "find_bar.hpp"
+#include "hitokoto/core/table.hpp"
 #include "paste_samples.hpp"
 #include "table_model.hpp"
 #include "table_paste.hpp"

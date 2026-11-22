@@ -26,7 +26,6 @@ public:
 
     [[nodiscard]] const QFont& baseFont() const noexcept { return baseFont_; }
     [[nodiscard]] const QColor& bulletColor() const noexcept { return bullet_; }
-    [[nodiscard]] double bulletSpacing() const noexcept { return bulletSpacing_; }
     /// Resolved element tokens (ADR 0004) for what the editor paints itself (panels, boxes).
     [[nodiscard]] const core::CodeStyle& codeBlock() const noexcept { return codeBlock_; }
     [[nodiscard]] const core::CodeStyle& inlineCode() const noexcept { return inlineCode_; }

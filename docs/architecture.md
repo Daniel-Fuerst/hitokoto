@@ -26,11 +26,13 @@ src/core   all logic: Markdown elements, reveal, codec, file I/O, theme (C++ sta
 | Interface | File | Purpose |
 |---|---|---|
 | `LineElement` | `markdown.hpp` | One Markdown element: `parse()` (parse rule), `render()` (render rule), `paragraphRole()` and `startsAfterParagraph()` (its paragraph rules, ADR 0006) |
-| `MultiLineElement` | `markdown.hpp` | A block spanning lines (fenced code, tables, front matter): `parse(line, state)` / `parseWithNextLine()` and `render()`; owns every line while open; `documentStartState()` for a block that may only start the document |
+| `MultiLineElement` | `markdown.hpp` | A block spanning lines (fenced code, tables, front matter): `parseWithNextLine(line, state, nextLine)` and `render()`; owns every line while open; `documentStartState()` for a block that may only start the document |
 | `InlineElement` | `markdown.hpp` | Adds inline style ranges, inline-code runs and concealed delimiter ranges after block rendering |
 | `ElementRegistry` | `markdown.hpp` | Holds the elements; `render(line, {revealed, blockState, nextLine, setextLevel})` returns a `LineRender`; `renderInline(text)` runs only the inline elements (the text of a table cell, S028); both run no inline element on a line above the registry's bounds (`InlineBounds`, `kInlineBounds`, `setInlineBounds`; S007); `blockStateAfter()` walks lines without rendering, `paragraphLink()` tells how a line relates to the paragraph above, `documentStart()` the state the first line may be entered with; `renderDocument()` renders a whole document and is the reference for the lazy rendering in the UI (ADR 0006) |
 | `LineRender` | `markdown.hpp` | How one line is shown: heading level, table cells, thematic break, setext underline, closed front matter, block and inline style runs, hidden ranges, decorations |
 | `BlockState` | `markdown.hpp` | Opaque state from one line to the next: the multi-line element that is open (`element`, `value`; `active()`) and, in a field of its own, the paragraph the line belongs to (`paragraph`: 0, or 1 + its content column; ADR 0006) |
+| `parseBulletLine`, `indentBulletLine`, `outdentBulletLine` | `bullet.hpp` | S003: the prefix of a bullet item and its indentation, as lines |
+| `tableRowCells`, `replaceTableCell`, `separateTextAfterTables` and the other table functions | `table.hpp` | GFM pipe tables as lines (S018, S026, S031): rows and cells to read, change and lay out; the table element itself is registered like any other (`markdown.hpp`) |
 | block rules | `src/core/src/block_rules.hpp` | Internal: the one thematic-break recogniser, setext underlines, the start of blocks hitokoto does not render yet, the content column after a container marker (S023) |
 | `revealedLines`, `revealChanges` | `reveal.hpp` | Which lines show raw syntax; which lines must re-render when that changes |
 | `decodeUtf8`, `encodeUtf8` | `text_codec.hpp` | Bytes to text and back, preserving BOM and line endings (ADR 0002) |

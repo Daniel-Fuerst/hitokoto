@@ -39,7 +39,6 @@ public:
     void setDuration(int ms) noexcept { durationMs_ = ms; }
 
     /// Easing curve (default OutCubic).
-    [[nodiscard]] const QEasingCurve& easingCurve() const noexcept { return easingCurve_; }
     void setEasingCurve(const QEasingCurve& curve) { easingCurve_ = curve; }
 
 signals:

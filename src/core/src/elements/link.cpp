@@ -243,7 +243,6 @@ DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size
 
 class LinkElement final : public InlineElement {
 public:
-    [[nodiscard]] std::string_view id() const noexcept override { return "link"; }
     [[nodiscard]] std::u16string_view triggerCharacters() const noexcept override { return u"["; }
 
     void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {

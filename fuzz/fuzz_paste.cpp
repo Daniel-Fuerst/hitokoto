@@ -8,6 +8,7 @@
 // too. Qt's HTML import is not fuzzed (Qt's code; it would need Qt in the fuzz build).
 #include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/paste.hpp"
+#include "hitokoto/core/table.hpp"
 
 #include <algorithm>
 #include <cstdint>

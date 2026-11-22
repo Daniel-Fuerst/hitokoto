@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S026: floating toolbar theme tokens and table generation helper.
 #include "hitokoto/core/markdown.hpp"
+#include "hitokoto/core/table.hpp"
 #include "hitokoto/core/theme.hpp"
 
 #include <gtest/gtest.h>

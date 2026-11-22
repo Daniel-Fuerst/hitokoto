@@ -387,7 +387,6 @@ namespace {
 /// after paragraph text only outside the paragraph's container, and its text continues lazily.
 class LazyItemElement final : public LineElement {
 public:
-    [[nodiscard]] std::string_view id() const noexcept override { return "test-lazy-item"; }
     [[nodiscard]] std::optional<LineMatch> parse(std::u16string_view line) const override {
         if (!line.starts_with(u"% ")) {
             return std::nullopt;
