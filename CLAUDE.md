@@ -34,7 +34,11 @@ Read before any work: `docs/brief.md` (the full brief), `docs/adr/` (accepted de
 - Workflows: every action comes from a full commit with its version as a comment
   (`uses: owner/repo@<40-digit commit> # vX.Y.Z`), and every job asks for its own `permissions`;
   the lints `S000_*` in `tests/workflows` enforce it. A new CI job must be added to the required
-  checks of the ruleset of main.
+  checks of the ruleset of main. The lints in `tests/workflows` find jobs, steps and keys by their
+  indentation (two spaces per level, as in the existing files): re-indenting a workflow changes
+  what they read.
+- Comments give the reason in words. A reference to a story or a review is written in full, such
+  as `S031 code review O3`: an objection number alone is unique only inside one review file.
 - UI tests and benchmarks simulate keys with `test::keyClick`/`test::keyClicks` from
   `tests/ui/key_input.hpp`, never with `QTest::key*` directly (the header says why); the lint test
   `S000_KeyInputOnlyThroughTestHelpers` enforces it.

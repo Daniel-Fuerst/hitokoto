@@ -13,7 +13,11 @@ src/core   all logic: Markdown elements, reveal, codec, file I/O, theme (C++ sta
 
 - `core` never includes or links Qt. CMake fails the configure step if it does, and CI builds and
   tests the core on a machine without Qt (`core-sanitize` preset).
-- `ui` converts between core and Qt types in exactly one place: `src/ui/qt_bridge.hpp`.
+- `src/ui/qt_bridge.hpp` converts what passes between core and UI on every line: a `QString` seen
+  as `std::u16string_view` without a copy, text back to `QString`, and core colours as `QColor`.
+  File paths, font families, theme names, link destinations and messages are converted where
+  they are used, with Qt's own functions (`QString::fromStdString`, `fromStdU16String`,
+  `toStdU16String`); nothing checks where such a conversion stands.
 - Text inside the core is UTF-16 (`std::u16string_view`), so positions map one-to-one to Qt's
   `QString` indices without conversion.
 
@@ -58,6 +62,7 @@ decorations (`Bullet`), never in colours or fonts. The UI maps these to theme fo
 | `BlockLayout` | The document's layout (ADR 0003, `QAbstractTextDocumentLayout`): one `QTextLayout` per block, laid out when drawn or queried; a keystroke lays out its block at once, wider changes and restyling only drop layouts. Heights in pixels per block in a `HeightIndex` (core), estimated from the default font until a block is laid out. A block can be hidden or reserve a height for an embedded widget; embedded elements (tables, properties) register as `BlockLayout::Claimant` and ask the layout before they undo hidden or reserved state they find, so none undoes another's (S024 review O4). A block hidden, shown or given a reserved height in the middle of a change of the document, while the heights still have the old numbering (before `documentChanged`), gets its height when the change is applied (S028). Size changes during the styler's slices are reported once per slice (`Batch`). |
 | `BlockStyler` | Applies `LineRender` to blocks as `QTextLayout` formats. A line containing `|` is styled with the next line in view, because a GFM table starts only when its delimiter row follows (S018). Edited lines and lines entering/leaving the revealed range are styled at once; the rest lazily: visible blocks first, then idle slices of at most 6 ms. Each block's user state records what it was styled for and caches the block state after the line, its paragraph included; only lines that leave a multi-line block open keep that state in a `BlockData`, so plain lines allocate nothing. Edits propagate restyling only while the state changes. For setext headings (S023, ADR 0006) the user state also caches the level of the line's paragraph and the line's link to the paragraph above; a level is found by walking down the paragraph (at most 2 ms on a key, the rest in idle slices), reused from the line below, and passed up the paragraph when an underline appears or goes. Front matter is confirmed at the document start the same way; the confirmed closing line is reported to `PropertiesEmbedder` (`frontMatterClose`, `frontMatterConfirmed`), whose idle work `isComplete` includes (`addPendingWork`). The revealed range also reveals the fences of the code block it is in (S021) and the underline of the setext heading it is on (S023). |
 | `EditorFormats` | Theme tokens to `QTextCharFormat`s; `LineRender` to format ranges. |
+| `SmoothScroller` | S027: animates a scroll bar towards a target with an easing curve (200 ms, `OutCubic`); a wheel step in the same direction adds to the target, one in the other direction turns the animation round. `EditorWidget` owns one for its vertical scroll bar, animates wheel steps with it while the smooth-scrolling setting is on (a touchpad's pixel steps and wheel steps with Ctrl or Shift go straight), stops it on a key, a click and a resize, and moves it with the content when blocks above the viewport change height (`shift`). |
 | `FloatingToolbar` | S026: vertical floating toolbar centered on the right edge of `EditorWidget` with custom-drawn buttons for inserting a table, inserting an inline code span, and toggling the settings flyout, styled from `toolbarStyle(theme)`. |
 | `SettingsMenu` | S039: non-modal floating settings flyout anchored beside `FloatingToolbar` in `EditorWidget`, toggled by the settings button or closed with `Escape`, displaying an **Appearance** section (`themeSelector` `QComboBox` listing built-in themes plus `.toml` themes discovered from the config folder, excluding `config.toml`/`settings.toml`) and a subtle version hint (`settingsVersionLabel`), styled from `toolbarStyle(theme)` and `[colors]` tokens. Selecting a theme persists it to `config.toml` in the platform config folder. |
 | `insertableText`, `insertableKey`, `insertableInput` | S004 (`text_input.hpp`): text, a key's text and an input method's commit as they may enter a document, through `core::replaceLoneSurrogates`. Every way text from outside comes in passes here: `EditorWidget::insertFromMimeData` (every paste and drop) and the Markdown of a pasted table, `keyPressEvent` and `inputMethodEvent` of `EditorWidget` and `CellEditor`, `CellEditor::insertFromMimeData` and `TableModel::setData`. Qt's accessibility interface (`QAccessibleTextEdit`) writes into a document directly and passes nowhere hitokoto could see it; a save that meets a half names its line and column. |
@@ -136,9 +141,16 @@ this way, `S013_InlineEmphasis.InlineElementsAreAddedByRegistrationOnly` a test-
 
 ## Platform shims
 
-The only OS-specific code is `src/core/src/platform.cpp`: flushing a file to disk before the
-atomic rename (`fsync` / `FlushFileBuffers`) and syncing the directory on POSIX. The C++ standard
-library cannot do this, and Qt may not be used in the core.
+OS-specific code stands in three places:
+
+- `src/core/src/platform.cpp`: flushing a file to disk before the atomic rename (`fsync` /
+  `FlushFileBuffers`) and syncing the directory on POSIX. The C++ standard library cannot do this,
+  and Qt may not be used in the core.
+- `src/core/src/properties.cpp`: where the standard library has no floating-point
+  `std::from_chars` (Apple's libc++), a number in front matter is read with `strtod_l` in the C
+  locale (`<xlocale.h>` on Apple), so that the locale Qt sets does not change it.
+- `src/ui/find_bar.cpp`: on macOS the find bar's toggles take Ctrl+Alt+letter instead of
+  Alt+letter, because Option+letter types a character there (`Q_OS_MACOS`).
 
 ## Dependencies
 

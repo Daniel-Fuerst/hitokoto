@@ -29,6 +29,30 @@ comes in its own pull request. See `bench/baselines/README.md`.
 `hitokoto-bench --baseline file.json --tolerance 0.25` still compares two runs on one machine, for
 local measurements.
 
+## Current numbers
+
+The newest value measured for each budget (brief, section 4, and the hard budgets of the gate),
+with the section below that measured it. The development VM is not reference hardware; the gate
+on the CI runner decides. Sections that only compare a change with main on the same machine
+(2026-11-21, S000) add no value here.
+
+| Budget | Newest value | Measured | Section |
+|---|---|---|---|
+| Cold start under 1,000 ms | 34.6 ms (median) | 2026-10-27, development VM | S019 |
+| Opening 1 MB under 500 ms | 179 ms until fully loaded | 2026-10-27, development VM | S019 |
+| Opening 10 MB in 2 to 3 s | first screen 61–76 ms, styled 3.79–4.09 s | 2026-10-31, development VM | S024 |
+| Key to paint within 16 ms, 10 MB file | median 1.1–1.3, p95 1.6–4.6, p99 2.8–6.1 ms | 2026-10-31, development VM | S024 |
+| Saving 10 MB stalls the UI at most 16 ms (hard) | 3.9 ms | 2026-10-27, development VM | S019 |
+| Saving 10 MB is on disk within 1 s (hard) | 190 ms | 2026-10-26, development VM | S017 |
+| Opening a 1,000-row table under 500 ms | 72 / 68 ms (two rounds) | 2026-11-10, CI runner | S031 after the review |
+| Typing in a table cell: p95 and p99 16 ms, max 50 ms (hard) | p95 7.3, p99 8.5, max 12.0 ms | 2026-10-27, development VM | S018 |
+| A code block of 10 MB: caret step and typing, p95 16 ms, max 50 ms (hard) | caret p95 2.6–7.4, max 5.3–26.4 ms; typing p95 2.3–2.5, max 4.8–8.5 ms | 2026-10-28, development VM | S021 |
+| Typing on a thematic break, p95 16 ms, max 50 ms (hard) | p95 2.1–4.2, max 5.4–29.7 ms | 2026-10-30, development VM | S023 |
+| Typing below the properties block, p95 16 ms, max 50 ms (hard) | p95 2.6–4.6, max 2.8–8.5 ms | 2026-10-31, development VM | S024 |
+| A key in the find bar, p95 16 ms, max 50 ms (hard) | p95 6.5, max 7.1 ms; full count 1.5 s (informational: 1 s) | 2026-11-07, CI runner | S028 after the code review |
+| Pasting 400 cells in 50 ms, 4,000 in 500 ms (hard) | Outlook 43.5–43.8 / 327.6–332.8 / 376.7–377.8 ms, Excel 38.4–38.7 / 264.1 / 312.4–314.0 ms (40 × 10, 400 × 10, 40 × 100) | 2026-11-10, CI runner | S031: where a paste's time goes |
+| A key in a line at the bounds of S007, max 50 ms (hard) | median 5.4–5.8, p95 8.2–9.6, max 8.6–26.9 ms | 2026-11-16, development VM | long lines (S007) |
+
 ## Measurements
 
 ### 2026-11-21, development VM, S000: libstdc++'s assertions in every build (release build, offscreen, Qt 6.12.0)
@@ -323,39 +347,62 @@ one long word in a time that grows with the square of its length. A key in a lin
 characters `x` takes 8 ms, of 20,000 characters 21 ms, of 32,000 characters 45 ms, of 50,000
 characters 100 ms (`docs/stories/unrefined.md`, "Very long lines").
 
-### 2026-11-09, development VM, S031 (release build, offscreen, Qt 6.12.0)
+### 2026-11-10, development VM, S031: where a paste's time goes, and HTML without styles
 
-`s031_paste_*`: Ctrl+V in an empty document until the table view shows all rows, median of five
-pastes. The clipboard holds a table generated from the markup of a sample (`outlook-t1-example`,
-`excel-t6-example`; `tests/ui/paste_samples.hpp`) and its plain text. Story S031: 500 cells within
-50 ms, above that at most 100 µs per cell; hard budgets of the gate.
+The CI run on 712f652 (AMD EPYC 7763) missed `s031_paste_outlook_40x10_ms` with 54.7–57.4 ms;
+400 × 10 took 437 ms and 40 × 100 483 ms. A probe on the VM (outside the repository, median of 7)
+found no fixed cost worth naming (a paste of 20 cells takes 7 ms in all); the time grows with the
+cells. About half of it is Qt's HTML import of Outlook's markup, which holds about 1 KB per cell,
+mostly inline CSS; the rest is embedding and showing the table, the same for both markups:
+
+| Outlook markup | HTML | Qt's import | Ctrl+V handler | Until shown after it | Total |
+|---|---|---|---|---|---|
+| 20 cells | 91 KB | 1.0 ms | 1.4 ms | 5.6 ms | 7.0 ms |
+| 400 cells | 401 KB | 20.2 ms | 20.7 ms | 23.9 ms | 44.6 ms |
+| 4,000 cells | 3,350 KB | 227 ms | 231 ms | 148 ms | 379 ms |
+| Excel markup, 400 cells | 90 KB | 6.1 ms | 7.5 ms | 23.4 ms | 30.9 ms |
+
+Armin, 2026-11-10: the style attributes leave the HTML before the import
+(`core::htmlWithoutStyles`); every sample gives the same Markdown, and Qt 6.12's import ignores
+`display: none` anyway (inline, by class and on blocks). The import alone: Outlook 400 cells
+17.9 → 8.9 ms, 4,000 cells 208 → 115 ms; Excel 4.6 → 3.3 and 65 → 47 ms. `hitokoto-bench` on the
+same VM (median of five, before → after):
 
 | Table | Outlook markup | Excel markup | Budget (hard) |
 |---|---|---|---|
-| 50 × 10 (500 cells) | 44 ms | 31 ms | 50 ms |
-| 500 × 10 (5,000 cells) | 344 ms | 206 ms | 500 ms |
-| 50 × 100 (5,000 cells) | 356 ms | 233 ms | 500 ms |
+| 40 × 10 | 46.9 → 40.1 ms | 33.3 → 29.4 ms | 50 ms |
+| 400 × 10 | 430.7 → 320.1 ms | 227.0 → 206.0 ms | 500 ms |
+| 40 × 100 | 434.2 → 327.1 ms | 276.0 → 247.1 ms | 500 ms |
 
-Of the 44 ms for 50 × 10 with Outlook's markup, Qt's HTML import takes 20 ms (198 KB), the core and
-the insertion 1.5 ms; the rest is styling and showing the table (S018). With Excel's markup (44 KB)
-the import takes 5 ms.
+The CI run on 1096c0b landed on the slower runner class, AMD EPYC 7763 (pull request rounds 1 / 2):
+Outlook 43.5 / 43.8 ms (40 × 10), 332.8 / 327.6 ms (400 × 10), 376.7 / 377.8 ms (40 × 100); Excel
+38.4 / 38.7, 264.1 / 264.1, 312.4 / 314.0 ms; the paste without a table 28.5 / 28.8 ms. Against
+the run on 712f652 on the same class (56.4, 437.5, 483.3 ms Outlook) that is 22–25 % less; the
+smallest margin is now Outlook 40 × 10 with about 1.14.
+The budgets follow one system when they change (Armin, 2026-11-10): the tables grow by a factor of
+ten (400, 4,000 and 40,000 cells) and the times with them (50, 500 and 5,000 ms).
 
-On the CI runner (AMD EPYC 7763, dispatch on 7a742f6) the same pastes took 72 / 59 ms, 515 / 370 ms
-and 539 / 396 ms (Outlook / Excel): four hard budgets missed. Most of the time for Excel's markup
-went into sizing the cells (`TableView::fit`: a `QTextDocument` with `setMarkdown` per cell, for the
-width and again for the height). Since then a cell that GFM shows as exactly its characters
-(`core::tableCellIsPlainText`) is laid out as plain text, an unwrapped cell takes its natural height
-without a second layout, and each cell's Markdown is read once. Development VM afterwards (median of
-five):
+### 2026-11-10, CI runner, S031 after the review (dispatch on 5a1e4d0)
 
-| Table | Outlook markup | Excel markup | Before |
+Runner class `linux-intel-r-xeon-r-platinum-8573c-4cpu`, the two rounds of the pull request with
+the old table sizes and sample-like cells:
+
+| Table | Outlook markup | Excel markup | Budget (hard) |
 |---|---|---|---|
-| 50 × 10 | 35 ms | 23 ms | 44 / 31 ms |
-| 500 × 10 | 311 ms | 176 ms | 344 / 206 ms |
-| 50 × 100 | 331 ms | 193 ms | 356 / 233 ms |
+| 50 × 10 | 49.3 / 48.0 ms | 34.2 / 34.2 ms | 50 ms |
+| 500 × 10 | 441.7 / 450.2 ms | 259.2 / 267.1 ms | 500 ms |
+| 50 × 100 | 502.1 / 492.2 ms | 308.1 / 316.9 ms | 500 ms |
 
-`s018_table_open_ms` (a 1,000-row table) went from 96 to 61 ms. Qt's HTML import of Outlook's
-markup stays: about 18 ms for 500 cells and 200 ms for 5,000 on the VM.
+Outlook 50 × 100 missed its budget in the first round, the Outlook keys kept only 1–4 % margin.
+`s031_paste_no_table_5000_lines_ms` 29.3 / 28.2 ms; `s018_table_open_ms` 72 / 68 ms against
+111 / 108 ms of main on the same runner (the plain-text layout of steps 2 and 3 of review O10).
+
+Armin, 2026-11-10: the times stay, the tables shrink to 40 × 10 (400 cells, 50 ms), 400 × 10 and
+40 × 100 (4,000 cells, 500 ms); the story's rule is now 400 cells in 50 ms, then at most 125 µs
+per cell. From the run above (about 4 ms plus 88 µs per cell for Outlook 500 × 10, about 100 µs
+per cell for 50 × 100) the runner should take about 39, 356 and 400 ms with Outlook's markup, a
+margin of about 1.25. On the slower development VM of 2026-11-10 (median of five): Outlook
+46.9 / 430.7 / 434.2 ms, Excel 33.3 / 227.0 / 276.0 ms (40 × 10, 400 × 10, 40 × 100).
 
 ### 2026-11-10, development VM, S031 review (code) (release build, offscreen, Qt 6.12.0)
 
@@ -442,62 +489,39 @@ makes each format only when asked for and carries the marker; the same probe the
 | 5,000 lines | 11.4 ms | 0.7 ms | 32.2 ms | 32.4 ms |
 | 50,000 lines | 125.9 ms | 9.0 ms | 255.2 ms | 255.8 ms |
 
-### 2026-11-10, CI runner, S031 after the review (dispatch on 5a1e4d0)
+### 2026-11-09, development VM, S031 (release build, offscreen, Qt 6.12.0)
 
-Runner class `linux-intel-r-xeon-r-platinum-8573c-4cpu`, the two rounds of the pull request with
-the old table sizes and sample-like cells:
-
-| Table | Outlook markup | Excel markup | Budget (hard) |
-|---|---|---|---|
-| 50 × 10 | 49.3 / 48.0 ms | 34.2 / 34.2 ms | 50 ms |
-| 500 × 10 | 441.7 / 450.2 ms | 259.2 / 267.1 ms | 500 ms |
-| 50 × 100 | 502.1 / 492.2 ms | 308.1 / 316.9 ms | 500 ms |
-
-Outlook 50 × 100 missed its budget in the first round, the Outlook keys kept only 1–4 % margin.
-`s031_paste_no_table_5000_lines_ms` 29.3 / 28.2 ms; `s018_table_open_ms` 72 / 68 ms against
-111 / 108 ms of main on the same runner (the plain-text layout of steps 2 and 3 of review O10).
-
-Armin, 2026-11-10: the times stay, the tables shrink to 40 × 10 (400 cells, 50 ms), 400 × 10 and
-40 × 100 (4,000 cells, 500 ms); the story's rule is now 400 cells in 50 ms, then at most 125 µs
-per cell. From the run above (about 4 ms plus 88 µs per cell for Outlook 500 × 10, about 100 µs
-per cell for 50 × 100) the runner should take about 39, 356 and 400 ms with Outlook's markup, a
-margin of about 1.25. On the slower development VM of 2026-11-10 (median of five): Outlook
-46.9 / 430.7 / 434.2 ms, Excel 33.3 / 227.0 / 276.0 ms (40 × 10, 400 × 10, 40 × 100).
-
-### 2026-11-10, development VM, S031: where a paste's time goes, and HTML without styles
-
-The CI run on 712f652 (AMD EPYC 7763) missed `s031_paste_outlook_40x10_ms` with 54.7–57.4 ms;
-400 × 10 took 437 ms and 40 × 100 483 ms. A probe on the VM (outside the repository, median of 7)
-found no fixed cost worth naming (a paste of 20 cells takes 7 ms in all); the time grows with the
-cells. About half of it is Qt's HTML import of Outlook's markup, which holds about 1 KB per cell,
-mostly inline CSS; the rest is embedding and showing the table, the same for both markups:
-
-| Outlook markup | HTML | Qt's import | Ctrl+V handler | Until shown after it | Total |
-|---|---|---|---|---|---|
-| 20 cells | 91 KB | 1.0 ms | 1.4 ms | 5.6 ms | 7.0 ms |
-| 400 cells | 401 KB | 20.2 ms | 20.7 ms | 23.9 ms | 44.6 ms |
-| 4,000 cells | 3,350 KB | 227 ms | 231 ms | 148 ms | 379 ms |
-| Excel markup, 400 cells | 90 KB | 6.1 ms | 7.5 ms | 23.4 ms | 30.9 ms |
-
-Armin, 2026-11-10: the style attributes leave the HTML before the import
-(`core::htmlWithoutStyles`); every sample gives the same Markdown, and Qt 6.12's import ignores
-`display: none` anyway (inline, by class and on blocks). The import alone: Outlook 400 cells
-17.9 → 8.9 ms, 4,000 cells 208 → 115 ms; Excel 4.6 → 3.3 and 65 → 47 ms. `hitokoto-bench` on the
-same VM (median of five, before → after):
+`s031_paste_*`: Ctrl+V in an empty document until the table view shows all rows, median of five
+pastes. The clipboard holds a table generated from the markup of a sample (`outlook-t1-example`,
+`excel-t6-example`; `tests/ui/paste_samples.hpp`) and its plain text. Story S031: 500 cells within
+50 ms, above that at most 100 µs per cell; hard budgets of the gate.
 
 | Table | Outlook markup | Excel markup | Budget (hard) |
 |---|---|---|---|
-| 40 × 10 | 46.9 → 40.1 ms | 33.3 → 29.4 ms | 50 ms |
-| 400 × 10 | 430.7 → 320.1 ms | 227.0 → 206.0 ms | 500 ms |
-| 40 × 100 | 434.2 → 327.1 ms | 276.0 → 247.1 ms | 500 ms |
+| 50 × 10 (500 cells) | 44 ms | 31 ms | 50 ms |
+| 500 × 10 (5,000 cells) | 344 ms | 206 ms | 500 ms |
+| 50 × 100 (5,000 cells) | 356 ms | 233 ms | 500 ms |
 
-The CI run on 1096c0b landed on the slower runner class, AMD EPYC 7763 (pull request rounds 1 / 2):
-Outlook 43.5 / 43.8 ms (40 × 10), 332.8 / 327.6 ms (400 × 10), 376.7 / 377.8 ms (40 × 100); Excel
-38.4 / 38.7, 264.1 / 264.1, 312.4 / 314.0 ms; the paste without a table 28.5 / 28.8 ms. Against
-the run on 712f652 on the same class (56.4, 437.5, 483.3 ms Outlook) that is 22–25 % less; the
-smallest margin is now Outlook 40 × 10 with about 1.14.
-The budgets follow one system when they change (Armin, 2026-11-10): the tables grow by a factor of
-ten (400, 4,000 and 40,000 cells) and the times with them (50, 500 and 5,000 ms).
+Of the 44 ms for 50 × 10 with Outlook's markup, Qt's HTML import takes 20 ms (198 KB), the core and
+the insertion 1.5 ms; the rest is styling and showing the table (S018). With Excel's markup (44 KB)
+the import takes 5 ms.
+
+On the CI runner (AMD EPYC 7763, dispatch on 7a742f6) the same pastes took 72 / 59 ms, 515 / 370 ms
+and 539 / 396 ms (Outlook / Excel): four hard budgets missed. Most of the time for Excel's markup
+went into sizing the cells (`TableView::fit`: a `QTextDocument` with `setMarkdown` per cell, for the
+width and again for the height). Since then a cell that GFM shows as exactly its characters
+(`core::tableCellIsPlainText`) is laid out as plain text, an unwrapped cell takes its natural height
+without a second layout, and each cell's Markdown is read once. Development VM afterwards (median of
+five):
+
+| Table | Outlook markup | Excel markup | Before |
+|---|---|---|---|
+| 50 × 10 | 35 ms | 23 ms | 44 / 31 ms |
+| 500 × 10 | 311 ms | 176 ms | 344 / 206 ms |
+| 50 × 100 | 331 ms | 193 ms | 356 / 233 ms |
+
+`s018_table_open_ms` (a 1,000-row table) went from 96 to 61 ms. Qt's HTML import of Outlook's
+markup stays: about 18 ms for 500 cells and 200 ms for 5,000 on the VM.
 
 ### 2026-11-09, CI runner, S029 revised (pull request #31, run #125)
 
@@ -514,20 +538,6 @@ the pull request 57 s and the core benchmarks 9 s. The job's `timeout-minutes` i
 47.9 ms for the base and 64.6 and 64.6 ms for the pull request, and every round had single opens at
 both levels, one frame apart. Since then a first-screen key needs 20 ms of difference (story S029,
 rule "First screen of an opening").
-
-### 2026-10-25, CI runners (run #18, pull request #5)
-
-GitHub-hosted runners (ubuntu-24.04 with Qt 6.12, windows-2022 with Qt 6.8.3, macos-15 with
-Qt 6.12), release build, offscreen, 10 runs. These are the baselines in `bench/baselines/`.
-
-| Measurement | Linux | Windows | macOS | Budget |
-|---|---|---|---|---|
-| Cold start, median | 25 ms | 23 ms | 252 ms | < 1000 ms |
-| Open 1 MB, fully loaded | 140 ms | 171 ms | 202 ms | < 500 ms |
-| Open 10 MB, first screen editable | 65 ms | 79 ms | 79 ms | < 2–3 s |
-| Open 10 MB, fully loaded | 1.7 s | 1.9 s | 3.3 s | |
-| Key to paint, 10 MB file (median / p95) | 0.9 / 1.0 ms | 0.9 / 1.0 ms | 1.2 / 2.2 ms | ≤ 16 ms |
-| Save 10 MB: UI thread blocked (duration of the save() call; S017 measures the longest stall instead) | 6 ms | 36 ms | 24 ms | imperceptible |
 
 ### 2026-11-07, development VM, S028 after the code review (release build, offscreen, Qt 6.12.0)
 
@@ -752,6 +762,20 @@ table walks every line's block state once: 18-22 ms (one VM outlier at 56 ms).
 Saving 10 MB: longest UI stall 6.7 ms (was 18.9 ms, measured as the duration of the save() call),
 until on disk 190 ms (was 111 ms: the sliced copy costs about six times the CPU of a one-shot
 copy, see "Known gaps").
+
+### 2026-10-25, CI runners (run #18, pull request #5)
+
+GitHub-hosted runners (ubuntu-24.04 with Qt 6.12, windows-2022 with Qt 6.8.3, macos-15 with
+Qt 6.12), release build, offscreen, 10 runs. These are the baselines in `bench/baselines/`.
+
+| Measurement | Linux | Windows | macOS | Budget |
+|---|---|---|---|---|
+| Cold start, median | 25 ms | 23 ms | 252 ms | < 1000 ms |
+| Open 1 MB, fully loaded | 140 ms | 171 ms | 202 ms | < 500 ms |
+| Open 10 MB, first screen editable | 65 ms | 79 ms | 79 ms | < 2–3 s |
+| Open 10 MB, fully loaded | 1.7 s | 1.9 s | 3.3 s | |
+| Key to paint, 10 MB file (median / p95) | 0.9 / 1.0 ms | 0.9 / 1.0 ms | 1.2 / 2.2 ms | ≤ 16 ms |
+| Save 10 MB: UI thread blocked (duration of the save() call; S017 measures the longest stall instead) | 6 ms | 36 ms | 24 ms | imperceptible |
 
 ### 2026-10-24, development VM (not reference hardware)
 
