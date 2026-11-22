@@ -3,11 +3,56 @@
 #include "editor_formats.hpp"
 #include "ui_test_support.hpp"
 
+#include <algorithm>
+#include <optional>
+#include <random>
+#include <string>
+#include <string_view>
+#include <vector>
+
 using namespace hitokoto;
 
 namespace {
 QColor qcolor(const core::Color& c) {
     return {c.r, c.g, c.b, c.a};
+}
+
+// The format of each character of a line of `length` under `ranges`; none where no range covers it.
+QList<std::optional<QTextCharFormat>> formatsPerCharacter(const QList<QTextLayout::FormatRange>& ranges, int length) {
+    QList<std::optional<QTextCharFormat>> formats(length);
+    for (const auto& range : ranges) {
+        for (int i = std::max(0, range.start); i < std::min(length, range.start + range.length); ++i) {
+            formats[i] = range.format;
+        }
+    }
+    return formats;
+}
+
+// Documents of lines made of the syntax the shortcuts of EditorFormats::ranges() look at: headings,
+// bullets with and without text, emphasis, code, links, escapes, setext underlines, breaks and
+// fenced code, in a fixed pseudo-random order.
+std::vector<std::u16string> shortcutDocument(unsigned seed) {
+    static const std::u16string_view starts[] = {u"",   u"",  u"# ", u"## ", u"###### ", u"- ",   u"  - ",
+                                                 u"* ", u"-", u"- ", u"> ",  u"1. ",     u"\\# ", u"    "};
+    static const std::u16string_view pieces[] = {
+        u"text", u" ",    u"*i*",      u"_i_",         u"**b**",   u"~~s~~", u"`c`",   u"[t](u)", u"[t](u \"x\")",
+        u"\\*",  u"word", u"***bi***", u"*a **b** c*", u"`` ` ``", u"<b>",   u"&amp;", u"  ",     u"\\"};
+    static const std::u16string_view whole[] = {u"---",    u"===", u"***",       u"```",
+                                                u"```cpp", u"",    u"| a | b |", u"|---|---|"};
+    std::mt19937 rng(seed);
+    std::vector<std::u16string> lines;
+    for (int n = 0; n < 60; ++n) {
+        if (rng() % 6 == 0) {
+            lines.emplace_back(whole[rng() % std::size(whole)]);
+            continue;
+        }
+        std::u16string line(starts[rng() % std::size(starts)]);
+        for (unsigned k = 0, count = rng() % 5; k < count; ++k) {
+            line += pieces[rng() % std::size(pieces)];
+        }
+        lines.push_back(std::move(line));
+    }
+    return lines;
 }
 }  // namespace
 
@@ -168,6 +213,44 @@ private slots:
             QVERIFY(reused.ranges(renderOf(few)) == wantFew);
             QVERIFY(reused.ranges(renderOf(heading)) == wantHeading);
             QVERIFY(reused.ranges(renderOf(many)) == wantMany);
+        }
+    }
+
+    // EditorFormats::ranges() takes shortcuts for common lines (a lone bullet, a plain heading,
+    // hidden, italic or heading pieces) beside its general path. Each shortcut gives every
+    // character the format the general path gives it, for concealed and revealed lines, with the
+    // built-in themes and a theme whose italic, heading and code tokens differ from them.
+    void shortcutsGiveTheFormatsOfTheGeneralPath() {
+        auto custom = core::builtinTheme(core::ColorScheme::Light);
+        custom.emphasis.italicText = core::Color{0x10, 0xa0, 0x10, 0xff};
+        custom.emphasis.boldWeight = 600;
+        custom.headingWeight = 300;
+        custom.inlineCode.padding = 5;
+        const std::vector<core::Theme> themes{core::builtinTheme(core::ColorScheme::Light),
+                                              core::builtinTheme(core::ColorScheme::Dark), custom};
+        for (const auto& theme : themes) {
+            const ui::EditorFormats formats(theme);
+            for (unsigned seed = 1; seed <= 40; ++seed) {
+                const auto document = shortcutDocument(seed);
+                for (const bool revealed : {false, true}) {
+                    const core::LineRange range =
+                        revealed ? core::LineRange{0, static_cast<std::int64_t>(document.size()) - 1}
+                                 : core::LineRange{};
+                    const auto renders = test::registry().renderDocument(document, range);
+                    for (std::size_t i = 0; i < document.size(); ++i) {
+                        const QString text = QString::fromStdU16String(document[i]);
+                        const auto fast = formats.ranges(renders[i], text);
+                        const auto general = formats.rangesWithoutShortcuts(renders[i], text);
+                        QVERIFY2(formatsPerCharacter(fast, static_cast<int>(text.size())) ==
+                                     formatsPerCharacter(general, static_cast<int>(text.size())),
+                                 qPrintable(QStringLiteral("seed %1, line %2%3: %4")
+                                                .arg(seed)
+                                                .arg(i)
+                                                .arg(revealed ? QStringLiteral(", revealed") : QString())
+                                                .arg(text)));
+                    }
+                }
+            }
         }
     }
 };

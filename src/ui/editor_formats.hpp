@@ -14,6 +14,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace hitokoto::ui {
@@ -44,8 +45,45 @@ public:
 
     /// Format ranges for one line, ready for QTextLayout::setFormats().
     [[nodiscard]] QList<QTextLayout::FormatRange> ranges(const core::LineRender& render, QStringView text = {}) const;
+    /// The same ranges without the shortcuts ranges() takes for common lines: every piece of the
+    /// line through the general path. A test compares the two.
+    [[nodiscard]] QList<QTextLayout::FormatRange> rangesWithoutShortcuts(const core::LineRender& render,
+                                                                         QStringView text = {}) const;
 
 private:
+    // What covers one piece of a line (rangesOf() cuts a line at every boundary of these).
+    struct Piece {
+        const core::StyleRun* run = nullptr;
+        const core::InlineStyleRun* inlineRun = nullptr;
+        const core::HiddenRange* hidden = nullptr;
+        const core::LinkTarget* link = nullptr;
+        bool bulletSpace = false;          ///< the space after a bullet with a hanging indent (S003)
+        bool inlineCodeDelimiter = false;  ///< a hidden backtick that opens or closes inline code
+    };
+    // The roles of runs (core::Role), each what it does to the format of its text: the table of
+    // roles in composedFormat() points to them.
+    void applyMarker(QTextCharFormat& format, const core::LineRender& render, int level) const;
+    void applyCodeBlock(QTextCharFormat& format, const core::LineRender& render, int level) const;
+    void applyInlineCode(QTextCharFormat& format, const core::LineRender& render, int level) const;
+    void applyInlineCodeMarker(QTextCharFormat& format, const core::LineRender& render, int level) const;
+    void applyEmphasisMarker(QTextCharFormat& format, const core::LineRender& render, int level) const;
+    void applyEscapeMarker(QTextCharFormat& format, const core::LineRender& render, int level) const;
+    void applyLinkText(QTextCharFormat& format, const core::LineRender& render, int level) const;
+    void applyLinkMarker(QTextCharFormat& format, const core::LineRender& render, int level) const;
+    [[nodiscard]] QList<QTextLayout::FormatRange> rangesOf(const core::LineRender& render, QStringView text,
+                                                           bool shortcuts) const;
+    /// The ranges of a line the shortcuts for whole lines give, if one applies.
+    [[nodiscard]] std::optional<QList<QTextLayout::FormatRange>> wholeLineShortcut(
+        const core::LineRender& render) const;
+    /// The format of `piece`: with `shortcuts` a format made once per theme where the piece is a
+    /// common one, else composedFormat(). `pieceText` is its text, if known (empty if not).
+    [[nodiscard]] QTextCharFormat formatFor(const core::LineRender& render, const Piece& piece, QStringView pieceText,
+                                            bool shortcuts) const;
+    /// The one place that says how a piece looks: the line's heading level and code block, the
+    /// role of the run (a table in editor_formats.cpp), a link, inline styles, concealment and the
+    /// bullet space, in that order.
+    [[nodiscard]] QTextCharFormat composedFormat(const core::LineRender& render, const Piece& piece,
+                                                 QStringView pieceText) const;
     /// Font size of text at heading `level` (0 = body text).
     [[nodiscard]] double textSize(int level) const;
 
