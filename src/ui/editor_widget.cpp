@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "editor_widget.hpp"
 
+#include "editor_painters.hpp"
 #include "floating_toolbar.hpp"
 #include "hitokoto/core/table.hpp"
 #include "properties_embedder.hpp"
@@ -51,19 +52,6 @@
 #include <utility>
 
 namespace hitokoto::ui {
-
-namespace {
-
-void drawBox(QPainter& painter, const QRectF& rect, const core::CodeStyle& style) {
-    const qreal border = style.borderWidth;
-    painter.setPen(border > 0 ? QPen(toQColor(style.border), border) : QPen(Qt::NoPen));
-    painter.setBrush(toQColor(style.background));
-    const QRectF inner = rect.adjusted(border / 2, border / 2, -border / 2, -border / 2);
-    const qreal radius = std::max<qreal>(0, style.radius - border / 2);
-    painter.drawRoundedRect(inner, radius, radius);
-}
-
-}  // namespace
 
 EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* parent) : QTextEdit(parent) {
     // ADR 0003: our own layout on a plain document; QTextEdit connects to the layout of the
@@ -911,13 +899,13 @@ void EditorWidget::paintCodeBlockPanels() {
             continue;
         }
         if (inPanel) {
-            drawBox(painter, panel.adjusted(-padding, 0, padding, 0), block);
+            drawCodeBox(painter, panel.adjusted(-padding, 0, padding, 0), block);
             inPanel = false;
         }
         paintInlineCodeBoxes(painter, b, render, rect.topLeft(), inlineCode);
     }
     if (inPanel) {
-        drawBox(painter, panel.adjusted(-padding, 0, padding, 0), block);
+        drawCodeBox(painter, panel.adjusted(-padding, 0, padding, 0), block);
     }
 
     if (!badges.empty()) {
@@ -1055,52 +1043,6 @@ void EditorWidget::insertInlineCode() {
     setFocus();
 }
 
-void EditorWidget::paintInlineCodeBoxes(QPainter& painter, const QTextBlock& block, const core::LineRender& render,
-                                        QPointF origin, const core::CodeStyle& style) {
-    const QTextLayout* layout = block.layout();
-    origin += layout->position();
-    for (const auto& run : render.runs) {
-        if (run.role != core::Role::InlineCode) {
-            continue;
-        }
-        // The box covers the backticks around the code (the concealed ones reserve the padding).
-        const int from = static_cast<int>(run.span.start) - 1;
-        const int to = static_cast<int>(run.span.end()) + 1;
-        for (int i = 0; i < layout->lineCount(); ++i) {
-            const QTextLine line = layout->lineAt(i);
-            const int a = std::max(from, line.textStart());
-            const int z = std::min(to, line.textStart() + line.textLength());
-            if (a >= z) {
-                continue;
-            }
-            const qreal x1 = line.cursorToX(a);
-            const qreal x2 = line.cursorToX(z);
-            drawBox(painter, QRectF(origin.x() + x1, origin.y() + line.y(), x2 - x1, line.height()), style);
-        }
-    }
-}
-
-void EditorWidget::paintThematicBreak(QPainter& painter, const QTextBlock& block, const QRectF& rect) {
-    // S023: a concealed break is a line across the text column, centred vertically in its block
-    // (margins included), max(1, round(border-width x device pixel ratio)) device pixels thick and
-    // on whole device pixel rows, so it stays crisp at fractional scaling.
-    const core::ThematicBreakStyle& style = styler_->formats().thematicBreak();
-    const QTextLayout* layout = block.layout();
-    if (style.borderWidth <= 0 || style.border.a == 0 || layout == nullptr || layout->lineCount() == 0) {
-        return;
-    }
-    const qreal dpr = viewport()->devicePixelRatioF();
-    const int thickness = std::max(1, static_cast<int>(std::lround(style.borderWidth * dpr)));
-    const QTextLine line = layout->lineAt(0);
-    const qreal left = rect.left() + layout->position().x() + line.x();
-    const qreal right = std::min(left + line.width(), static_cast<qreal>(viewport()->width()));
-    const int top = static_cast<int>(std::lround(rect.center().y() * dpr - thickness / 2.0));
-    const bool antialiased = painter.testRenderHint(QPainter::Antialiasing);
-    painter.setRenderHint(QPainter::Antialiasing, false);
-    painter.fillRect(QRectF(left, top / dpr, right - left, thickness / dpr), toQColor(style.border));
-    painter.setRenderHint(QPainter::Antialiasing, antialiased);
-}
-
 void EditorWidget::paintDecorations() {
     QPainter painter(viewport());
     painter.setRenderHint(QPainter::Antialiasing);
@@ -1123,32 +1065,13 @@ void EditorWidget::paintDecorations() {
             continue;
         }
         if (render.thematicBreak) {
-            paintThematicBreak(painter, block, rect);
+            paintThematicBreak(painter, block, rect, styler_->formats().thematicBreak(),
+                               viewport()->devicePixelRatioF(), static_cast<qreal>(viewport()->width()));
         }
         if (render.decorations.empty()) {
             continue;
         }
-        const QTextLayout* layout = block.layout();
-        for (const auto& d : render.decorations) {
-            const int column = static_cast<int>(d.column);
-            const QTextLine line = layout->lineForTextPosition(column);
-            if (!line.isValid()) {
-                continue;
-            }
-            const qreal x1 = line.cursorToX(column);
-            const qreal x2 = line.cursorToX(column + 1);
-            const QPointF centre(
-                rect.left() + layout->position().x() + (x1 + x2) / 2.0,
-                rect.top() + layout->position().y() + line.y() + line.ascent() - metrics.xHeight() / 2.0);
-            if (d.depth % 2 == 0) {
-                painter.setPen(Qt::NoPen);
-                painter.setBrush(color);
-            } else {
-                painter.setPen(QPen(color, std::max<qreal>(1.0, radius / 2.5)));
-                painter.setBrush(Qt::NoBrush);
-            }
-            painter.drawEllipse(centre, radius, radius);
-        }
+        paintBullets(painter, block, rect, render, color, metrics, radius);
     }
 }
 

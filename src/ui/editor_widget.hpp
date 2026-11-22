@@ -162,11 +162,7 @@ private:
     void positionToolbar();
     [[nodiscard]] int availableTableWidth() const;
     void paintCodeBlockPanels();
-    void paintInlineCodeBoxes(QPainter& painter, const QTextBlock& block, const core::LineRender& render,
-                              QPointF origin, const core::CodeStyle& style);
     void paintDecorations();
-    /// S023: the line of a concealed thematic break (`rect`: the block in viewport coordinates).
-    void paintThematicBreak(QPainter& painter, const QTextBlock& block, const QRectF& rect);
     /// Enter, Tab and Shift+Tab in bullet items (S003), through list_.
     bool handleBulletKey(QKeyEvent* event);
     /// keyPressEvent for a key whose text may enter the document as it is (text_input.hpp).
