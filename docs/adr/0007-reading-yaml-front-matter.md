@@ -66,6 +66,43 @@ would add code paths for no visible gain.
 - S025 (editing properties through the block) builds on the lines that the parser reports for
   each key and value.
 
+## Amendment: graphical edits with source-range writes (S025, 2026-11-21)
+
+The user's request for graphical editing extends S024's read-only properties block. S025 edits a
+property by replacing only its source range, inserts a new property immediately before the closing
+delimiter, and removes only the selected property's range. It uses the parsed `keyLine` positions
+and the core's quoted-scalar and flow-list writers; it does not add a YAML dependency or serialize
+the whole front matter. Each operation is one `QTextCursor` edit block, so it is one document undo
+step and the Markdown remains the only source of truth.
+
+The edited property is normalized to a quoted key/value or flow list. Comments and formatting inside
+that property may be replaced; all other YAML and the Markdown body remain untouched. Nested or
+unsupported values can be replaced as quoted text. Duplicate and empty keys are refused.
+
+Addendum (2026-11-22): every written property stays on its line. The writer escapes the
+characters at which `QTextDocument` or a YAML reader starts a new line (`\N`, `\L`, `\P`,
+`\uFDD0`, `\uFDD1`) and half of a surrogate pair read from an escape (`\uD83D`); a number or date
+is written bare only when it reads back as exactly the text entered, otherwise as a quoted string.
+The embedder refuses a line that would still break or could not be saved, and text from a field
+enters as `insertableText` makes it (ADR 0002, addendum of 2026-11-21).
+
+Addendum (2026-11-22): a property's source range is its key line through the last line of its
+value. Comment and blank lines after the value belong to no property and stay, also when they stand
+before the closing delimiter. A rename replaces only the key's source and leaves the value as
+written, nested or null; a change of the value replaces the range and writes it as above, so that
+comments, a block scalar's style or a nested structure inside the range may be replaced. The entries
+of a flow mapping share its lines and have no range of their own: the block does not edit them or
+add a property, and says so.
+
+The user rejected modal editors as too intrusive for a speed-focused, stay-out-of-the-way editor
+and supplied a table-like Obsidian reference. S025 therefore edits keys, scalar values, and
+individual list/tag chips in place with a themed editor overlay. Chip removal and row deletion are
+inline controls, and adding a property starts an inline key editor from a compact, text-only
+menu-style action. Valid front matter remains graphical regardless of caret, selection, or search
+position; clicks in the source area outside the properties block are trapped, and Up from the first
+body line does not enter the YAML. Invalid or unsupported YAML remains visible as text with a badge.
+Property editing does not open a dialog or popup.
+
 ## Reconsider if
 
 - Notes in real use carry anchors, tags or other YAML outside the subset often enough that the

@@ -50,7 +50,7 @@ story ID (see "Conventions").
 | 41 | [S007](007-large-files.md) | 10 MB files open within budget and type without lag | S006 | L | Partly done |
 | 42 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
 | 43 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |
-| 44 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | Open |
+| 44 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | In progress |
 | 45 | [S042](042-docs-only-pull-requests.md) | Pull requests that change only documentation skip the build | S030, S032, S035 | S | Draft |
 | 46 | [S040](040-table-selection.md) | Selecting cells, rows and columns in a table | S018, S019, S028, S031 | L | Draft |
 | 47 | [S041](041-table-copy-paste.md) | Copying and pasting table cells as Markdown | S031, S040 | M | Draft |

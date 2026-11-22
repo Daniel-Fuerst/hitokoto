@@ -17,19 +17,18 @@
 
 ## Story
 
-As a writer who also uses Obsidian, I want the front matter at the top of a note shown as a compact
-block of properties while the caret is elsewhere, and as its YAML while the caret is in it, so that
-it does not look like body text and I can still edit it as text, while the file stays byte for
-byte.
+As a writer who also uses Obsidian, I want valid front matter at the top of a note shown as a compact
+block of properties, so that it does not look like body text and I can edit it graphically while the
+file stays byte for byte.
 
 ## Decisions (Armin, 2026-10-30)
 
 1. **Types** as in Obsidian, inferred from the value, because hitokoto has no vault-wide list of
    property types: text, number, checkbox, date, date and time, list, tags (review O3); a nested
    value is "unsupported" and shows as JSON, at most three lines (review O1).
-2. **Editing** as text: the caret in the block shows its YAML (like the fences of a code block,
-   S021); elsewhere the block shows the properties. Nothing is ever written from the properties
-   block, so ADR 0002 needs no change.
+2. **Editing as text (superseded by S025):** originally, the caret in the block showed its YAML
+   (like the fences of a code block, S021); S025 replaces that with graphical editing. Nothing is
+   ever written from the properties block, so ADR 0002 needs no change.
 3. **Adding and changing properties through the block** ("Add property", changing a type, deleting
    a row, ticking a checkbox) is story S025, not part of S024.
 4. **Reading YAML** with a parser of our own for a subset of YAML 1.2, in the core, without a new
@@ -40,15 +39,15 @@ byte.
    reason (review O10).
 7. **Special cases** as listed under "Rules". Recognition keeps no limit; that YAML-looking body
    text can now be concealed is recorded as a known consequence (review O9).
-8. **S009:** switching between properties and YAML changes the block's height; the lines below move
-   only at that moment, as when a table switches to its source (S018), and once when a long block
-   has been read (review O7).
+8. **S009:** the properties block changes the block's height once when a long block has been read
+   (review O7); unlike a table, valid front matter remains graphical and does not switch to a source
+   view.
 9. **Feature toggle** `ui::Options::frontMatterAsProperties`, on by default; off gives the S023
    behaviour (Obsidian's "Source"). An options dialog may offer it later; Obsidian's "Hidden" is not
    offered (review O2).
-10. **Only the caret reveals:** the YAML shows while the caret and the anchor of the selection are
-    both in the block; a selection reaching beyond it leaves the properties block, and while a
-    mouse button is held the block does not switch (review O6).
+10. **Only the caret reveals (superseded by S025):** originally, the YAML showed while the caret and
+    the anchor of the selection were both in the block. S025 replaces this with a graphical-only
+    view for valid YAML.
 
 ## Rules
 
@@ -110,7 +109,7 @@ always text):
 |---|---|---|---|
 | plain or quoted scalar not matched below, block scalar | text | the scalar's text, wrapped; line breaks of block scalars kept | three lines |
 | null (`null`, `Null`, `NULL`, `~`, nothing) | text | empty | three lines |
-| plain `true`, `True`, `TRUE`, `false`, `False`, `FALSE` | checkbox | a ticked or empty box (read only) | box with a tick |
+| plain `true`, `True`, `TRUE`, `false`, `False`, `FALSE` | checkbox | a ticked or empty box; S025 makes it clickable | box with a tick |
 | plain integer or float of the core schema: `[-+]?[0-9]+`, `[-+]?0o[0-7]+`, `[-+]?0x[0-9a-fA-F]+` (the sign as in js-yaml and ruamel.yaml), decimal with fraction or exponent, `.inf`, `-.inf`, `.nan` (and their `Inf`, `INF`, `NaN`, `NAN` spellings) | number | as written | `#` |
 | plain `YYYY-MM-DD`, a valid calendar date | date | the system's short date format (`QLocale`) | calendar |
 | plain `YYYY-MM-DDTHH:MM` or `YYYY-MM-DDTHH:MM:SS`, valid | date and time | short date and short time of the system | clock |
@@ -131,16 +130,16 @@ ECMAScript's Number::toString writes them (`007` → `7`, `1e3` → `1000`, `0x1
 → `null`. Dates inside are strings as written (`"2026-10-30"`; js-yaml would write an ISO time
 stamp). The full JSON is the row's accessible name; the row shows at most three wrapped lines and
 ends the third with `…` if there is more. Its tooltip shows the JSON as `JSON.stringify(value,
-null, 2)` writes it, at most 20 lines, then a line `…` if there is more; a click shows the YAML
-for the rest (code review O5).
+null, 2)` writes it, at most 20 lines, then a line `…` if there is more; S025 also lets the writer
+replace an unsupported value as text.
 
-**The block.** Unless the YAML shows (below), lines 0 to the closing line are concealed and the
-block shows, in their place:
+**The block.** For valid YAML, lines 0 to the closing line remain concealed and the block shows in
+their place:
 
 - a title "Properties";
 - one row per top-level key in document order: type icon, key (in a column of `key-width`), value;
   values wrap within the text column, a key longer than its column wraps too;
-- nothing below the rows (no "Add property", that is S025);
+- no Add property control in S024 (added by S025);
 - for empty YAML or only comments: the title alone.
 
 For screen readers the block is a title named "Properties" and one element per row, named
@@ -149,19 +148,12 @@ For screen readers the block is a title named "Properties" and one element per r
 `not checked`, the items of a list or tags joined by `, `, the full JSON of an unsupported value;
 an empty value leaves `key:`.
 
-**When the YAML shows.** While the caret and the anchor of the selection both lie on lines 0 to the
-closing line, every line of the block shows its YAML as plain text, as in S023. A selection with
-one end outside the block leaves the properties block shown; copying it copies the YAML lines it
-covers, as with tables (ADR 0005). While a mouse button is held, the block keeps the form it had
-when the button went down; it switches when the button is released.
-
-A click on a row puts the caret at the first character of that row's value in the YAML (for a value
-on the lines below the key, on the first of them; for a block scalar, on its first content line at
-the content's indentation, or after its header if it has no content; for a null, directly after
-the colon, before a comment if there is one; code review O7); a click
-on the title or elsewhere in the block at the start of line 1, the first YAML line. Up from
-the first line below the block puts the caret on the closing line; Ctrl+Home, PageUp and the like
-reach the YAML lines as any text, so jumping to the top of a note shows its YAML.
+**Graphical-only view (S025).** For valid YAML the block stays visible regardless of caret, search
+match, or selection position. Clicking outside the painted properties area but on a front-matter
+line cannot move the caret into the YAML; Up from the first body line does not enter the source.
+Clicking a key renames it, clicking a value edits it, and clicking a checkbox toggles it. Shift-click
+may select the underlying text, but does not reveal it. Invalid or unsupported YAML remains visible
+as text with a badge.
 
 **After opening** (Armin, 2026-10-31). Opening puts the caret at the start of the document (S001).
 If the document starts with closed front matter whose YAML is valid, the caret stands at the start
@@ -218,28 +210,28 @@ text, no properties block, no badge.
 - Given a file that starts with front matter and has a heading below it
 - When I open it
 - Then the caret stands at the start of the heading and the properties block shows
-- And Ctrl+Home shows the YAML
+- And Ctrl+Home leaves the properties block visible and the YAML concealed
 - And if a table follows the front matter directly, the caret stays at the start of the document
 
-**Scenario: the caret in the block shows the YAML**
+**Scenario: valid front matter stays graphical**
 - Given the properties block
-- When the caret moves onto any line of the front matter, by key, by click or by search
-- Then all its lines show their YAML as plain text and no properties block is drawn
-- And when the caret leaves the block, the properties block returns with the values as edited
+- When the caret moves onto any line of the front matter, or a search match or selection reaches it
+- Then the properties block remains visible and the YAML stays concealed
+- And clicking above the Properties title does not place the caret in the source
+- And Up from the first body line does not reveal or enter the YAML
 
 **Scenario: a selection across the block keeps the properties**
 - Given the properties block, taller than its YAML
 - When I drag with the mouse from the body up across the block, Shift+click into the block from
   below, or select all
 - Then the properties block stays and nothing below it moves
-- And when the drag ends inside the block with its anchor inside too, the YAML shows after the
-  button is released
+- And the properties block remains visible after the button is released
 
-**Scenario: a click on a row edits its value**
+**Scenario: a click on a row edits its value (updated by S025)**
 - Given the properties block
 - When I click the value of `branch`
-- Then the YAML shows and the caret stands before `feature/links_references` on the line of
-  `branch`
+- Then the value editor opens and the properties block remains visible
+- And I can change the value without seeing the YAML source
 
 **Scenario: invalid YAML stays text with a badge**
 - Given front matter with a duplicate key on line 3 of the document
@@ -286,11 +278,8 @@ text, no properties block, no badge.
 **Scenario: concealment quality gate (S009)**
 - Given front matter among other elements
 - When the caret walks with arbitrary sequences of Up/Down/Left/Right/Home/End/PageUp/PageDown
-- Then the YAML shows exactly while the caret is on a line of the front matter, the properties
-  block exactly while it is not
-- And no line other than those of the front matter changes height, and the lines below move only
-  when the caret enters or leaves the block
-- And the caret is never on a concealed line
+- Then valid front matter remains a properties block and its source stays concealed
+- And no line other than those of the front matter changes height, and the lines below stay in place
 - And the properties block is accessible: one accessible element per row, named `key: value` (for
   unsupported values the full JSON), the title named "Properties"
 
@@ -339,8 +328,8 @@ text, no properties block, no badge.
   it, a further embedded element needs no change to the existing ones (brief, section 5).
 - Editor: the properties block is embedded like a table in S018: the first line reserves its height
   in `BlockLayout`, the other lines are hidden; it is built when the closing line is confirmed and
-  rebuilt only when the caret leaves the block or the lines change. `EditorWidget::propertiesView()`
-  returns it (null while there is none or the YAML shows), `EditorWidget::frontMatterBadge()` the
+  rebuilt when the lines change. `EditorWidget::propertiesView()` returns it (null while there is
+  none or the YAML is invalid), `EditorWidget::frontMatterBadge()` the
   badge text. Rows on screen are laid out first; building and laying out follow the budget under
   "Long front matter" (review O8). A text value shows in full however long it is: keys and text
   values are laid out once per width into a `QTextLayout`, a long one across idle slices, and only
@@ -369,7 +358,8 @@ text, no properties block, no badge.
 - Differences from Obsidian, recorded here and in the tests: types come from values, not from a
   vault-wide list; a quoted date is text; a scalar `tags: a, b` is one chip (Obsidian may split
   it; not verified); dates are not linked to daily notes; text values that are URLs or `[[links]]`
-  are not clickable; nested values show at most three lines of JSON; a repeated key or an anchor
+  are not clickable; nested values show at most three lines of JSON and can be edited as text
+  through S025; a repeated key or an anchor
   makes the block text with a badge; no "Hidden" display; the badge, not Obsidian's own error view.
 
 ## Tests
@@ -379,18 +369,19 @@ text, no properties block, no badge.
   theme tokens and fallbacks, the tokens in `docs/theming.md`. The expected values were checked
   against js-yaml 4.3.2 and ruamel.yaml 0.19.1 (YAML 1.2) and, for JSON numbers, Node 22; where
   the story decides otherwise (dates, anchors, tags, `0b`, `_`) the test says so.
-- UI: `tst_s024_front_matter` – the block for a review record, types and icons, reveal and conceal
-  by caret, the caret after opening (also with a table below), typing directly below the block,
-  selections and mouse drags, click to value (also a block scalar), invalid YAML with the badge,
+- UI: `tst_s024_front_matter` – the block for a review record, types and icons, persistent graphical
+  view across caret movement, the caret after opening (also with a table below), typing directly below the block,
+  selections and mouse drags, property editing (S025), invalid YAML with the badge,
   special cases, front matter above a table, a long text value laid out in slices and painted on
   screen only, the tooltip, height in the layout, the toggle, byte-exact save, tokens,
   accessibility.
 - S009: `tst_s009_concealment::frontMatterWhileWalking`. The S023 walk
   `thematicBreaksAndSetextHeadingsWhileWalking` starts with plain lines instead of front matter,
-  because the front matter now changes height when the caret enters it.
+  because valid front matter now remains graphical as the caret moves.
 - S023: `ClosedFrontMatterStaysText`, `FrontMatterReachesTheNextDelimiter` and
   `tst_s023_thematic_breaks::frontMatterStaysText` keep what S024 leaves of S023 (no break, no
-  heading, no inline element in front matter; the YAML as text with the caret in it) and no longer
+  heading, no inline element in front matter; the YAML is only text when properties are disabled or
+  invalid) and no longer
   require an empty render.
 
 ## Implementation

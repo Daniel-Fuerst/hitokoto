@@ -513,6 +513,10 @@ struct TopEntry {
     std::size_t keyLine = 0;
     std::size_t valueLine = 0;
     std::size_t valueColumn = 0;
+    std::size_t keyColumn = 0;     ///< S025: the key's source on keyLine, quotes included ...
+    std::size_t keyEndColumn = 0;  ///< ... up to here
+    std::size_t endLine = 0;       ///< S025: the line after the value's last line
+    bool ownLines = false;         ///< S025: an entry of the top block mapping
 };
 
 /// A key found at the start of a mapping entry.
@@ -888,7 +892,13 @@ private:
             }
             const std::size_t keyIndex = keyNode(*key);
             if (entries != nullptr) {
-                entries->push_back(TopEntry{key->text, value, keyIndex, i, valuePos.line, valuePos.col});
+                // The value ends before next_; blank and comment lines after it are skipped below.
+                std::size_t keyEnd = key->colon;
+                while (keyEnd > key->start.col && isWhite(t[keyEnd - 1])) {
+                    --keyEnd;
+                }
+                entries->push_back(TopEntry{key->text, value, keyIndex, i, valuePos.line, valuePos.col, key->start.col,
+                                            keyEnd, next_, true});
             }
             map.keys.push_back(std::move(name));
             map.keyNodes.push_back(keyIndex);
@@ -1414,7 +1424,8 @@ private:
                         return addNull();
                     }
                     if (entries != nullptr) {
-                        entries->push_back(TopEntry{k.text, value, key, keyPos.line, valuePos.line, valuePos.col});
+                        entries->push_back(
+                            TopEntry{k.text, value, key, keyPos.line, valuePos.line, valuePos.col, 0, 0, 0, false});
                     }
                     node.keys.push_back(std::move(name));
                     node.keyNodes.push_back(key);
@@ -1554,6 +1565,10 @@ private:
         p.keyLine = e.keyLine;
         p.valueLine = e.valueLine;
         p.valueColumn = e.valueColumn;
+        p.keyColumn = e.keyColumn;
+        p.keyEndColumn = e.keyEndColumn;
+        p.endLine = e.endLine;
+        p.ownLines = e.ownLines;
         const Node& v = nodes_[e.value];
         const bool tags = e.key == u"tags";
         const bool listKey = e.key == u"aliases" || e.key == u"cssclasses";
@@ -1736,6 +1751,116 @@ std::string_view reasonText(PropertiesErrorReason reason) noexcept {
 
 Properties parseProperties(std::span<const std::u16string> yamlLines) {
     return Parser(yamlLines).run();
+}
+
+std::u16string serializePropertyScalar(std::u16string_view text) {
+    static constexpr char16_t kHex[] = u"0123456789ABCDEF";
+    const auto escape16 = [](std::u16string& out, char16_t c) {
+        out += u"\\u";
+        for (int shift = 12; shift >= 0; shift -= 4) {
+            out.push_back(kHex[(c >> shift) & 0x0f]);
+        }
+    };
+    std::u16string out;
+    out.reserve(text.size() + 2);
+    out.push_back(u'"');
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        const char16_t c = text[i];
+        // Half of a surrogate pair is written as its escape, so that the line can be saved as UTF-8
+        // and reads back as it was; a whole pair stays as it is.
+        if (c >= 0xD800 && c <= 0xDBFF && i + 1 < text.size() && text[i + 1] >= 0xDC00 && text[i + 1] <= 0xDFFF) {
+            out.push_back(c);
+            out.push_back(text[++i]);
+            continue;
+        }
+        if (c >= 0xD800 && c <= 0xDFFF) {
+            escape16(out, c);
+            continue;
+        }
+        switch (c) {
+            case u'\0':
+                out += u"\\0";
+                break;
+            case u'\a':
+                out += u"\\a";
+                break;
+            case u'\b':
+                out += u"\\b";
+                break;
+            case u'\t':
+                out += u"\\t";
+                break;
+            case u'\n':
+                out += u"\\n";
+                break;
+            case u'\v':
+                out += u"\\v";
+                break;
+            case u'\f':
+                out += u"\\f";
+                break;
+            case u'\r':
+                out += u"\\r";
+                break;
+            case u'"':
+                out += u"\\\"";
+                break;
+            case u'\\':
+                out += u"\\\\";
+                break;
+            // Characters at which QTextDocument starts a new line (ADR 0002), or which YAML readers
+            // break or fold a line at, stay on the written line as escapes.
+            case u'\u0085':
+                out += u"\\N";
+                break;
+            case u'\u2028':
+                out += u"\\L";
+                break;
+            case u'\u2029':
+                out += u"\\P";
+                break;
+            case u'\uFDD0':
+            case u'\uFDD1':
+                escape16(out, c);
+                break;
+            default:
+                if (c < 0x20 || c == 0x7f) {
+                    out += u"\\x";
+                    out.push_back(kHex[(c >> 4) & 0x0f]);
+                    out.push_back(kHex[c & 0x0f]);
+                } else {
+                    out.push_back(c);
+                }
+                break;
+        }
+    }
+    out.push_back(u'"');
+    return out;
+}
+
+std::u16string serializePropertyValue(PropertyType type, std::u16string_view text) {
+    if (type == PropertyType::Number || type == PropertyType::Date || type == PropertyType::DateTime) {
+        std::vector<std::u16string> candidate{u"value: " + std::u16string(text)};
+        const Properties parsed = parseProperties(candidate);
+        // Bare only as entered: a comment or a line break after the value would leave the line.
+        if (!parsed.error && parsed.rows.size() == 1 && parsed.rows.front().type == type &&
+            parsed.rows.front().text == text) {
+            return std::u16string(text);
+        }
+    }
+    return serializePropertyScalar(text);
+}
+
+std::u16string serializePropertyList(std::span<const std::u16string> items) {
+    std::u16string out = u"[";
+    for (std::size_t i = 0; i < items.size(); ++i) {
+        if (i != 0) {
+            out += u", ";
+        }
+        out += serializePropertyScalar(items[i]);
+    }
+    out.push_back(u']');
+    return out;
 }
 
 std::vector<PropertyUnit> propertySourceUnits(std::span<const std::u16string> yamlLines) {

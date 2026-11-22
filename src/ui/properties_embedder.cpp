@@ -6,16 +6,20 @@
 #include "properties_view.hpp"
 #include "qt_bridge.hpp"
 
+#include "hitokoto/core/text_codec.hpp"
+
 #include <QElapsedTimer>
 #include <QFontMetricsF>
 #include <QKeyEvent>
 #include <QPainter>
 #include <QTextBlock>
+#include <QTextCursor>
 #include <QTextDocument>
 #include <QTextLayout>
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace hitokoto::ui {
 
@@ -131,9 +135,6 @@ bool PropertiesEmbedder::caretInside() const {
     if (close_ < 0) {
         return false;
     }
-    if (findFirst_ >= 0 && findFirst_ <= close_ && findLast_ >= 0) {
-        return true;  // S028: the find bar's current match is in the YAML
-    }
     const QTextCursor c = editor_->textCursor();
     const int anchor = editor_->document()->findBlock(c.anchor()).blockNumber();
     return c.blockNumber() <= close_ && anchor <= close_;
@@ -218,6 +219,7 @@ bool PropertiesEmbedder::work(qint64 nanoseconds) {
             return work(nanoseconds);
         }
     }
+    const bool keepGraphical = shown_;
     if (close != close_) {
         if (shown_) {
             reveal();
@@ -238,13 +240,13 @@ bool PropertiesEmbedder::work(qint64 nanoseconds) {
             updateBadge();
             return true;  // read when the caret leaves; typing in the YAML reads nothing
         }
-        if (shown_) {
-            reveal();
-        }
         read();
+        if (keepGraphical && !error_) {
+            conceal();
+        }
     }
     if (!error_ && view_ != nullptr && !view_->built() && !view_->build(timer, nanoseconds)) {
-        return false;  // the YAML shows until the block is built
+        return false;  // on initial load, the source stays visible until the block is built
     }
     apply();
     updateBadge();
@@ -266,6 +268,15 @@ void PropertiesEmbedder::read() {
         view_ = new PropertiesView(editor_->viewport());
         view_->hide();
         connect(view_, &PropertiesView::activated, this, &PropertiesEmbedder::activate);
+        connect(view_, &PropertiesView::addRequested, this, &PropertiesEmbedder::addProperty);
+        connect(view_, &PropertiesView::propertyEditCommitted, this, &PropertiesEmbedder::editCommitted);
+        connect(view_, &PropertiesView::itemEditRequested, this, &PropertiesEmbedder::editItem);
+        connect(view_, &PropertiesView::itemEditCommitted, this, &PropertiesEmbedder::itemEditCommitted);
+        connect(view_, &PropertiesView::newPropertyCommitted, this, &PropertiesEmbedder::addCommitted);
+        connect(view_, &PropertiesView::deleteRequested, this, &PropertiesEmbedder::deleteProperty);
+        connect(view_, &PropertiesView::itemDeleteRequested, this, &PropertiesEmbedder::deleteItem);
+        connect(view_, &PropertiesView::undoRequested, this, &PropertiesEmbedder::undoPropertyEdit);
+        connect(view_, &PropertiesView::redoRequested, this, &PropertiesEmbedder::redoPropertyEdit);
         connect(view_, &PropertiesView::pressed, this, &PropertiesEmbedder::setMouseHeld);
     }
     // The old rows go first: a new look lays out the rows it has at once.
@@ -291,13 +302,12 @@ void PropertiesEmbedder::caretMoved() {
     updateBadge();
 }
 
-void PropertiesEmbedder::setFindHold(int first, int last) {
-    if (findFirst_ == first && findLast_ == last) {
-        return;
+bool PropertiesEmbedder::handleEditorClick(int blockNumber) {
+    if (!shown_ || error_ || view_ == nullptr || blockNumber < 0 || blockNumber > close_) {
+        return false;
     }
-    findFirst_ = first;
-    findLast_ = first < 0 ? -1 : last;
-    caretMoved();
+    view_->setFocus(Qt::MouseFocusReason);
+    return true;
 }
 
 void PropertiesEmbedder::setMouseHeld(bool held) {
@@ -311,8 +321,7 @@ void PropertiesEmbedder::apply() {
     if (held_ || forgotten_) {
         return;
     }
-    const bool want =
-        enabled_ && close_ >= 0 && !error_ && !dirty_ && view_ != nullptr && view_->built() && !caretInside();
+    const bool want = enabled_ && close_ >= 0 && !error_ && !dirty_ && view_ != nullptr && view_->built();
     if (want && !shown_) {
         conceal();
     } else if (!want && shown_) {
@@ -435,17 +444,27 @@ bool PropertiesEmbedder::handleEditorKey(QKeyEvent* event) {
         layout->lineForTextPosition(cursor.positionInBlock()).lineNumber() > 0) {
         return false;  // a wrapped line: Up stays in it
     }
-    const QTextBlock closing = editor_->document()->findBlockByNumber(close_);
-    const int column = std::min(cursor.positionInBlock(), closing.length() - 1);
-    cursor.setPosition(closing.position() + column, (event->modifiers() & Qt::ShiftModifier) != 0
-                                                        ? QTextCursor::KeepAnchor
-                                                        : QTextCursor::MoveAnchor);
-    editor_->setTextCursor(cursor);
+    // The properties view has no source-navigation boundary: Up must not expose its YAML.
     return true;
 }
 
-void PropertiesEmbedder::activate(int row, bool extend) {
+void PropertiesEmbedder::activate(int row, bool extend, bool key) {
     if (!shown_ || view_ == nullptr) {
+        return;
+    }
+    if (!extend) {
+        if (row < 0 || static_cast<std::size_t>(row) >= view_->rowCount()) {
+            return;
+        }
+        if (!editable(row)) {
+            return;
+        }
+        const core::Property& property = view_->property(static_cast<std::size_t>(row));
+        if (!key && property.type == core::PropertyType::Checkbox) {
+            replaceProperty(row, property.checked ? QStringLiteral("false") : QStringLiteral("true"));
+            return;
+        }
+        view_->editKeyOrValue(row, key);
         return;
     }
     // A row: the first character of its value in the YAML; the title or elsewhere: the start of the
@@ -463,6 +482,259 @@ void PropertiesEmbedder::activate(int row, bool extend) {
                        extend ? QTextCursor::KeepAnchor : QTextCursor::MoveAnchor);
     editor_->setFocus();
     editor_->setTextCursor(cursor);
+}
+
+void PropertiesEmbedder::addProperty() {
+    if (view_ == nullptr) {
+        return;
+    }
+    // A new line before the closing line would follow a flow mapping: only a block mapping takes it.
+    for (std::size_t i = 0; i < view_->rowCount(); ++i) {
+        if (!editable(static_cast<int>(i))) {
+            return;
+        }
+    }
+    view_->editNewProperty();
+}
+
+void PropertiesEmbedder::editItem(int row, int item) {
+    if (view_ != nullptr && editable(row)) {
+        view_->editItem(row, item);
+    }
+}
+
+bool PropertiesEmbedder::editable(int row) {
+    if (view_ == nullptr || row < 0 || static_cast<std::size_t>(row) >= view_->rowCount()) {
+        return false;
+    }
+    if (view_->property(static_cast<std::size_t>(row)).ownLines) {
+        return true;
+    }
+    view_->refuseEdit(row, tr("These properties share a line of YAML, so they cannot be changed one by one here."));
+    return false;
+}
+
+std::pair<QTextBlock, QTextBlock> PropertiesEmbedder::ownLines(int row) const {
+    const core::Property& property = view_->property(static_cast<std::size_t>(row));
+    QTextDocument* document = editor_->document();
+    return {document->findBlockByNumber(static_cast<int>(1 + property.keyLine)),
+            document->findBlockByNumber(
+                static_cast<int>(std::min<std::size_t>(1 + property.endLine, static_cast<std::size_t>(close_))))};
+}
+
+bool PropertiesEmbedder::keyExists(std::u16string_view key, int exceptRow) const {
+    if (view_ == nullptr) {
+        return false;
+    }
+    for (std::size_t i = 0; i < view_->rowCount(); ++i) {
+        if (static_cast<int>(i) != exceptRow && view_->property(i).key == key) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void PropertiesEmbedder::editCommitted(int row, bool key, const QString& value) {
+    if (view_ == nullptr || row < 0 || static_cast<std::size_t>(row) >= view_->rowCount()) {
+        return;
+    }
+    const core::Property& property = view_->property(static_cast<std::size_t>(row));
+    if (key) {
+        const auto keyView = hitokoto::ui::view(value);
+        if (value.trimmed().isEmpty()) {
+            view_->rejectInlineEdit(tr("Property names cannot be empty."));
+            return;
+        }
+        if (keyView != property.key && keyExists(keyView, row)) {
+            view_->rejectInlineEdit(tr("A property with that name already exists."));
+            return;
+        }
+        view_->finishInlineEdit();
+        if (keyView == property.key) {
+            return;
+        }
+        renameProperty(row, value);
+        return;
+    }
+    if (hitokoto::ui::view(value) == property.text) {
+        view_->finishInlineEdit();
+        return;
+    }
+    view_->finishInlineEdit();
+    replaceProperty(row, value);
+}
+
+void PropertiesEmbedder::itemEditCommitted(int row, int item, const QString& value) {
+    if (view_ == nullptr || row < 0 || static_cast<std::size_t>(row) >= view_->rowCount()) {
+        return;
+    }
+    const core::Property& property = view_->property(static_cast<std::size_t>(row));
+    std::vector<std::u16string> items = property.items;
+    const std::u16string itemText(hitokoto::ui::view(value));
+    if (item < 0 || static_cast<std::size_t>(item) > items.size()) {
+        view_->finishInlineEdit();
+        return;
+    }
+    if (static_cast<std::size_t>(item) < items.size() && items[static_cast<std::size_t>(item)] == itemText) {
+        view_->finishInlineEdit();
+        return;
+    }
+    if (static_cast<std::size_t>(item) == items.size()) {
+        if (value.isEmpty()) {
+            view_->finishInlineEdit();
+            return;
+        }
+        items.push_back(itemText);
+    } else if (value.isEmpty()) {
+        items.erase(items.begin() + item);
+    } else {
+        items[static_cast<std::size_t>(item)] = itemText;
+    }
+    view_->finishInlineEdit();
+    replacePropertyItems(row, items);
+}
+
+void PropertiesEmbedder::addCommitted(const QString& key) {
+    if (view_ == nullptr) {
+        return;
+    }
+    if (key.trimmed().isEmpty()) {
+        view_->rejectInlineEdit(tr("Property names cannot be empty."));
+        return;
+    }
+    if (keyExists(hitokoto::ui::view(key))) {
+        view_->rejectInlineEdit(tr("A property with that name already exists."));
+        return;
+    }
+    view_->finishInlineEdit();
+    insertProperty(key, {});
+}
+
+// One Ctrl+Z, one step: a property edit is one edit block of the document, and what came before it
+// stays for the next Ctrl+Z.
+void PropertiesEmbedder::undoPropertyEdit() {
+    editor_->undoEdit();
+}
+
+void PropertiesEmbedder::redoPropertyEdit() {
+    editor_->redoEdit();
+}
+
+void PropertiesEmbedder::deleteProperty(int row) {
+    if (!editable(row)) {
+        return;
+    }
+    const auto [start, end] = ownLines(row);
+    if (!start.isValid() || !end.isValid()) {
+        return;
+    }
+    writeLines(start, end, {});
+}
+
+void PropertiesEmbedder::deleteItem(int row, int item) {
+    if (!editable(row)) {
+        return;
+    }
+    const core::Property& property = view_->property(static_cast<std::size_t>(row));
+    if (item < 0 || static_cast<std::size_t>(item) >= property.items.size()) {
+        return;
+    }
+    std::vector<std::u16string> items = property.items;
+    items.erase(items.begin() + item);
+    replacePropertyItems(row, items);
+}
+
+void PropertiesEmbedder::replaceProperty(int row, const QString& value) {
+    if (!editable(row)) {
+        return;
+    }
+    const core::Property& property = view_->property(static_cast<std::size_t>(row));
+    QString encodedValue;
+    if (property.type == core::PropertyType::Checkbox &&
+        (value == QStringLiteral("true") || value == QStringLiteral("false"))) {
+        encodedValue = value;
+    } else {
+        encodedValue = toQString(core::serializePropertyValue(property.type, hitokoto::ui::view(value)));
+    }
+    const QString line = toQString(core::serializePropertyScalar(property.key)) + QStringLiteral(": ") + encodedValue;
+    // The key line up to the last line of the value: comment and blank lines after it stay.
+    const auto [start, end] = ownLines(row);
+    if (!start.isValid() || !end.isValid()) {
+        return;
+    }
+    writeLines(start, end, line + QLatin1Char('\n'));
+}
+
+void PropertiesEmbedder::replacePropertyItems(int row, const std::vector<std::u16string>& items) {
+    if (!editable(row)) {
+        return;
+    }
+    const core::Property& property = view_->property(static_cast<std::size_t>(row));
+    const QString line = toQString(core::serializePropertyScalar(property.key)) + QStringLiteral(": ") +
+                         toQString(core::serializePropertyList(items));
+    const auto [start, end] = ownLines(row);
+    if (!start.isValid() || !end.isValid()) {
+        return;
+    }
+    writeLines(start, end, line + QLatin1Char('\n'));
+}
+
+void PropertiesEmbedder::renameProperty(int row, const QString& key) {
+    if (!editable(row)) {
+        return;
+    }
+    // Only the key's source: the value, nested or not, and what follows it stay as they are.
+    const core::Property& property = view_->property(static_cast<std::size_t>(row));
+    const QTextBlock line = editor_->document()->findBlockByNumber(static_cast<int>(1 + property.keyLine));
+    if (!line.isValid() || property.keyEndColumn <= property.keyColumn ||
+        property.keyEndColumn >= static_cast<std::size_t>(line.length())) {
+        return;
+    }
+    writeText(line.position() + static_cast<int>(property.keyColumn),
+              line.position() + static_cast<int>(property.keyEndColumn),
+              toQString(core::serializePropertyScalar(hitokoto::ui::view(key))));
+}
+
+void PropertiesEmbedder::writeLines(const QTextBlock& start, const QTextBlock& end, const QString& lines) {
+    writeText(start.position(), end.position(), lines);
+}
+
+void PropertiesEmbedder::writeText(int from, int to, const QString& text) {
+    // Each write is property lines ending in a line feed, or part of one line; QTextCursor::insertText
+    // would start a new block at any of these characters inside it (ADR 0002), and the writer
+    // escapes them. Half of a surrogate pair could not be saved: the writer escapes it, the fields
+    // pass insertableText.
+    const QString body = text.endsWith(QLatin1Char('\n')) ? text.chopped(1) : text;
+    const bool breaks = std::any_of(body.cbegin(), body.cend(), [](QChar c) {
+        return c == QLatin1Char('\n') || c == QLatin1Char('\r') || c == QChar::ParagraphSeparator ||
+               c == QChar(0xFDD0) || c == QChar(0xFDD1);
+    });
+    if (breaks || core::findLoneSurrogate(hitokoto::ui::view(text)) != std::u16string_view::npos) {
+        return;
+    }
+    QTextCursor cursor(editor_->document());
+    cursor.beginEditBlock();
+    cursor.setPosition(from);
+    cursor.setPosition(to, QTextCursor::KeepAnchor);
+    if (text.isEmpty()) {
+        cursor.removeSelectedText();
+    } else {
+        cursor.insertText(text);
+    }
+    cursor.endEditBlock();
+}
+
+void PropertiesEmbedder::insertProperty(const QString& key, const QString& value) {
+    if (close_ < 0) {
+        return;
+    }
+    const QTextBlock closing = editor_->document()->findBlockByNumber(close_);
+    if (!closing.isValid()) {
+        return;
+    }
+    const QString line = toQString(core::serializePropertyScalar(hitokoto::ui::view(key))) + QStringLiteral(": ") +
+                         toQString(core::serializePropertyScalar(hitokoto::ui::view(value))) + QLatin1Char('\n');
+    writeLines(closing, closing, line);
 }
 
 }  // namespace hitokoto::ui

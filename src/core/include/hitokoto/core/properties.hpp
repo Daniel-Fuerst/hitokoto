@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S024 (ADR 0007): the properties of a note's front matter, read from its YAML with a parser of our
-// own for a subset of YAML 1.2. Read only: nothing here writes YAML (ADR 0002).
+// own for a subset of YAML 1.2. The writers below (S025, ADR 0007) write one property as one line of
+// YAML; nothing here rewrites the front matter as a whole (ADR 0002).
 #pragma once
 
 #include <cstddef>
@@ -50,6 +51,14 @@ struct Property {
     std::size_t keyLine = 0;            ///< index of the key's line in the YAML lines passed in
     std::size_t valueLine = 0;          ///< where a click on the value puts the caret: line ...
     std::size_t valueColumn = 0;        ///< ... and column (UTF-16), see S024 "When the YAML shows"
+    /// S025: the key's source on keyLine is [keyColumn, keyEndColumn), quotes included.
+    std::size_t keyColumn = 0;
+    std::size_t keyEndColumn = 0;
+    /// S025: the line after the value's last line; lines [keyLine, endLine) hold this property and
+    /// nothing else when ownLines is set. Blank and comment lines after the value are not part of it.
+    std::size_t endLine = 0;
+    /// S025: an entry of the top block mapping; false in a flow mapping, whose entries share lines.
+    bool ownLines = false;
     friend bool operator==(const Property&, const Property&) = default;
 };
 
@@ -98,6 +107,13 @@ struct Properties {
 /// Reads the YAML lines between the two `---` lines of closed front matter (without them). Never
 /// throws; linear in the length of the input; nesting deeper than 64 levels is an error.
 [[nodiscard]] Properties parseProperties(std::span<const std::u16string> yamlLines);
+
+/// S025: a safely double-quoted YAML scalar for a property key or text value.
+[[nodiscard]] std::u16string serializePropertyScalar(std::u16string_view text);
+/// S025: preserve a scalar's inferred number or date type when `text` is valid for it.
+[[nodiscard]] std::u16string serializePropertyValue(PropertyType type, std::u16string_view text);
+/// S025: a flow sequence of safely quoted YAML strings.
+[[nodiscard]] std::u16string serializePropertyList(std::span<const std::u16string> items);
 
 /// S028: a run of a unit's text and the source range it comes from, in the YAML lines passed in
 /// ([line, column] to [endLine, endColumn), UTF-16). A run is one to one if its source lies on one

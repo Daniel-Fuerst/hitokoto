@@ -5,12 +5,15 @@
 // registry's block-state shortcut agrees with render(). The whole-document reference (S023, ADR
 // 0006) renders the same text with the same guarantees and the same block states. The YAML of
 // closed front matter, and the whole input as lines, go to the properties parser (S024, ADR 0007):
-// it returns, and every line and column it reports lies in its input. A line above the bounds of
+// it returns, and every line and column it reports lies in its input. What it reads, and the whole
+// input, written back as a key, a value or a list item (S025) is one line that can be saved and
+// reads back as it was. A line above the bounds of
 // S007 shows no inline formatting; it is rendered once more by a registry without the bounds, with
 // the same guarantees, so that the inline elements also see long lines (they render a line in
 // linear time: a run with a large -max_len and a -timeout shows an input that does not).
 #include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/properties.hpp"
+#include "hitokoto/core/text_codec.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -21,6 +24,41 @@
 
 namespace {
 
+/// `text` written by the writers of S025 is one line that can be saved, and reads back as it was.
+void checkWritten(std::u16string_view text) {
+    using namespace hitokoto::core;
+    const auto readBack = [](std::u16string line) {
+        const std::vector<std::u16string> lines{std::move(line)};
+        return parseProperties(lines);
+    };
+    const std::u16string scalar = serializePropertyScalar(text);
+    for (const char16_t c : scalar) {
+        if (c == u'\n' || c == u'\r' || c == 0x85 || c == 0x2028 || c == 0x2029 || c == 0xFDD0 || c == 0xFDD1)
+            std::abort();
+    }
+    if (findLoneSurrogate(scalar) != std::u16string_view::npos)
+        std::abort();
+    const auto value = readBack(u"k: " + scalar);
+    if (value.error || value.rows.size() != 1 || value.rows.front().text != text)
+        std::abort();
+    const auto item = readBack(u"k: [" + scalar + u"]");
+    if (item.error || item.rows.size() != 1 ||
+        item.rows.front().items != std::vector<std::u16string>{std::u16string(text)})
+        std::abort();
+    if (!text.empty()) {
+        const auto key = readBack(scalar + u": 1");
+        if (key.error || key.rows.size() != 1 || key.rows.front().key != text)
+            std::abort();
+    }
+    for (const auto type : {PropertyType::Number, PropertyType::Date, PropertyType::DateTime}) {
+        const std::u16string written = serializePropertyValue(type, text);
+        const auto typed = readBack(u"k: " + written);
+        if (typed.error || typed.rows.size() != 1 || typed.rows.front().text != text ||
+            (written != scalar && typed.rows.front().type != type))
+            std::abort();
+    }
+}
+
 /// What the parser reports lies in `lines` (S024).
 void checkProperties(std::span<const std::u16string> lines) {
     const auto p = hitokoto::core::parseProperties(lines);
@@ -30,6 +68,11 @@ void checkProperties(std::span<const std::u16string> lines) {
         return;
     }
     for (const auto& row : p.rows) {
+        checkWritten(row.key);
+        if (row.type == hitokoto::core::PropertyType::Text)
+            checkWritten(row.text);
+        for (const auto& item : row.items)
+            checkWritten(item);
         if (row.keyLine >= lines.size() || row.valueLine >= lines.size() ||
             row.valueColumn > lines[row.valueLine].size())
             std::abort();
@@ -151,5 +194,6 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     if (close == 1 || (close > 0 && !document[0].frontMatter))
         std::abort();
     checkProperties(lines);
+    checkWritten(text);
     return 0;
 }
