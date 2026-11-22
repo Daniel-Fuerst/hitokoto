@@ -8,6 +8,7 @@
 #include "block_styler.hpp"
 #include "hitokoto/core/settings.hpp"
 #include "hitokoto/core/theme.hpp"
+#include "list_editing.hpp"
 #include "theme_manager.hpp"
 
 #include <QPointF>
@@ -166,11 +167,10 @@ private:
     void paintDecorations();
     /// S023: the line of a concealed thematic break (`rect`: the block in viewport coordinates).
     void paintThematicBreak(QPainter& painter, const QTextBlock& block, const QRectF& rect);
+    /// Enter, Tab and Shift+Tab in bullet items (S003), through list_.
     bool handleBulletKey(QKeyEvent* event);
     /// keyPressEvent for a key whose text may enter the document as it is (text_input.hpp).
     void pressKey(QKeyEvent* event);
-    bool handleBulletEnter(QTextCursor& cursor);
-    bool handleBulletTab(QTextCursor& cursor, bool outdent);
     /// S031: pastes the tables of `source` as Markdown tables, if the paste converts; returns
     /// false if it stays plain text (no table that counts, or the caret is in a code block, front
     /// matter or a table's lines).
@@ -181,6 +181,7 @@ private:
     bool propertiesClickHeld_ = false;  ///< a click in front-matter source protected by the properties view
     ViewAnchor* view_ = nullptr;        ///< the reading position and the followed caret (S033)
     BlockStyler* styler_ = nullptr;
+    ListEditing list_{[this](const QTextBlock& block) { return styler_->renderFor(block).codeBlock; }};
     std::unique_ptr<TableEmbedder> tables_;
     std::unique_ptr<PropertiesEmbedder> properties_;
     FloatingToolbar* toolbar_ = nullptr;

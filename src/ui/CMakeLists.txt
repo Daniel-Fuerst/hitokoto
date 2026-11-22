@@ -12,6 +12,7 @@ qt_add_library(hitokoto_ui STATIC
     find_bar.cpp find_bar.hpp
     find_controller.cpp find_controller.hpp
     floating_toolbar.cpp floating_toolbar.hpp
+    list_editing.cpp list_editing.hpp
     main_window.cpp main_window.hpp
     menu_bar.cpp menu_bar.hpp
     options.hpp
