@@ -2,7 +2,6 @@
 #include "editor_widget.hpp"
 
 #include "floating_toolbar.hpp"
-#include "hitokoto/core/bullet.hpp"
 #include "hitokoto/core/table.hpp"
 #include "properties_embedder.hpp"
 #include "qt_bridge.hpp"
@@ -1169,138 +1168,13 @@ bool EditorWidget::handleBulletKey(QKeyEvent* event) {
     }
 
     QTextCursor cursor = textCursor();
-    if (isEnter) {
-        return handleBulletEnter(cursor);
-    }
-    return handleBulletTab(cursor, isBacktab);
-}
-
-bool EditorWidget::handleBulletEnter(QTextCursor& cursor) {
-    QTextBlock block = cursor.block();
-    const auto info = core::parseBulletLine(view(block.text()));
-    if (!info.has_value() || styler_->renderFor(block).codeBlock) {
+    const ListEditing::Outcome outcome = isEnter ? list_.enter(cursor) : list_.tab(cursor, isBacktab);
+    if (outcome == ListEditing::Outcome::None) {
         return false;
     }
-
-    if (cursor.hasSelection()) {
-        cursor.removeSelectedText();
-        block = cursor.block();
-    }
-
-    const int posInBlock = cursor.positionInBlock();
-
-    if (info->isEmpty) {
-        cursor.beginEditBlock();
-        cursor.movePosition(QTextCursor::StartOfBlock);
-        cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
-        if (info->markerChar > 0) {
-            const QString outdented = toQString(core::outdentBulletLine(view(block.text())));
-            cursor.insertText(outdented);
-        } else {
-            cursor.removeSelectedText();
-        }
-        cursor.endEditBlock();
+    if (outcome == ListEditing::Outcome::CaretPlaced) {
         setTextCursor(cursor);
-        ensureCursorVisible();
-        return true;
     }
-
-    if (posInBlock >= static_cast<int>(info->prefixLength)) {
-        cursor.beginEditBlock();
-        const QString prefix = block.text().left(static_cast<qsizetype>(info->prefixLength));
-        cursor.insertText(QLatin1Char('\n') + prefix);
-        cursor.endEditBlock();
-        setTextCursor(cursor);
-        ensureCursorVisible();
-        return true;
-    }
-
-    return false;
-}
-
-bool EditorWidget::handleBulletTab(QTextCursor& cursor, bool outdent) {
-    const int startPos = cursor.selectionStart();
-    const int endPos = cursor.selectionEnd();
-    QTextBlock startBlock = document()->findBlock(startPos);
-    QTextBlock endBlock = document()->findBlock(endPos);
-    if (endPos > startPos && endBlock.position() == endPos) {
-        endBlock = endBlock.previous();
-    }
-
-    if (!startBlock.isValid() || !endBlock.isValid()) {
-        return false;
-    }
-
-    if (startBlock == endBlock) {
-        const auto info = core::parseBulletLine(view(startBlock.text()));
-        if (!info.has_value() || styler_->renderFor(startBlock).codeBlock) {
-            return false;
-        }
-
-        cursor.beginEditBlock();
-        const int oldPos = cursor.position();
-        const int blockPos = startBlock.position();
-        if (!outdent) {
-            QTextCursor lineStart(startBlock);
-            lineStart.insertText(QStringLiteral("  "));
-            cursor.setPosition(oldPos + 2);
-        } else {
-            const QString text = startBlock.text();
-            int toRemove = 0;
-            if (text.startsWith(QStringLiteral("  "))) {
-                toRemove = 2;
-            } else if (text.startsWith(QLatin1Char(' ')) || text.startsWith(QLatin1Char('\t'))) {
-                toRemove = 1;
-            }
-            if (toRemove > 0) {
-                QTextCursor remover(startBlock);
-                remover.setPosition(blockPos + toRemove, QTextCursor::KeepAnchor);
-                remover.removeSelectedText();
-                cursor.setPosition(std::max(blockPos, oldPos - toRemove));
-            }
-        }
-        cursor.endEditBlock();
-        setTextCursor(cursor);
-        ensureCursorVisible();
-        return true;
-    }
-
-    bool anyBullet = false;
-    for (QTextBlock b = startBlock; b.isValid() && b.blockNumber() <= endBlock.blockNumber(); b = b.next()) {
-        if (core::parseBulletLine(view(b.text())).has_value() && !styler_->renderFor(b).codeBlock) {
-            anyBullet = true;
-            break;
-        }
-    }
-    if (!anyBullet) {
-        return false;
-    }
-
-    cursor.beginEditBlock();
-    for (QTextBlock b = startBlock; b.isValid() && b.blockNumber() <= endBlock.blockNumber(); b = b.next()) {
-        if (!core::parseBulletLine(view(b.text())).has_value() || styler_->renderFor(b).codeBlock) {
-            continue;
-        }
-        const int blockPos = b.position();
-        if (!outdent) {
-            QTextCursor lineStart(b);
-            lineStart.insertText(QStringLiteral("  "));
-        } else {
-            const QString text = b.text();
-            int toRemove = 0;
-            if (text.startsWith(QStringLiteral("  "))) {
-                toRemove = 2;
-            } else if (text.startsWith(QLatin1Char(' ')) || text.startsWith(QLatin1Char('\t'))) {
-                toRemove = 1;
-            }
-            if (toRemove > 0) {
-                QTextCursor remover(b);
-                remover.setPosition(blockPos + toRemove, QTextCursor::KeepAnchor);
-                remover.removeSelectedText();
-            }
-        }
-    }
-    cursor.endEditBlock();
     ensureCursorVisible();
     return true;
 }
