@@ -63,6 +63,11 @@ constexpr auto kRecord =
 constexpr int kRecordClose = 26;
 constexpr int kRecordBody = 30;
 
+/// A nested value, a block scalar followed by a comment line, a null.
+constexpr auto kNested =
+    "---\nauthor:\n  name: Ada\n  url: https://example.org\nsummary: |\n  first line\n  second "
+    "line\n# reviewed by B, do not remove\nstatus: draft\nempty:\nstamp: 2026-11-21\n---\nbody\n";
+
 /// Four properties of different types and one body line.
 constexpr auto kSimple = "---\ntitle: A note\ncount: 5\ndone: true\ntags: [one, two]\n---\nbody line\n";
 
@@ -695,6 +700,127 @@ private slots:
         f.settle();
         QCOMPARE(editor->document()->findBlockByNumber(1).text(),
                  QStringLiteral("summary: ") + QString::fromLatin1(value));
+    }
+
+    // A rename writes the key and nothing else: a nested value keeps its structure, a null stays
+    // null, and the lines of the next property are untouched.
+    void aRenameWritesOnlyTheKey_data() {
+        QTest::addColumn<int>("row");
+        QTest::addColumn<QString>("name");
+        QTest::addColumn<int>("line");
+        QTest::addColumn<QStringList>("expected");
+        QTest::newRow("nested value") << 0 << QStringLiteral("writer") << 1
+                                      << QStringList{QStringLiteral("\"writer\":"), QStringLiteral("  name: Ada"),
+                                                     QStringLiteral("  url: https://example.org")};
+        QTest::newRow("block scalar") << 1 << QStringLiteral("abstract") << 4
+                                      << QStringList{QStringLiteral("\"abstract\": |"), QStringLiteral("  first line"),
+                                                     QStringLiteral("  second line"),
+                                                     QStringLiteral("# reviewed by B, do not remove")};
+        QTest::newRow("null") << 3 << QStringLiteral("blank") << 9
+                              << QStringList{QStringLiteral("\"blank\":"), QStringLiteral("stamp: 2026-11-21")};
+    }
+    void aRenameWritesOnlyTheKey() {
+        QFETCH(int, row);
+        QFETCH(QString, name);
+        QFETCH(int, line);
+        QFETCH(QStringList, expected);
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("nested.md"), kNested)));
+        f.placeCaret(12);
+        f.settle();
+        auto* editor = f.editor();
+        const int blocks = editor->document()->blockCount();
+        auto* view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(view != nullptr);
+        const core::PropertyType type = view->property(static_cast<std::size_t>(row)).type;
+        clickBlock(view, onKey(view, row));
+        auto* edit = inlineEditor(view);
+        QVERIFY(edit != nullptr);
+        edit->selectAll();
+        test::keyClicks(edit, name);
+        test::keyClick(edit, Qt::Key_Return);
+        f.settle();
+        QCOMPARE(editor->document()->blockCount(), blocks);
+        for (int i = 0; i < expected.size(); ++i) {
+            QCOMPARE(editor->document()->findBlockByNumber(line + i).text(), expected[i]);
+        }
+        view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(view != nullptr);
+        QTRY_COMPARE_WITH_TIMEOUT(view->rowCount(), 5U, 5000);
+        QCOMPARE(QString::fromStdU16String(view->property(static_cast<std::size_t>(row)).key), name);
+        QCOMPARE(view->property(static_cast<std::size_t>(row)).type, type);
+    }
+
+    // Changing or deleting a value replaces its lines only: a comment or blank line after it,
+    // which may describe the next property, stays.
+    void anEditKeepsTheLinesAfterTheValue() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("nested.md"), kNested)));
+        f.placeCaret(12);
+        f.settle();
+        auto* editor = f.editor();
+        auto* view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(view != nullptr);
+        clickBlock(view, onValue(view, 1));
+        auto* edit = inlineEditor(view);
+        QVERIFY(edit != nullptr);
+        edit->selectAll();
+        test::keyClicks(edit, QStringLiteral("short"));
+        test::keyClick(edit, Qt::Key_Return);
+        f.settle();
+        QCOMPARE(editor->document()->findBlockByNumber(4).text(), QStringLiteral("\"summary\": \"short\""));
+        QCOMPARE(editor->document()->findBlockByNumber(5).text(), QStringLiteral("# reviewed by B, do not remove"));
+        QCOMPARE(editor->document()->findBlockByNumber(6).text(), QStringLiteral("status: draft"));
+
+        test::Fixture g;
+        QVERIFY(g.open(g.writeFile(QStringLiteral("comment.md"),
+                                   "---\ntitle: A note\n# about count\ncount: 5\n# trailing comment\n\n---\nbody\n")));
+        g.placeCaret(7);
+        g.settle();
+        editor = g.editor();
+        view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(view != nullptr);
+        clickBlock(view, onValue(view, 1));
+        edit = inlineEditor(view);
+        QVERIFY(edit != nullptr);
+        edit->selectAll();
+        test::keyClicks(edit, QStringLiteral("6"));
+        test::keyClick(edit, Qt::Key_Return);
+        g.settle();
+        view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(view != nullptr);
+        QTRY_COMPARE_WITH_TIMEOUT(view->rowCount(), 2U, 5000);
+        clickBlock(view, view->rowDeleteRect(0).center());
+        g.settle();
+        QCOMPARE(editor->toPlainText(),
+                 QStringLiteral("---\n# about count\n\"count\": 6\n# trailing comment\n\n---\nbody\n"));
+    }
+
+    // The entries of a flow mapping share a line: an edit cannot replace one of them alone, so the
+    // block refuses every edit and the YAML stays as it is.
+    void aFlowMappingIsNotChanged() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("flow.md"), "---\n{a: 1, b: true}\n---\nbody\n")));
+        f.placeCaret(3);
+        f.settle();
+        auto* editor = f.editor();
+        const QString before = editor->toPlainText();
+        auto* view = qobject_cast<ui::PropertiesView*>(editor->propertiesView());
+        QVERIFY(view != nullptr);
+        QCOMPARE(view->rowCount(), 2U);
+        clickBlock(view, onValue(view, 0));
+        QVERIFY(inlineEditor(view) == nullptr);
+        clickBlock(view, onKey(view, 0));
+        QVERIFY(inlineEditor(view) == nullptr);
+        clickBlock(view, onValue(view, 1));  // the checkbox
+        f.settle();
+        clickBlock(view, view->rowDeleteRect(0).center());
+        f.settle();
+        clickBlock(view, view->addButtonRect().center());
+        QVERIFY(inlineEditor(view) == nullptr);
+        f.settle();
+        QCOMPARE(editor->toPlainText(), before);
+        expectConcealed(editor, 2, "after edits of a flow mapping");
     }
 
     // Review O6: selections and held mouse buttons keep the properties block in place.

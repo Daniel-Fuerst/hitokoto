@@ -51,6 +51,14 @@ struct Property {
     std::size_t keyLine = 0;            ///< index of the key's line in the YAML lines passed in
     std::size_t valueLine = 0;          ///< where a click on the value puts the caret: line ...
     std::size_t valueColumn = 0;        ///< ... and column (UTF-16), see S024 "When the YAML shows"
+    /// S025: the key's source on keyLine is [keyColumn, keyEndColumn), quotes included.
+    std::size_t keyColumn = 0;
+    std::size_t keyEndColumn = 0;
+    /// S025: the line after the value's last line; lines [keyLine, endLine) hold this property and
+    /// nothing else when ownLines is set. Blank and comment lines after the value are not part of it.
+    std::size_t endLine = 0;
+    /// S025: an entry of the top block mapping; false in a flow mapping, whose entries share lines.
+    bool ownLines = false;
     friend bool operator==(const Property&, const Property&) = default;
 };
 

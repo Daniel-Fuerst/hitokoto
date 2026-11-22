@@ -118,6 +118,48 @@ TEST(S025_EditProperties, SerializesListsWithoutLosingCommasOrEmptyItems) {
     EXPECT_EQ(serializePropertyList({}), u"[]");
 }
 
+// A property's own lines run from its key to the last line of its value; a comment or blank line
+// after the value belongs to no property. The key's source span includes its quotes.
+TEST(S025_EditProperties, APropertyOwnsItsKeyAndValueLinesOnly) {
+    const Properties nested = parse(
+        u"author:\n  name: Ada\n  url: https://example.org\nsummary: |\n  first line\n  second line\n"
+        u"# reviewed by B, do not remove\nstatus: draft\nempty:\nstamp: 2026-11-21\n");
+    ASSERT_FALSE(nested.error);
+    ASSERT_EQ(nested.rows.size(), 5U);
+    const std::size_t ends[] = {3, 6, 8, 9, 10};
+    const std::size_t keyEnds[] = {6, 7, 6, 5, 5};
+    for (std::size_t i = 0; i < 5; ++i) {
+        EXPECT_TRUE(nested.rows[i].ownLines) << i;
+        EXPECT_EQ(nested.rows[i].endLine, ends[i]) << i;
+        EXPECT_EQ(nested.rows[i].keyColumn, 0U) << i;
+        EXPECT_EQ(nested.rows[i].keyEndColumn, keyEnds[i]) << i;
+    }
+
+    const Properties quoted = parse(u"\"my key\"  : 1   # note\ntitle: A note\n# trailing comment\n\n");
+    ASSERT_FALSE(quoted.error);
+    ASSERT_EQ(quoted.rows.size(), 2U);
+    EXPECT_EQ(quoted.rows[0].keyColumn, 0U);
+    EXPECT_EQ(quoted.rows[0].keyEndColumn, 8U);
+    EXPECT_EQ(quoted.rows[0].endLine, 1U);
+    EXPECT_EQ(quoted.rows[1].endLine, 2U);
+
+    const Properties flowList = parse(u"tags: [a,\n  b\n]\n# about next\nnext: 1\n");
+    ASSERT_FALSE(flowList.error);
+    ASSERT_EQ(flowList.rows.size(), 2U);
+    EXPECT_EQ(flowList.rows[0].endLine, 3U);
+    EXPECT_EQ(flowList.rows[1].keyLine, 4U);
+    EXPECT_EQ(flowList.rows[1].endLine, 5U);
+}
+
+// The entries of a flow mapping share its lines: none of them owns a line.
+TEST(S025_EditProperties, EntriesOfAFlowMappingOwnNoLines) {
+    const Properties flow = parse(u"{a: 1, b: two}\n");
+    ASSERT_FALSE(flow.error);
+    ASSERT_EQ(flow.rows.size(), 2U);
+    EXPECT_FALSE(flow.rows[0].ownLines);
+    EXPECT_FALSE(flow.rows[1].ownLines);
+}
+
 /// The row with `key`, or a failure.
 const Property* row(const Properties& p, std::u16string_view key) {
     for (const Property& r : p.rows) {
