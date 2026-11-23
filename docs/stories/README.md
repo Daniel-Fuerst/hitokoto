@@ -54,6 +54,7 @@ story ID (see "Conventions").
 | 45 | [S042](042-docs-only-pull-requests.md) | Pull requests that change only documentation skip the build | S030, S032, S035 | S | Draft |
 | 46 | [S040](040-table-selection.md) | Selecting cells, rows and columns in a table | S018, S019, S028, S031 | L | Draft |
 | 47 | [S041](041-table-copy-paste.md) | Copying and pasting table cells as Markdown | S031, S040 | M | Draft |
+| 48 | [S043](043-smooth-scrolling-toggle.md) | Toggle switches and a "Feel" section for smooth scrolling | S027, S039 | M | In progress |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 

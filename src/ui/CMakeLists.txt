@@ -22,6 +22,7 @@ qt_add_library(hitokoto_ui STATIC
     qt_bridge.hpp
     settings_menu.cpp settings_menu.hpp
     smooth_scroller.cpp smooth_scroller.hpp
+    toggle_switch.cpp toggle_switch.hpp
     table_embedder.cpp table_embedder.hpp
     table_model.cpp table_model.hpp
     table_paste.cpp table_paste.hpp

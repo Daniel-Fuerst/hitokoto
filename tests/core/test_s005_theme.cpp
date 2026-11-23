@@ -449,6 +449,16 @@ const std::map<std::string, Resolved>& resolvedTokens() {
         ELEMENT_TOKEN("menu-bar.item-padding-vertical", menuBarStyle, itemPaddingVertical),
         ELEMENT_TOKEN("menu-bar.font-family", menuBarStyle, fontFamily),
         ELEMENT_TOKEN("menu-bar.font-scale", menuBarStyle, fontScale),
+        ELEMENT_TOKEN("switch.track", switchStyle, track),
+        ELEMENT_TOKEN("switch.checked-track", switchStyle, checkedTrack),
+        ELEMENT_TOKEN("switch.knob", switchStyle, knob),
+        ELEMENT_TOKEN("switch.checked-knob", switchStyle, checkedKnob),
+        ELEMENT_TOKEN("switch.border", switchStyle, border),
+        ELEMENT_TOKEN("switch.border-width", switchStyle, borderWidth),
+        ELEMENT_TOKEN("switch.width", switchStyle, width),
+        ELEMENT_TOKEN("switch.height", switchStyle, height),
+        ELEMENT_TOKEN("switch.radius", switchStyle, radius),
+        ELEMENT_TOKEN("switch.knob-margin", switchStyle, knobMargin),
     };
     return tokens;
 }

@@ -24,6 +24,7 @@ add_library(hitokoto_core STATIC
     src/reveal.cpp
     src/settings.cpp
     src/theme.cpp
+    src/toggle_switch.cpp
 )
 add_library(hitokoto::core ALIAS hitokoto_core)
 target_include_directories(hitokoto_core PUBLIC include)

@@ -112,6 +112,12 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
         activeThemePath_ = entry.builtinScheme.has_value() ? QString() : QFileInfo(entry.path).absoluteFilePath();
         emit themeEntrySelected(entry);
     });
+    // S043: the switch "Smooth scrolling" of the flyout; MainWindow saves the choice.
+    connect(settingsMenu_, &SettingsMenu::smoothScrollingToggled, this, [this](bool on) {
+        setSmoothScrolling(on);
+        emit smoothScrollingChosen(on);
+    });
+    settingsMenu_->setSmoothScrolling(smoothScrolling_);
     positionToolbar();
 }
 
@@ -121,6 +127,9 @@ void EditorWidget::setSmoothScrolling(bool on) {
     smoothScrolling_ = on;
     if (!smoothScrolling_) {
         verticalScroller_->stop();
+    }
+    if (settingsMenu_ != nullptr) {
+        settingsMenu_->setSmoothScrolling(on);
     }
 }
 

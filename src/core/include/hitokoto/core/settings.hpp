@@ -55,10 +55,17 @@ struct SettingsSourceUpdate {
 /// `[appearance]` in a form the parser does not read (adding a key would then define it twice in TOML terms), and
 /// when the changed text would not parse to the new theme with all other settings and no new diagnostics.
 [[nodiscard]] SettingsSourceUpdate updateThemeInSettingsSource(std::string_view source, std::string_view newTheme);
+/// Changes only the value of `smooth-scrolling` (S043), with the same rules as the theme: the key in `[editor]`, or
+/// at the top level before the first section; without one it is added below the first `[editor]` header, or a new
+/// `[editor]` section at the end.
+[[nodiscard]] SettingsSourceUpdate updateSmoothScrollingInSettingsSource(std::string_view source, bool on);
 [[nodiscard]] SettingsLoadResult loadSettingsFile(const std::filesystem::path& path) noexcept;
 [[nodiscard]] std::optional<IoError> saveSettingsFile(const std::filesystem::path& path, const Settings& settings);
 [[nodiscard]] std::optional<IoError> updateThemeSettingInFile(const std::filesystem::path& path,
                                                               std::string_view theme);
+/// Writes `smooth-scrolling` into config.toml at `path` (S043): a new file when there is none, otherwise the file
+/// changed by updateSmoothScrollingInSettingsSource(), or untouched with the reason when that refuses.
+[[nodiscard]] std::optional<IoError> updateSmoothScrollingSettingInFile(const std::filesystem::path& path, bool on);
 [[nodiscard]] std::optional<ColorScheme> builtinSchemeFromSetting(std::string_view themeSetting);
 
 }  // namespace hitokoto::core

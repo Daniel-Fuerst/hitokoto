@@ -2,6 +2,7 @@
 #include "settings_menu.hpp"
 
 #include "qt_bridge.hpp"
+#include "toggle_switch.hpp"
 
 #include <QAbstractItemView>
 #include <QComboBox>
@@ -48,7 +49,7 @@ SettingsMenu::SettingsMenu(QWidget* parent) : QWidget(parent) {
     mainLayout_ = new QVBoxLayout(this);
     titleLabel_ = makeLabel(tr("Settings"), this, "settingsTitleLabel");
 
-    appearanceLabel_ = makeLabel(tr("Appearance"), this);
+    appearanceLabel_ = makeLabel(tr("Appearance"), this, "appearanceLabel");
     themeKeyLabel_ = makeLabel(tr("Theme"), this);
     themeCombo_ = new QComboBox(this);
     themeCombo_->setObjectName(QStringLiteral("themeSelector"));
@@ -66,6 +67,20 @@ SettingsMenu::SettingsMenu(QWidget* parent) : QWidget(parent) {
     appearanceLayout_->addWidget(themeCombo_, 0, 1);
     appearanceLayout_->setColumnStretch(1, 1);
 
+    // S043: the section Feel, with the switch for smooth scrolling (S027).
+    feelLabel_ = makeLabel(tr("Feel"), this, "feelLabel");
+    smoothKeyLabel_ = makeLabel(tr("Smooth scrolling"), this, "smoothScrollingLabel");
+    smoothSwitch_ = new ToggleSwitch(this);
+    smoothSwitch_->setObjectName(QStringLiteral("smoothScrollingSwitch"));
+    smoothSwitch_->setAccessibleName(tr("Smooth scrolling"));
+    smoothSwitch_->setCheckedImmediately(true);
+    connect(smoothSwitch_, &QAbstractButton::toggled, this, &SettingsMenu::smoothScrollingToggled);
+
+    feelLayout_ = new QGridLayout;
+    feelLayout_->addWidget(smoothKeyLabel_, 0, 0, Qt::AlignLeft | Qt::AlignVCenter);
+    feelLayout_->addWidget(smoothSwitch_, 0, 1, Qt::AlignRight | Qt::AlignVCenter);
+    feelLayout_->setColumnStretch(0, 1);
+
     QString version = QCoreApplication::applicationVersion();
     if (version.isEmpty()) {
         version = QStringLiteral(HITOKOTO_UI_VERSION);
@@ -76,6 +91,8 @@ SettingsMenu::SettingsMenu(QWidget* parent) : QWidget(parent) {
     mainLayout_->addWidget(titleLabel_);
     mainLayout_->addWidget(appearanceLabel_);
     mainLayout_->addLayout(appearanceLayout_);
+    mainLayout_->addWidget(feelLabel_);
+    mainLayout_->addLayout(feelLayout_);
     mainLayout_->addWidget(versionLabel_, 0, Qt::AlignRight);
 
     applyTheme(core::builtinTheme(core::ColorScheme::Light));
@@ -125,6 +142,13 @@ void SettingsMenu::setAvailableThemes(const QList<ThemeEntry>& entries, const QS
     adjustSize();
 }
 
+void SettingsMenu::setSmoothScrolling(bool on) {
+    // The state the switch already has stays as it is, so that a running animation of a flip goes on.
+    if (smoothSwitch_->isChecked() != on) {
+        smoothSwitch_->setCheckedImmediately(on);
+    }
+}
+
 void SettingsMenu::applyTheme(const core::Theme& theme) {
     style_ = core::toolbarStyle(theme);
 
@@ -136,7 +160,7 @@ void SettingsMenu::applyTheme(const core::Theme& theme) {
         uiFont.setPointSizeF(theme.uiFontSize);
     }
     setFont(uiFont);
-    for (QLabel* label : {appearanceLabel_, themeKeyLabel_}) {
+    for (QLabel* label : {appearanceLabel_, themeKeyLabel_, feelLabel_, smoothKeyLabel_}) {
         label->setFont(uiFont);
     }
     themeCombo_->setFont(uiFont);
@@ -159,6 +183,9 @@ void SettingsMenu::applyTheme(const core::Theme& theme) {
     setLabelColor(titleLabel_, textColor);
     setLabelColor(appearanceLabel_, mutedColor);
     setLabelColor(themeKeyLabel_, mutedColor);
+    setLabelColor(feelLabel_, mutedColor);
+    setLabelColor(smoothKeyLabel_, mutedColor);
+    smoothSwitch_->setSwitchStyle(core::switchStyle(theme));
     setLabelColor(versionLabel_, mutedColor);
 
     const int pad = std::max(8, static_cast<int>(std::lround(style_.padding * 2.0)));
@@ -166,6 +193,7 @@ void SettingsMenu::applyTheme(const core::Theme& theme) {
     mainLayout_->setContentsMargins(pad, pad, pad, pad);
     mainLayout_->setSpacing(gap);
     appearanceLayout_->setHorizontalSpacing(gap * 2);
+    feelLayout_->setHorizontalSpacing(gap * 2);
 
     adjustSize();
     update();
