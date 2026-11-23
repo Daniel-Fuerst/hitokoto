@@ -90,7 +90,9 @@ TEST(S043_SmoothScrollingToggle, SwitchTokensFallbackAndResolve) {
         "radius = 6\n"
         "knob-margin = 3\n",
         builtinTheme(ColorScheme::Light));
-    ASSERT_TRUE(parsed.theme.has_value());
+    if (!parsed.theme) {
+        FAIL() << (parsed.diagnostics.empty() ? "" : parsed.diagnostics.front().toString());
+    }
     EXPECT_TRUE(parsed.diagnostics.empty());
     const SwitchStyle custom = switchStyle(*parsed.theme);
     EXPECT_EQ(custom.track.toHex(), "#111111");
@@ -175,7 +177,9 @@ TEST(S043_SmoothScrollingToggle, UpdateSmoothScrollingInFileWritesANewFile) {
     }
     EXPECT_FALSE(updateSmoothScrollingSettingInFile(config, true).has_value());
     const ReadResult read = readFile(config);
-    ASSERT_TRUE(read.bytes.has_value());
+    if (!read.bytes) {
+        FAIL() << (read.error ? read.error->message : "cannot read config.toml");
+    }
     EXPECT_EQ(*read.bytes, "# mine\n[editor]\nsmooth-scrolling = true\n");
 
     // A folder of that name is no file to change.

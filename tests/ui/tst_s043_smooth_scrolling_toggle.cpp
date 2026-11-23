@@ -220,7 +220,9 @@ private slots:
             "checked-knob = \"#aabbcc\"\nborder = \"#ddeeff\"\nborder-width = 1\nwidth = 50\nheight = 26\n"
             "radius = 4\nknob-margin = 3\n",
             core::builtinTheme(core::ColorScheme::Light));
-        QVERIFY(parsed.theme.has_value());
+        if (!parsed.theme) {
+            QFAIL("the [switch] tokens do not parse");
+        }
         f.window->applyTheme(*parsed.theme);
         ui::ToggleSwitch* sw = smoothSwitch(f);
         QCOMPARE(sw->switchStyle(), core::switchStyle(*parsed.theme));
