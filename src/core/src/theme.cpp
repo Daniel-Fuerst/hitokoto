@@ -361,6 +361,16 @@ const Token kTokens[] = {
     {{"menu-bar", "item-padding-vertical", "number (px)", "Vertical space inside each menu bar item pill, 0 to 32", "4"}, &applyOptNumber<&Theme::menuBar, &MenuBarTokens::itemPaddingVertical, 0, 320>},
     {{"menu-bar", "font-family", "string", "Font family of the menu bar; \"\" = UI font", "\"\""}, &applyOptString<&Theme::menuBar, &MenuBarTokens::fontFamily>},
     {{"menu-bar", "font-scale", "number", "Font size of the menu bar relative to the UI font, 0.5 to 2", "1"}, &applyOptNumber<&Theme::menuBar, &MenuBarTokens::fontScale, 5, 20>},
+    {{"switch", "track", "color", "Track of a toggle switch that is off", "colors.border"}, &applyOptColor<&Theme::toggleSwitch, &SwitchTokens::track>},
+    {{"switch", "checked-track", "color", "Track of a toggle switch that is on", "colors.accent"}, &applyOptColor<&Theme::toggleSwitch, &SwitchTokens::checkedTrack>},
+    {{"switch", "knob", "color", "Knob of a toggle switch that is off", "colors.background"}, &applyOptColor<&Theme::toggleSwitch, &SwitchTokens::knob>},
+    {{"switch", "checked-knob", "color", "Knob of a toggle switch that is on", "colors.background"}, &applyOptColor<&Theme::toggleSwitch, &SwitchTokens::checkedKnob>},
+    {{"switch", "border", "color", "Border of the track of a toggle switch", "colors.border"}, &applyOptColor<&Theme::toggleSwitch, &SwitchTokens::border>},
+    {{"switch", "border-width", "number (px)", "Border width of the track of a toggle switch, 0 to 8", "0"}, &applyOptNumber<&Theme::toggleSwitch, &SwitchTokens::borderWidth, 0, 80>},
+    {{"switch", "width", "number (px)", "Width of a toggle switch, 16 to 128", "36"}, &applyOptNumber<&Theme::toggleSwitch, &SwitchTokens::width, 160, 1280>},
+    {{"switch", "height", "number (px)", "Height of a toggle switch, 8 to 64", "20"}, &applyOptNumber<&Theme::toggleSwitch, &SwitchTokens::height, 80, 640>},
+    {{"switch", "radius", "number (px)", "Corner radius of the track of a toggle switch; the knob is rounded alike, 0 to 32", "10"}, &applyOptNumber<&Theme::toggleSwitch, &SwitchTokens::radius, 0, 320>},
+    {{"switch", "knob-margin", "number (px)", "Space between the knob and the edge of the track, 0 to 16", "2"}, &applyOptNumber<&Theme::toggleSwitch, &SwitchTokens::knobMargin, 0, 160>},
 };
 // clang-format on
 
@@ -953,6 +963,22 @@ MenuBarStyle menuBarStyle(const Theme& t) {
         .itemPaddingVertical = mb.itemPaddingVertical.value_or(4),
         .fontScale = mb.fontScale.value_or(1),
         .fontFamily = mb.fontFamily.value_or(""),
+    };
+}
+
+SwitchStyle switchStyle(const Theme& t) {
+    const SwitchTokens& sw = t.toggleSwitch;
+    return {
+        .track = sw.track.value_or(t.border),
+        .checkedTrack = sw.checkedTrack.value_or(t.accent),
+        .knob = sw.knob.value_or(t.background),
+        .checkedKnob = sw.checkedKnob.value_or(t.background),
+        .border = sw.border.value_or(t.border),
+        .borderWidth = sw.borderWidth.value_or(0),
+        .width = sw.width.value_or(36),
+        .height = sw.height.value_or(20),
+        .radius = sw.radius.value_or(10),
+        .knobMargin = sw.knobMargin.value_or(2),
     };
 }
 

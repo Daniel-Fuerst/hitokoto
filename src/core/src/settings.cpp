@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "hitokoto/core/settings.hpp"
 
+#include <cstdint>
+#include <functional>
 #include <set>
 #include <system_error>
 #include <variant>
@@ -467,22 +469,26 @@ std::optional<IoError> saveSettingsFile(const std::filesystem::path& path, const
     return writeFileAtomically(path, serializeSettings(settings));
 }
 
-// NOLINTNEXTLINE(readability-function-cognitive-complexity): above the threshold when the check came in
-SettingsSourceUpdate updateThemeInSettingsSource(std::string_view source, std::string_view newTheme) {
-    const auto refuse = [](std::string message) { return SettingsSourceUpdate{{}, IoError{std::move(message)}}; };
-    if (hasControlCharacters(newTheme)) {
-        return refuse("theme name contains control characters");
-    }
-    const std::string_view defaultLe = source.find("\r\n") != std::string_view::npos ? "\r\n" : "\n";
-    const std::string quoted = std::string("\"") + escapeTomlString(newTheme) + "\"";
+namespace {
 
-    // Find the key the parser reads as the theme, line by line as the parser does.
-    std::optional<SourceLine> themeLine;
-    std::optional<SourceLine> appearanceHeader;
+/// Changes only the value of one setting in the text of config.toml (S039 for the theme, S043 for smooth
+/// scrolling): `literal` is the TOML value as written; `wanted` the settings the changed text must give.
+// NOLINTNEXTLINE(readability-function-cognitive-complexity): above the threshold when the check came in
+SettingsSourceUpdate updateKeyInSettingsSource(std::string_view source, const SettingKeyDef& def,
+                                               std::string_view literal, const Settings& wanted) {
+    const auto refuse = [](std::string message) { return SettingsSourceUpdate{{}, IoError{std::move(message)}}; };
+    const std::string_view section = def.section;
+    const std::string_view key = def.key;
+    const std::string sectionHeader = "[" + std::string(section) + "]";
+    const std::string_view defaultLe = source.find("\r\n") != std::string_view::npos ? "\r\n" : "\n";
+
+    // Find the key the parser reads as this setting, line by line as the parser does.
+    std::optional<SourceLine> keyLine;
+    std::optional<SourceLine> sectionHeaderLine;
     std::optional<std::size_t> foreignLine;
     SourceScope scope = SourceScope::Root;
     std::size_t lineNo = 0;
-    for (std::size_t pos = 0; pos < source.size() && !themeLine;) {
+    for (std::size_t pos = 0; pos < source.size() && !keyLine;) {
         const SourceLine line = sourceLineAt(source, pos, ++lineNo);
         pos = line.end;
         const std::string_view content = source.substr(line.start, line.contentEnd - line.start);
@@ -492,16 +498,15 @@ SettingsSourceUpdate updateThemeInSettingsSource(std::string_view source, std::s
         }
         if (content[i] == '[') {
             const std::size_t close = content.find(']', i);
-            const bool canonical =
-                close != std::string_view::npos && content.substr(i + 1, close - i - 1) == "appearance";
+            const bool canonical = close != std::string_view::npos && content.substr(i + 1, close - i - 1) == section;
             if (close != std::string_view::npos) {
                 scope = canonical ? SourceScope::Appearance : SourceScope::Other;
             }
-            if (canonical && !appearanceHeader) {
-                appearanceHeader = line;
+            if (canonical && !sectionHeaderLine) {
+                sectionHeaderLine = line;
             }
             const std::size_t open = content.size() > i + 1 && content[i + 1] == '[' ? i + 2 : i + 1;
-            if (!canonical && firstTomlKeyPart(content, open) == "appearance" && !foreignLine) {
+            if (!canonical && firstTomlKeyPart(content, open) == section && !foreignLine) {
                 foreignLine = lineNo;
             }
             continue;
@@ -514,66 +519,68 @@ SettingsSourceUpdate updateThemeInSettingsSource(std::string_view source, std::s
             ++k;
         }
         const std::size_t eq = skipBlanksFrom(content, k);
-        if (content.substr(i, k - i) == "theme" && eq < content.size() && content[eq] == '=') {
-            themeLine = line;
-            themeLine->valueStart = line.start + skipBlanksFrom(content, eq + 1);
+        if (content.substr(i, k - i) == key && eq < content.size() && content[eq] == '=') {
+            keyLine = line;
+            keyLine->valueStart = line.start + skipBlanksFrom(content, eq + 1);
             continue;
         }
         const std::string_view part = firstTomlKeyPart(content, i);
-        if (((part == "appearance" && scope == SourceScope::Root) || part == "theme") && !foreignLine) {
+        if (((part == section && scope == SourceScope::Root) || part == key) && !foreignLine) {
             foreignLine = lineNo;
         }
     }
 
     std::string changed;
-    if (themeLine) {
-        const std::size_t valueStart = themeLine->valueStart;
+    if (keyLine) {
+        const std::size_t valueStart = keyLine->valueStart;
         std::size_t valueEnd = valueStart;
-        const std::string_view rest = source.substr(valueStart, themeLine->contentEnd - valueStart);
-        const std::string where = "line " + std::to_string(themeLine->number) + ": ";
+        const std::string_view rest = source.substr(valueStart, keyLine->contentEnd - valueStart);
+        const std::string where = "line " + std::to_string(keyLine->number) + ": ";
         if (rest.starts_with(R"(""")") || rest.starts_with("'''")) {
             const std::optional<std::size_t> close = multiLineStringEnd(source, valueStart);
             if (!close) {
-                return refuse(where + "the multi-line string of theme is not closed");
+                return refuse(where + "the multi-line string of " + std::string(key) + " is not closed");
             }
             valueEnd = *close;
         } else if (!rest.empty() && (rest.front() == '"' || rest.front() == '\'')) {
-            valueEnd = singleLineStringEnd(source, valueStart, themeLine->contentEnd);
+            valueEnd = singleLineStringEnd(source, valueStart, keyLine->contentEnd);
         } else if (!rest.empty() && (rest.front() == '[' || rest.front() == '{')) {
-            return refuse(where + "the value of theme is an array or a table");
+            return refuse(where + "the value of " + std::string(key) + " is an array or a table");
         } else {
-            while (valueEnd < themeLine->contentEnd && !isBlank(source[valueEnd]) && source[valueEnd] != '#') {
+            while (valueEnd < keyLine->contentEnd && !isBlank(source[valueEnd]) && source[valueEnd] != '#') {
                 ++valueEnd;
             }
         }
-        changed.reserve(source.size() + quoted.size() + 1);
+        changed.reserve(source.size() + literal.size() + 1);
         changed.append(source.substr(0, valueStart));
         if (source[valueStart - 1] == '=') {
             changed.push_back(' ');
         }
-        changed.append(quoted);
+        changed.append(literal);
         changed.append(source.substr(valueEnd));
     } else if (foreignLine) {
-        return refuse("line " + std::to_string(*foreignLine) +
-                      " sets the theme or [appearance] in a form hitokoto cannot change (a dotted or quoted key, or a "
-                      "table header with spaces or quotes)");
-    } else if (appearanceHeader) {
-        const bool hasLineEnd = appearanceHeader->end > appearanceHeader->contentEnd;
+        return refuse("line " + std::to_string(*foreignLine) + " sets the " + std::string(key) + " or " +
+                      sectionHeader +
+                      " in a form hitokoto cannot change (a dotted or quoted key, or a table header with spaces or "
+                      "quotes)");
+    } else if (sectionHeaderLine) {
+        const bool hasLineEnd = sectionHeaderLine->end > sectionHeaderLine->contentEnd;
         const std::string_view headerLe =
             hasLineEnd
-                ? source.substr(appearanceHeader->contentEnd, appearanceHeader->end - appearanceHeader->contentEnd)
+                ? source.substr(sectionHeaderLine->contentEnd, sectionHeaderLine->end - sectionHeaderLine->contentEnd)
                 : defaultLe;
-        changed.reserve(source.size() + quoted.size() + 16);
-        changed.append(source.substr(0, appearanceHeader->end));
+        changed.reserve(source.size() + literal.size() + 16);
+        changed.append(source.substr(0, sectionHeaderLine->end));
         if (!hasLineEnd) {
             changed.append(defaultLe);
         }
-        changed.append("theme = ");
-        changed.append(quoted);
+        changed.append(key);
+        changed.append(" = ");
+        changed.append(literal);
         changed.append(headerLe);
-        changed.append(source.substr(appearanceHeader->end));
+        changed.append(source.substr(sectionHeaderLine->end));
     } else {
-        changed.reserve(source.size() + quoted.size() + 32);
+        changed.reserve(source.size() + literal.size() + 32);
         changed.append(source);
         if (!changed.empty() && changed.back() != '\n') {
             changed.append(defaultLe);
@@ -581,30 +588,53 @@ SettingsSourceUpdate updateThemeInSettingsSource(std::string_view source, std::s
         if (!changed.empty()) {
             changed.append(defaultLe);
         }
-        changed.append("[appearance]");
+        changed.append(sectionHeader);
         changed.append(defaultLe);
-        changed.append("theme = ");
-        changed.append(quoted);
+        changed.append(key);
+        changed.append(" = ");
+        changed.append(literal);
         changed.append(defaultLe);
     }
 
     // The text is used only if the parser reads exactly this change from it.
     const SettingsLoadResult before = parseSettings(source);
     const SettingsLoadResult after = parseSettings(changed);
-    Settings expected = before.settings;
-    expected.theme = std::string(newTheme);
-    if (!(after.settings == expected) || after.diagnostics.size() > before.diagnostics.size()) {
-        return refuse("changing the theme alone would not give the new theme with all other settings unchanged");
+    if (!(after.settings == wanted) || after.diagnostics.size() > before.diagnostics.size()) {
+        return refuse("changing " + std::string(key) +
+                      " alone would not give its new value with all other settings "
+                      "unchanged");
     }
     return SettingsSourceUpdate{std::move(changed), std::nullopt};
 }
 
-std::optional<IoError> updateThemeSettingInFile(const std::filesystem::path& path, std::string_view theme) {
+}  // namespace
+
+SettingsSourceUpdate updateThemeInSettingsSource(std::string_view source, std::string_view newTheme) {
+    if (hasControlCharacters(newTheme)) {
+        return SettingsSourceUpdate{{}, IoError{"theme name contains control characters"}};
+    }
+    Settings wanted = parseSettings(source).settings;
+    wanted.theme = std::string(newTheme);
+    const std::string quoted = std::string("\"") + escapeTomlString(newTheme) + "\"";
+    return updateKeyInSettingsSource(source, *findSettingKey("appearance", "theme"), quoted, wanted);
+}
+
+SettingsSourceUpdate updateSmoothScrollingInSettingsSource(std::string_view source, bool on) {
+    Settings wanted = parseSettings(source).settings;
+    wanted.smoothScrolling = on;
+    return updateKeyInSettingsSource(source, *findSettingKey("editor", "smooth-scrolling"), on ? "true" : "false",
+                                     wanted);
+}
+
+namespace {
+
+/// Writes one changed setting into the file at `path`: a new file from the defaults with `apply` when there is
+/// none, otherwise the text that `update` gives, only when it gives one.
+std::optional<IoError> updateSettingInFile(const std::filesystem::path& path,
+                                           const std::function<void(Settings&)>& apply,
+                                           const std::function<SettingsSourceUpdate(std::string_view)>& update) {
     if (path.empty()) {
         return IoError{"settings path is empty"};
-    }
-    if (hasControlCharacters(theme)) {
-        return IoError{"theme name contains control characters"};
     }
     std::error_code ec;
     const bool exists = std::filesystem::exists(path, ec);
@@ -613,7 +643,7 @@ std::optional<IoError> updateThemeSettingInFile(const std::filesystem::path& pat
     }
     if (!exists) {
         Settings def;
-        def.theme = std::string(theme);
+        apply(def);
         return saveSettingsFile(path, def);
     }
 
@@ -632,11 +662,28 @@ std::optional<IoError> updateThemeSettingInFile(const std::filesystem::path& pat
         return read.error ? *read.error : IoError{"cannot read file"};
     }
 
-    const SettingsSourceUpdate updated = updateThemeInSettingsSource(*read.bytes, theme);
+    const SettingsSourceUpdate updated = update(*read.bytes);
     if (updated.error) {
         return updated.error;
     }
     return writeFileAtomically(path, updated.source);
+}
+
+}  // namespace
+
+std::optional<IoError> updateThemeSettingInFile(const std::filesystem::path& path, std::string_view theme) {
+    if (hasControlCharacters(theme)) {
+        return IoError{"theme name contains control characters"};
+    }
+    return updateSettingInFile(
+        path, [theme](Settings& s) { s.theme = std::string(theme); },
+        [theme](std::string_view source) { return updateThemeInSettingsSource(source, theme); });
+}
+
+std::optional<IoError> updateSmoothScrollingSettingInFile(const std::filesystem::path& path, bool on) {
+    return updateSettingInFile(
+        path, [on](Settings& s) { s.smoothScrolling = on; },
+        [on](std::string_view source) { return updateSmoothScrollingInSettingsSource(source, on); });
 }
 
 std::optional<ColorScheme> builtinSchemeFromSetting(std::string_view themeSetting) {

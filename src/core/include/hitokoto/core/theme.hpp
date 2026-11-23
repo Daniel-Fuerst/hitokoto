@@ -112,6 +112,13 @@ struct MenuBarTokens {
     friend bool operator==(const MenuBarTokens&, const MenuBarTokens&) = default;
 };
 
+/// Tokens of `[switch]` (S043); resolved by switchStyle().
+struct SwitchTokens {
+    std::optional<Color> track, checkedTrack, knob, checkedKnob, border;
+    std::optional<double> borderWidth, width, height, radius, knobMargin;
+    friend bool operator==(const SwitchTokens&, const SwitchTokens&) = default;
+};
+
 /// Every value the UI uses for colours, fonts, radii and spacing. Hard-coded styling values
 /// in UI code are bugs; add a token instead.
 struct Theme {
@@ -153,6 +160,7 @@ struct Theme {
     ToolbarTokens toolbar;
     FindTokens find;
     MenuBarTokens menuBar;
+    SwitchTokens toggleSwitch;  ///< `[switch]`; `switch` is a C++ keyword
 
     friend bool operator==(const Theme&, const Theme&) = default;
 };
@@ -298,6 +306,17 @@ struct MenuBarStyle {
     friend bool operator==(const MenuBarStyle&, const MenuBarStyle&) = default;
 };
 
+/// Resolved look of a toggle switch in the settings flyout (S043).
+struct SwitchStyle {
+    Color track, checkedTrack, knob, checkedKnob, border;
+    double borderWidth = 0;
+    double width = 36;
+    double height = 20;
+    double radius = 10;
+    double knobMargin = 2;
+    friend bool operator==(const SwitchStyle&, const SwitchStyle&) = default;
+};
+
 [[nodiscard]] CodeStyle codeBlockStyle(const Theme& theme);
 [[nodiscard]] CodeStyle inlineCodeStyle(const Theme& theme);
 [[nodiscard]] EmphasisStyle emphasisStyle(const Theme& theme);
@@ -309,6 +328,7 @@ struct MenuBarStyle {
 [[nodiscard]] ToolbarStyle toolbarStyle(const Theme& theme);
 [[nodiscard]] FindStyle findStyle(const Theme& theme);
 [[nodiscard]] MenuBarStyle menuBarStyle(const Theme& theme);
+[[nodiscard]] SwitchStyle switchStyle(const Theme& theme);
 
 /// All tokens of the theme format, in documentation order.
 std::span<const ThemeTokenInfo> themeTokens();

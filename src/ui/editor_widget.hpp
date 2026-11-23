@@ -129,6 +129,8 @@ signals:
     void settingsLoaded(const hitokoto::core::Settings& settings);
     /// S039: config.toml was read with problems (one line each); emitted once per setThemeConfigDir.
     void settingsProblemsFound(const QString& path, const QStringList& problems);
+    /// S043: the user turned smooth scrolling on or off in the settings flyout.
+    void smoothScrollingChosen(bool on);
 
 protected:
     bool viewportEvent(QEvent* event) override;

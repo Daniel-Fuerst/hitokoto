@@ -245,6 +245,16 @@ follows the general tokens above.
 | `menu-bar.item-padding-vertical` | number (px) | Vertical space inside each menu bar item pill, 0 to 32 | 4 |
 | `menu-bar.font-family` | string | Font family of the menu bar; "" = UI font | "" |
 | `menu-bar.font-scale` | number | Font size of the menu bar relative to the UI font, 0.5 to 2 | 1 |
+| `switch.track` | color | Track of a toggle switch that is off | `colors.border` |
+| `switch.checked-track` | color | Track of a toggle switch that is on | `colors.accent` |
+| `switch.knob` | color | Knob of a toggle switch that is off | `colors.background` |
+| `switch.checked-knob` | color | Knob of a toggle switch that is on | `colors.background` |
+| `switch.border` | color | Border of the track of a toggle switch | `colors.border` |
+| `switch.border-width` | number (px) | Border width of the track of a toggle switch, 0 to 8 | 0 |
+| `switch.width` | number (px) | Width of a toggle switch, 16 to 128 | 36 |
+| `switch.height` | number (px) | Height of a toggle switch, 8 to 64 | 20 |
+| `switch.radius` | number (px) | Corner radius of the track of a toggle switch; the knob is rounded alike, 0 to 32 | 10 |
+| `switch.knob-margin` | number (px) | Space between the knob and the edge of the track, 0 to 16 | 2 |
 
 A thematic break (`---`, `***`, `___`) is a line across the text column, centred vertically in its block.
 Setext headings (text underlined with `===` or `---`) add no tokens: their lines use the heading
@@ -265,6 +275,14 @@ built-in light and dark bases; the highlight text colours fall back to fixed val
 highlight keeps its contrast whatever a theme sets for `colors.text`. With "Highlight all", a table
 cell, a property key or value, or a chip that contains a match takes `find.match-background` as its
 background while its element shows cells or rows.
+
+Toggle switches in the settings flyout (S043, such as "Smooth scrolling" in the section Feel) are a
+track with a knob. When a switch is flipped, the knob slides to the other end with an ease-in-out
+motion while the track and knob blend from their off colours (`switch.track`, `switch.knob`) to
+their on colours (`switch.checked-track`, `switch.checked-knob`). The knob keeps
+`switch.knob-margin` from the edge of the track; its corner radius is `switch.radius` less that
+margin, so the default track is a pill and the knob a circle, and `radius = 0` gives square ones.
+The labels beside a switch are those of the flyout (`colors.text-muted`, UI font).
 
 Bold text is never lighter than the text around it: inside a heading the weight is the larger of
 `headings.weight` and `emphasis.bold-weight`. The built-in themes set both to 700, so bold inside a
