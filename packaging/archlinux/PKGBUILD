@@ -68,7 +68,9 @@ package() {
     # License
     install -Dm644 "$_src/LICENSE" \
         "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-    # The math font compiled into the program (S045, ADR 0014)
-    install -Dm644 "$_src/fonts/stix-two-math/OFL.txt" \
-        "$pkgdir/usr/share/licenses/$pkgname/OFL-STIX-Two-Math.txt"
+    # The math font compiled into the program (S045, ADR 0014); versions before it have none.
+    if [ -f "$_src/fonts/stix-two-math/OFL.txt" ]; then
+        install -Dm644 "$_src/fonts/stix-two-math/OFL.txt" \
+            "$pkgdir/usr/share/licenses/$pkgname/OFL-STIX-Two-Math.txt"
+    fi
 }

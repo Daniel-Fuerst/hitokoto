@@ -450,7 +450,9 @@ void EditorFormats::applyFormula(QTextCharFormat& format, const Piece& piece, QS
     // Decisions 1 and 2: the first character is invisible and takes the formula's width; its font
     // grows until its ascent and descent cover the formula, so the line makes room.
     format.setForeground(Qt::transparent);  // theme-lint: allow (concealment mechanism)
-    QFont font = format.font();
+    // Measured with the font Qt lays the character out with: the format's, completed from the
+    // editor's base font (the document's default font).
+    QFont font = format.font().resolve(baseFont_);
     const QFontMetricsF metrics(font);
     const double scale = std::max({1.0, metrics.ascent() > 0 ? layout.ascent / metrics.ascent() : 1.0,
                                    metrics.descent() > 0 ? layout.descent / metrics.descent() : 1.0});

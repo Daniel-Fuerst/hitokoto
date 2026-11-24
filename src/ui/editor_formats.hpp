@@ -73,8 +73,8 @@ private:
         const core::InlineStyleRun* inlineRun = nullptr;
         const core::HiddenRange* hidden = nullptr;
         const core::LinkTarget* link = nullptr;
-        bool bulletSpace = false;          ///< the space after a bullet with a hanging indent (S003)
-        bool inlineCodeDelimiter = false;  ///< a hidden backtick that opens or closes inline code
+        bool bulletSpace = false;                   ///< the space after a bullet with a hanging indent (S003)
+        bool inlineCodeDelimiter = false;           ///< a hidden backtick that opens or closes inline code
         const core::MathLayout* formula = nullptr;  ///< inside the source of a concealed formula (S046)
         bool formulaHead = false;                   ///< its first character, which reserves the width
     };

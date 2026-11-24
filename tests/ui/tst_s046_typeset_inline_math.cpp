@@ -60,10 +60,25 @@ QRect lineRect(ui::EditorWidget* editor, int blockNumber) {
 class tst_s046_typeset_inline_math : public QObject {
     Q_OBJECT
 private slots:
+    void anInlineFormulaIsTypesetOffTheCaretLine_data() {
+        QTest::addColumn<QString>("family");
+        QTest::addColumn<double>("size");
+        QTest::newRow("theme font") << QString() << 0.0;
+        QTest::newRow("DejaVu Sans 11") << QStringLiteral("DejaVu Sans") << 11.0;
+        QTest::newRow("Liberation Serif 10.5") << QStringLiteral("Liberation Serif") << 10.5;
+        QTest::newRow("DejaVu Sans Mono 13") << QStringLiteral("DejaVu Sans Mono") << 13.0;
+    }
+
     void anInlineFormulaIsTypesetOffTheCaretLine() {
+        QFETCH(QString, family);
+        QFETCH(double, size);
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("m.md"), "a $x^2$ b\nsecond\n")));
-        const auto theme = redMath();
+        auto theme = redMath();
+        if (!family.isEmpty()) {
+            theme.editorFontFamily = family.toStdString();
+            theme.editorFontSize = size;
+        }
         f.window->applyTheme(theme);
         f.placeCaret(1);
         f.settle();
@@ -76,7 +91,9 @@ private slots:
         QVERIFY(!formula.error);
         QVERIFY(formula.width > 0);
         // From the start of the source to the closing dollar: the formula's width.
-        QVERIFY(std::abs((xAt(editor, 0, 6) - xAt(editor, 0, 3)) - formula.width) < 2.0);
+        const qreal reserved = xAt(editor, 0, 6) - xAt(editor, 0, 3);
+        QVERIFY2(std::abs(reserved - formula.width) < 2.0,
+                 qPrintable(QStringLiteral("reserved %1, formula %2").arg(reserved).arg(formula.width)));
         // The formula is painted in math.text between "a" and "b".
         const QRect area(static_cast<int>(xAt(editor, 0, 3)), lineRect(editor, 0).top(),
                          static_cast<int>(formula.width) + 1, lineRect(editor, 0).height());
