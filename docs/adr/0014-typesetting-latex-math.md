@@ -46,12 +46,26 @@ metrics (`QRawFont`) and paints the glyphs and rules the core places. The work i
 stories: S044 finds formulas and styles their source, S045 is the engine, S046 shows inline
 formulas typeset, S047 display formulas. The subset is what S045 names, starting from the sample.
 
+### The font (Daniel, 2026-11-24)
+
+**STIX Two Math 2.13** (`fonts/stix-two-math/`, SIL OFL 1.1), compiled into the program as a Qt
+resource (`:/fonts/STIXTwoMath-Regular.otf`), so it works on every platform without a font the
+user installs, and read only when the first formula needs it, so cold start does not change.
+Chosen over Latin Modern Math (GUST Font License, the look of TeX's Computer Modern) and Fira Math
+(OFL, sans serif, a smaller `MATH` coverage): STIX Two has the most complete `MATH` table of the
+three (constants, variants and assemblies for every stretchy delimiter, radical and arrow the
+sample uses), is published by the STI Pub companies for scientific publishing, under the licence
+with the fewest obligations, and its maintainers still work on it (an interim v2.14 in 2025, the
+last commit in 2026). The OTF (CFF outlines, 838 KB) is half the size of the TTF. The packages
+carry `OFL.txt` (Debian `copyright`, the AUR package's licences, the MSI's `THIRD-PARTY.txt`).
+
 ## Consequences
 
 - The core gains two elements (inline and display math, S044) and a math layout engine (S045); no
   new library.
-- A bundled math font adds to the package size (STIX Two Math about 1 MB) and is a file we take
-  from upstream releases; its licence (OFL) goes next to the GPL in the packages.
+- The bundled font adds 838 KB to the program and is a file we take from upstream releases
+  (`fonts/stix-two-math/README.md` says how to update it); its licence (OFL) goes next to the GPL
+  in the packages.
 - Quality depends on our own implementation of TeX's rules; S045's tests compare placements with
   the `MATH` constants, and the sample is the acceptance document.
 - A larger subset (more environments, macros) is new stories, each small.

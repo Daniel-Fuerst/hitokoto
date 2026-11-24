@@ -1,6 +1,6 @@
 # S045 — Math layout engine in the core
 
-- **Status:** Draft · **Order:** 50 · **Size:** L · **Depends on:** S044
+- **Status:** Draft (the font is in, decision 6) · **Order:** 50 · **Size:** L · **Depends on:** S044
 - **Basis:** ADR 0014 (an engine of our own, Daniel, 2026-11-24). Everything the sample
   `tests/data/s044-latex.md` writes must typeset.
 
@@ -30,8 +30,12 @@ fractions, roots, limits, matrices and aligned equations read as they do in prin
    `cases`, `matrix`, `pmatrix`, `bmatrix`, `vmatrix`, with `&` and `\\`.
 5. **Cost.** A formula of the sample lays out in well under a millisecond; results are cached by
    the UI (S046).
-6. **The bundled font.** One OpenType math font under the SIL OFL (STIX Two Math or Latin Modern
-   Math, to decide), loaded lazily on the first formula so cold start does not change.
+6. **The bundled font (done 2026-11-24).** STIX Two Math 2.13 under the SIL OFL, compiled into the
+   program as a Qt resource and read on the first formula (`ui::bundledMathFont`, ADR 0014), so no
+   user installs a font; `tst_s045_bundled_math_font` checks that it loads, has its `MATH` table
+   and the glyphs of the sample, and that its licence is inside too. `math.font-family` stays the
+   font of formula source (S044); the typeset formula always uses the bundled font until a token
+   for another math font is asked for.
 
 ## Acceptance scenarios (outline)
 
