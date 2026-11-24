@@ -1,6 +1,8 @@
 # S047 — Display formulas shown typeset
 
-- **Status:** In progress · **Order:** 52 · **Size:** M · **Depends on:** S044, S045, S046
+- **Status:** In review since 2026-11-24 (CI green on Linux, Linux with the minimum Qt, Windows,
+  macOS, ASan, clang-tidy, fuzzing and the benchmarks on pull request 78; the S009 gate extended for
+  formulas) · **Order:** 52 · **Size:** M · **Depends on:** S044, S045, S046
 - **Basis:** ADR 0014, S044. Started on Daniel's word on 2026-11-24.
 
 ## Story
@@ -71,6 +73,20 @@ the caret is outside it, and as its source while the caret or selection is in it
 | `math.display-margin` | space above and below the panel, 0 to 64 | 3 |
 
 Left alignment (a `math.display-align`) is left for a later story.
+
+## In review
+
+- **What changed:** a closed `$$` block off the caret and the selection is one typeset formula on a
+  panel: its opening line reserves the height, its other lines are hidden (`MathBlockEmbedder`, a
+  `BlockLayout::Claimant`), and the editor paints panel and formula (`paintDisplayFormula`); the
+  caret or selection in the block reveals all its lines. The S009 extension found that Left from
+  the line below a typeset block put the caret at the start of the hidden formula line; it now
+  lands on the end of the closing `$$` (`EditorWidget::handleMathBlockKey`).
+- **Tests added:** `S047_DisplayMath` (core), `tst_s047_typeset_display_math` (UI), the
+  `math.display-*` rows of `S005_Theme`; S009: `typesetFormulasWhileWalking`,
+  `caretEntersADisplayBlockOnItsLines`.
+- **Next:** Daniel tries the sample's blocks in the app and marks the story Done;
+  `math.display-align` waits in `unrefined.md`.
 
 ## Tests
 

@@ -1,6 +1,8 @@
 # S044 — Math source: `$…$` and `$$…$$` recognised and styled
 
-- **Status:** In progress · **Order:** 49 · **Size:** M · **Depends on:** S014, S015, S020, S021
+- **Status:** In review since 2026-11-24 (CI green on Linux, Linux with the minimum Qt, Windows,
+  macOS, ASan, clang-tidy, fuzzing and the benchmarks on pull request 78; the S009 gate extended for
+  formulas) · **Order:** 49 · **Size:** M · **Depends on:** S014, S015, S020, S021
 - **Basis:** User request on 2026-11-24 (Daniel): hitokoto should support mathematical notation,
   better LaTeX notation, with the sample `latex.md` (kept as `tests/data/s044-latex.md`). Not in
   the brief; an extension by this story and its follow-ups (CLAUDE.md, "scope changes"). On the
@@ -109,6 +111,18 @@ S045–S047 add the tokens of typeset formulas (error colour, display panel).
 
 Typesetting (S045–S047); `\(…\)` and `\[…\]` delimiters; `\begin{equation}` without `$$`;
 macros; `mhchem`.
+
+## In review
+
+- **What changed:** the core recognises inline `$…$` (with the currency and closing-dollar rules)
+  and `$$…$$` on one line and as a block, conceals the dollars off the caret's line and marks the
+  formula source (`LineRender::math`, roles `Math` and `MathMarker`, `mathBlock`,
+  `mathDelimiter`); the UI styles it with `math.text`, `math.font-scale`, `math.font-family` and
+  `math.marker`. Since S046/S047 the source shows only on the caret's line or in a revealed block.
+- **Tests added:** `S044_MathSource` (core), `tst_s044_math_source` (UI), the `math.*` rows of
+  `S005_Theme`, `fuzz_math`; S009 walks over formulas (`typesetFormulasWhileWalking`).
+- **Next:** Daniel tries `tests/data/s044-latex.md` in the app and marks the story Done; `\(…\)` and
+  `\[…\]` and macros wait in `unrefined.md`.
 
 ## Tests
 

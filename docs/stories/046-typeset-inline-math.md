@@ -1,6 +1,8 @@
 # S046 — Inline formulas shown typeset
 
-- **Status:** In progress · **Order:** 51 · **Size:** L · **Depends on:** S044, S045, S010, S019
+- **Status:** In review since 2026-11-24 (CI green on Linux, Linux with the minimum Qt, Windows,
+  macOS, ASan, clang-tidy, fuzzing and the benchmarks on pull request 78; the S009 gate extended for
+  formulas) · **Order:** 51 · **Size:** L · **Depends on:** S044, S045, S010, S019
 - **Basis:** ADR 0014, S044, S045. Started on Daniel's word on 2026-11-24.
 
 ## Story
@@ -76,6 +78,19 @@ its source while I edit it.
 | `math.error` | source of a formula that cannot be typeset | `colors.accent` |
 
 `math.text` and `math.font-scale` (S044) now also apply to typeset formulas.
+
+## In review
+
+- **What changed:** inline formulas off the caret's line are typeset: the source's first character
+  reserves the formula's width and height, the rest takes no width, and the editor paints the
+  glyphs and rules (`paintFormulas`), with selection and find highlights behind them; layouts come
+  from a cache; formulas that cannot be laid out keep their source in `math.error` with the reason
+  as tooltip.
+- **Tests added:** `tst_s046_typeset_inline_math` (UI), `math.error` in `S005_Theme`; S009:
+  `typesetFormulasWhileWalking`, `inputMethodCommitsInsideAFormula`,
+  `screenReaderReadsTheSourceOfTypesetFormulas` (no defect found for inline formulas).
+- **Next:** Daniel tries it in the app and marks the story Done; formulas in table cells and a UI
+  benchmark with many formulas wait in `unrefined.md`.
 
 ## Tests
 

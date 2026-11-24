@@ -1,6 +1,8 @@
 # S045 — Math layout engine in the core
 
-- **Status:** In progress · **Order:** 50 · **Size:** L · **Depends on:** S044
+- **Status:** In review since 2026-11-24 (CI green on Linux, Linux with the minimum Qt, Windows,
+  macOS, ASan, clang-tidy, fuzzing and the benchmarks on pull request 78) · **Order:** 50 ·
+  **Size:** L · **Depends on:** S044
 - **Basis:** ADR 0014 (an engine of our own, Daniel, 2026-11-24). Everything the sample
   `tests/data/s044-latex.md` writes must typeset. Confirmed by Daniel on 2026-11-24.
 
@@ -47,6 +49,18 @@ fractions, roots, limits, matrices and aligned equations read as they do in prin
   assembly.
 - `\frac{a` gives an error naming the missing `}` and its position.
 - Fuzzing: any input never crashes and stays within linear time and bounded depth.
+
+## In review
+
+- **What changed:** `core::layoutMath` (ADR 0014, parser in `math_parse.cpp`) takes the subset of
+  decision 4 and lays it out from the bundled STIX Two Math's MATH table (`math_table.cpp`):
+  TeX spacing, scripts, limits, fractions, radicals, stretchy delimiters, matrices, `aligned`,
+  `cases` and extensible arrows, with an error and its position for everything else; the UI reads
+  the font's metrics through `QtMathFont` (`fonts/stix-two-math`, OFL).
+- **Tests added:** `S045_MathLayout` (core), `tst_s045_bundled_math_font` (UI), `fuzz_math`
+  (formulas and MATH tables), benchmark `S045_LayoutMaxwellEquations`.
+- **Next:** Daniel checks the sample's formulas in the app and marks the story Done; accents,
+  macros, `ssty` and MathKern wait in `unrefined.md`.
 
 ## Tests
 
