@@ -1060,6 +1060,8 @@ void EditorWidget::paintDecorations() {
     const qreal radius = std::max<qreal>(1.5, metrics.xHeight() * 0.32);
     const QPointF offset = contentOffset();
     const qreal bottom = viewport()->height();
+    std::vector<FormulaHighlight> formulaHighlights;  // made once per paint, when a formula is on screen
+    bool highlightsMade = false;
 
     for (QTextBlock block = firstVisibleBlock(); block.isValid(); block = block.next()) {
         const QRectF rect = blockBoundingGeometry(block).translated(offset);
@@ -1073,6 +1075,13 @@ void EditorWidget::paintDecorations() {
         if (styler_->isRevealed(block.blockNumber())) {
             continue;
         }
+        if (!render.math.empty()) {
+            if (!highlightsMade) {
+                formulaHighlights = formulaHighlightRanges();
+                highlightsMade = true;
+            }
+            paintFormulas(painter, block, rect, render, styler_->formats(), formulaHighlights);
+        }
         if (render.thematicBreak) {
             paintThematicBreak(painter, block, rect, styler_->formats().thematicBreak(),
                                viewport()->devicePixelRatioF(), static_cast<qreal>(viewport()->width()));
@@ -1082,6 +1091,22 @@ void EditorWidget::paintDecorations() {
         }
         paintBullets(painter, block, rect, render, color, metrics, radius);
     }
+}
+
+std::vector<FormulaHighlight> EditorWidget::formulaHighlightRanges() const {
+    // S046, decision 6: the find highlights, then the selection on top.
+    std::vector<FormulaHighlight> out;
+    for (const QTextEdit::ExtraSelection& s : extraSelections()) {
+        if (s.cursor.hasSelection() && s.format.hasProperty(QTextFormat::BackgroundBrush)) {
+            out.push_back({s.cursor.selectionStart(), s.cursor.selectionEnd(), s.format.background(), std::nullopt});
+        }
+    }
+    const QTextCursor cursor = textCursor();
+    if (cursor.hasSelection()) {
+        out.push_back({cursor.selectionStart(), cursor.selectionEnd(), palette().brush(QPalette::Highlight),
+                       palette().color(QPalette::HighlightedText)});
+    }
+    return out;
 }
 
 bool EditorWidget::handleBulletKey(QKeyEvent* event) {

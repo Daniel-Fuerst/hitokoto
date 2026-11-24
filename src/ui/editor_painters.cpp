@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "editor_painters.hpp"
 
+#include "editor_formats.hpp"
+#include "math_render.hpp"
 #include "qt_bridge.hpp"
 
 #include <QFontMetricsF>
@@ -88,6 +90,51 @@ void paintBullets(QPainter& painter, const QTextBlock& block, const QRectF& rect
             painter.setBrush(Qt::NoBrush);
         }
         painter.drawEllipse(centre, radius, radius);
+    }
+}
+
+void paintFormulas(QPainter& painter, const QTextBlock& block, const QRectF& rect, const core::LineRender& render,
+                   const EditorFormats& formats, std::span<const FormulaHighlight> highlights) {
+    const QTextLayout* layout = block.layout();
+    if (layout == nullptr || render.math.empty()) {
+        return;
+    }
+    const QString text = block.text();
+    const QColor color = toQColor(formats.math().text);
+    for (const core::MathSpan& m : render.math) {
+        if (!EditorFormats::typeset(render, m) || static_cast<qsizetype>(m.source.end()) > text.size()) {
+            continue;
+        }
+        const QStringView source = QStringView(text).sliced(m.source.start, m.source.length);
+        const std::u16string_view view(reinterpret_cast<const char16_t*>(source.utf16()),
+                                       static_cast<std::size_t>(source.size()));
+        const core::MathLayout& formula = formats.mathLayout(view, render.headingLevel, m.display);
+        if (formula.error) {
+            continue;
+        }
+        const int column = static_cast<int>(m.source.start);
+        const QTextLine line = layout->lineForTextPosition(column);
+        if (!line.isValid()) {
+            continue;
+        }
+        const QPointF origin(rect.left() + layout->position().x() + line.cursorToX(column),
+                             rect.top() + layout->position().y() + line.y() + line.ascent());
+        // The formula with its dollars, in document positions.
+        const int from = block.position() + column - 1;
+        const int to = block.position() + static_cast<int>(m.source.end()) + 1;
+        QColor glyphs = color;
+        for (const FormulaHighlight& h : highlights) {
+            if (h.from < to && h.to > from) {
+                const qreal top = std::min(origin.y() - formula.ascent, rect.top() + layout->position().y() + line.y());
+                const qreal bottom = std::max(origin.y() + formula.descent,
+                                              rect.top() + layout->position().y() + line.y() + line.height());
+                painter.fillRect(QRectF(origin.x(), top, formula.width, bottom - top), h.background);
+                if (h.text) {
+                    glyphs = *h.text;
+                }
+            }
+        }
+        paintMathLayout(painter, formula, origin, glyphs);
     }
 }
 

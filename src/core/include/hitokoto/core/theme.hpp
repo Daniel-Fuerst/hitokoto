@@ -69,7 +69,7 @@ struct LinkTokens {
 
 /// Tokens of `[math]` (S044); resolved by mathStyle().
 struct MathTokens {
-    std::optional<Color> text, marker;
+    std::optional<Color> text, marker, error;
     std::optional<double> fontScale;
     std::optional<std::string> fontFamily;
     friend bool operator==(const MathTokens&, const MathTokens&) = default;
@@ -242,6 +242,7 @@ struct LinkStyle {
 /// Resolved look of formula source (S044).
 struct MathStyle {
     Color text, marker;
+    Color error;             ///< source of a formula that cannot be typeset (S046)
     std::string fontFamily;  ///< empty = editor font
     double fontScale = 1;    ///< relative to the editor font
     friend bool operator==(const MathStyle&, const MathStyle&) = default;

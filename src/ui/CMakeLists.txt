@@ -16,6 +16,7 @@ qt_add_library(hitokoto_ui STATIC
     list_editing.cpp list_editing.hpp
     main_window.cpp main_window.hpp
     math_font.cpp math_font.hpp
+    math_render.cpp math_render.hpp
     menu_bar.cpp menu_bar.hpp
     options.hpp
     properties_embedder.cpp properties_embedder.hpp

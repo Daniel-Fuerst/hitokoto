@@ -360,6 +360,7 @@ const std::map<std::string, Resolved>& resolvedTokens() {
         ELEMENT_TOKEN("link.marker", linkStyle, marker),
         ELEMENT_TOKEN("math.text", mathStyle, text),
         ELEMENT_TOKEN("math.marker", mathStyle, marker),
+        ELEMENT_TOKEN("math.error", mathStyle, error),
         ELEMENT_TOKEN("math.font-family", mathStyle, fontFamily),
         ELEMENT_TOKEN("math.font-scale", mathStyle, fontScale),
         ELEMENT_TOKEN("thematic-break.border", thematicBreakStyle, border),

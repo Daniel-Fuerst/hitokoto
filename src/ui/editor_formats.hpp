@@ -2,7 +2,9 @@
 #pragma once
 
 #include "hitokoto/core/markdown.hpp"
+#include "hitokoto/core/math.hpp"
 #include "hitokoto/core/theme.hpp"
+#include "math_render.hpp"
 
 #include <QColor>
 #include <QFont>
@@ -14,7 +16,9 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 namespace hitokoto::ui {
@@ -42,6 +46,18 @@ public:
     /// Font of the language badge on an opening fence (S021).
     [[nodiscard]] QFont badgeFont() const;
     [[nodiscard]] QTextCharFormat heading(int level) const;
+    /// Resolved math tokens (S044, S046).
+    [[nodiscard]] const core::MathStyle& math() const noexcept { return math_; }
+    /// Pixels per em of a formula on a line of heading `level` (0 = body text): the text size times
+    /// math.font-scale (S046, decision 3).
+    [[nodiscard]] double mathPixelSize(int level) const;
+    /// The layout of a formula on a line of heading `level`, from the theme's cache (S046).
+    [[nodiscard]] const core::MathLayout& mathLayout(std::u16string_view source, int level, bool display) const;
+    /// Whether `formula` on a line rendered as `render` is shown typeset: an inline formula whose
+    /// dollars are concealed (S046, decision 1).
+    [[nodiscard]] static bool typeset(const core::LineRender& render, const core::MathSpan& formula);
+    /// The cache of formula layouts, for tests.
+    [[nodiscard]] const MathCache& mathCache() const noexcept { return *mathCache_; }
 
     /// Format ranges for one line, ready for QTextLayout::setFormats().
     [[nodiscard]] QList<QTextLayout::FormatRange> ranges(const core::LineRender& render, QStringView text = {}) const;
@@ -59,6 +75,8 @@ private:
         const core::LinkTarget* link = nullptr;
         bool bulletSpace = false;          ///< the space after a bullet with a hanging indent (S003)
         bool inlineCodeDelimiter = false;  ///< a hidden backtick that opens or closes inline code
+        const core::MathLayout* formula = nullptr;  ///< inside the source of a concealed formula (S046)
+        bool formulaHead = false;                   ///< its first character, which reserves the width
     };
     // The roles of runs (core::Role), each what it does to the format of its text: the table of
     // roles in composedFormat() points to them.
@@ -88,6 +106,9 @@ private:
                                                  QStringView pieceText) const;
     /// Font size of text at heading `level` (0 = body text).
     [[nodiscard]] double textSize(int level) const;
+    /// The format of a piece of a typeset formula's source (S046, decisions 1, 2 and 5); nothing
+    /// for a piece outside one.
+    void applyFormula(QTextCharFormat& format, const Piece& piece, QStringView pieceText) const;
 
     QFont baseFont_;
     std::array<QTextCharFormat, 7> heading_{};    // index 0 = body text
@@ -108,11 +129,19 @@ private:
     core::MathStyle math_;
     core::ThematicBreakStyle thematicBreak_;
     core::PropertiesStyle properties_;
+    double pointToPixel_ = 1;  ///< pixels per point of the screen fonts are laid out for
+    std::shared_ptr<MathCache> mathCache_ = std::make_shared<MathCache>();
     QStringList codeBlockFamilies_;
     QStringList inlineCodeFamilies_;
     /// Working buffer of ranges(): once grown, formatting a line allocates nothing (GUI thread
     /// only). Not a QVarLengthArray: its growth path made MSVC report C4702 in Release builds.
     mutable std::vector<std::uint32_t> boundaries_;
+    /// The typeset formulas of the line rangesOf() works on (GUI thread only).
+    struct Formula {
+        core::Span source;
+        const core::MathLayout* layout = nullptr;
+    };
+    mutable std::vector<Formula> formulas_;
 };
 
 }  // namespace hitokoto::ui

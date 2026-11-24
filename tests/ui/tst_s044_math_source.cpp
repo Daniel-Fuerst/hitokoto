@@ -31,6 +31,10 @@ private slots:
         const auto block0 = f.editor()->document()->firstBlock();
         QVERIFY(test::isCollapsed(block0, 2));
         QVERIFY(test::isCollapsed(block0, 6));
+        // Off the caret's line the source is replaced by the typeset formula since S046; on it,
+        // the source is styled from math.text and math.font-scale.
+        f.placeCaret(0);
+        f.settle();
         QVERIFY(!test::isCollapsed(block0, 3));
         const auto format = test::formatAt(block0, 3);
         QCOMPARE(format.foreground().color(), qcolor(*theme.math.text));

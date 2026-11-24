@@ -4,6 +4,7 @@
 #include "qt_bridge.hpp"
 
 #include <QFontDatabase>
+#include <QFontInfo>
 #include <QFontMetricsF>
 #include <QTextDocument>
 
@@ -105,6 +106,15 @@ EditorFormats::EditorFormats(const core::Theme& theme)
         baseFont_.setFamilies({QString::fromStdString(theme.editorFontFamily)});
     }
     baseFont_.setPointSizeF(theme.editorFontSize);
+    {
+        // Pixels per point as Qt lays out fonts on this screen: a 72 pt font is that many pixels.
+        QFont probe = baseFont_;
+        probe.setPointSizeF(72);  // theme-lint: allow (a measurement, not a style)
+        pointToPixel_ = QFontInfo(probe).pixelSize() / 72.0;
+        if (pointToPixel_ <= 0) {
+            pointToPixel_ = 1;
+        }
+    }
     const QFontMetricsF metrics(baseFont_);
     bulletSpacing_ = std::max<double>(3.0, std::round(metrics.horizontalAdvance(QLatin1Char(' ')) * 0.75));
     for (int level = 1; level <= 6; ++level) {
@@ -194,6 +204,21 @@ QList<QTextLayout::FormatRange> EditorFormats::rangesOf(const core::LineRender& 
     addSpans(render.inlineStyles);
     addSpans(render.hidden);
     addSpans(render.links);
+    // S046: the source of a typeset formula is cut after its first character, which reserves the
+    // formula's width.
+    formulas_.clear();
+    for (const core::MathSpan& m : render.math) {
+        if (!typeset(render, m) || text.size() < static_cast<qsizetype>(m.source.end()) || m.source.length == 0) {
+            continue;
+        }
+        const QStringView source = text.sliced(m.source.start, m.source.length);
+        const std::u16string_view view(reinterpret_cast<const char16_t*>(source.utf16()),
+                                       static_cast<std::size_t>(source.size()));
+        formulas_.push_back({m.source, &mathLayout(view, render.headingLevel, m.display)});
+        boundaries.push_back(m.source.start);
+        boundaries.push_back(m.source.start + 1);
+        boundaries.push_back(m.source.end());
+    }
     const auto bulletSpace = bulletSpaceSpan(render);
     if (bulletSpace.has_value()) {
         boundaries.push_back(bulletSpace->start);
@@ -207,6 +232,7 @@ QList<QTextLayout::FormatRange> EditorFormats::rangesOf(const core::LineRender& 
     std::size_t inlineIndex = 0;
     std::size_t hiddenIndex = 0;
     std::size_t linkIndex = 0;
+    std::size_t formulaIndex = 0;
     for (std::size_t i = 1; i < boundaries.size(); ++i) {
         const auto start = boundaries[i - 1];
         const auto end = boundaries[i];
@@ -220,6 +246,14 @@ QList<QTextLayout::FormatRange> EditorFormats::rangesOf(const core::LineRender& 
             continue;
         }
         piece.inlineCodeDelimiter = piece.hidden != nullptr && isInlineCodeDelimiter(render, start);
+        while (formulaIndex < formulas_.size() && formulas_[formulaIndex].source.end() <= start) {
+            ++formulaIndex;
+        }
+        if (formulaIndex < formulas_.size() && formulas_[formulaIndex].source.start <= start &&
+            formulas_[formulaIndex].source.end() >= end) {
+            piece.formula = formulas_[formulaIndex].layout;
+            piece.formulaHead = start == formulas_[formulaIndex].source.start;
+        }
         const QStringView pieceText =
             text.size() >= static_cast<qsizetype>(end) ? text.sliced(start, end - start) : QStringView{};
         out.append(
@@ -394,7 +428,58 @@ QTextCharFormat EditorFormats::composedFormat(const core::LineRender& render, co
         format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
         format.setFontLetterSpacing(bulletSpacing_);
     }
+    applyFormula(format, piece, pieceText);
     return format;
+}
+
+void EditorFormats::applyFormula(QTextCharFormat& format, const Piece& piece, QStringView pieceText) const {
+    if (piece.formula == nullptr) {
+        return;
+    }
+    const core::MathLayout& layout = *piece.formula;
+    if (layout.error) {
+        // Decision 5: the source stays, in the error colour, with the reason.
+        format.setForeground(toQColor(math_.error));
+        format.setToolTip(Qt::convertFromPlainText(QString::fromStdString(layout.error->message)));
+        return;
+    }
+    if (!piece.formulaHead) {
+        format = zeroWidthFormat(format, pieceText);
+        return;
+    }
+    // Decisions 1 and 2: the first character is invisible and takes the formula's width; its font
+    // grows until its ascent and descent cover the formula, so the line makes room.
+    format.setForeground(Qt::transparent);  // theme-lint: allow (concealment mechanism)
+    QFont font = format.font();
+    const QFontMetricsF metrics(font);
+    const double scale = std::max({1.0, metrics.ascent() > 0 ? layout.ascent / metrics.ascent() : 1.0,
+                                   metrics.descent() > 0 ? layout.descent / metrics.descent() : 1.0});
+    if (scale > 1.0) {
+        format.setFontPointSize(font.pointSizeF() * scale);
+        font.setPointSizeF(font.pointSizeF() * scale);
+    }
+    const qreal advance = pieceText.isEmpty() ? 0 : QFontMetricsF(font).horizontalAdvance(pieceText.toString());
+    format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
+    format.setFontLetterSpacing(layout.width - advance);
+}
+
+double EditorFormats::mathPixelSize(int level) const {
+    return textSize(level) * math_.fontScale * pointToPixel_;
+}
+
+const core::MathLayout& EditorFormats::mathLayout(std::u16string_view source, int level, bool display) const {
+    return mathCache_->layout(source, mathPixelSize(level), display);
+}
+
+bool EditorFormats::typeset(const core::LineRender& render, const core::MathSpan& formula) {
+    if (render.mathBlock || formula.source.start == 0) {
+        return false;
+    }
+    // Concealed: the dollar before the source is hidden (S044 hides it only off the caret's line).
+    const std::uint32_t dollar = formula.source.start - 1;
+    return std::any_of(render.hidden.begin(), render.hidden.end(), [dollar](const core::HiddenRange& h) {
+        return dollar >= h.span.start && dollar < h.span.end();
+    });
 }
 
 void EditorFormats::applyMarker(QTextCharFormat& format, const core::LineRender& render, int /*level*/) const {

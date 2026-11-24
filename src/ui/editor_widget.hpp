@@ -6,6 +6,7 @@
 
 #include "block_layout.hpp"
 #include "block_styler.hpp"
+#include "editor_painters.hpp"
 #include "hitokoto/core/settings.hpp"
 #include "hitokoto/core/theme.hpp"
 #include "list_editing.hpp"
@@ -15,6 +16,8 @@
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextEdit>
+
+#include <vector>
 
 #include <memory>
 #include <optional>
@@ -165,6 +168,8 @@ private:
     [[nodiscard]] int availableTableWidth() const;
     void paintCodeBlockPanels();
     void paintDecorations();
+    /// S046: the selection and find highlights typeset formulas take (decision 6).
+    [[nodiscard]] std::vector<FormulaHighlight> formulaHighlightRanges() const;
     /// Enter, Tab and Shift+Tab in bullet items (S003), through list_.
     bool handleBulletKey(QKeyEvent* event);
     /// keyPressEvent for a key whose text may enter the document as it is (text_input.hpp).
