@@ -1,8 +1,8 @@
 # S045 — Math layout engine in the core
 
-- **Status:** Draft (the font is in, decision 6) · **Order:** 50 · **Size:** L · **Depends on:** S044
+- **Status:** In progress · **Order:** 50 · **Size:** L · **Depends on:** S044
 - **Basis:** ADR 0014 (an engine of our own, Daniel, 2026-11-24). Everything the sample
-  `tests/data/s044-latex.md` writes must typeset.
+  `tests/data/s044-latex.md` writes must typeset. Confirmed by Daniel on 2026-11-24.
 
 ## Story
 
@@ -47,3 +47,37 @@ fractions, roots, limits, matrices and aligned equations read as they do in prin
   assembly.
 - `\frac{a` gives an error naming the missing `}` and its position.
 - Fuzzing: any input never crashes and stays within linear time and bounded depth.
+
+## Tests
+
+- Core (`tests/core/test_s045_math_layout.cpp`, `S045_MathLayout`): the MATH table of the bundled
+  font (constants, italic corrections, variants and assemblies of `(`, the radical sign and the
+  arrow), malformed tables and every prefix of the real one, every formula of the sample with the
+  real table, italic and bold letters, TeX's spacing (binary operators, relations, unary minus,
+  punctuation, operator names, explicit spaces), scripts by the MATH shifts and the gap between
+  them, limits in display style, fractions centred on the axis and `\binom`, radicals with and
+  without a degree, delimiters from glyph to variant to assembly, matrices, aligned relations,
+  cases, extensible arrows, every error with its reason and position, the nesting bound, the
+  subset of decision 4, and 3,000 random inputs.
+- UI (`tst_s045_bundled_math_font`): the sample laid out with the real glyph metrics through
+  `QtMathFont`; `HITOKOTO_MATH_PREVIEW=<file.png>` writes a picture of it.
+- Fuzzing (`fuzz/fuzz_math.cpp`, in CI's fuzz job): any bytes as a formula and as a MATH table.
+
+## Implementation
+
+- `src/core/include/hitokoto/core/math.hpp`: `MathFont` (the UI's glyph metrics), `MathTable`
+  (read once from the font's MATH table), `layoutMath()` giving glyphs and rules in pixels, or an
+  error. `openTypeTable()` finds a table in a font file.
+- `src/core/src/math_parse.cpp`: one pass over the source into a tree, at most 64 levels; tables
+  for symbols, large operators, operator names, spaces, environments and commands with arguments.
+- `src/core/src/math_layout.cpp`: TeX's atom classes and spacing table (with its rules for unary
+  operators), styles with cramping, scripts and limits, fractions and stacks, radicals with a
+  degree, delimiters (`\delimiterfactor` 901, `\delimitershortfall` 5pt) from variants or
+  assemblies, arrays (`\arraystretch` struts, `\jot` for aligned), extensible arrows, the
+  `\LaTeX` logo.
+- `src/core/src/math_table.cpp`: the MATH table, bounds-checked.
+- `src/ui/math_font.cpp`: `QtMathFont` reads metrics from `QRawFont` loaded at one pixel per
+  design unit; `bundledMathTable()` and `bundledMathMetrics()` are made on first use.
+
+Not yet: script-style glyph variants (`ssty`), cut-ins (MathKern), accents (`\hat`, `\vec`),
+macros. A benchmark of the layout comes with S046, where the UI caches layouts.

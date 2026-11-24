@@ -32,6 +32,7 @@ std::vector<StyleRun> runsWith(const LineRender& render, Role role) {
 /// The source of every formula on a rendered line, in order.
 std::vector<std::u16string> formulas(std::u16string_view line, const LineRender& render) {
     std::vector<std::u16string> out;
+    out.reserve(render.math.size());
     for (const MathSpan& math : render.math) {
         out.emplace_back(line.substr(math.source.start, math.source.length));
     }
@@ -223,7 +224,9 @@ TEST(S044_MathSource, ALineRendersInLinearTime) {
 
 TEST(S044_MathSource, ThemeTokensFallBack) {
     const auto base = parseTheme("", Theme{});
-    ASSERT_TRUE(base.theme.has_value());
+    if (!base.theme) {
+        FAIL() << "the empty theme parses";
+    }
     const MathStyle fallback = mathStyle(*base.theme);
     EXPECT_EQ(fallback.text, base.theme->text);
     EXPECT_EQ(fallback.marker, base.theme->marker);
@@ -233,7 +236,9 @@ TEST(S044_MathSource, ThemeTokensFallBack) {
     const auto themed = parseTheme(
         "[math]\ntext = \"#112233\"\nmarker = \"#445566\"\nfont-family = \"STIX Two Math\"\nfont-scale = 1.2\n",
         Theme{});
-    ASSERT_TRUE(themed.theme.has_value()) << (themed.diagnostics.empty() ? "" : themed.diagnostics[0].toString());
+    if (!themed.theme) {
+        FAIL() << (themed.diagnostics.empty() ? "" : themed.diagnostics[0].toString());
+    }
     const MathStyle style = mathStyle(*themed.theme);
     EXPECT_EQ(style.text, (Color{0x11, 0x22, 0x33}));
     EXPECT_EQ(style.marker, (Color{0x44, 0x55, 0x66}));

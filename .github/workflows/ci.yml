@@ -100,7 +100,7 @@ jobs:
     permissions:
       contents: read
     env:
-      FUZZERS: fuzz_codec fuzz_render fuzz_theme fuzz_paste fuzz_settings fuzz_find fuzz_table
+      FUZZERS: fuzz_codec fuzz_render fuzz_theme fuzz_paste fuzz_settings fuzz_find fuzz_table fuzz_math
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Configure
