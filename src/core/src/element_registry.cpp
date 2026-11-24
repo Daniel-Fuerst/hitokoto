@@ -747,10 +747,12 @@ ElementRegistry ElementRegistry::withBuiltins() {
     registry.addMultiLine(makeFencedCodeElement());
     registry.addMultiLine(makeTableElement());
     registry.addMultiLine(makeFrontMatterElement());
+    registry.addMultiLine(makeDisplayMathElement());
     registry.add(makeHeadingElement());
     registry.add(makeBulletElement());
     registry.addInline(makeLinkElement());
     registry.addInline(makeInlineCodeElement());
+    registry.addInline(makeInlineMathElement());
     registry.addInline(makeEmphasisElement());
     registry.addInline(makeEscapeElement());
     return registry;

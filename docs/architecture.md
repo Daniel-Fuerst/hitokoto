@@ -33,6 +33,7 @@ src/core   all logic: Markdown elements, reveal, codec, file I/O, theme (C++ sta
 | `BlockState` | `markdown.hpp` | Opaque state from one line to the next: the multi-line element that is open (`element`, `value`; `active()`) and, in a field of its own, the paragraph the line belongs to (`paragraph`: 0, or 1 + its content column; ADR 0006) |
 | `parseBulletLine`, `indentBulletLine`, `outdentBulletLine` | `bullet.hpp` | S003: the prefix of a bullet item and its indentation, as lines |
 | `tableRowCells`, `replaceTableCell`, `separateTextAfterTables` and the other table functions | `table.hpp` | GFM pipe tables as lines (S018, S026, S031): rows and cells to read, change and lay out; the table element itself is registered like any other (`markdown.hpp`) |
+| `MathSpan`, math elements | `markdown.hpp`, `src/core/src/elements/math.cpp` | S044, ADR 0014: inline math `$…$` (and `$$…$$` on one line) as an inline element, display blocks between `$$` lines as a multi-line element; `LineRender::math` says where each formula's source is, for the typesetting of S046/S047 |
 | block rules | `src/core/src/block_rules.hpp` | Internal: the one thematic-break recogniser, setext underlines, the start of blocks hitokoto does not render yet, the content column after a container marker (S023) |
 | `revealedLines`, `revealChanges` | `reveal.hpp` | Which lines show raw syntax; which lines must re-render when that changes |
 | `decodeUtf8`, `encodeUtf8` | `text_codec.hpp` | Bytes to text and back, preserving BOM and line endings (ADR 0002) |

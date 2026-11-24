@@ -154,6 +154,10 @@ follows the general tokens above.
 | `escape.marker` | color | Backslash when revealed | `colors.marker` |
 | `link.text` | color | Colour of link text | `colors.accent` |
 | `link.marker` | color | Delimiters and destination when revealed | `colors.marker` |
+| `math.text` | color | Colour of formula source (S044) | `colors.text` |
+| `math.marker` | color | Math delimiters ($ and $$) when revealed | `colors.marker` |
+| `math.font-family` | string | Font family of formula source; "" = editor font | "" |
+| `math.font-scale` | number | Font size of formula source relative to the editor font, 0.5 to 2 | 1 |
 | `thematic-break.border` | color | Colour of the horizontal line | `colors.border` |
 | `thematic-break.border-width` | number (px) | Thickness of the line, 0 to 8; drawn as max(1, round(width x device pixel ratio)) device pixels | 1 |
 | `thematic-break.margin` | number (px) | Space above and below the line, 0 to 64; part of the line's geometry, the same when revealed | 0 |

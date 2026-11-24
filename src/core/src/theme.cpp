@@ -270,6 +270,10 @@ const Token kTokens[] = {
     {{"escape", "marker", "color", "Backslash when revealed", "colors.marker"}, &applyOptColor<&Theme::escape, &EscapeTokens::marker>},
     {{"link", "text", "color", "Colour of link text", "colors.accent"}, &applyOptColor<&Theme::link, &LinkTokens::text>},
     {{"link", "marker", "color", "Delimiters and destination when revealed", "colors.marker"}, &applyOptColor<&Theme::link, &LinkTokens::marker>},
+    {{"math", "text", "color", "Colour of formula source (S044)", "colors.text"}, &applyOptColor<&Theme::math, &MathTokens::text>},
+    {{"math", "marker", "color", "Math delimiters ($ and $$) when revealed", "colors.marker"}, &applyOptColor<&Theme::math, &MathTokens::marker>},
+    {{"math", "font-family", "string", "Font family of formula source; \"\" = editor font", "\"\""}, &applyOptString<&Theme::math, &MathTokens::fontFamily>},
+    {{"math", "font-scale", "number", "Font size of formula source relative to the editor font, 0.5 to 2", "1"}, &applyOptNumber<&Theme::math, &MathTokens::fontScale, 5, 20>},
     {{"thematic-break", "border", "color", "Colour of the horizontal line", "colors.border"}, &applyOptColor<&Theme::thematicBreak, &ThematicBreakTokens::border>},
     {{"thematic-break", "border-width", "number (px)", "Thickness of the line, 0 to 8; drawn as max(1, round(width x device pixel ratio)) device pixels", "1"}, &applyOptNumber<&Theme::thematicBreak, &ThematicBreakTokens::borderWidth, 0, 80>},
     {{"thematic-break", "margin", "number (px)", "Space above and below the line, 0 to 64; part of the line's geometry, the same when revealed", "0"}, &applyOptNumber<&Theme::thematicBreak, &ThematicBreakTokens::margin, 0, 640>},
@@ -831,6 +835,15 @@ LinkStyle linkStyle(const Theme& t) {
     return {
         .text = t.link.text.value_or(t.accent),
         .marker = t.link.marker.value_or(t.marker),
+    };
+}
+
+MathStyle mathStyle(const Theme& t) {
+    return {
+        .text = t.math.text.value_or(t.text),
+        .marker = t.math.marker.value_or(t.marker),
+        .fontFamily = t.math.fontFamily.value_or(""),
+        .fontScale = t.math.fontScale.value_or(1.0),
     };
 }
 

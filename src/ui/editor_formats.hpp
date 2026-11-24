@@ -70,6 +70,8 @@ private:
     void applyEscapeMarker(QTextCharFormat& format, const core::LineRender& render, int level) const;
     void applyLinkText(QTextCharFormat& format, const core::LineRender& render, int level) const;
     void applyLinkMarker(QTextCharFormat& format, const core::LineRender& render, int level) const;
+    void applyMath(QTextCharFormat& format, const core::LineRender& render, int level) const;
+    void applyMathMarker(QTextCharFormat& format, const core::LineRender& render, int level) const;
     [[nodiscard]] QList<QTextLayout::FormatRange> rangesOf(const core::LineRender& render, QStringView text,
                                                            bool shortcuts) const;
     /// The ranges of a line the shortcuts for whole lines give, if one applies.
@@ -103,6 +105,7 @@ private:
     core::TableStyle table_;
     core::EscapeStyle escape_;
     core::LinkStyle link_;
+    core::MathStyle math_;
     core::ThematicBreakStyle thematicBreak_;
     core::PropertiesStyle properties_;
     QStringList codeBlockFamilies_;

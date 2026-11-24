@@ -67,6 +67,14 @@ struct LinkTokens {
     friend bool operator==(const LinkTokens&, const LinkTokens&) = default;
 };
 
+/// Tokens of `[math]` (S044); resolved by mathStyle().
+struct MathTokens {
+    std::optional<Color> text, marker;
+    std::optional<double> fontScale;
+    std::optional<std::string> fontFamily;
+    friend bool operator==(const MathTokens&, const MathTokens&) = default;
+};
+
 /// Tokens of `[thematic-break]` (S023); resolved by thematicBreakStyle().
 struct ThematicBreakTokens {
     std::optional<Color> border, marker;
@@ -155,6 +163,7 @@ struct Theme {
     TableTokens table;
     EscapeTokens escape;
     LinkTokens link;
+    MathTokens math;
     ThematicBreakTokens thematicBreak;
     PropertiesTokens properties;
     ToolbarTokens toolbar;
@@ -228,6 +237,14 @@ struct EscapeStyle {
 struct LinkStyle {
     Color text, marker;
     friend bool operator==(const LinkStyle&, const LinkStyle&) = default;
+};
+
+/// Resolved look of formula source (S044).
+struct MathStyle {
+    Color text, marker;
+    std::string fontFamily;  ///< empty = editor font
+    double fontScale = 1;    ///< relative to the editor font
+    friend bool operator==(const MathStyle&, const MathStyle&) = default;
 };
 
 /// Resolved look of a thematic break (S023).
@@ -323,6 +340,7 @@ struct SwitchStyle {
 [[nodiscard]] TableStyle tableStyle(const Theme& theme);
 [[nodiscard]] EscapeStyle escapeStyle(const Theme& theme);
 [[nodiscard]] LinkStyle linkStyle(const Theme& theme);
+[[nodiscard]] MathStyle mathStyle(const Theme& theme);
 [[nodiscard]] ThematicBreakStyle thematicBreakStyle(const Theme& theme);
 [[nodiscard]] PropertiesStyle propertiesStyle(const Theme& theme);
 [[nodiscard]] ToolbarStyle toolbarStyle(const Theme& theme);

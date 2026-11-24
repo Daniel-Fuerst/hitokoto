@@ -95,6 +95,7 @@ EditorFormats::EditorFormats(const core::Theme& theme)
       table_(core::tableStyle(theme)),
       escape_(core::escapeStyle(theme)),
       link_(core::linkStyle(theme)),
+      math_(core::mathStyle(theme)),
       thematicBreak_(core::thematicBreakStyle(theme)),
       properties_(core::propertiesStyle(theme)),
       codeBlockFamilies_(codeFamilies(codeBlock_.fontFamily)),
@@ -302,7 +303,7 @@ struct RoleFormat {
 
 QTextCharFormat EditorFormats::composedFormat(const core::LineRender& render, const Piece& piece,
                                               QStringView pieceText) const {
-    static constexpr std::array<RoleFormat, 9> kRoles{{
+    static constexpr std::array<RoleFormat, 11> kRoles{{
         {core::Role::Marker, &EditorFormats::applyMarker, true, false},
         {core::Role::HeadingText, nullptr, true, true},
         {core::Role::CodeBlock, &EditorFormats::applyCodeBlock, true, true},
@@ -312,8 +313,11 @@ QTextCharFormat EditorFormats::composedFormat(const core::LineRender& render, co
         {core::Role::EscapeMarker, &EditorFormats::applyEscapeMarker, true, false},
         {core::Role::LinkText, &EditorFormats::applyLinkText, true, true},
         {core::Role::LinkMarker, &EditorFormats::applyLinkMarker, true, false},
+        // S044: formula source keeps its look inside emphasis, as inline code does.
+        {core::Role::Math, &EditorFormats::applyMath, false, false},
+        {core::Role::MathMarker, &EditorFormats::applyMathMarker, true, false},
     }};
-    static_assert(kRoles.size() == static_cast<std::size_t>(core::Role::LinkMarker) + 1, "a row for every role");
+    static_assert(kRoles.size() == static_cast<std::size_t>(core::Role::MathMarker) + 1, "a row for every role");
     static_assert(
         [] {
             for (std::size_t i = 0; i < kRoles.size(); ++i) {
@@ -431,6 +435,19 @@ void EditorFormats::applyLinkText(QTextCharFormat& format, const core::LineRende
 
 void EditorFormats::applyLinkMarker(QTextCharFormat& format, const core::LineRender& /*render*/, int /*level*/) const {
     format.setForeground(toQColor(link_.marker));
+}
+
+void EditorFormats::applyMath(QTextCharFormat& format, const core::LineRender& /*render*/, int level) const {
+    if (!math_.fontFamily.empty()) {
+        format.setFontFamilies({QString::fromStdString(math_.fontFamily)});
+    }
+    format.setFontPointSize(textSize(level) * math_.fontScale);
+    format.setForeground(toQColor(math_.text));
+}
+
+void EditorFormats::applyMathMarker(QTextCharFormat& format, const core::LineRender& render, int level) const {
+    applyMath(format, render, level);
+    format.setForeground(toQColor(math_.marker));
 }
 
 QFont EditorFormats::tableFont(bool header) const {
