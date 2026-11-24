@@ -1,6 +1,6 @@
-# S044 — Section headings in the settings flyout stand out
+# S048 — Section headings in the settings flyout stand out
 
-- **Status:** In progress · **Order:** 49 · **Size:** S · **Depends on:** S039, S043
+- **Status:** In progress · **Order:** 53 · **Size:** S · **Depends on:** S039, S043
 - **Basis:** User request on 2026-11-24: in the settings flyout the section headings (**Appearance**,
   **Feel**) have the same weight and colour as the row labels beside the controls ("Theme",
   "Smooth scrolling"), so the sections are hard to tell apart. Wanted: the heading in the accent
@@ -43,10 +43,10 @@ at a glance where one group of settings ends and the next begins.
 
 ## Tests
 
-- **Core (`tests/core/test_s044_settings_section_headings.cpp`):**
-  `S044_SettingsSectionHeadings.TokensFallbackAndResolve`; the tokens are also in `resolvedTokens()`
+- **Core (`tests/core/test_s048_settings_section_headings.cpp`):**
+  `S048_SettingsSectionHeadings.TokensFallbackAndResolve`; the tokens are also in `resolvedTokens()`
   of `tests/core/test_s005_theme.cpp`.
-- **UI (`tests/ui/tst_s044_settings_section_headings.cpp`):** `headingsStandApartFromRowLabels`,
+- **UI (`tests/ui/tst_s048_settings_section_headings.cpp`):** `headingsStandApartFromRowLabels`,
   `headingsFollowTheirThemeTokens`.
 
 ## Implementation

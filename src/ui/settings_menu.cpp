@@ -40,7 +40,7 @@ QLabel* makeLabel(const QString& text, QWidget* parent, const char* objectName =
     return label;
 }
 
-/// S044: a section heading followed by its line, which takes the rest of the width.
+/// S048: a section heading followed by its line, which takes the rest of the width.
 QHBoxLayout* makeHeadingRow(QLabel* label, SectionRule* rule) {
     auto* row = new QHBoxLayout;
     row->setContentsMargins(0, 0, 0, 0);
@@ -202,7 +202,7 @@ void SettingsMenu::applyTheme(const core::Theme& theme) {
     for (QLabel* label : {themeKeyLabel_, smoothKeyLabel_}) {
         label->setFont(uiFont);
     }
-    // S044: section headings in their own colour and weight, each followed by a line.
+    // S048: section headings in their own colour and weight, each followed by a line.
     const core::SettingsSectionStyle section = core::settingsSectionStyle(theme);
     QFont headingFont = uiFont;
     headingFont.setWeight(static_cast<QFont::Weight>(section.weight));

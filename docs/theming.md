@@ -289,7 +289,7 @@ their on colours (`switch.checked-track`, `switch.checked-knob`). The knob keeps
 margin, so the default track is a pill and the knob a circle, and `radius = 0` gives square ones.
 The labels beside a switch are those of the flyout (`colors.text-muted`, UI font).
 
-The sections of the settings flyout (S044, such as **Appearance** and **Feel**) start with a heading
+The sections of the settings flyout (S048, such as **Appearance** and **Feel**) start with a heading
 row: the heading in `settings-section.text` and `settings-section.weight` (UI font), then, after
 `settings-section.rule-gap`, a line in `settings-section.rule` that runs to the right edge of the
 content, centred vertically on the heading; `rule-width = 0` hides the line.

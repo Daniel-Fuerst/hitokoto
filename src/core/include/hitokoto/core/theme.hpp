@@ -119,7 +119,7 @@ struct SwitchTokens {
     friend bool operator==(const SwitchTokens&, const SwitchTokens&) = default;
 };
 
-/// Tokens of `[settings-section]` (S044); resolved by settingsSectionStyle().
+/// Tokens of `[settings-section]` (S048); resolved by settingsSectionStyle().
 struct SettingsSectionTokens {
     std::optional<Color> text, rule;
     std::optional<double> weight, ruleWidth, ruleGap;
@@ -325,7 +325,7 @@ struct SwitchStyle {
     friend bool operator==(const SwitchStyle&, const SwitchStyle&) = default;
 };
 
-/// Resolved look of a section heading in the settings flyout (S044): the heading and the line after it.
+/// Resolved look of a section heading in the settings flyout (S048): the heading and the line after it.
 struct SettingsSectionStyle {
     Color text, rule;
     int weight = 600;

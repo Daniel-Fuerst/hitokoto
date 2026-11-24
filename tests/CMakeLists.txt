@@ -23,7 +23,7 @@ add_executable(hitokoto_core_tests
     core/test_s038_subtle_menu_bar.cpp
     core/test_s039_settings_menu.cpp
     core/test_s043_smooth_scrolling_toggle.cpp
-    core/test_s044_settings_section_headings.cpp
+    core/test_s048_settings_section_headings.cpp
     core/test_s004_save.cpp
     core/test_s005_theme.cpp
     core/test_s007_large_files.cpp

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S044: the section headings of the settings flyout, in the accent colour and followed by a line.
+// S048: the section headings of the settings flyout, in the accent colour and followed by a line.
 #include "floating_toolbar.hpp"
 #include "hitokoto/core/theme.hpp"
 #include "qt_bridge.hpp"
@@ -83,7 +83,7 @@ void expectHeadingRow(const test::Fixture& f, const char* labelName, const char*
 
 }  // namespace
 
-class tst_s044_settings_section_headings : public QObject {
+class tst_s048_settings_section_headings : public QObject {
     Q_OBJECT
 private slots:
     void headingsStandApartFromRowLabels() {
@@ -121,5 +121,5 @@ private slots:
     }
 };
 
-QTEST_MAIN(tst_s044_settings_section_headings)
-#include "tst_s044_settings_section_headings.moc"
+QTEST_MAIN(tst_s048_settings_section_headings)
+#include "tst_s048_settings_section_headings.moc"

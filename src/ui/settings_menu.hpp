@@ -19,7 +19,7 @@ namespace hitokoto::ui {
 
 class ToggleSwitch;
 
-/// S044: the line to the right of a section heading, centred vertically in its height.
+/// S048: the line to the right of a section heading, centred vertically in its height.
 class SectionRule : public QWidget {
 public:
     explicit SectionRule(QWidget* parent = nullptr);

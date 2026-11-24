@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S044: the section headings of the settings flyout, in the accent colour and followed by a line.
+// S048: the section headings of the settings flyout, in the accent colour and followed by a line.
 #include "hitokoto/core/theme.hpp"
 
 #include <gtest/gtest.h>
 
 using namespace hitokoto::core;
 
-TEST(S044_SettingsSectionHeadings, TokensFallbackAndResolve) {
+TEST(S048_SettingsSectionHeadings, TokensFallbackAndResolve) {
     for (const ColorScheme scheme : {ColorScheme::Light, ColorScheme::Dark}) {
         const Theme& base = builtinTheme(scheme);
         const SettingsSectionStyle defaults = settingsSectionStyle(base);
