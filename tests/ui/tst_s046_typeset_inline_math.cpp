@@ -38,6 +38,26 @@ int pixelsNear(ui::EditorWidget* editor, const QRect& rect, const QColor& color)
     return count;
 }
 
+/// Pixels in `rect` of the viewport tinted red: small glyphs drawn without hinting are antialiased
+/// and need not reach the pure colour anywhere (pull request 78, on the CI runners).
+int redPixels(ui::EditorWidget* editor, const QRect& rect) {
+    const QImage image = editor->viewport()->grab().toImage();
+    const qreal dpr = image.devicePixelRatio();
+    int count = 0;
+    for (int y = static_cast<int>(rect.top() * dpr); y < static_cast<int>(rect.bottom() * dpr); ++y) {
+        for (int x = static_cast<int>(rect.left() * dpr); x < static_cast<int>(rect.right() * dpr); ++x) {
+            if (x < 0 || y < 0 || x >= image.width() || y >= image.height()) {
+                continue;
+            }
+            const QColor p = image.pixelColor(x, y);
+            if (p.red() - std::max(p.green(), p.blue()) > 60) {
+                ++count;
+            }
+        }
+    }
+    return count;
+}
+
 constexpr core::Color kMathText{0xff, 0x00, 0x00, 0xff};
 constexpr core::Color kMathError{0x00, 0x80, 0x00, 0xff};
 
@@ -97,7 +117,13 @@ private slots:
         // The formula is painted in math.text between "a" and "b".
         const QRect area(static_cast<int>(xAt(editor, 0, 3)), lineRect(editor, 0).top(),
                          static_cast<int>(formula.width) + 1, lineRect(editor, 0).height());
-        QVERIFY(pixelsNear(editor, area, qcolor(kMathText)) > 5);
+        const int red = redPixels(editor, area);
+        QVERIFY2(red > 5, qPrintable(QStringLiteral("%1 red pixels in %2,%3 %4x%5")
+                                         .arg(red)
+                                         .arg(area.x())
+                                         .arg(area.y())
+                                         .arg(area.width())
+                                         .arg(area.height())));
 
         if (const QByteArray out = qgetenv("HITOKOTO_MATH_PREVIEW"); !out.isEmpty()) {
             QVERIFY(editor->viewport()->grab().save(QString::fromLocal8Bit(out)));

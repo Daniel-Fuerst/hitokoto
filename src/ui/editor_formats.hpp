@@ -77,6 +77,7 @@ private:
         bool inlineCodeDelimiter = false;           ///< a hidden backtick that opens or closes inline code
         const core::MathLayout* formula = nullptr;  ///< inside the source of a concealed formula (S046)
         bool formulaHead = false;                   ///< its first character, which reserves the width
+        QStringView formulaSource{};                ///< the whole source of that formula
     };
     // The roles of runs (core::Role), each what it does to the format of its text: the table of
     // roles in composedFormat() points to them.
@@ -109,6 +110,10 @@ private:
     /// The format of a piece of a typeset formula's source (S046, decisions 1, 2 and 5); nothing
     /// for a piece outside one.
     void applyFormula(QTextCharFormat& format, const Piece& piece, QStringView pieceText) const;
+    /// The width Qt gives a formula's source with its first character in `head` and the rest
+    /// concealed from `rest` (S046: measured with a layout of its own).
+    [[nodiscard]] qreal laidOutWidth(QStringView source, const QTextCharFormat& head,
+                                     const QTextCharFormat& rest) const;
 
     QFont baseFont_;
     std::array<QTextCharFormat, 7> heading_{};    // index 0 = body text
@@ -140,6 +145,7 @@ private:
     struct Formula {
         core::Span source;
         const core::MathLayout* layout = nullptr;
+        QStringView text{};
     };
     mutable std::vector<Formula> formulas_;
 };

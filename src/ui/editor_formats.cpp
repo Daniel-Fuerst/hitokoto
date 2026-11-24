@@ -214,7 +214,7 @@ QList<QTextLayout::FormatRange> EditorFormats::rangesOf(const core::LineRender& 
         const QStringView source = text.sliced(m.source.start, m.source.length);
         const std::u16string_view view(reinterpret_cast<const char16_t*>(source.utf16()),
                                        static_cast<std::size_t>(source.size()));
-        formulas_.push_back({m.source, &mathLayout(view, render.headingLevel, m.display)});
+        formulas_.push_back({m.source, &mathLayout(view, render.headingLevel, m.display), source});
         boundaries.push_back(m.source.start);
         boundaries.push_back(m.source.start + 1);
         boundaries.push_back(m.source.end());
@@ -257,6 +257,7 @@ QList<QTextLayout::FormatRange> EditorFormats::rangesOf(const core::LineRender& 
             formulas_[formulaIndex].source.end() >= end) {
             piece.formula = formulas_[formulaIndex].layout;
             piece.formulaHead = start == formulas_[formulaIndex].source.start;
+            piece.formulaSource = formulas_[formulaIndex].text;
         }
         const QStringView pieceText =
             text.size() >= static_cast<qsizetype>(end) ? text.sliced(start, end - start) : QStringView{};
@@ -447,9 +448,7 @@ void EditorFormats::applyFormula(QTextCharFormat& format, const Piece& piece, QS
         format.setToolTip(Qt::convertFromPlainText(QString::fromStdString(layout.error->message)));
         return;
     }
-    // Without hinting Qt keeps fractional advances; with full hinting (fontconfig's hintfull, as on
-    // the Linux CI runners) it rounds every advance and the letter spacing to whole pixels, and the
-    // reserved width would miss the formula's by up to a few pixels (pull request 78).
+    // Fractional advances where the font engine allows them; the width below is measured either way.
     format.setFontHintingPreference(QFont::PreferNoHinting);
     if (!piece.formulaHead) {
         format = zeroWidthFormat(format, pieceText);
@@ -457,20 +456,42 @@ void EditorFormats::applyFormula(QTextCharFormat& format, const Piece& piece, QS
     }
     // Decisions 1 and 2: the first character is invisible and takes the formula's width; its font
     // grows until its ascent and descent cover the formula, so the line makes room.
+    const QTextCharFormat sourceFormat = format;
     format.setForeground(Qt::transparent);  // theme-lint: allow (concealment mechanism)
-    // Measured with the font Qt lays the character out with: the format's, completed from the
-    // editor's base font (the document's default font).
-    QFont font = format.font().resolve(baseFont_);
+    const QFont font = format.font().resolve(baseFont_);
     const QFontMetricsF metrics(font);
     const double scale = std::max({1.0, metrics.ascent() > 0 ? layout.ascent / metrics.ascent() : 1.0,
                                    metrics.descent() > 0 ? layout.descent / metrics.descent() : 1.0});
     if (scale > 1.0) {
         format.setFontPointSize(font.pointSizeF() * scale);
-        font.setPointSizeF(font.pointSizeF() * scale);
     }
-    const qreal advance = pieceText.isEmpty() ? 0 : QFontMetricsF(font).horizontalAdvance(pieceText.toString());
     format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
-    format.setFontLetterSpacing(layout.width - advance);
+    format.setFontLetterSpacing(layout.width - laidOutWidth(piece.formulaSource, format, sourceFormat));
+}
+
+qreal EditorFormats::laidOutWidth(QStringView source, const QTextCharFormat& head, const QTextCharFormat& rest) const {
+    // The source as Qt lays it out in the line, the first character in `head` (without the letter
+    // spacing yet), the rest without width. Measured, not predicted: font engines round advances
+    // and letter spacing their own way (hinted fonts on the CI runners to whole pixels, pull
+    // request 78), so the reserved width follows what Qt does with these very formats.
+    if (source.isEmpty()) {
+        return 0;
+    }
+    QTextLayout probe(source.toString(), baseFont_);
+    QList<QTextLayout::FormatRange> formats{{0, 1, head}};
+    if (source.size() > 1) {
+        formats.append({1, static_cast<int>(source.size() - 1), zeroWidthFormat(rest, source.sliced(1))});
+    }
+    probe.setFormats(formats);
+    probe.beginLayout();
+    QTextLine line = probe.createLine();
+    if (!line.isValid()) {
+        probe.endLayout();
+        return 0;
+    }
+    line.setNumColumns(static_cast<int>(source.size()));
+    probe.endLayout();
+    return line.naturalTextWidth();
 }
 
 double EditorFormats::mathPixelSize(int level) const {
