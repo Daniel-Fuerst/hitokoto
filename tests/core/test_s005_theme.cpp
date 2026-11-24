@@ -459,6 +459,11 @@ const std::map<std::string, Resolved>& resolvedTokens() {
         ELEMENT_TOKEN("switch.height", switchStyle, height),
         ELEMENT_TOKEN("switch.radius", switchStyle, radius),
         ELEMENT_TOKEN("switch.knob-margin", switchStyle, knobMargin),
+        ELEMENT_TOKEN("settings-section.text", settingsSectionStyle, text),
+        ELEMENT_TOKEN("settings-section.weight", settingsSectionStyle, weight),
+        ELEMENT_TOKEN("settings-section.rule", settingsSectionStyle, rule),
+        ELEMENT_TOKEN("settings-section.rule-width", settingsSectionStyle, ruleWidth),
+        ELEMENT_TOKEN("settings-section.rule-gap", settingsSectionStyle, ruleGap),
     };
     return tokens;
 }

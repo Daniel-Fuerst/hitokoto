@@ -119,6 +119,13 @@ struct SwitchTokens {
     friend bool operator==(const SwitchTokens&, const SwitchTokens&) = default;
 };
 
+/// Tokens of `[settings-section]` (S044); resolved by settingsSectionStyle().
+struct SettingsSectionTokens {
+    std::optional<Color> text, rule;
+    std::optional<double> weight, ruleWidth, ruleGap;
+    friend bool operator==(const SettingsSectionTokens&, const SettingsSectionTokens&) = default;
+};
+
 /// Every value the UI uses for colours, fonts, radii and spacing. Hard-coded styling values
 /// in UI code are bugs; add a token instead.
 struct Theme {
@@ -161,6 +168,7 @@ struct Theme {
     FindTokens find;
     MenuBarTokens menuBar;
     SwitchTokens toggleSwitch;  ///< `[switch]`; `switch` is a C++ keyword
+    SettingsSectionTokens settingsSection;
 
     friend bool operator==(const Theme&, const Theme&) = default;
 };
@@ -317,6 +325,15 @@ struct SwitchStyle {
     friend bool operator==(const SwitchStyle&, const SwitchStyle&) = default;
 };
 
+/// Resolved look of a section heading in the settings flyout (S044): the heading and the line after it.
+struct SettingsSectionStyle {
+    Color text, rule;
+    int weight = 600;
+    double ruleWidth = 1;
+    double ruleGap = 8;  ///< space between the heading and the line
+    friend bool operator==(const SettingsSectionStyle&, const SettingsSectionStyle&) = default;
+};
+
 [[nodiscard]] CodeStyle codeBlockStyle(const Theme& theme);
 [[nodiscard]] CodeStyle inlineCodeStyle(const Theme& theme);
 [[nodiscard]] EmphasisStyle emphasisStyle(const Theme& theme);
@@ -329,6 +346,7 @@ struct SwitchStyle {
 [[nodiscard]] FindStyle findStyle(const Theme& theme);
 [[nodiscard]] MenuBarStyle menuBarStyle(const Theme& theme);
 [[nodiscard]] SwitchStyle switchStyle(const Theme& theme);
+[[nodiscard]] SettingsSectionStyle settingsSectionStyle(const Theme& theme);
 
 /// All tokens of the theme format, in documentation order.
 std::span<const ThemeTokenInfo> themeTokens();

@@ -69,7 +69,8 @@ foreach(t IN ITEMS
         tst_s033_soft_line_breaks
         tst_s038_subtle_menu_bar
         tst_s039_settings_menu
-        tst_s043_smooth_scrolling_toggle)
+        tst_s043_smooth_scrolling_toggle
+        tst_s044_settings_section_headings)
     hitokoto_ui_test(${t})
 endforeach()
 

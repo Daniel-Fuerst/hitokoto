@@ -371,6 +371,11 @@ const Token kTokens[] = {
     {{"switch", "height", "number (px)", "Height of a toggle switch, 8 to 64", "20"}, &applyOptNumber<&Theme::toggleSwitch, &SwitchTokens::height, 80, 640>},
     {{"switch", "radius", "number (px)", "Corner radius of the track of a toggle switch; the knob is rounded alike, 0 to 32", "10"}, &applyOptNumber<&Theme::toggleSwitch, &SwitchTokens::radius, 0, 320>},
     {{"switch", "knob-margin", "number (px)", "Space between the knob and the edge of the track, 0 to 16", "2"}, &applyOptNumber<&Theme::toggleSwitch, &SwitchTokens::knobMargin, 0, 160>},
+    {{"settings-section", "text", "color", "Section headings of the settings flyout", "colors.accent"}, &applyOptColor<&Theme::settingsSection, &SettingsSectionTokens::text>},
+    {{"settings-section", "weight", "number", "Font weight of the section headings, 100 to 900", "600"}, &applyOptNumber<&Theme::settingsSection, &SettingsSectionTokens::weight, 1000, 9000>},
+    {{"settings-section", "rule", "color", "Line to the right of a section heading", "colors.border"}, &applyOptColor<&Theme::settingsSection, &SettingsSectionTokens::rule>},
+    {{"settings-section", "rule-width", "number (px)", "Thickness of the line, 0 to 8", "1"}, &applyOptNumber<&Theme::settingsSection, &SettingsSectionTokens::ruleWidth, 0, 80>},
+    {{"settings-section", "rule-gap", "number (px)", "Space between a section heading and its line, 0 to 64", "layout.spacing"}, &applyOptNumber<&Theme::settingsSection, &SettingsSectionTokens::ruleGap, 0, 640>},
 };
 // clang-format on
 
@@ -979,6 +984,17 @@ SwitchStyle switchStyle(const Theme& t) {
         .height = sw.height.value_or(20),
         .radius = sw.radius.value_or(10),
         .knobMargin = sw.knobMargin.value_or(2),
+    };
+}
+
+SettingsSectionStyle settingsSectionStyle(const Theme& t) {
+    const SettingsSectionTokens& ss = t.settingsSection;
+    return {
+        .text = ss.text.value_or(t.accent),
+        .rule = ss.rule.value_or(t.border),
+        .weight = static_cast<int>(ss.weight.value_or(600)),
+        .ruleWidth = ss.ruleWidth.value_or(1),
+        .ruleGap = ss.ruleGap.value_or(t.spacing),
     };
 }
 
