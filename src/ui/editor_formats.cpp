@@ -205,7 +205,7 @@ QList<QTextLayout::FormatRange> EditorFormats::rangesOf(const core::LineRender& 
     addSpans(render.hidden);
     addSpans(render.links);
     // S046: the source of a typeset formula is cut after its first character, which reserves the
-    // formula's width.
+    // formula's width; a character outside the BMP stays whole (S044 code review O4).
     formulas_.clear();
     for (const core::MathSpan& m : render.math) {
         if (!typeset(render, m) || text.size() < static_cast<qsizetype>(m.source.end()) || m.source.length == 0) {
@@ -214,9 +214,9 @@ QList<QTextLayout::FormatRange> EditorFormats::rangesOf(const core::LineRender& 
         const QStringView source = text.sliced(m.source.start, m.source.length);
         const std::u16string_view view(reinterpret_cast<const char16_t*>(source.utf16()),
                                        static_cast<std::size_t>(source.size()));
-        formulas_.push_back({m.source, &mathLayout(view, render.headingLevel, m.display), source});
+        formulas_.push_back({m.source, mathLayout(view, render.headingLevel, m.display), source});
         boundaries.push_back(m.source.start);
-        boundaries.push_back(m.source.start + 1);
+        boundaries.push_back(m.source.start + static_cast<std::uint32_t>(formulaHeadLength(source)));
         boundaries.push_back(m.source.end());
     }
     const auto bulletSpace = bulletSpaceSpan(render);
@@ -255,7 +255,7 @@ QList<QTextLayout::FormatRange> EditorFormats::rangesOf(const core::LineRender& 
         }
         if (formulaIndex < formulas_.size() && formulas_[formulaIndex].source.start <= start &&
             formulas_[formulaIndex].source.end() >= end) {
-            piece.formula = formulas_[formulaIndex].layout;
+            piece.formula = formulas_[formulaIndex].layout.get();
             piece.formulaHead = start == formulas_[formulaIndex].source.start;
             piece.formulaSource = formulas_[formulaIndex].text;
         }
@@ -469,6 +469,11 @@ void EditorFormats::applyFormula(QTextCharFormat& format, const Piece& piece, QS
     format.setFontLetterSpacing(layout.width - laidOutWidth(piece.formulaSource, format, sourceFormat));
 }
 
+qsizetype EditorFormats::formulaHeadLength(QStringView source) noexcept {
+    // A surrogate pair is one character: cutting it apart would give Qt two halves to shape.
+    return source.size() >= 2 && source[0].isHighSurrogate() && source[1].isLowSurrogate() ? 2 : 1;
+}
+
 qreal EditorFormats::laidOutWidth(QStringView source, const QTextCharFormat& head, const QTextCharFormat& rest) const {
     // The source as Qt lays it out in the line, the first character in `head` (without the letter
     // spacing yet), the rest without width. Measured, not predicted: font engines round advances
@@ -478,9 +483,11 @@ qreal EditorFormats::laidOutWidth(QStringView source, const QTextCharFormat& hea
         return 0;
     }
     QTextLayout probe(source.toString(), baseFont_);
-    QList<QTextLayout::FormatRange> formats{{0, 1, head}};
-    if (source.size() > 1) {
-        formats.append({1, static_cast<int>(source.size() - 1), zeroWidthFormat(rest, source.sliced(1))});
+    const auto headLength = static_cast<int>(formulaHeadLength(source));
+    QList<QTextLayout::FormatRange> formats{{0, headLength, head}};
+    if (source.size() > headLength) {
+        formats.append({headLength, static_cast<int>(source.size() - headLength),
+                        zeroWidthFormat(rest, source.sliced(headLength))});
     }
     probe.setFormats(formats);
     probe.beginLayout();
@@ -498,7 +505,8 @@ double EditorFormats::mathPixelSize(int level) const {
     return textSize(level) * math_.fontScale * pointToPixel_;
 }
 
-const core::MathLayout& EditorFormats::mathLayout(std::u16string_view source, int level, bool display) const {
+std::shared_ptr<const core::MathLayout> EditorFormats::mathLayout(std::u16string_view source, int level,
+                                                                  bool display) const {
     return mathCache_->layout(source, mathPixelSize(level), display);
 }
 

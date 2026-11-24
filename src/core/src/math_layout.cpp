@@ -547,7 +547,9 @@ private:
         return out;
     }
 
-    Box fraction(const Node& n, Style s) {
+    Box fraction(const Node& n, Style outer) {
+        // A forced style (\dfrac, \tfrac) applies to the whole fraction, rule and delimiters too.
+        const Style s = n.forcedStyle >= 0 ? Style{n.forcedStyle, outer.cramped} : outer;
         const bool display = s.level == 0;
         Box num = node(n.children[0], numeratorStyle(s));
         Box den = node(n.children[1], denominatorStyle(s));

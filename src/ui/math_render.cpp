@@ -42,7 +42,7 @@ const QRawFont& rawFontAt(double size) {
 
 }  // namespace
 
-const core::MathLayout& MathCache::layout(std::u16string_view source, double pixelSize, bool display) {
+std::shared_ptr<const core::MathLayout> MathCache::layout(std::u16string_view source, double pixelSize, bool display) {
     std::u16string key = keyOf(source, pixelSize, display);
     if (const auto it = layouts_.find(key); it != layouts_.end()) {
         return it->second;
@@ -51,8 +51,10 @@ const core::MathLayout& MathCache::layout(std::u16string_view source, double pix
         layouts_.clear();
     }
     ++made_;
-    core::MathLayout made = core::layoutMath(source, bundledMathMetrics(), bundledMathTable(), pixelSize, display);
-    return layouts_.emplace(std::move(key), std::move(made)).first->second;
+    auto made = std::make_shared<const core::MathLayout>(
+        core::layoutMath(source, bundledMathMetrics(), bundledMathTable(), pixelSize, display));
+    layouts_.emplace(std::move(key), made);
+    return made;
 }
 
 void paintMathLayout(QPainter& painter, const core::MathLayout& layout, QPointF origin, const QColor& color) {

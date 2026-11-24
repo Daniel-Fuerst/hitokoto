@@ -453,6 +453,48 @@ TEST(S045_MathLayout, MatricesAndAlignedEquations) {
     EXPECT_EQ(pmatrix.glyphs.size(), 4U) << "two cells and two parentheses";
 }
 
+TEST(S045_MathLayout, ARaggedMatrixStaysLinearInItsSource) {
+    // S044 code review O2: short rows are padded to the widest one, so one wide row and many short
+    // rows would make a grid quadratic in the source; such a grid is refused, ragged real ones not.
+    const std::size_t n = 3000;
+    std::u16string source = u"\\begin{matrix}";
+    source += std::u16string(n, u'&');
+    for (std::size_t i = 0; i < n; ++i) {
+        source += u"\\\\";
+    }
+    source += u"\\end{matrix}";
+    const MathLayout wide = lay(source);
+    EXPECT_EQ(errorOf(wide), "matrix too large");
+    EXPECT_TRUE(wide.glyphs.empty());
+    const MathLayout cases = lay(u"\\begin{cases} 1 & x > 0 \\\\ 0 \\end{cases}");
+    EXPECT_FALSE(cases.error.has_value()) << errorOf(cases);
+    const MathLayout ragged = lay(u"\\begin{matrix} a & b & c \\\\ d \\end{matrix}");
+    EXPECT_FALSE(ragged.error.has_value()) << errorOf(ragged);
+    EXPECT_EQ(ragged.glyphs.size(), 4U);
+}
+
+TEST(S045_MathLayout, DfracAndTfracForceTheirStyle) {
+    // S044 code review O3: \dfrac sets its parts in display style wherever it stands, \tfrac in
+    // text style; \dbinom and \tbinom likewise.
+    const double numeratorInline = lay(u"\\frac{a}{b}").glyphs[0].size;
+    EXPECT_DOUBLE_EQ(numeratorInline, kPx * 0.7);
+    EXPECT_DOUBLE_EQ(lay(u"\\dfrac{a}{b}").glyphs[0].size, kPx) << "display style: parts in text size";
+    EXPECT_DOUBLE_EQ(lay(u"\\tfrac{a}{b}", true).glyphs[0].size, kPx * 0.7) << "text style in a display";
+    EXPECT_DOUBLE_EQ(lay(u"\\frac{a}{b}", true).glyphs[0].size, kPx);
+    EXPECT_GT(lay(u"\\dfrac{a}{b}").ascent, lay(u"\\frac{a}{b}").ascent);
+    EXPECT_EQ(lay(u"\\dfrac{a}{b}", true).glyphs, lay(u"\\frac{a}{b}", true).glyphs);
+    EXPECT_EQ(lay(u"\\tfrac{a}{b}").glyphs, lay(u"\\frac{a}{b}").glyphs);
+    // In a superscript (script style) \dfrac comes back to full size.
+    const MathLayout script = lay(u"x^{\\dfrac{a}{b}}");
+    ASSERT_FALSE(script.error.has_value()) << errorOf(script);
+    EXPECT_DOUBLE_EQ(script.glyphs[1].size, kPx);
+    // The binomials: the parentheses and both entries in the forced style.
+    const MathLayout dbinom = lay(u"\\dbinom{n}{k}");
+    ASSERT_FALSE(dbinom.error.has_value()) << errorOf(dbinom);
+    EXPECT_EQ(dbinom.glyphs, lay(u"\\binom{n}{k}", true).glyphs);
+    EXPECT_EQ(lay(u"\\tbinom{n}{k}", true).glyphs, lay(u"\\binom{n}{k}").glyphs);
+}
+
 TEST(S045_MathLayout, ExtensibleArrowsCarryTheirLabels) {
     const MathLayout x = lay(u"A \\xrightarrow{h\\nu} B");
     ASSERT_FALSE(x.error.has_value()) << errorOf(x);

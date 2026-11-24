@@ -905,12 +905,19 @@ private:
         for (const auto& r : cells) {
             columns = std::max(columns, r.size());
         }
+        // Short rows are padded to the widest one. Every written cell takes at least one character
+        // of the source, so a grid larger than the source is mostly padding: one wide row and many
+        // short ones would grow quadratically (S044 code review O2). Real matrices stay far below.
+        if (cells.size() > 0xFFFF || columns > 0xFFFF || cells.size() * columns > std::max<std::size_t>(s_.size(), 1)) {
+            fail(begin.position, "matrix too large");
+            return nullNode();
+        }
         Node array;
         array.kind = Node::Kind::Array;
         array.displayCells = kind->displayCells;
         array.rowGap = kind->rowGap;
-        array.rows = static_cast<std::uint16_t>(std::min<std::size_t>(cells.size(), 0xFFFF));
-        array.columns = static_cast<std::uint16_t>(std::min<std::size_t>(columns, 0xFFFF));
+        array.rows = static_cast<std::uint16_t>(cells.size());
+        array.columns = static_cast<std::uint16_t>(columns);
         for (std::size_t c = 0; c < columns; ++c) {
             array.align.push_back(kind->alternate ? (c % 2 == 0 ? 'r' : 'l') : kind->align);
         }
@@ -982,6 +989,13 @@ private:
         n.children.push_back(argument(t.position));
         n.children.push_back(argument(t.position));
         leave();
+        // \dfrac and \dbinom set the fraction in display style, \tfrac and \tbinom in text style,
+        // wherever they stand (S044 code review O3).
+        if (t.name.starts_with(u'd')) {
+            n.forcedStyle = 0;
+        } else if (t.name.starts_with(u't')) {
+            n.forcedStyle = 1;
+        }
         if (t.name.ends_with(u"binom")) {
             n.rule = false;
             n.left = U'(';

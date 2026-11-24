@@ -20,6 +20,7 @@ MathBlockEmbedder::MathBlockEmbedder(QTextDocument* document, BlockStyler* style
                                      std::function<std::pair<int, int>()> visibleBlocks, QObject* parent)
     : QObject(parent), document_(document), styler_(styler), layout_(layout), visibleBlocks_(std::move(visibleBlocks)) {
     layout_->addClaimant(this);
+    connect(document_, &QTextDocument::contentsChange, this, [this] { ++edits_; });
 }
 
 MathBlockEmbedder::~MathBlockEmbedder() {
@@ -27,7 +28,27 @@ MathBlockEmbedder::~MathBlockEmbedder() {
 }
 
 bool MathBlockEmbedder::claims(const QTextBlock& block) const {
+    syncNumbers();
     return claimedNumbers_.contains(block.blockNumber());
+}
+
+MathBlockEmbedder::NumbersKey MathBlockEmbedder::numbersKey() const {
+    // The block count catches an edit the layout reports before contentsChange is emitted.
+    return {document_->blockCount(), document_->revision(), edits_};
+}
+
+void MathBlockEmbedder::syncNumbers() const {
+    const NumbersKey now = numbersKey();
+    if (now == numbersKey_) {
+        return;
+    }
+    claimedNumbers_.clear();
+    for (const QTextCursor& c : claimed_) {
+        if (const QTextBlock block = document_->findBlock(c.position()); block.isValid()) {
+            claimedNumbers_.insert(block.blockNumber());
+        }
+    }
+    numbersKey_ = now;
 }
 
 void MathBlockEmbedder::setFormats(const EditorFormats* formats) {
@@ -39,9 +60,9 @@ double MathBlockEmbedder::panelHeight(const std::u16string& source) const {
     if (formats_ == nullptr) {
         return 0;
     }
-    const core::MathLayout& formula = formats_->mathLayout(source, 0, true);
+    const auto formula = formats_->mathLayout(source, 0, true);
     const core::MathStyle& style = formats_->math();
-    return formula.ascent + formula.descent + 2 * style.displayPadding + 2 * style.displayMargin;
+    return formula->ascent + formula->descent + 2 * style.displayPadding + 2 * style.displayMargin;
 }
 
 void MathBlockEmbedder::scheduleRefresh() {
@@ -61,6 +82,7 @@ void MathBlockEmbedder::scheduleRefresh() {
 void MathBlockEmbedder::forgetAll() {
     claimed_.clear();
     claimedNumbers_.clear();
+    numbersKey_ = numbersKey();
     typeset_.clear();
     failed_.clear();
     scheduleRefresh();
@@ -110,9 +132,9 @@ MathBlockEmbedder::Found MathBlockEmbedder::find(int from, int to) const {
         }
         const int last = line.blockNumber();
         if (closed && !revealed && formats_ != nullptr) {
-            const core::MathLayout& formula = formats_->mathLayout(source, 0, true);
-            if (formula.error) {
-                found.failed.push_back({open, last, formula.error->message});
+            const auto formula = formats_->mathLayout(source, 0, true);
+            if (formula->error) {
+                found.failed.push_back({open, last, formula->error->message});
             } else {
                 found.typeset.push_back({open, last, std::move(source)});
             }
@@ -182,6 +204,7 @@ void MathBlockEmbedder::refresh() {
     }
     claimed_ = std::move(kept);
     claimedNumbers_ = std::move(keptNumbers);
+    numbersKey_ = numbersKey();
     // Blocks out of range keep their entries until they come back into range.
     std::erase_if(typeset_, [from, to](const Typeset& t) { return t.last >= from && t.open <= to; });
     std::erase_if(failed_, [from, to](const Failed& f) { return f.last >= from && f.open <= to; });

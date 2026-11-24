@@ -108,7 +108,8 @@ void paintFormulas(QPainter& painter, const QTextBlock& block, const QRectF& rec
         const QStringView source = QStringView(text).sliced(m.source.start, m.source.length);
         const std::u16string_view view(reinterpret_cast<const char16_t*>(source.utf16()),
                                        static_cast<std::size_t>(source.size()));
-        const core::MathLayout& formula = formats.mathLayout(view, render.headingLevel, m.display);
+        const auto held = formats.mathLayout(view, render.headingLevel, m.display);
+        const core::MathLayout& formula = *held;
         if (formula.error) {
             continue;
         }

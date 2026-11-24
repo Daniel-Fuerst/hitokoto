@@ -39,7 +39,8 @@ struct Node {
     char32_t right = 0;
     bool rule = true;
     bool limits = false;
-    bool displayCells = false;  ///< Array: cells in display style (aligned), else text style
+    bool displayCells = false;     ///< Array: cells in display style (aligned), else text style
+    std::int8_t forcedStyle = -1;  ///< Fraction: 0 display (\dfrac), 1 text (\tfrac), -1 the surrounding style
     double amount = 0;
     double scale = 1;
     std::uint16_t rows = 0;

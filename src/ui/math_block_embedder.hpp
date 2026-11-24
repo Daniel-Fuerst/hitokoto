@@ -67,6 +67,17 @@ private:
     };
     [[nodiscard]] Found find(int from, int to) const;
     void release(const QTextBlock& block);
+    /// Brings claimedNumbers_ in line with where the claimed cursors are now: an edit moves block
+    /// numbers before refresh() runs again (S044 code review O5).
+    void syncNumbers() const;
+    /// What claimedNumbers_ was made from: the document's shape and its edits at that time.
+    struct NumbersKey {
+        int blockCount = -1;
+        int revision = -1;
+        quint64 edits = 0;
+        friend bool operator==(const NumbersKey&, const NumbersKey&) = default;
+    };
+    [[nodiscard]] NumbersKey numbersKey() const;
 
     QTextDocument* document_;
     BlockStyler* styler_;
@@ -76,7 +87,9 @@ private:
     std::vector<Typeset> typeset_;
     std::vector<Failed> failed_;
     std::vector<QTextCursor> claimed_;  ///< follow their blocks through edits elsewhere
-    std::unordered_set<int> claimedNumbers_;
+    mutable std::unordered_set<int> claimedNumbers_;
+    mutable NumbersKey numbersKey_;
+    quint64 edits_ = 0;  ///< contents changes seen
     bool refreshPending_ = false;
     bool refreshing_ = false;
 };

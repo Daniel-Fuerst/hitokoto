@@ -51,11 +51,16 @@ public:
     /// Pixels per em of a formula on a line of heading `level` (0 = body text): the text size times
     /// math.font-scale (S046, decision 3).
     [[nodiscard]] double mathPixelSize(int level) const;
-    /// The layout of a formula on a line of heading `level`, from the theme's cache (S046).
-    [[nodiscard]] const core::MathLayout& mathLayout(std::u16string_view source, int level, bool display) const;
+    /// The layout of a formula on a line of heading `level`, from the theme's cache (S046); never
+    /// null, and alive while held even if the cache drops it (S044 code review O1).
+    [[nodiscard]] std::shared_ptr<const core::MathLayout> mathLayout(std::u16string_view source, int level,
+                                                                     bool display) const;
     /// Whether `formula` on a line rendered as `render` is shown typeset: an inline formula whose
     /// dollars are concealed (S046, decision 1).
     [[nodiscard]] static bool typeset(const core::LineRender& render, const core::MathSpan& formula);
+    /// UTF-16 units of the first character of a formula's source, the one that reserves its width:
+    /// 2 for a surrogate pair, else 1 (S044 code review O4).
+    [[nodiscard]] static qsizetype formulaHeadLength(QStringView source) noexcept;
     /// The cache of formula layouts, for tests.
     [[nodiscard]] const MathCache& mathCache() const noexcept { return *mathCache_; }
 
@@ -144,7 +149,7 @@ private:
     /// The typeset formulas of the line rangesOf() works on (GUI thread only).
     struct Formula {
         core::Span source;
-        const core::MathLayout* layout = nullptr;
+        std::shared_ptr<const core::MathLayout> layout;  ///< held for the line (S044 code review O1)
         QStringView text{};
     };
     mutable std::vector<Formula> formulas_;

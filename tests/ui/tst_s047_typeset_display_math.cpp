@@ -127,6 +127,28 @@ private slots:
         QVERIFY2(typesetAt(editor, 1, 3), "typeset again once the caret leaves");
     }
 
+    void anEditAboveMovesTheClaimWithTheBlockBeforeTheRefresh() {
+        // S044 code review O5: between an edit and the queued refresh, the claim follows the
+        // block, not the number it had.
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("d.md"), kBlock)));
+        f.placeCaret(4);
+        settleAll(f);
+        auto* editor = f.editor();
+        QVERIFY(typesetAt(editor, 1, 3));
+        const auto& embedder = editor->mathBlocks();
+        QVERIFY(embedder.claims(blockAt(editor, 1)));
+        QVERIFY(!embedder.claims(blockAt(editor, 0)));
+        QTextCursor top(editor->document());
+        top.insertText(QStringLiteral("new line\n"));  // no event loop: the refresh is still queued
+        QVERIFY2(!embedder.claims(blockAt(editor, 1)), "block 1 is now the old first line");
+        QVERIFY2(embedder.claims(blockAt(editor, 2)), "the opening line moved to block 2");
+        QVERIFY(embedder.claims(blockAt(editor, 4)));
+        QVERIFY(!embedder.claims(blockAt(editor, 5)));
+        settleAll(f);
+        QVERIFY(typesetAt(editor, 2, 4));
+    }
+
     void theCaretEntersFromAboveAndBelow() {
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("d.md"), kBlock)));

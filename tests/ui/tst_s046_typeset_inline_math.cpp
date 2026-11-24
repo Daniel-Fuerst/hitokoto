@@ -107,16 +107,16 @@ private slots:
         // The source keeps its characters; after the first, they take no width.
         QVERIFY(test::formatAt(block, 3).fontLetterSpacing() > 0);
         QVERIFY(test::isCollapsed(block, 4));
-        const core::MathLayout& formula = editor->styler().formats().mathLayout(u"x^2", 0, false);
-        QVERIFY(!formula.error);
-        QVERIFY(formula.width > 0);
+        const auto formula = editor->styler().formats().mathLayout(u"x^2", 0, false);
+        QVERIFY(!formula->error);
+        QVERIFY(formula->width > 0);
         // From the start of the source to the closing dollar: the formula's width.
         const qreal reserved = xAt(editor, 0, 6) - xAt(editor, 0, 3);
-        QVERIFY2(std::abs(reserved - formula.width) < 2.0,
-                 qPrintable(QStringLiteral("reserved %1, formula %2").arg(reserved).arg(formula.width)));
+        QVERIFY2(std::abs(reserved - formula->width) < 2.0,
+                 qPrintable(QStringLiteral("reserved %1, formula %2").arg(reserved).arg(formula->width)));
         // The formula is painted in math.text between "a" and "b".
         const QRect area(static_cast<int>(xAt(editor, 0, 3)), lineRect(editor, 0).top(),
-                         static_cast<int>(formula.width) + 1, lineRect(editor, 0).height());
+                         static_cast<int>(formula->width) + 1, lineRect(editor, 0).height());
         const int red = redPixels(editor, area);
         QVERIFY2(red > 5, qPrintable(QStringLiteral("%1 red pixels in %2,%3 %4x%5")
                                          .arg(red)
@@ -150,11 +150,11 @@ private slots:
         auto* editor = f.editor();
         const qreal plain = editor->document()->findBlockByNumber(0).layout()->boundingRect().height();
         const QTextBlock tall = editor->document()->findBlockByNumber(1);
-        const core::MathLayout& frac = editor->styler().formats().mathLayout(u"\\frac{a}{b}", 0, false);
-        QVERIFY(frac.ascent + frac.descent > plain * 0.9);
+        const auto frac = editor->styler().formats().mathLayout(u"\\frac{a}{b}", 0, false);
+        QVERIFY(frac->ascent + frac->descent > plain * 0.9);
         const QTextLine line = tall.layout()->lineAt(0);
-        QVERIFY(line.ascent() >= frac.ascent - 0.5);
-        QVERIFY(line.descent() >= frac.descent - 0.5);
+        QVERIFY(line.ascent() >= frac->ascent - 0.5);
+        QVERIFY(line.descent() >= frac->descent - 0.5);
         QVERIFY(tall.layout()->boundingRect().height() > plain);
     }
 
@@ -199,6 +199,42 @@ private slots:
         QCOMPARE(editor->styler().formats().mathCache().layoutsMade(), before);
     }
 
+    void aLayoutHeldOutlivesTheCacheDroppingIt() {
+        // S044 code review O1: a line with two formulas holds the first layout while the second is
+        // looked up; a lookup that fills the cache and drops it must not free the first.
+        ui::MathCache cache;
+        const auto held = cache.layout(u"x^2", 20, false);
+        const double width = held->width;
+        QVERIFY(width > 0);
+        for (std::size_t i = 0; i <= ui::MathCache::kCapacity; ++i) {
+            const std::u16string source = u"y_" + std::u16string(1, static_cast<char16_t>(u'a' + i % 26)) + u"^{" +
+                                          std::u16string(1 + i / 26, u'1') + u"}";
+            (void)cache.layout(source, 20, false);
+        }
+        QCOMPARE(held->width, width);
+        QVERIFY(!held->error);
+    }
+
+    void aFormulaStartingOutsideTheBmpKeepsItsFirstCharacterWhole() {
+        // S044 code review O4: the first character reserves the width; a surrogate pair is one
+        // character, so no format range may start between its halves.
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("m.md"), QStringLiteral("a $\U0001D465+1$ b\nsecond\n").toUtf8())));
+        f.placeCaret(1);
+        f.settle();
+        auto* editor = f.editor();
+        const QTextBlock block = editor->document()->firstBlock();
+        QVERIFY(QChar::isHighSurrogate(block.text().at(3).unicode()));
+        bool head = false;
+        for (const QTextLayout::FormatRange& r : block.layout()->formats()) {
+            QVERIFY2(r.start != 4 && r.start + r.length != 4, "a format range splits the surrogate pair");
+            head = head || (r.start == 3 && r.length == 2);
+        }
+        QVERIFY2(head, "the pair is the formula's head");
+        QCOMPARE(ui::EditorFormats::formulaHeadLength(u"\U0001D465+1"), qsizetype{2});
+        QCOMPARE(ui::EditorFormats::formulaHeadLength(u"x+1"), qsizetype{1});
+    }
+
     void clickingAFormulaPutsTheCaretIntoItsSource() {
         test::Fixture f;
         QVERIFY(f.open(f.writeFile(QStringLiteral("m.md"), "a $\\alpha + \\beta$ b\nsecond\n")));
@@ -235,8 +271,8 @@ private slots:
         editor->viewport()->update();
         QCoreApplication::processEvents();
         const qreal left = xAt(editor, 1, 3);
-        const core::MathLayout& formula = editor->styler().formats().mathLayout(u"x^2 + y^2", 0, false);
-        const QRect area(static_cast<int>(left), lineRect(editor, 1).top(), static_cast<int>(formula.width),
+        const auto formula = editor->styler().formats().mathLayout(u"x^2 + y^2", 0, false);
+        const QRect area(static_cast<int>(left), lineRect(editor, 1).top(), static_cast<int>(formula->width),
                          lineRect(editor, 1).height());
         QVERIFY(pixelsNear(editor, area, background) > area.width() * area.height() / 3);
     }

@@ -1128,7 +1128,7 @@ void EditorWidget::paintDisplayFormulas(QPainter& painter, QPointF offset, qreal
         if (rect.bottom() < 0 || rect.top() > bottom) {
             continue;
         }
-        paintDisplayFormula(painter, rect, formats.mathLayout(t.source, 0, true), formats.math());
+        paintDisplayFormula(painter, rect, *formats.mathLayout(t.source, 0, true), formats.math());
     }
     for (const MathBlockEmbedder::Failed& f : mathBlocks_->failed()) {
         const QTextBlock first = document()->findBlockByNumber(f.open);
