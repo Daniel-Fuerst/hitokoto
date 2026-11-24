@@ -56,9 +56,9 @@ story ID (see "Conventions").
 | 47 | [S041](041-table-copy-paste.md) | Copying and pasting table cells as Markdown | S031, S040 | M | Draft |
 | 48 | [S043](043-smooth-scrolling-toggle.md) | Toggle switches and a "Feel" section for smooth scrolling | S027, S039 | M | In progress |
 | 49 | [S044](044-latex-math.md) | Math source: `$…$` and `$$…$$` recognised and styled | S014, S015, S020, S021 | M | In progress |
-| 50 | [S045](045-math-layout-engine.md) | Math layout engine in the core (ADR 0014) | S044 | L | Draft |
-| 51 | [S046](046-typeset-inline-math.md) | Inline formulas shown typeset | S044, S045, S010, S019 | L | Draft |
-| 52 | [S047](047-typeset-display-math.md) | Display formulas shown typeset | S044, S045, S046 | M | Draft |
+| 50 | [S045](045-math-layout-engine.md) | Math layout engine in the core (ADR 0014) | S044 | L | In progress |
+| 51 | [S046](046-typeset-inline-math.md) | Inline formulas shown typeset | S044, S045, S010, S019 | L | In progress |
+| 52 | [S047](047-typeset-display-math.md) | Display formulas shown typeset | S044, S045, S046 | M | In progress |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 
