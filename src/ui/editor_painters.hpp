@@ -6,6 +6,7 @@
 #pragma once
 
 #include "hitokoto/core/markdown.hpp"
+#include "hitokoto/core/math.hpp"
 #include "hitokoto/core/theme.hpp"
 
 #include <QBrush>
@@ -57,5 +58,14 @@ struct FormulaHighlight {
 /// not lay out is left to its source.
 void paintFormulas(QPainter& painter, const QTextBlock& block, const QRectF& rect, const core::LineRender& render,
                    const EditorFormats& formats, std::span<const FormulaHighlight> highlights);
+
+/// S047: a display formula's panel in the opening line's reserved `rect` (viewport coordinates):
+/// the margins above and below, the background and border, the formula centred, its baseline the
+/// padding plus its ascent below the panel's top.
+void paintDisplayFormula(QPainter& painter, const QRectF& rect, const core::MathLayout& formula,
+                         const core::MathStyle& style);
+
+/// S047: a bar in math.error at the left edge of a display block that could not be typeset.
+void paintFormulaErrorBar(QPainter& painter, const QRectF& rect, const core::MathStyle& style);
 
 }  // namespace hitokoto::ui

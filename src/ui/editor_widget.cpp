@@ -4,6 +4,7 @@
 #include "editor_painters.hpp"
 #include "floating_toolbar.hpp"
 #include "hitokoto/core/table.hpp"
+#include "math_block_embedder.hpp"
 #include "properties_embedder.hpp"
 #include "qt_bridge.hpp"
 #include "settings_menu.hpp"
@@ -67,6 +68,8 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     styler_ = new BlockStyler(document(), registry, [this] { return visibleBlockRange(); }, this);
     tables_ = std::make_unique<TableEmbedder>(this, styler_, layout_);
     properties_ = std::make_unique<PropertiesEmbedder>(this, styler_, layout_);
+    mathBlocks_ =
+        std::make_unique<MathBlockEmbedder>(document(), styler_, layout_, [this] { return visibleBlockRange(); });
     // S033: the reading position across resizes and theme changes, the text on screen while
     // blocks above it change height, and the caret on screen while it is followed.
     view_ = new ViewAnchor(this, layout_, verticalScroller_, insideEdit_);
@@ -100,6 +103,12 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     connect(styler_, &BlockStyler::completed, properties_.get(), &PropertiesEmbedder::schedule);
     connect(layout_, &BlockLayout::documentSizeChanged, properties_.get(), &PropertiesEmbedder::reposition);
     connect(layout_, &BlockLayout::blocksGoneUnreported, properties_.get(), &PropertiesEmbedder::forgetAll);
+    // S047: display formulas follow the caret, the selection, edits and the styler.
+    connect(this, &QTextEdit::cursorPositionChanged, mathBlocks_.get(), &MathBlockEmbedder::scheduleRefresh);
+    connect(this, &QTextEdit::selectionChanged, mathBlocks_.get(), &MathBlockEmbedder::scheduleRefresh);
+    connect(document(), &QTextDocument::contentsChange, mathBlocks_.get(), &MathBlockEmbedder::scheduleRefresh);
+    connect(styler_, &BlockStyler::completed, mathBlocks_.get(), &MathBlockEmbedder::scheduleRefresh);
+    connect(layout_, &BlockLayout::blocksGoneUnreported, mathBlocks_.get(), &MathBlockEmbedder::forgetAll);
 
     // S026: floating toolbar on the right-hand side and its settings flyout.
     themeConfigDir_ = ThemeManager::defaultConfigDir();
@@ -172,6 +181,7 @@ void EditorWidget::applyTheme(const core::Theme& theme) {
     updateMargins();
     styler_->setFormats(formats);
     tables_->setFormats(&styler_->formats());
+    mathBlocks_->setFormats(&styler_->formats());
     tables_->setAvailableWidth(availableTableWidth());
     properties_->setAvailableWidth(availableTableWidth());
     properties_->setLook(styler_->formats().properties(), styler_->formats().propertiesFont(),
@@ -343,6 +353,7 @@ void EditorWidget::resizeEvent(QResizeEvent* event) {
     tables_->reposition();
     properties_->reposition();
     tables_->scheduleRefresh();
+    mathBlocks_->scheduleRefresh();
     view_->settleLater();
 }
 
@@ -352,6 +363,7 @@ void EditorWidget::scrollContentsBy(int dx, int dy) {
     tables_->reposition();
     properties_->reposition();
     tables_->scheduleRefresh();
+    mathBlocks_->scheduleRefresh();
 }
 
 namespace {
@@ -512,6 +524,15 @@ bool EditorWidget::viewportEvent(QEvent* event) {
         if (!fmt.toolTip().isEmpty()) {
             QToolTip::showText(help->globalPos(), fmt.toolTip(), viewport());
             return true;
+        }
+        // S047: the reason a display block is not typeset, over its lines.
+        const int hovered = cursorForPosition(help->pos()).blockNumber();
+        for (const MathBlockEmbedder::Failed& f : mathBlocks_->failed()) {
+            if (hovered >= f.open && hovered <= f.last) {
+                QToolTip::showText(help->globalPos(), Qt::convertFromPlainText(QString::fromStdString(f.reason)),
+                                   viewport());
+                return true;
+            }
         }
         QToolTip::hideText();
     }
@@ -1062,6 +1083,7 @@ void EditorWidget::paintDecorations() {
     const qreal bottom = viewport()->height();
     std::vector<FormulaHighlight> formulaHighlights;  // made once per paint, when a formula is on screen
     bool highlightsMade = false;
+    paintDisplayFormulas(painter, offset, bottom);
 
     for (QTextBlock block = firstVisibleBlock(); block.isValid(); block = block.next()) {
         const QRectF rect = blockBoundingGeometry(block).translated(offset);
@@ -1090,6 +1112,36 @@ void EditorWidget::paintDecorations() {
             continue;
         }
         paintBullets(painter, block, rect, render, color, metrics, radius);
+    }
+}
+
+void EditorWidget::paintDisplayFormulas(QPainter& painter, QPointF offset, qreal bottom) {
+    // S047: each typeset block's panel on its opening line, which reserves its height; a block that
+    // could not be laid out gets a bar in math.error beside its source.
+    const EditorFormats& formats = styler_->formats();
+    for (const MathBlockEmbedder::Typeset& t : mathBlocks_->typeset()) {
+        const QTextBlock block = document()->findBlockByNumber(t.open);
+        if (!block.isValid() || layout_->reservedHeight(block) <= 0 || !mathBlocks_->claims(block)) {
+            continue;
+        }
+        const QRectF rect = blockBoundingGeometry(block).translated(offset);
+        if (rect.bottom() < 0 || rect.top() > bottom) {
+            continue;
+        }
+        paintDisplayFormula(painter, rect, formats.mathLayout(t.source, 0, true), formats.math());
+    }
+    for (const MathBlockEmbedder::Failed& f : mathBlocks_->failed()) {
+        const QTextBlock first = document()->findBlockByNumber(f.open);
+        const QTextBlock last = document()->findBlockByNumber(f.last);
+        if (!first.isValid() || !last.isValid()) {
+            continue;
+        }
+        const QRectF top = blockBoundingGeometry(first).translated(offset);
+        const QRectF end = blockBoundingGeometry(last).translated(offset);
+        if (end.bottom() < 0 || top.top() > bottom) {
+            continue;
+        }
+        paintFormulaErrorBar(painter, QRectF(top.topLeft(), end.bottomRight()), formats.math());
     }
 }
 

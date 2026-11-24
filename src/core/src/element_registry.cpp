@@ -708,15 +708,18 @@ std::vector<LineRender> ElementRegistry::renderDocument(std::span<const std::u16
         out.push_back(render(lines[i], {shown[i], before[i], nextOf(i), levels[i], paraShown[i], nextNextOf(i)}));
     }
     // S021: a range in a code block reveals the opening fence of the block that holds its first
-    // line and the closing fence of the block that holds its last line. Every line of a block
-    // leaves the same state; an opening fence leaves the block open, a closing one closes it.
+    // line and the closing fence of the block that holds its last line; S047: the `$$` lines of a
+    // display math block likewise. Every line of a block leaves the same state; an opening fence
+    // leaves the block open, a closing one closes it.
     const auto revealFence = [&](std::int64_t line, bool opening) {
-        if (line < 0 || static_cast<std::size_t>(line) >= count || !out[static_cast<std::size_t>(line)].codeBlock) {
+        if (line < 0 || static_cast<std::size_t>(line) >= count ||
+            !(out[static_cast<std::size_t>(line)].codeBlock || out[static_cast<std::size_t>(line)].mathBlock)) {
             return;
         }
         const auto at = static_cast<std::size_t>(line);
-        const bool opens = out[at].fenceLine && out[at].blockState.active();
-        const bool closes = out[at].fenceLine && !out[at].blockState.active();
+        const bool delimiter = out[at].fenceLine || out[at].mathDelimiter;
+        const bool opens = delimiter && out[at].blockState.active();
+        const bool closes = delimiter && !out[at].blockState.active();
         const BlockState inside = opens ? out[at].blockState : before[at];
         std::size_t fence = at;
         if (opening && !opens) {

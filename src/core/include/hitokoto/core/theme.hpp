@@ -71,6 +71,9 @@ struct LinkTokens {
 struct MathTokens {
     std::optional<Color> text, marker, error;
     std::optional<double> fontScale;
+    // Display formulas (S047): the panel.
+    std::optional<Color> displayBackground, displayBorder;
+    std::optional<double> displayBorderWidth, displayRadius, displayPadding, displayMargin;
     std::optional<std::string> fontFamily;
     friend bool operator==(const MathTokens&, const MathTokens&) = default;
 };
@@ -245,6 +248,12 @@ struct MathStyle {
     Color error;             ///< source of a formula that cannot be typeset (S046)
     std::string fontFamily;  ///< empty = editor font
     double fontScale = 1;    ///< relative to the editor font
+    // The panel of a display formula (S047).
+    Color displayBackground, displayBorder;
+    double displayBorderWidth = 0;
+    double displayRadius = 0;
+    double displayPadding = 0;  ///< between the panel's edge and the formula
+    double displayMargin = 0;   ///< above and below the panel
     friend bool operator==(const MathStyle&, const MathStyle&) = default;
 };
 

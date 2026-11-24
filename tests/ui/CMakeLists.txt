@@ -72,7 +72,8 @@ foreach(t IN ITEMS
         tst_s043_smooth_scrolling_toggle
         tst_s044_math_source
         tst_s045_bundled_math_font
-        tst_s046_typeset_inline_math)
+        tst_s046_typeset_inline_math
+        tst_s047_typeset_display_math)
     hitokoto_ui_test(${t})
 endforeach()
 
@@ -80,6 +81,7 @@ endforeach()
 target_compile_definitions(tst_s044_math_source PRIVATE HITOKOTO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 target_compile_definitions(tst_s045_bundled_math_font PRIVATE HITOKOTO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 target_compile_definitions(tst_s046_typeset_inline_math PRIVATE HITOKOTO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_compile_definitions(tst_s047_typeset_display_math PRIVATE HITOKOTO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
 # S031: the clipboard samples as resources (:/s031/<name>.html and .txt).
 file(GLOB hitokoto_s031_samples ${PROJECT_SOURCE_DIR}/tests/data/s031/samples/*.html

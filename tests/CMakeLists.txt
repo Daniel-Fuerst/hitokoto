@@ -25,6 +25,7 @@ add_executable(hitokoto_core_tests
     core/test_s043_smooth_scrolling_toggle.cpp
     core/test_s044_math_source.cpp
     core/test_s045_math_layout.cpp
+    core/test_s047_display_math.cpp
     core/test_s004_save.cpp
     core/test_s005_theme.cpp
     core/test_s007_large_files.cpp

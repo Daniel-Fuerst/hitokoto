@@ -30,6 +30,7 @@ class QTableView;
 namespace hitokoto::ui {
 
 class FloatingToolbar;
+class MathBlockEmbedder;
 class PropertiesEmbedder;
 class SettingsMenu;
 class SmoothScroller;
@@ -62,6 +63,8 @@ public:
     [[nodiscard]] quint64 anchorRestores() const noexcept;
     /// First and last block number on screen.
     [[nodiscard]] std::pair<int, int> visibleBlockRange() const;
+    /// S047: the display math blocks shown typeset, for tests.
+    [[nodiscard]] const MathBlockEmbedder& mathBlocks() const noexcept { return *mathBlocks_; }
     /// The language badge painted on `block` (an opening fence while concealed), else empty (S021).
     [[nodiscard]] QString codeBlockBadge(const QTextBlock& block);
     /// S024: the properties block shown in place of the front matter; null while there is none, the
@@ -168,6 +171,8 @@ private:
     [[nodiscard]] int availableTableWidth() const;
     void paintCodeBlockPanels();
     void paintDecorations();
+    /// S047: the panels of typeset display formulas and the bars of those that failed.
+    void paintDisplayFormulas(QPainter& painter, QPointF offset, qreal bottom);
     /// S046: the selection and find highlights typeset formulas take (decision 6).
     [[nodiscard]] std::vector<FormulaHighlight> formulaHighlightRanges() const;
     /// Enter, Tab and Shift+Tab in bullet items (S003), through list_.
@@ -187,6 +192,7 @@ private:
     ListEditing list_{[this](const QTextBlock& block) { return styler_->renderFor(block).codeBlock; }};
     std::unique_ptr<TableEmbedder> tables_;
     std::unique_ptr<PropertiesEmbedder> properties_;
+    std::unique_ptr<MathBlockEmbedder> mathBlocks_;  ///< S047: display formulas
     FloatingToolbar* toolbar_ = nullptr;
     SettingsMenu* settingsMenu_ = nullptr;
     SmoothScroller* verticalScroller_ = nullptr;

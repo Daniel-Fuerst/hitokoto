@@ -275,6 +275,12 @@ const Token kTokens[] = {
     {{"math", "error", "color", "Source of a formula that cannot be typeset (S046)", "colors.accent"}, &applyOptColor<&Theme::math, &MathTokens::error>},
     {{"math", "font-family", "string", "Font family of formula source; \"\" = editor font", "\"\""}, &applyOptString<&Theme::math, &MathTokens::fontFamily>},
     {{"math", "font-scale", "number", "Size of formulas (typeset or source) relative to the text around them, 0.5 to 2", "1"}, &applyOptNumber<&Theme::math, &MathTokens::fontScale, 5, 20>},
+    {{"math", "display-background", "color", "Background of a display formula's panel (S047)", "colors.background"}, &applyOptColor<&Theme::math, &MathTokens::displayBackground>},
+    {{"math", "display-border", "color", "Border of a display formula's panel", "colors.border"}, &applyOptColor<&Theme::math, &MathTokens::displayBorder>},
+    {{"math", "display-border-width", "number (px)", "Border width of the panel, 0 to 8", "0"}, &applyOptNumber<&Theme::math, &MathTokens::displayBorderWidth, 0, 80>},
+    {{"math", "display-radius", "number (px)", "Corner radius of the panel, 0 to 32", "layout.radius"}, &applyOptNumber<&Theme::math, &MathTokens::displayRadius, 0, 320>},
+    {{"math", "display-padding", "number (px)", "Space between the panel's edge and the formula, 0 to 64", "layout.spacing"}, &applyOptNumber<&Theme::math, &MathTokens::displayPadding, 0, 640>},
+    {{"math", "display-margin", "number (px)", "Space above and below the panel, 0 to 64", "3"}, &applyOptNumber<&Theme::math, &MathTokens::displayMargin, 0, 640>},
     {{"thematic-break", "border", "color", "Colour of the horizontal line", "colors.border"}, &applyOptColor<&Theme::thematicBreak, &ThematicBreakTokens::border>},
     {{"thematic-break", "border-width", "number (px)", "Thickness of the line, 0 to 8; drawn as max(1, round(width x device pixel ratio)) device pixels", "1"}, &applyOptNumber<&Theme::thematicBreak, &ThematicBreakTokens::borderWidth, 0, 80>},
     {{"thematic-break", "margin", "number (px)", "Space above and below the line, 0 to 64; part of the line's geometry, the same when revealed", "0"}, &applyOptNumber<&Theme::thematicBreak, &ThematicBreakTokens::margin, 0, 640>},
@@ -846,6 +852,12 @@ MathStyle mathStyle(const Theme& t) {
         .error = t.math.error.value_or(t.accent),
         .fontFamily = t.math.fontFamily.value_or(""),
         .fontScale = t.math.fontScale.value_or(1.0),
+        .displayBackground = t.math.displayBackground.value_or(t.background),
+        .displayBorder = t.math.displayBorder.value_or(t.border),
+        .displayBorderWidth = t.math.displayBorderWidth.value_or(0),
+        .displayRadius = t.math.displayRadius.value_or(t.radius),
+        .displayPadding = t.math.displayPadding.value_or(t.spacing),
+        .displayMargin = t.math.displayMargin.value_or(3),
     };
 }
 

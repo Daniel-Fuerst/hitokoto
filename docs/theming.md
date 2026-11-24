@@ -159,6 +159,12 @@ follows the general tokens above.
 | `math.error` | color | Source of a formula that cannot be typeset (S046) | `colors.accent` |
 | `math.font-family` | string | Font family of formula source; "" = editor font | "" |
 | `math.font-scale` | number | Size of formulas (typeset or source) relative to the text around them, 0.5 to 2 | 1 |
+| `math.display-background` | color | Background of a display formula's panel (S047) | `colors.background` |
+| `math.display-border` | color | Border of a display formula's panel | `colors.border` |
+| `math.display-border-width` | number (px) | Border width of the panel, 0 to 8 | 0 |
+| `math.display-radius` | number (px) | Corner radius of the panel, 0 to 32 | `layout.radius` |
+| `math.display-padding` | number (px) | Space between the panel's edge and the formula, 0 to 64 | `layout.spacing` |
+| `math.display-margin` | number (px) | Space above and below the panel, 0 to 64 | 3 |
 | `thematic-break.border` | color | Colour of the horizontal line | `colors.border` |
 | `thematic-break.border-width` | number (px) | Thickness of the line, 0 to 8; drawn as max(1, round(width x device pixel ratio)) device pixels | 1 |
 | `thematic-break.margin` | number (px) | Space above and below the line, 0 to 64; part of the line's geometry, the same when revealed | 0 |

@@ -138,4 +138,28 @@ void paintFormulas(QPainter& painter, const QTextBlock& block, const QRectF& rec
     }
 }
 
+void paintDisplayFormula(QPainter& painter, const QRectF& rect, const core::MathLayout& formula,
+                         const core::MathStyle& style) {
+    if (formula.error) {
+        return;
+    }
+    const QRectF panel = rect.adjusted(0, style.displayMargin, 0, -style.displayMargin);
+    const qreal border = style.displayBorderWidth;
+    painter.save();
+    painter.setPen(border > 0 ? QPen(toQColor(style.displayBorder), border) : QPen(Qt::NoPen));
+    painter.setBrush(toQColor(style.displayBackground));
+    const QRectF inner = panel.adjusted(border / 2, border / 2, -border / 2, -border / 2);
+    const qreal radius = std::max<qreal>(0, style.displayRadius - border / 2);
+    painter.drawRoundedRect(inner, radius, radius);
+    painter.restore();
+    const QPointF origin(panel.center().x() - formula.width / 2, panel.top() + style.displayPadding + formula.ascent);
+    paintMathLayout(painter, formula, origin, toQColor(style.text));
+}
+
+void paintFormulaErrorBar(QPainter& painter, const QRectF& rect, const core::MathStyle& style) {
+    // Two pixels wide, just left of the text, as wide as a cursor so it reads as a mark, not a border.
+    painter.fillRect(QRectF(rect.left() - 6, rect.top(), 2, rect.height()),
+                     toQColor(style.error));  // theme-lint: allow
+}
+
 }  // namespace hitokoto::ui

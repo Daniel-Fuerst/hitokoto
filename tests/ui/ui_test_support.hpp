@@ -211,7 +211,7 @@ inline QString differenceFromTheReference(ui::EditorWidget* editor) {
     for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
         auto got = styler.renderFor(b);
         auto want = reference.at(static_cast<std::size_t>(b.blockNumber()));
-        if (!got.table && b.layout()->formats() != styler.formats().ranges(got)) {
+        if (!got.table && b.layout()->formats() != styler.formats().ranges(got, b.text())) {
             return QStringLiteral("line %1 \"%2\" is formatted for another render").arg(b.blockNumber()).arg(b.text());
         }
         got.blockState = {};
