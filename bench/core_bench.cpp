@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Core micro-benchmarks for the large-file path (S007) and theme loading (S005/S006).
+// Core micro-benchmarks for the large-file path (S007), theme loading (S005/S006) and the math
+// layout (S045, S046).
 #include "hitokoto/core/markdown.hpp"
+#include "hitokoto/core/math.hpp"
 #include "hitokoto/core/text_codec.hpp"
 #include "hitokoto/core/theme.hpp"
 
@@ -121,5 +123,30 @@ void S022_RenderLineWithUnclosedBrackets(benchmark::State& state) {
     }
 }
 BENCHMARK(S022_RenderLineWithUnclosedBrackets)->Arg(0)->Arg(1);
+
+// S045/S046: laying out one formula of the sample (Maxwell's equations, the largest), what a
+// formula costs the first time it is shown; the editor caches it afterwards (S046, decision 4).
+class FixedMathFont final : public MathFont {
+public:
+    [[nodiscard]] double unitsPerEm() const override { return 1000; }
+    [[nodiscard]] std::uint16_t glyph(char32_t c) const override { return static_cast<std::uint16_t>(c % 0xFFFF) + 1; }
+    [[nodiscard]] double advance(std::uint16_t /*glyph*/) const override { return 500; }
+    [[nodiscard]] GlyphBounds bounds(std::uint16_t /*glyph*/) const override { return {0, -100, 450, 650}; }
+};
+
+void S045_LayoutMaxwellEquations(benchmark::State& state) {
+    const std::u16string source =
+        u"\\begin{aligned}\n\\nabla \\cdot \\mathbf{E} &= \\frac{\\rho}{\\varepsilon_0} \\\\\n"
+        u"\\nabla \\cdot \\mathbf{B} &= 0 \\\\\n"
+        u"\\nabla \\times \\mathbf{E} &= -\\frac{\\partial \\mathbf{B}}{\\partial t} \\\\\n"
+        u"\\nabla \\times \\mathbf{B} &= \\mu_0\\left(\\mathbf{J} + \\varepsilon_0 "
+        u"\\frac{\\partial \\mathbf{E}}{\\partial t}\\right)\n\\end{aligned}";
+    const FixedMathFont font;
+    const MathTable table;
+    for ([[maybe_unused]] auto _ : state) {
+        benchmark::DoNotOptimize(layoutMath(source, font, table, 20, true));
+    }
+}
+BENCHMARK(S045_LayoutMaxwellEquations)->Unit(benchmark::kMicrosecond);
 
 }  // namespace

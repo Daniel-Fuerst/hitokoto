@@ -428,15 +428,17 @@ BlockStyler::CodeExtent BlockStyler::codeExtentOf(const QTextBlock& block) {
         return search_.known();  // the block searched last: a caret step inside costs nothing
     }
     const auto render = renderFor(block);
-    if (!render.codeBlock) {
+    if (!render.codeBlock && !render.mathBlock) {
         return {};  // a search still running goes on, for when the caret comes back
     }
     // Every line of one code block carries the same block state; the line before the opening
     // fence and the closing fence carry another one. The search reads cached states and renders
     // nothing; it runs once per block, not once per caret step (review O2).
     const core::BlockState before = blockStateBefore(block);
-    const bool opening = render.fenceLine && render.blockState.active();
-    const bool closing = render.fenceLine && !render.blockState.active();
+    // S047: the `$$` lines of a display math block are its fences.
+    const bool fence = render.fenceLine || render.mathDelimiter;
+    const bool opening = fence && render.blockState.active();
+    const bool closing = fence && !render.blockState.active();
     fenceSearch_.stop();
     search_ = {.inside = opening ? render.blockState : before,
                .from = number,
@@ -529,11 +531,12 @@ void BlockStyler::updateExtentAfterEdit(int position, int charsAdded) {
     const int close = search_.close >= 0 ? search_.close + delta : -1;
     bool keep = l - f <= kSynchronousLimit && (close < 0 || l < close);
     for (QTextBlock b = first; keep && b.isValid() && b.blockNumber() <= l; b = b.next()) {
-        keep = !renderFor(b).fenceLine;
+        const auto edited = renderFor(b);
+        keep = !edited.fenceLine && !edited.mathDelimiter;
     }
     if (keep && close >= 0) {
         const auto render = renderFor(document_->findBlockByNumber(close));
-        keep = render.codeBlock && render.fenceLine;
+        keep = (render.codeBlock && render.fenceLine) || (render.mathBlock && render.mathDelimiter);
     }
     if (!keep) {
         forgetExtent();

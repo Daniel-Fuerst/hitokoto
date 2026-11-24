@@ -36,6 +36,16 @@ enum class Role : std::uint8_t {
     EscapeMarker,      ///< a revealed backslash escape delimiter (\)
     LinkText,          ///< text of an inline link
     LinkMarker,        ///< a revealed link delimiter or target
+    Math,              ///< LaTeX source of a formula (S044)
+    MathMarker,        ///< a revealed math delimiter (`$`, `$$`; S044)
+};
+
+/// A LaTeX formula on a line (S044): where its source is, and whether it is display math (`$$`)
+/// or inline math (`$`). The source excludes the delimiters.
+struct MathSpan {
+    Span source;
+    bool display = false;
+    friend bool operator==(const MathSpan&, const MathSpan&) = default;
 };
 
 /// An inline Markdown link with its text span, target URL and optional title.
@@ -147,6 +157,8 @@ struct LineRender {
     bool thematicBreak = false;        ///< thematic break (S023); concealed, the UI draws a horizontal line
     std::uint8_t setextUnderline = 0;  ///< 1 or 2: the line underlines a setext heading of that level (S023)
     bool frontMatter = false;          ///< line of closed front matter, delimiters included (S024)
+    bool mathBlock = false;            ///< line of a `$$` display math block, delimiter lines included (S044)
+    bool mathDelimiter = false;        ///< opening or closing `$$` line of a display math block (S044)
     bool flowsToNext = false;          ///< soft line break: the next line continues this paragraph (S033)
     bool hardBreak = false;            ///< hard line break (2+ spaces or `\`) before the next paragraph line (S033)
     BlockState blockState;             ///< state to pass when rendering the next line
@@ -156,14 +168,16 @@ struct LineRender {
     std::vector<HiddenRange> hidden;
     std::vector<Decoration> decorations;
     std::vector<LinkTarget> links;
+    std::vector<MathSpan> math;        ///< formulas on the line, in order (S044)
     std::vector<Span> opaqueSpans;     ///< spans that later inline elements must not parse (code spans, link markers)
     std::vector<Span> inlineContexts;  ///< isolated inline contexts (e.g. link text: delimiters never pair outside)
     std::u16string codeLanguage;       ///< opening fence: language of the info string (S021), else empty
     std::uint32_t wrapIndent = 0;      ///< column where continuation lines align (hanging indent, S003); 0 = none
     [[nodiscard]] bool empty() const noexcept {
         return headingLevel == 0 && !codeBlock && !fenceLine && !table && !thematicBreak && setextUnderline == 0 &&
-               !frontMatter && !flowsToNext && !hardBreak && runs.empty() && inlineStyles.empty() && hidden.empty() &&
-               decorations.empty() && links.empty() && opaqueSpans.empty() && inlineContexts.empty() && wrapIndent == 0;
+               !frontMatter && !mathBlock && !mathDelimiter && !flowsToNext && !hardBreak && runs.empty() &&
+               inlineStyles.empty() && hidden.empty() && decorations.empty() && links.empty() && math.empty() &&
+               opaqueSpans.empty() && inlineContexts.empty() && wrapIndent == 0;
     }
     friend bool operator==(const LineRender&, const LineRender&) = default;
 };
@@ -455,6 +469,10 @@ std::unique_ptr<InlineElement> makeInlineCodeElement();
 std::unique_ptr<InlineElement> makeLinkElement();
 std::unique_ptr<InlineElement> makeEmphasisElement();
 std::unique_ptr<InlineElement> makeEscapeElement();
+/// S044: inline math `$…$` and display math written on one line `$$…$$`.
+std::unique_ptr<InlineElement> makeInlineMathElement();
+/// S044: display math blocks between `$$` lines.
+std::unique_ptr<MultiLineElement> makeDisplayMathElement();
 std::unique_ptr<MultiLineElement> makeFencedCodeElement();
 std::unique_ptr<MultiLineElement> makeTableElement();
 std::unique_ptr<MultiLineElement> makeFrontMatterElement();

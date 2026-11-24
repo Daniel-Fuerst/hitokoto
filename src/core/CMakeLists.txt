@@ -17,6 +17,10 @@ add_library(hitokoto_core STATIC
     src/elements/fenced_code.cpp
     src/elements/table.cpp
     src/elements/front_matter.cpp
+    src/elements/math.cpp
+    src/math_layout.cpp
+    src/math_parse.cpp
+    src/math_table.cpp
     src/properties.cpp
     src/find.cpp
     src/paste.cpp

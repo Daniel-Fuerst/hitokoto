@@ -87,6 +87,21 @@ depend on it.
 - Then the caret is never placed inside a concealed range, and whenever the caret is on any line of
   a flowing paragraph, all source lines of that paragraph are revealed onto their own lines
 
+**Scenario: typeset formulas (S046/S047)**
+- Given a line with two typeset inline formulas, a typeset `$$` block and a line below it with
+  another formula, with the caret elsewhere
+- When the caret walks with arbitrary sequences of Up/Down/Left/Right/Home/End/PageUp/PageDown
+- Then the caret's line shows the source of every formula on it (none reserves a typeset width,
+  the caret is never in collapsed or hidden source), and while the caret is on any line of the
+  block every line of it shows its source, none reserved or hidden; off the caret, both are typeset
+- And Down or Right from the line above and Up from the line below enter the block on its opening
+  line; Left (and Shift+Left) from the line below lands on the end of the closing `$$`
+- When an input method composes and commits inside a formula on the caret's line
+- Then the pre-edit appears at the caret, the committed text lands in the formula's source, and
+  the formula is typeset again once the caret leaves the line
+- And the accessible text of lines with typeset formulas is their LaTeX source, dollars included,
+  with the caret elsewhere and on them
+
 ## Outcome
 
 **ADR 0003 – concealment technique**: keep the `QPlainTextEdit` adapter, or switch to the
@@ -100,6 +115,11 @@ concealment stays; this gate keeps checking it on the new surface.
   bullets, emphasis, inline code and code blocks; with S022 inline links; with S023 a walk over
   thematic breaks and setext headings; with S024 a walk into and out of front matter shown as
   properties; with S028 a walk with find highlights; the caret never in concealed text, code block
-  fences revealed and the block still).
+  fences revealed and the block still; with S046/S047 a walk over typeset inline formulas and a
+  `$$` block, entering the block from above and below, an input method commit inside a formula,
+  and the accessible text of typeset formulas). The S046/S047 extension found that Left from the
+  line below a typeset block put the caret at the start of the hidden formula line (Qt's visual
+  navigation skips to a hidden neighbour's start); `EditorWidget::handleMathBlockKey` now moves
+  one character back onto the closing `$$` line.
   Residue measurement via `cursorRect` is still to come.
 - IME and screen-reader checks are manual, documented with platform and version in the ADR.

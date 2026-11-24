@@ -9,7 +9,7 @@ pkgrel=1
 pkgdesc="A native, single-file hybrid Markdown editor"
 arch=('x86_64')
 url="https://github.com/Daniel-Fuerst/hitokoto"
-license=('GPL-3.0-or-later')
+license=('GPL-3.0-or-later' 'OFL-1.1')
 depends=(
     'gcc-libs'
     'glibc'
@@ -68,4 +68,9 @@ package() {
     # License
     install -Dm644 "$_src/LICENSE" \
         "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    # The math font compiled into the program (S045, ADR 0014); versions before it have none.
+    if [ -f "$_src/fonts/stix-two-math/OFL.txt" ]; then
+        install -Dm644 "$_src/fonts/stix-two-math/OFL.txt" \
+            "$pkgdir/usr/share/licenses/$pkgname/OFL-STIX-Two-Math.txt"
+    fi
 }
