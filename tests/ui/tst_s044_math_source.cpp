@@ -8,10 +8,13 @@ using namespace hitokoto;
 namespace {
 using test::qcolor;
 
+constexpr core::Color kMathText{0x12, 0x34, 0x56, 0xff};
+constexpr core::Color kMathMarker{0xab, 0x12, 0xcd, 0xff};
+
 core::Theme mathTheme() {
     auto theme = core::builtinTheme(core::ColorScheme::Light);
-    theme.math.text = core::Color{0x12, 0x34, 0x56, 0xff};
-    theme.math.marker = core::Color{0xab, 0x12, 0xcd, 0xff};
+    theme.math.text = kMathText;
+    theme.math.marker = kMathMarker;
     theme.math.fontScale = 1.5;
     return theme;
 }
@@ -37,7 +40,7 @@ private slots:
         f.settle();
         QVERIFY(!test::isCollapsed(block0, 3));
         const auto format = test::formatAt(block0, 3);
-        QCOMPARE(format.foreground().color(), qcolor(*theme.math.text));
+        QCOMPARE(format.foreground().color(), qcolor(kMathText));
         QCOMPARE(format.fontPointSize(), theme.editorFontSize * 1.5);
     }
 
@@ -51,8 +54,8 @@ private slots:
 
         const auto block0 = f.editor()->document()->firstBlock();
         QVERIFY(!test::isCollapsed(block0, 2));
-        QCOMPARE(test::formatAt(block0, 2).foreground().color(), qcolor(*theme.math.marker));
-        QCOMPARE(test::formatAt(block0, 6).foreground().color(), qcolor(*theme.math.marker));
+        QCOMPARE(test::formatAt(block0, 2).foreground().color(), qcolor(kMathMarker));
+        QCOMPARE(test::formatAt(block0, 6).foreground().color(), qcolor(kMathMarker));
     }
 
     void displayBlockLinesAreMath() {
@@ -64,7 +67,7 @@ private slots:
         f.settle();
 
         const auto block1 = f.editor()->document()->findBlockByNumber(1);
-        QCOMPARE(test::formatAt(block1, 0).foreground().color(), qcolor(*theme.math.text));
+        QCOMPARE(test::formatAt(block1, 0).foreground().color(), qcolor(kMathText));
         const auto block0 = f.editor()->document()->firstBlock();
         QCOMPARE(test::formatAt(block0, 0).foreground().color(), QColor(Qt::transparent));
     }

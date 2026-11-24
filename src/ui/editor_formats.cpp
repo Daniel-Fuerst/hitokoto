@@ -220,9 +220,13 @@ QList<QTextLayout::FormatRange> EditorFormats::rangesOf(const core::LineRender& 
         boundaries.push_back(m.source.end());
     }
     const auto bulletSpace = bulletSpaceSpan(render);
-    if (bulletSpace.has_value()) {
-        boundaries.push_back(bulletSpace->start);
-        boundaries.push_back(bulletSpace->end());
+    // Read once, so that the loop below needs no access to the optional (clang-tidy follows it
+    // only so far through a long function).
+    const bool hasBulletSpace = bulletSpace.has_value();
+    const core::Span bullet = bulletSpace.value_or(core::Span{});
+    if (hasBulletSpace) {
+        boundaries.push_back(bullet.start);
+        boundaries.push_back(bullet.end());
     }
     std::sort(boundaries.begin(), boundaries.end());
     boundaries.erase(std::unique(boundaries.begin(), boundaries.end()), boundaries.end());
@@ -240,7 +244,7 @@ QList<QTextLayout::FormatRange> EditorFormats::rangesOf(const core::LineRender& 
                     .inlineRun = covering(render.inlineStyles, inlineIndex, start, end),
                     .hidden = covering(render.hidden, hiddenIndex, start, end),
                     .link = covering(render.links, linkIndex, start, end),
-                    .bulletSpace = bulletSpace.has_value() && start >= bulletSpace->start && end <= bulletSpace->end()};
+                    .bulletSpace = hasBulletSpace && start >= bullet.start && end <= bullet.end()};
         if (piece.run == nullptr && piece.inlineRun == nullptr && piece.hidden == nullptr && piece.link == nullptr &&
             !piece.bulletSpace) {
             continue;
@@ -443,6 +447,10 @@ void EditorFormats::applyFormula(QTextCharFormat& format, const Piece& piece, QS
         format.setToolTip(Qt::convertFromPlainText(QString::fromStdString(layout.error->message)));
         return;
     }
+    // Without hinting Qt keeps fractional advances; with full hinting (fontconfig's hintfull, as on
+    // the Linux CI runners) it rounds every advance and the letter spacing to whole pixels, and the
+    // reserved width would miss the formula's by up to a few pixels (pull request 78).
+    format.setFontHintingPreference(QFont::PreferNoHinting);
     if (!piece.formulaHead) {
         format = zeroWidthFormat(format, pieceText);
         return;

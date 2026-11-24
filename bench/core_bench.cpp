@@ -143,7 +143,7 @@ void S045_LayoutMaxwellEquations(benchmark::State& state) {
         u"\\frac{\\partial \\mathbf{E}}{\\partial t}\\right)\n\\end{aligned}";
     const FixedMathFont font;
     const MathTable table;
-    for (auto _ : state) {
+    for ([[maybe_unused]] auto _ : state) {
         benchmark::DoNotOptimize(layoutMath(source, font, table, 20, true));
     }
 }

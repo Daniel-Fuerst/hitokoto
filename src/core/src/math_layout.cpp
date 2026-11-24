@@ -272,7 +272,8 @@ private:
         }
 
         Box out;
-        std::optional<AtomClass> last;
+        bool hasLast = false;  // an atom stood before (spaces and nulls are no atoms)
+        AtomClass last = AtomClass::Ord;
         for (std::size_t i = 0; i < items.size() && !error_; ++i) {
             const Node& item = items[i];
             if (item.kind == Node::Kind::Null) {
@@ -282,8 +283,8 @@ private:
                 out.width += item.amount * px(s);
                 continue;
             }
-            if (last) {
-                out.width += spaceBetween(*last, classes[i], s);
+            if (hasLast) {
+                out.width += spaceBetween(last, classes[i], s);
             }
             Box b = node(item, s);
             place(out, b, out.width, 0);
@@ -292,6 +293,7 @@ private:
             out.depth = std::max(out.depth, b.depth);
             out.italic = b.italic;
             last = classes[i];
+            hasLast = true;
         }
         return out;
     }
