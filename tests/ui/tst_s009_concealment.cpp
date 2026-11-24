@@ -8,6 +8,10 @@
 // (S024/S025): valid YAML stays concealed and does not change height as the caret moves.
 // Extended for find highlights (S028): highlights change no geometry and never show a concealed
 // marker; after Escape into a table the caret stays on shown lines.
+// Extended for typeset formulas (S046/S047): the caret's line shows every formula's source, a `$$`
+// block holding the caret shows all its lines, an input method commits into a formula's source,
+// and the accessible text of a line with a typeset formula is its LaTeX source.
+#include "block_layout.hpp"
 #include "find_bar.hpp"
 #include "find_controller.hpp"
 #include "ui_test_support.hpp"
@@ -16,6 +20,7 @@
 #include <QToolButton>
 
 #include <QAccessible>
+#include <QInputMethodEvent>
 #include <QMap>
 #include <QRandomGenerator>
 
@@ -381,6 +386,240 @@ private slots:
             }
             QWidget* target = QApplication::focusWidget() != nullptr ? QApplication::focusWidget() : editor;
             test::keyClick(target, kKeys.at(rng.bounded(static_cast<quint32>(kKeys.size()))));
+        }
+    }
+
+    // S046/S047: inline formulas are typeset off the caret's line and a `$$` block off the caret is
+    // one panel. Walking, the caret never stands in collapsed or hidden source: its line shows every
+    // formula's source, and a block holding the caret shows all its lines, none reserved or hidden.
+    void typesetFormulasWhileWalking() {
+        constexpr auto document =
+            "# Formulas\n"                                  // 0
+            "Inline $x^2$ and $\\frac{a}{b}$ in *text*.\n"  // 1 two inline formulas
+            "above\n"                                       // 2
+            "$$\n"                                          // 3 display block 3-5
+            "\\sum_{k=1}^n k\n"                             // 4
+            "$$\n"                                          // 5
+            "below with $\\alpha$\n"                        // 6
+            "last line\n";                                  // 7
+        constexpr int kOpen = 3;
+        constexpr int kClose = 5;
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("math.md"), document)));
+        auto* editor = f.editor();
+        auto& styler = editor->styler();
+        const auto* doc = editor->document();
+        auto* layout = qobject_cast<ui::BlockLayout*>(doc->documentLayout());
+        QVERIFY(layout != nullptr);
+        // The embedder refreshes on a queued call after the styler is done.
+        const auto settleAll = [&] {
+            f.settle();
+            QCoreApplication::processEvents();
+            f.settle();
+        };
+        const auto blockTypeset = [&] {
+            if (layout->reservedHeight(doc->findBlockByNumber(kOpen)) <= 0) {
+                return false;
+            }
+            for (int n = kOpen + 1; n <= kClose; ++n) {
+                if (doc->findBlockByNumber(n).isVisible()) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        const auto typesetOn = [&](const QTextBlock& b) {
+            const auto render = styler.renderFor(b);
+            return std::count_if(render.math.begin(), render.math.end(),
+                                 [&](const auto& m) { return ui::EditorFormats::typeset(render, m); });
+        };
+        f.placeCaret(doc->blockCount() - 1);
+        settleAll();
+        QVERIFY2(blockTypeset(), "the block is typeset with the caret below it");
+        QCOMPARE(typesetOn(doc->findBlockByNumber(1)), 2);
+        QCOMPARE(typesetOn(doc->findBlockByNumber(6)), 1);
+
+        // The whole document fits one page, so PageUp and PageDown (once each) jump to its ends;
+        // arrows twice as often keep the walk in the middle, on the formulas.
+        constexpr std::array kKeys = {Qt::Key_Up,   Qt::Key_Down, Qt::Key_Left,   Qt::Key_Right,
+                                      Qt::Key_Up,   Qt::Key_Down, Qt::Key_Left,   Qt::Key_Right,
+                                      Qt::Key_Home, Qt::Key_End,  Qt::Key_PageUp, Qt::Key_PageDown};
+        QRandomGenerator rng(20261124);
+        int stepsInBlock = 0;
+        int stepsOnInlineLines = 0;
+        for (int step = 0; step < 400; ++step) {
+            const auto key = kKeys.at(rng.bounded(static_cast<quint32>(kKeys.size())));
+            test::keyClick(editor, key);
+            settleAll();
+            const QTextCursor c = editor->textCursor();
+            const QTextBlock block = c.block();
+            const int caretLine = block.blockNumber();
+            const int column = c.positionInBlock();
+            const QString where = QStringLiteral("step %1, caret on %2 column %3").arg(step).arg(caretLine).arg(column);
+            QVERIFY2(block.isVisible(), qPrintable(where + QStringLiteral(": caret on a hidden line")));
+            QVERIFY2(layout->blockBoundingRect(block).height() > 0,
+                     qPrintable(where + QStringLiteral(": caret on a line without height")));
+            QCOMPARE(typesetOn(block), 0);
+            for (int col = 0; col < block.length() - 1; ++col) {
+                QVERIFY2(test::formatAt(block, col).fontLetterSpacing() == 0.0,
+                         qPrintable(where + QStringLiteral(": column %1 reserves a formula").arg(col)));
+            }
+            if (column > 0) {
+                QVERIFY2(!test::isCollapsed(block, column - 1) || !test::isCollapsed(block, column),
+                         qPrintable(where + QStringLiteral(": caret in collapsed text")));
+            }
+            for (const auto& h : styler.renderFor(block).hidden) {
+                const auto col = static_cast<std::uint32_t>(column);
+                QVERIFY2(col <= h.span.start || col >= h.span.end() || h.span.length == 0,
+                         qPrintable(where + QStringLiteral(": caret in hidden text")));
+            }
+            if (caretLine >= kOpen && caretLine <= kClose) {
+                ++stepsInBlock;
+                for (int n = kOpen; n <= kClose; ++n) {
+                    const QTextBlock b = doc->findBlockByNumber(n);
+                    QVERIFY2(b.isVisible() && layout->reservedHeight(b) <= 0,
+                             qPrintable(where + QStringLiteral(": block line %1 not shown as source").arg(n)));
+                    QVERIFY2(styler.renderFor(b).hidden.empty(),
+                             qPrintable(where + QStringLiteral(": block line %1 conceals").arg(n)));
+                }
+            } else {
+                QVERIFY2(blockTypeset(), qPrintable(where + QStringLiteral(": block not typeset")));
+            }
+            if (caretLine == 1 || caretLine == 6) {
+                ++stepsOnInlineLines;
+            }
+            for (const int n : {1, 6}) {
+                if (n != caretLine) {
+                    QVERIFY2(typesetOn(doc->findBlockByNumber(n)) > 0,
+                             qPrintable(where + QStringLiteral(": line %1 not typeset").arg(n)));
+                }
+            }
+        }
+        QVERIFY2(stepsInBlock > 10 && stepsOnInlineLines > 10, "the walk visits the block and the inline lines");
+    }
+
+    // S047: Down and Right from above and Up from below enter a typeset block on its opening line,
+    // never on a hidden line; Left from the line below moves one character back, onto the end of
+    // the closing `$$` (it used to land at the start of the formula line). The block shows its source.
+    void caretEntersADisplayBlockOnItsLines() {
+        constexpr auto document = "above\n$$\n\\frac{a}{b}\n$$\nbelow\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("block.md"), document)));
+        auto* editor = f.editor();
+        const auto* doc = editor->document();
+        auto* layout = qobject_cast<ui::BlockLayout*>(doc->documentLayout());
+        QVERIFY(layout != nullptr);
+        const auto settleAll = [&] {
+            f.settle();
+            QCoreApplication::processEvents();
+            f.settle();
+        };
+        const auto shownAsSource = [&] {
+            for (int n = 1; n <= 3; ++n) {
+                const QTextBlock b = doc->findBlockByNumber(n);
+                if (!b.isVisible() || layout->reservedHeight(b) > 0) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        struct Entry {
+            int line;
+            int column;
+            Qt::Key key;
+            Qt::KeyboardModifiers modifiers;
+            int toLine;
+            int toColumn;
+        };
+        const std::array entries = {
+            Entry{0, 0, Qt::Key_Down, Qt::NoModifier, 1, 0}, Entry{0, 5, Qt::Key_Right, Qt::NoModifier, 1, 0},
+            Entry{4, 0, Qt::Key_Up, Qt::NoModifier, 1, 0}, Entry{4, 0, Qt::Key_Left, Qt::NoModifier, 3, 2},
+            Entry{4, 0, Qt::Key_Left, Qt::ShiftModifier, 3, 2}};
+        for (const auto& e : entries) {
+            f.placeCaret(e.line, e.column);
+            settleAll();
+            QVERIFY(layout->reservedHeight(doc->findBlockByNumber(1)) > 0);
+            test::keyClick(editor, e.key, e.modifiers);
+            settleAll();
+            const QTextCursor c = editor->textCursor();
+            const QString where = QStringLiteral("from line %1 with key %2 (modifiers %3): caret on %4 column %5")
+                                      .arg(e.line)
+                                      .arg(e.key)
+                                      .arg(e.modifiers.toInt())
+                                      .arg(c.blockNumber())
+                                      .arg(c.positionInBlock());
+            QVERIFY2(c.blockNumber() == e.toLine && c.positionInBlock() == e.toColumn, qPrintable(where));
+            QCOMPARE(c.hasSelection(), e.modifiers == Qt::ShiftModifier);
+            QVERIFY2(shownAsSource(), qPrintable(where));
+        }
+    }
+
+    // S046: an input method composes and commits inside a formula's source on the caret's line;
+    // the committed text lands at the caret, and the formula is typeset again once the caret leaves.
+    void inputMethodCommitsInsideAFormula() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("ime.md"), "a $x^2$ b\nsecond\n")));
+        auto* editor = f.editor();
+        const auto settleAll = [&] {
+            f.settle();
+            QCoreApplication::processEvents();
+            f.settle();
+        };
+        f.placeCaret(0, 4);  // between "x" and "^"
+        settleAll();
+        const QRect caretBefore = editor->cursorRect();
+        QInputMethodEvent preedit(QStringLiteral("あ"), {});
+        QCoreApplication::sendEvent(editor, &preedit);
+        settleAll();
+        const QRect imeRect = editor->inputMethodQuery(Qt::ImCursorRectangle).toRect();
+        QVERIFY2(std::abs(imeRect.center().y() - caretBefore.center().y()) <= caretBefore.height(),
+                 qPrintable(QStringLiteral("pre-edit at y %1, caret at y %2")
+                                .arg(imeRect.center().y())
+                                .arg(caretBefore.center().y())));
+        QVERIFY(imeRect.left() >= caretBefore.left());
+        QInputMethodEvent commit;
+        commit.setCommitString(QStringLiteral("\u03b1"));
+        QCoreApplication::sendEvent(editor, &commit);
+        settleAll();
+        QCOMPARE(editor->toPlainText(), QStringLiteral("a $x\u03b1^2$ b\nsecond\n"));
+        QCOMPARE(editor->textCursor().positionInBlock(), 5);
+        const QTextBlock line = editor->document()->firstBlock();
+        QVERIFY2(!test::isCollapsed(line, 4), "the source shows on the caret's line");
+        f.placeCaret(1);
+        settleAll();
+        QVERIFY2(test::isCollapsed(line, 4) && test::formatAt(line, 3).fontLetterSpacing() > 0,
+                 "the formula is typeset again off the caret's line");
+    }
+
+    // S046 decision 8, S047: the accessible text of lines with typeset formulas is their source,
+    // LaTeX and dollars included, with the caret elsewhere and on them.
+    void screenReaderReadsTheSourceOfTypesetFormulas() {
+        constexpr auto document = "a $x^2$ b\n$$\n\\frac{a}{b}\n$$\nlast\n";
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("a11y.md"), document)));
+        auto* editor = f.editor();
+        const auto settleAll = [&] {
+            f.settle();
+            QCoreApplication::processEvents();
+            f.settle();
+        };
+        QAccessibleInterface* iface = QAccessible::queryAccessibleInterface(editor);
+        QVERIFY(iface != nullptr);
+        QAccessibleTextInterface* text = iface->textInterface();
+        QVERIFY(text != nullptr);
+        for (const int caretLine : {4, 0, 2}) {
+            f.placeCaret(caretLine);
+            settleAll();
+            const QString where = QStringLiteral("caret on %1").arg(caretLine);
+            QCOMPARE(text->text(0, text->characterCount()), QString::fromUtf8(document));
+            int start = -1;
+            int end = -1;
+            QCOMPARE(text->textAtOffset(4, QAccessible::LineBoundary, &start, &end).trimmed(),
+                     QStringLiteral("a $x^2$ b"));
+            const int fraction = static_cast<int>(QString::fromUtf8(document).indexOf(QStringLiteral("\\frac")));
+            QVERIFY2(text->textAtOffset(fraction, QAccessible::LineBoundary, &start, &end)
+                         .contains(QStringLiteral("\\frac{a}{b}")),
+                     qPrintable(where));
         }
     }
 

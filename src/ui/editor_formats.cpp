@@ -4,6 +4,7 @@
 #include "qt_bridge.hpp"
 
 #include <QFontDatabase>
+#include <QFontInfo>
 #include <QFontMetricsF>
 #include <QTextDocument>
 
@@ -95,6 +96,7 @@ EditorFormats::EditorFormats(const core::Theme& theme)
       table_(core::tableStyle(theme)),
       escape_(core::escapeStyle(theme)),
       link_(core::linkStyle(theme)),
+      math_(core::mathStyle(theme)),
       thematicBreak_(core::thematicBreakStyle(theme)),
       properties_(core::propertiesStyle(theme)),
       codeBlockFamilies_(codeFamilies(codeBlock_.fontFamily)),
@@ -104,6 +106,15 @@ EditorFormats::EditorFormats(const core::Theme& theme)
         baseFont_.setFamilies({QString::fromStdString(theme.editorFontFamily)});
     }
     baseFont_.setPointSizeF(theme.editorFontSize);
+    {
+        // Pixels per point as Qt lays out fonts on this screen: a 72 pt font is that many pixels.
+        QFont probe = baseFont_;
+        probe.setPointSizeF(72);  // theme-lint: allow (a measurement, not a style)
+        pointToPixel_ = QFontInfo(probe).pixelSize() / 72.0;
+        if (pointToPixel_ <= 0) {
+            pointToPixel_ = 1;
+        }
+    }
     const QFontMetricsF metrics(baseFont_);
     bulletSpacing_ = std::max<double>(3.0, std::round(metrics.horizontalAdvance(QLatin1Char(' ')) * 0.75));
     for (int level = 1; level <= 6; ++level) {
@@ -193,10 +204,29 @@ QList<QTextLayout::FormatRange> EditorFormats::rangesOf(const core::LineRender& 
     addSpans(render.inlineStyles);
     addSpans(render.hidden);
     addSpans(render.links);
+    // S046: the source of a typeset formula is cut after its first character, which reserves the
+    // formula's width; a character outside the BMP stays whole (S044 code review O4).
+    formulas_.clear();
+    for (const core::MathSpan& m : render.math) {
+        if (!typeset(render, m) || text.size() < static_cast<qsizetype>(m.source.end()) || m.source.length == 0) {
+            continue;
+        }
+        const QStringView source = text.sliced(m.source.start, m.source.length);
+        const std::u16string_view view(reinterpret_cast<const char16_t*>(source.utf16()),
+                                       static_cast<std::size_t>(source.size()));
+        formulas_.push_back({m.source, mathLayout(view, render.headingLevel, m.display), source});
+        boundaries.push_back(m.source.start);
+        boundaries.push_back(m.source.start + static_cast<std::uint32_t>(formulaHeadLength(source)));
+        boundaries.push_back(m.source.end());
+    }
     const auto bulletSpace = bulletSpaceSpan(render);
-    if (bulletSpace.has_value()) {
-        boundaries.push_back(bulletSpace->start);
-        boundaries.push_back(bulletSpace->end());
+    // Read once, so that the loop below needs no access to the optional (clang-tidy follows it
+    // only so far through a long function).
+    const bool hasBulletSpace = bulletSpace.has_value();
+    const core::Span bullet = bulletSpace.value_or(core::Span{});
+    if (hasBulletSpace) {
+        boundaries.push_back(bullet.start);
+        boundaries.push_back(bullet.end());
     }
     std::sort(boundaries.begin(), boundaries.end());
     boundaries.erase(std::unique(boundaries.begin(), boundaries.end()), boundaries.end());
@@ -206,6 +236,7 @@ QList<QTextLayout::FormatRange> EditorFormats::rangesOf(const core::LineRender& 
     std::size_t inlineIndex = 0;
     std::size_t hiddenIndex = 0;
     std::size_t linkIndex = 0;
+    std::size_t formulaIndex = 0;
     for (std::size_t i = 1; i < boundaries.size(); ++i) {
         const auto start = boundaries[i - 1];
         const auto end = boundaries[i];
@@ -213,12 +244,21 @@ QList<QTextLayout::FormatRange> EditorFormats::rangesOf(const core::LineRender& 
                     .inlineRun = covering(render.inlineStyles, inlineIndex, start, end),
                     .hidden = covering(render.hidden, hiddenIndex, start, end),
                     .link = covering(render.links, linkIndex, start, end),
-                    .bulletSpace = bulletSpace.has_value() && start >= bulletSpace->start && end <= bulletSpace->end()};
+                    .bulletSpace = hasBulletSpace && start >= bullet.start && end <= bullet.end()};
         if (piece.run == nullptr && piece.inlineRun == nullptr && piece.hidden == nullptr && piece.link == nullptr &&
             !piece.bulletSpace) {
             continue;
         }
         piece.inlineCodeDelimiter = piece.hidden != nullptr && isInlineCodeDelimiter(render, start);
+        while (formulaIndex < formulas_.size() && formulas_[formulaIndex].source.end() <= start) {
+            ++formulaIndex;
+        }
+        if (formulaIndex < formulas_.size() && formulas_[formulaIndex].source.start <= start &&
+            formulas_[formulaIndex].source.end() >= end) {
+            piece.formula = formulas_[formulaIndex].layout.get();
+            piece.formulaHead = start == formulas_[formulaIndex].source.start;
+            piece.formulaSource = formulas_[formulaIndex].text;
+        }
         const QStringView pieceText =
             text.size() >= static_cast<qsizetype>(end) ? text.sliced(start, end - start) : QStringView{};
         out.append(
@@ -302,7 +342,7 @@ struct RoleFormat {
 
 QTextCharFormat EditorFormats::composedFormat(const core::LineRender& render, const Piece& piece,
                                               QStringView pieceText) const {
-    static constexpr std::array<RoleFormat, 9> kRoles{{
+    static constexpr std::array<RoleFormat, 11> kRoles{{
         {core::Role::Marker, &EditorFormats::applyMarker, true, false},
         {core::Role::HeadingText, nullptr, true, true},
         {core::Role::CodeBlock, &EditorFormats::applyCodeBlock, true, true},
@@ -312,8 +352,11 @@ QTextCharFormat EditorFormats::composedFormat(const core::LineRender& render, co
         {core::Role::EscapeMarker, &EditorFormats::applyEscapeMarker, true, false},
         {core::Role::LinkText, &EditorFormats::applyLinkText, true, true},
         {core::Role::LinkMarker, &EditorFormats::applyLinkMarker, true, false},
+        // S044: formula source keeps its look inside emphasis, as inline code does.
+        {core::Role::Math, &EditorFormats::applyMath, false, false},
+        {core::Role::MathMarker, &EditorFormats::applyMathMarker, true, false},
     }};
-    static_assert(kRoles.size() == static_cast<std::size_t>(core::Role::LinkMarker) + 1, "a row for every role");
+    static_assert(kRoles.size() == static_cast<std::size_t>(core::Role::MathMarker) + 1, "a row for every role");
     static_assert(
         [] {
             for (std::size_t i = 0; i < kRoles.size(); ++i) {
@@ -390,7 +433,92 @@ QTextCharFormat EditorFormats::composedFormat(const core::LineRender& render, co
         format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
         format.setFontLetterSpacing(bulletSpacing_);
     }
+    applyFormula(format, piece, pieceText);
     return format;
+}
+
+void EditorFormats::applyFormula(QTextCharFormat& format, const Piece& piece, QStringView pieceText) const {
+    if (piece.formula == nullptr) {
+        return;
+    }
+    const core::MathLayout& layout = *piece.formula;
+    if (layout.error) {
+        // Decision 5: the source stays, in the error colour, with the reason.
+        format.setForeground(toQColor(math_.error));
+        format.setToolTip(Qt::convertFromPlainText(QString::fromStdString(layout.error->message)));
+        return;
+    }
+    // Fractional advances where the font engine allows them; the width below is measured either way.
+    format.setFontHintingPreference(QFont::PreferNoHinting);
+    if (!piece.formulaHead) {
+        format = zeroWidthFormat(format, pieceText);
+        return;
+    }
+    // Decisions 1 and 2: the first character is invisible and takes the formula's width; its font
+    // grows until its ascent and descent cover the formula, so the line makes room.
+    const QTextCharFormat sourceFormat = format;
+    format.setForeground(Qt::transparent);  // theme-lint: allow (concealment mechanism)
+    const QFont font = format.font().resolve(baseFont_);
+    const QFontMetricsF metrics(font);
+    const double scale = std::max({1.0, metrics.ascent() > 0 ? layout.ascent / metrics.ascent() : 1.0,
+                                   metrics.descent() > 0 ? layout.descent / metrics.descent() : 1.0});
+    if (scale > 1.0) {
+        format.setFontPointSize(font.pointSizeF() * scale);
+    }
+    format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
+    format.setFontLetterSpacing(layout.width - laidOutWidth(piece.formulaSource, format, sourceFormat));
+}
+
+qsizetype EditorFormats::formulaHeadLength(QStringView source) noexcept {
+    // A surrogate pair is one character: cutting it apart would give Qt two halves to shape.
+    return source.size() >= 2 && source[0].isHighSurrogate() && source[1].isLowSurrogate() ? 2 : 1;
+}
+
+qreal EditorFormats::laidOutWidth(QStringView source, const QTextCharFormat& head, const QTextCharFormat& rest) const {
+    // The source as Qt lays it out in the line, the first character in `head` (without the letter
+    // spacing yet), the rest without width. Measured, not predicted: font engines round advances
+    // and letter spacing their own way (hinted fonts on the CI runners to whole pixels, pull
+    // request 78), so the reserved width follows what Qt does with these very formats.
+    if (source.isEmpty()) {
+        return 0;
+    }
+    QTextLayout probe(source.toString(), baseFont_);
+    const auto headLength = static_cast<int>(formulaHeadLength(source));
+    QList<QTextLayout::FormatRange> formats{{0, headLength, head}};
+    if (source.size() > headLength) {
+        formats.append({headLength, static_cast<int>(source.size() - headLength),
+                        zeroWidthFormat(rest, source.sliced(headLength))});
+    }
+    probe.setFormats(formats);
+    probe.beginLayout();
+    QTextLine line = probe.createLine();
+    if (!line.isValid()) {
+        probe.endLayout();
+        return 0;
+    }
+    line.setNumColumns(static_cast<int>(source.size()));
+    probe.endLayout();
+    return line.naturalTextWidth();
+}
+
+double EditorFormats::mathPixelSize(int level) const {
+    return textSize(level) * math_.fontScale * pointToPixel_;
+}
+
+std::shared_ptr<const core::MathLayout> EditorFormats::mathLayout(std::u16string_view source, int level,
+                                                                  bool display) const {
+    return mathCache_->layout(source, mathPixelSize(level), display);
+}
+
+bool EditorFormats::typeset(const core::LineRender& render, const core::MathSpan& formula) {
+    if (render.mathBlock || formula.source.start == 0) {
+        return false;
+    }
+    // Concealed: the dollar before the source is hidden (S044 hides it only off the caret's line).
+    const std::uint32_t dollar = formula.source.start - 1;
+    return std::any_of(render.hidden.begin(), render.hidden.end(), [dollar](const core::HiddenRange& h) {
+        return dollar >= h.span.start && dollar < h.span.end();
+    });
 }
 
 void EditorFormats::applyMarker(QTextCharFormat& format, const core::LineRender& render, int /*level*/) const {
@@ -431,6 +559,19 @@ void EditorFormats::applyLinkText(QTextCharFormat& format, const core::LineRende
 
 void EditorFormats::applyLinkMarker(QTextCharFormat& format, const core::LineRender& /*render*/, int /*level*/) const {
     format.setForeground(toQColor(link_.marker));
+}
+
+void EditorFormats::applyMath(QTextCharFormat& format, const core::LineRender& /*render*/, int level) const {
+    if (!math_.fontFamily.empty()) {
+        format.setFontFamilies({QString::fromStdString(math_.fontFamily)});
+    }
+    format.setFontPointSize(textSize(level) * math_.fontScale);
+    format.setForeground(toQColor(math_.text));
+}
+
+void EditorFormats::applyMathMarker(QTextCharFormat& format, const core::LineRender& render, int level) const {
+    applyMath(format, render, level);
+    format.setForeground(toQColor(math_.marker));
 }
 
 QFont EditorFormats::tableFont(bool header) const {

@@ -11,3 +11,7 @@ tests/data/s031/samples/** -text
 packaging/archlinux/** text eol=lf
 # S036: the Debian recipe holds shell scripts run with bash, also from a checkout on Windows.
 packaging/debian/** text eol=lf
+# S045: the bundled math font and its licence stay byte-exact (fonts/stix-two-math/README.md
+# records their checksums).
+*.otf binary
+fonts/stix-two-math/** -text

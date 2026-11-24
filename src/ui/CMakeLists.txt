@@ -15,6 +15,9 @@ qt_add_library(hitokoto_ui STATIC
     floating_toolbar.cpp floating_toolbar.hpp
     list_editing.cpp list_editing.hpp
     main_window.cpp main_window.hpp
+    math_block_embedder.cpp math_block_embedder.hpp
+    math_font.cpp math_font.hpp
+    math_render.cpp math_render.hpp
     menu_bar.cpp menu_bar.hpp
     options.hpp
     properties_embedder.cpp properties_embedder.hpp
@@ -39,5 +42,12 @@ qt_add_resources(hitokoto_ui hitokoto_icon
     PREFIX "/icons"
     BASE "${PROJECT_SOURCE_DIR}/icons"
     FILES "${PROJECT_SOURCE_DIR}/icons/hitokoto.svg"
+)
+# S045, ADR 0014: the math font and its licence, inside the program (fonts/stix-two-math/README.md).
+qt_add_resources(hitokoto_ui hitokoto_math_font
+    PREFIX "/fonts"
+    BASE "${PROJECT_SOURCE_DIR}/fonts/stix-two-math"
+    FILES "${PROJECT_SOURCE_DIR}/fonts/stix-two-math/STIXTwoMath-Regular.otf"
+          "${PROJECT_SOURCE_DIR}/fonts/stix-two-math/OFL.txt"
 )
 hitokoto_set_compile_options(hitokoto_ui)
