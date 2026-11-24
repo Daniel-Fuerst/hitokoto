@@ -59,6 +59,13 @@ with the fewest obligations, and its maintainers still work on it (an interim v2
 last commit in 2026). The OTF (CFF outlines, 838 KB) is half the size of the TTF. The packages
 carry `OFL.txt` (Debian `copyright`, the AUR package's licences, the MSI's `THIRD-PARTY.txt`).
 
+The font keeps its own licence: hitokoto distributes it unchanged alongside its GPL code, as data
+the program reads, as many GPL programs ship OFL fonts; it is not relicensed under the GPL. It is
+kept in git (Daniel, 2026-11-24) rather than downloaded at build time: one file of 838 KB that
+changes only with an upstream release, against a network step in every build (the AUR's, CI's,
+offline builds) and a failure when upstream moves the file. Git LFS was not chosen, as it would
+add a tool for every contributor for one file.
+
 ## Consequences
 
 - The core gains two elements (inline and display math, S044) and a math layout engine (S045); no
