@@ -607,7 +607,7 @@ void EditorWidget::pressKey(QKeyEvent* event) {
     if (tables_->handleEditorKey(event) || properties_->handleEditorKey(event)) {
         return;
     }
-    if (handleBulletKey(event)) {
+    if (handleBulletKey(event) || handleMathBlockKey(event)) {
         return;
     }
     const TableEmbedder::Typing typing(tables_.get());
@@ -1159,6 +1159,32 @@ std::vector<FormulaHighlight> EditorWidget::formulaHighlightRanges() const {
                        palette().color(QPalette::HighlightedText)});
     }
     return out;
+}
+
+bool EditorWidget::handleMathBlockKey(QKeyEvent* event) {
+    // Qt's visual navigation moves a caret that lands on a hidden line to the start of a hidden
+    // neighbour, so Left from the line below a typeset block put it at the start of the formula
+    // line instead of the end of the closing `$$` (S009 extended for S047). The move is made
+    // without visual navigation; the caret in the block then reveals its source.
+    const bool select =
+        event->matches(QKeySequence::SelectPreviousChar) || event->matches(QKeySequence::SelectPreviousWord);
+    const bool word =
+        event->matches(QKeySequence::MoveToPreviousWord) || event->matches(QKeySequence::SelectPreviousWord);
+    if (!select && !word && !event->matches(QKeySequence::MoveToPreviousChar)) {
+        return false;
+    }
+    QTextCursor cursor = textCursor();
+    const QTextBlock above = cursor.block().previous();
+    if (!cursor.atBlockStart() || (cursor.hasSelection() && !select) || !above.isValid() || above.isVisible() ||
+        !mathBlocks_->claims(above)) {
+        return false;
+    }
+    cursor.setVisualNavigation(false);
+    cursor.movePosition(word ? QTextCursor::PreviousWord : QTextCursor::PreviousCharacter,
+                        select ? QTextCursor::KeepAnchor : QTextCursor::MoveAnchor);
+    setTextCursor(cursor);
+    event->accept();
+    return true;
 }
 
 bool EditorWidget::handleBulletKey(QKeyEvent* event) {

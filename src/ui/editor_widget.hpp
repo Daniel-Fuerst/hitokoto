@@ -177,6 +177,9 @@ private:
     [[nodiscard]] std::vector<FormulaHighlight> formulaHighlightRanges() const;
     /// Enter, Tab and Shift+Tab in bullet items (S003), through list_.
     bool handleBulletKey(QKeyEvent* event);
+    /// S009 for S047: Left (and word left) from the start of the line below a typeset `$$` block
+    /// moves one character (word) back into the block's closing line.
+    bool handleMathBlockKey(QKeyEvent* event);
     /// keyPressEvent for a key whose text may enter the document as it is (text_input.hpp).
     void pressKey(QKeyEvent* event);
     /// S031: pastes the tables of `source` as Markdown tables, if the paste converts; returns
