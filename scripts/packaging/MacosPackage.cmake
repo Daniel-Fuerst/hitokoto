@@ -22,7 +22,7 @@
 #   cmake -DMODE=minos -DMACOS_TARGET=<X.Y> -DMINOS_FILE=<f> -P MacosPackage.cmake
 #       MINOS_FILE holds "<minimum macOS> <file>" per Mach-O file of the bundle (otool -l,
 #       LC_BUILD_VERSION). Fails if a file needs a newer macOS than MACOS_TARGET, the oldest
-#       macOS the recipe promises (brief: macOS 13 or newer).
+#       macOS the recipe promises (ADR 0015).
 #   cmake -DMODE=links -DLINKS_FILE=<f> -P MacosPackage.cmake
 #       LINKS_FILE holds "<file> <library or rpath>" per line (otool -L and LC_RPATH of every
 #       Mach-O file of the bundle, paths relative to the bundle). Fails for any reference that is

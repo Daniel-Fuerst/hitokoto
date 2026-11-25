@@ -210,7 +210,7 @@ elseif("${CASE}" STREQUAL "AMissingOrExtraFileFails")
                  "the file check with other case")
 
 elseif("${CASE}" STREQUAL "AFileForANewerMacosFails")
-    # Decision 4 (brief: macOS 13 or newer): no file of the bundle may need a newer macOS.
+    # Decision 4: no file of the bundle may need a newer macOS than the recipe's.
     write_lines("${WORK_DIR}/minos.txt" "13.0 Contents/MacOS/hitokoto"
                 "12.0 Contents/Frameworks/QtCore.framework/Versions/A/QtCore"
                 "13.0 Contents/PlugIns/platforms/libqcocoa.dylib")
@@ -289,12 +289,12 @@ elseif("${CASE}" STREQUAL "TheRecipeBuildsWithTheCiQt")
     file(STRINGS "${RECIPE_DIR}/recipe.txt" recipe_arch REGEX "^qt-arch ")
     expect_eq("${recipe_arch}" "qt-arch ${ci_arch}" "the recipe's Qt arch against ci.yml")
 
-elseif("${CASE}" STREQUAL "TheRecipeRunsOnMacos13")
-    # Decision 4 (docs/stories/README.md decision 2: macOS 13 or newer). 13.3, not 13.0: the
-    # floating-point std::to_chars of the tags' core (properties.cpp) is in Apple's libc++ only
-    # from macOS 13.3 on; with 13.0 the first dry run on pull request 80 did not compile.
+elseif("${CASE}" STREQUAL "TheRecipeRunsOnTheOldestMacosOfItsQt")
+    # Decision 4, ADR 0015: macOS 14.4, the oldest macOS the frameworks and plugins of Qt 6.12.0
+    # run on (LC_BUILD_VERSION of every one of them, third dry run on pull request 80). The core's
+    # floating-point std::to_chars needs only 13.3.
     file(STRINGS "${RECIPE_DIR}/recipe.txt" target REGEX "^macos ")
-    expect_eq("${target}" "macos 13.3" "the oldest macOS of the recipe")
+    expect_eq("${target}" "macos 14.4" "the oldest macOS of the recipe")
     file(READ "${RECIPE_DIR}/build-package.sh" build)
     expect_contains("${build}" "-DCMAKE_OSX_DEPLOYMENT_TARGET=\"$target\"" "the deployment target")
     expect_contains("${build}" "plutil -replace LSMinimumSystemVersion -string \"$target\""

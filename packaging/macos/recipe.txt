@@ -2,13 +2,13 @@
 # qt X.Y.Z, qt-arch <arch>: the Qt the DMG is built with and ships; the same as the macOS row of
 #   .github/workflows/ci.yml and QT_VERSION (checked by S049_TheRecipeBuildsWithTheCiQt). Qt's
 #   clang_64 build holds arm64 and x86_64; the bundle keeps arm64 alone (decision 4).
-# macos X.Y: the oldest macOS the DMG runs on (brief, docs/stories/README.md decision 2: macOS 13
-#   or newer); the deployment target of the build, LSMinimumSystemVersion of the bundle, and every
-#   Mach-O file of the bundle is checked against it. 13.3, not 13.0: the core of the tags uses the
-#   floating-point std::to_chars, which Apple's libc++ has only from macOS 13.3 on (the first dry
-#   run on pull request 80 did not compile with 13.0).
+# macos X.Y: the oldest macOS the DMG runs on; the deployment target of the build,
+#   LSMinimumSystemVersion of the bundle, and every Mach-O file of the bundle is checked against
+#   it. 14.4 (ADR 0015): every framework and plugin of Qt 6.12.0 needs macOS 14.4 (third dry run on
+#   pull request 80). When the Qt of the recipe changes, so may this line; the check names any
+#   file that needs a newer macOS.
 # skip X.Y.Z <reason>: a version that cannot get a DMG for good; it is released without one and
 #   named in the job summary.
 qt 6.12.0
 qt-arch clang_64
-macos 13.3
+macos 14.4

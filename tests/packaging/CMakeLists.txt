@@ -128,7 +128,7 @@ foreach(name IN ITEMS
         ALibraryOutsideTheBundleFails
         TheNoticeNamesTheQtVersion
         TheRecipeBuildsWithTheCiQt
-        TheRecipeRunsOnMacos13
+        TheRecipeRunsOnTheOldestMacosOfItsQt
         TheDiskImageIsForAppleSiliconAlone
         TheBundleIsSignedAdHoc
         TheDiskImageShipsNoImageFormatPlugins

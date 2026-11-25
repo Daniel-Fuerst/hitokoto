@@ -1,6 +1,6 @@
 # macOS disk image (DMG)
 
-Every version of hitokoto released after this recipe's merge gets a disk image for macOS 13.3 or
+Every version of hitokoto released after this recipe's merge gets a disk image for macOS 14.4 or
 newer on Apple silicon (arm64) in the same GitHub release as its Debian package and its MSI
 (S049). The release of a version is published only when every package passed its checks; a
 release published before (0.5.1 up to the version of the merge) stays without a disk image. This
@@ -33,7 +33,7 @@ Open the disk image and drag `hitokoto` onto `Applications`.
 The program is signed ad hoc, not with an Apple Developer ID, and not notarised: there is no Apple
 developer account behind hitokoto. macOS therefore refuses to open a downloaded copy at first
 ("Apple could not verify …"). Either open it once through System Settings › Privacy & Security,
-"Open Anyway" (macOS 15 and newer; on macOS 13 and 14 also Control-click › Open in Finder), or
+"Open Anyway" (macOS 15 and newer; on macOS 14 also Control-click › Open in Finder), or
 remove the quarantine mark the browser set, after checking the download as above:
 
 ```sh
@@ -47,9 +47,8 @@ remove hitokoto, move `hitokoto` from `Applications` to the Trash; its settings 
 What the bundle contains besides the program: Qt's frameworks and plugins (`macdeployqt`, without
 the image format plugins: hitokoto opens no image, and its icon is drawn by the SVG icon engine),
 and in `Contents/Resources` `LICENSE.txt`, `LGPL-3.0.txt` and `THIRD-PARTY.txt`. Every file holds
-arm64 code alone; Intel Macs are not supported. macOS 13.0 to 13.2 are not supported either: the
-program uses a part of the C++ library that Apple added in macOS 13.3, a free update for every Mac
-that runs macOS 13.
+arm64 code alone; Intel Macs are not supported. macOS 14.4 is the oldest macOS Qt 6.12, which the
+bundle ships, runs on; macOS 13 is not supported (ADR 0015).
 
 ## Building locally
 
@@ -62,5 +61,5 @@ export QT_ROOT_DIR="$HOME/Qt/6.12.0/macos"
 export PATH="$QT_ROOT_DIR/bin:$PATH"
 mkdir -p dmg-work/source
 git archive v0.5.1 | tar -x -C dmg-work/source
-bash packaging/macos/build-package.sh dmg-work/source 0.5.1 dmg-work/out 13.3
+bash packaging/macos/build-package.sh dmg-work/source 0.5.1 dmg-work/out 14.4
 ```

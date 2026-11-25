@@ -74,7 +74,8 @@ sets it).
 ## Decisions (confirmed 2026-10-24)
 
 1. **Licence:** GPL-3.0-or-later (`LICENSE`). Qt is used under LGPLv3 (dynamic linking).
-2. **Minimum platforms:** Windows 10 22H2 and 11 (x64), macOS 13 or newer, Linux with Qt 6.8 or
+2. **Minimum platforms:** Windows 10 22H2 and 11 (x64), macOS 13 or newer (since ADR 0015, 2026-11-25:
+   macOS 14.4 or newer, the oldest macOS of the Qt the disk image ships), Linux with Qt 6.8 or
    newer (Debian trixie). CI builds with Qt 6.12 and, on Linux, with Qt 6.8 as the minimum.
 3. **Text buffer ownership:** ADR 0002 – the editor's `QTextDocument` is the only copy of the text.
 4. **Encoding and line endings:** ADR 0002 – UTF-8 only, invalid files refused; LF, CRLF and CR

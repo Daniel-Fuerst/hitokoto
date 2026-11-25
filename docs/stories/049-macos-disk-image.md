@@ -39,12 +39,12 @@ start on a Mac without Qt.
    action and release of aqtinstall as the macOS CI (a lint keeps the recipe, `QT_VERSION` and the
    macOS row of `ci.yml` the same), the source of the tag is configured in Release with the version
    `X.Y.Z`, for `arm64` (Daniel, 2026-11-25: Apple silicon only; Intel Macs get nothing) and with the
-   deployment target of the recipe, `13.3` (docs/stories/README.md decision 2: macOS 13 or newer;
-   13.3 rather than 13.0, see "Fix of 2026-11-25"),
+   deployment target of the recipe, `14.4` (ADR 0015: the oldest macOS of Qt 6.12.0; the first
+   plan was 13.0, then 13.3, see "Fix of 2026-11-25"),
    built with Xcode's Clang, and its tests run (`ctest`, platform `offscreen`, benchmarks off). Qt's
    `clang_64` files hold arm64 and x86_64; every Mach-O file of the bundle is thinned to arm64. The
    build fails if any Mach-O file needs a newer macOS than the recipe's (`LC_BUILD_VERSION`), so a
-   Qt that drops macOS 13 shows at once, and `LSMinimumSystemVersion` says the same to Finder.
+   Qt that drops a macOS shows at once, and `LSMinimumSystemVersion` says the same to Finder.
 5. **What the bundle holds.** `cmake --install` of the tag's build (`hitokoto.app`, its icon and
    `Info.plist` from `src/app/CMakeLists.txt`), then `macdeployqt` from the recipe's Qt; the image
    format plugins are removed afterwards, as in the MSI (ADR 0013: hitokoto decodes no image file,
@@ -100,14 +100,14 @@ start on a Mac without Qt.
   listing all three
 
 **Scenario: installing on a Mac**
-- Given a Mac with Apple silicon and macOS 13.3 or newer, without Qt
+- Given a Mac with Apple silicon and macOS 14.4 or newer, without Qt
 - When the user opens `hitokoto-X.Y.Z-arm64.dmg`, drags `hitokoto` onto `Applications` and allows
   it once under Privacy & Security
 - Then hitokoto starts from Launchpad and the Dock with its icon, and its settings show version
   `X.Y.Z`
 
 **Scenario: a disk image that does not work is not released**
-- Given a test fails, the bundle misses or adds a file, a file needs a newer macOS than 13.3 or a
+- Given a test fails, the bundle misses or adds a file, a file needs a newer macOS than 14.4 or a
   library outside the bundle, or `hitokoto --version` prints another version or does not start on a
   runner without Qt
 - Then the run is red and no release is created or changed for that version
@@ -143,7 +143,7 @@ start on a Mac without Qt.
 - What only macOS shows, in the dry run on the pull request: which frameworks and plugins
   `macdeployqt` of Qt 6.12.0 delivers (`files.txt` is written from what `windeployqt` delivers on
   Windows and from Qt's dependencies; the build prints the real list), whether Qt 6.12.0's
-  frameworks run on macOS 13.3, and whether `hitokoto --version` starts with the cocoa platform on
+  frameworks run on the recipe's macOS, and whether `hitokoto --version` starts with the cocoa platform on
   the runner.
 - The S037 lint `S037_WindowsInstallsAqtinstallFromAPinnedCommit` now reads only the job
   `windows-package`: the macOS job takes the release of aqtinstall the macOS CI takes, as ADR 0013
@@ -169,3 +169,10 @@ signed the bundle, and stopped at the file list: `macdeployqt` of Qt 6.12.0 brin
 `QtDBus.framework` and writes no `qt.conf`, and CMake writes no `PkgInfo`. `files.txt` now lists
 what the run delivered; that Qt finds the cocoa plugin without `qt.conf` is checked when
 `install-check.sh` starts the program.
+
+The third dry run (same day) passed the file list and stopped at the next check: every framework
+and plugin of Qt 6.12.0 needs macOS 14.4 (`LC_BUILD_VERSION`), above the recipe's 13.3. Qt 6.12
+does not run on macOS 13 at all, whatever hitokoto's own code needs. Daniel decided on 2026-11-25
+to raise the oldest macOS to 14.4 rather than ship an older Qt that still runs on macOS 13 (ADR
+0015); the recipe, `packaging/macos/README.md` and docs/stories/README.md decision 2 follow, and
+`S049_TheRecipeRunsOnTheOldestMacosOfItsQt` (formerly `S049_TheRecipeRunsOnMacos13`) expects 14.4.
