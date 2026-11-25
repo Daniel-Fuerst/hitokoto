@@ -10,6 +10,7 @@
 #include <QFont>
 #include <QFontDatabase>
 #include <QGridLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QPaintEvent>
 #include <QPainter>
@@ -19,6 +20,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <tuple>
 
 namespace hitokoto::ui {
 namespace {
@@ -38,7 +40,38 @@ QLabel* makeLabel(const QString& text, QWidget* parent, const char* objectName =
     return label;
 }
 
+/// S048: a section heading followed by its line, which takes the rest of the width.
+QHBoxLayout* makeHeadingRow(QLabel* label, SectionRule* rule) {
+    auto* row = new QHBoxLayout;
+    row->setContentsMargins(0, 0, 0, 0);
+    row->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
+    row->addWidget(rule, 1, Qt::AlignVCenter);
+    return row;
+}
+
 }  // namespace
+
+SectionRule::SectionRule(QWidget* parent) : QWidget(parent) {
+    setFocusPolicy(Qt::NoFocus);
+    setAttribute(Qt::WA_TransparentForMouseEvents);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+}
+
+void SectionRule::setRule(const QColor& color, double width) {
+    color_ = color;
+    width_ = width;
+    update();
+}
+
+void SectionRule::paintEvent(QPaintEvent* /*event*/) {
+    // Whole logical pixels, so that a line of width 1 stays crisp instead of blurring over two rows.
+    const int thickness = static_cast<int>(std::lround(width_));
+    if (thickness <= 0) {
+        return;
+    }
+    QPainter painter(this);
+    painter.fillRect(QRect(0, (height() - thickness) / 2, width(), thickness), color_);
+}
 
 SettingsMenu::SettingsMenu(QWidget* parent) : QWidget(parent) {
     setFocusPolicy(Qt::NoFocus);
@@ -50,6 +83,9 @@ SettingsMenu::SettingsMenu(QWidget* parent) : QWidget(parent) {
     titleLabel_ = makeLabel(tr("Settings"), this, "settingsTitleLabel");
 
     appearanceLabel_ = makeLabel(tr("Appearance"), this, "appearanceLabel");
+    appearanceRule_ = new SectionRule(this);
+    appearanceRule_->setObjectName(QStringLiteral("appearanceRule"));
+    appearanceHeading_ = makeHeadingRow(appearanceLabel_, appearanceRule_);
     themeKeyLabel_ = makeLabel(tr("Theme"), this);
     themeCombo_ = new QComboBox(this);
     themeCombo_->setObjectName(QStringLiteral("themeSelector"));
@@ -69,6 +105,9 @@ SettingsMenu::SettingsMenu(QWidget* parent) : QWidget(parent) {
 
     // S043: the section Feel, with the switch for smooth scrolling (S027).
     feelLabel_ = makeLabel(tr("Feel"), this, "feelLabel");
+    feelRule_ = new SectionRule(this);
+    feelRule_->setObjectName(QStringLiteral("feelRule"));
+    feelHeading_ = makeHeadingRow(feelLabel_, feelRule_);
     smoothKeyLabel_ = makeLabel(tr("Smooth scrolling"), this, "smoothScrollingLabel");
     smoothSwitch_ = new ToggleSwitch(this);
     smoothSwitch_->setObjectName(QStringLiteral("smoothScrollingSwitch"));
@@ -89,9 +128,9 @@ SettingsMenu::SettingsMenu(QWidget* parent) : QWidget(parent) {
     versionLabel_ = makeLabel(versionText, this, "settingsVersionLabel");
 
     mainLayout_->addWidget(titleLabel_);
-    mainLayout_->addWidget(appearanceLabel_);
+    mainLayout_->addLayout(appearanceHeading_);
     mainLayout_->addLayout(appearanceLayout_);
-    mainLayout_->addWidget(feelLabel_);
+    mainLayout_->addLayout(feelHeading_);
     mainLayout_->addLayout(feelLayout_);
     mainLayout_->addWidget(versionLabel_, 0, Qt::AlignRight);
 
@@ -160,8 +199,21 @@ void SettingsMenu::applyTheme(const core::Theme& theme) {
         uiFont.setPointSizeF(theme.uiFontSize);
     }
     setFont(uiFont);
-    for (QLabel* label : {appearanceLabel_, themeKeyLabel_, feelLabel_, smoothKeyLabel_}) {
+    for (QLabel* label : {themeKeyLabel_, smoothKeyLabel_}) {
         label->setFont(uiFont);
+    }
+    // S048: section headings in their own colour and weight, each followed by a line.
+    const core::SettingsSectionStyle section = core::settingsSectionStyle(theme);
+    QFont headingFont = uiFont;
+    headingFont.setWeight(static_cast<QFont::Weight>(section.weight));
+    const int ruleGap = static_cast<int>(std::lround(section.ruleGap));
+    for (const auto& [label, rule, row] : {std::tuple{appearanceLabel_, appearanceRule_, appearanceHeading_},
+                                           std::tuple{feelLabel_, feelRule_, feelHeading_}}) {
+        label->setFont(headingFont);
+        setLabelColor(label, toQColor(section.text));
+        rule->setRule(toQColor(section.rule), section.ruleWidth);
+        rule->setFixedHeight(label->sizeHint().height());
+        row->setSpacing(ruleGap);
     }
     themeCombo_->setFont(uiFont);
     if (QAbstractItemView* view = themeCombo_->view()) {
@@ -181,9 +233,7 @@ void SettingsMenu::applyTheme(const core::Theme& theme) {
     const QColor textColor = toQColor(theme.text);
     const QColor mutedColor = toQColor(theme.textMuted);
     setLabelColor(titleLabel_, textColor);
-    setLabelColor(appearanceLabel_, mutedColor);
     setLabelColor(themeKeyLabel_, mutedColor);
-    setLabelColor(feelLabel_, mutedColor);
     setLabelColor(smoothKeyLabel_, mutedColor);
     smoothSwitch_->setSwitchStyle(core::switchStyle(theme));
     setLabelColor(versionLabel_, mutedColor);

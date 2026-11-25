@@ -59,6 +59,7 @@ story ID (see "Conventions").
 | 50 | [S045](045-math-layout-engine.md) | Math layout engine in the core (ADR 0014) | S044 | L | In review |
 | 51 | [S046](046-typeset-inline-math.md) | Inline formulas shown typeset | S044, S045, S010, S019 | L | In review |
 | 52 | [S047](047-typeset-display-math.md) | Display formulas shown typeset | S044, S045, S046 | M | In review |
+| 53 | [S048](048-settings-section-headings.md) | Section headings in the settings flyout stand out | S039, S043 | S | In progress |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 

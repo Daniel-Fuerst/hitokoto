@@ -5,17 +5,33 @@
 #include "hitokoto/core/theme.hpp"
 #include "theme_manager.hpp"
 
+#include <QColor>
 #include <QList>
 #include <QWidget>
 
 class QComboBox;
 class QGridLayout;
+class QHBoxLayout;
 class QLabel;
 class QVBoxLayout;
 
 namespace hitokoto::ui {
 
 class ToggleSwitch;
+
+/// S048: the line to the right of a section heading, centred vertically in its height.
+class SectionRule : public QWidget {
+public:
+    explicit SectionRule(QWidget* parent = nullptr);
+    void setRule(const QColor& color, double width);
+
+protected:
+    void paintEvent(QPaintEvent* event) override;
+
+private:
+    QColor color_;
+    double width_ = 1;
+};
 
 class SettingsMenu : public QWidget {
     Q_OBJECT
@@ -49,9 +65,13 @@ private:
     QGridLayout* appearanceLayout_ = nullptr;
     QLabel* titleLabel_ = nullptr;
     QLabel* appearanceLabel_ = nullptr;
+    SectionRule* appearanceRule_ = nullptr;
+    QHBoxLayout* appearanceHeading_ = nullptr;
     QLabel* themeKeyLabel_ = nullptr;
     QComboBox* themeCombo_ = nullptr;
     QLabel* feelLabel_ = nullptr;
+    SectionRule* feelRule_ = nullptr;
+    QHBoxLayout* feelHeading_ = nullptr;
     QGridLayout* feelLayout_ = nullptr;
     QLabel* smoothKeyLabel_ = nullptr;
     ToggleSwitch* smoothSwitch_ = nullptr;

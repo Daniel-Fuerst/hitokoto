@@ -266,6 +266,11 @@ follows the general tokens above.
 | `switch.height` | number (px) | Height of a toggle switch, 8 to 64 | 20 |
 | `switch.radius` | number (px) | Corner radius of the track of a toggle switch; the knob is rounded alike, 0 to 32 | 10 |
 | `switch.knob-margin` | number (px) | Space between the knob and the edge of the track, 0 to 16 | 2 |
+| `settings-section.text` | color | Section headings of the settings flyout | `colors.accent` |
+| `settings-section.weight` | number | Font weight of the section headings, 100 to 900 | 600 |
+| `settings-section.rule` | color | Line to the right of a section heading | `colors.border` |
+| `settings-section.rule-width` | number (px) | Thickness of the line, 0 to 8 | 1 |
+| `settings-section.rule-gap` | number (px) | Space between a section heading and its line, 0 to 64 | `layout.spacing` |
 
 A thematic break (`---`, `***`, `___`) is a line across the text column, centred vertically in its block.
 Setext headings (text underlined with `===` or `---`) add no tokens: their lines use the heading
@@ -294,6 +299,11 @@ their on colours (`switch.checked-track`, `switch.checked-knob`). The knob keeps
 `switch.knob-margin` from the edge of the track; its corner radius is `switch.radius` less that
 margin, so the default track is a pill and the knob a circle, and `radius = 0` gives square ones.
 The labels beside a switch are those of the flyout (`colors.text-muted`, UI font).
+
+The sections of the settings flyout (S048, such as **Appearance** and **Feel**) start with a heading
+row: the heading in `settings-section.text` and `settings-section.weight` (UI font), then, after
+`settings-section.rule-gap`, a line in `settings-section.rule` that runs to the right edge of the
+content, centred vertically on the heading; `rule-width = 0` hides the line.
 
 Bold text is never lighter than the text around it: inside a heading the weight is the larger of
 `headings.weight` and `emphasis.bold-weight`. The built-in themes set both to 700, so bold inside a
