@@ -98,13 +98,16 @@ if [ "$code" -ne 0 ] || [ "$printed" != "hitokoto $version" ]; then
     fail "hitokoto --version printed '$printed' (exit code $code), expected 'hitokoto $version'"
 fi
 loaded="$work/loaded.txt"
-sed -n 's/^dyld\[[0-9]*\]: //p' "$err" | sed 's/ .*$//' | LC_ALL=C sort -u > "$loaded"
+# dyld of macOS 15 prints "dyld[PID]: <UUID> PATH", older ones "dyld[PID]: PATH"; a path may hold
+# spaces, so only the prefix and the UUID are cut off (S049 dry run on pull request 80 read the
+# UUIDs as paths).
+sed -n 's/^dyld\[[0-9]*\]: //p' "$err" | sed 's/^<[0-9A-Fa-f-]*> //' | LC_ALL=C sort -u > "$loaded"
 if ! grep -q "^$installed/Contents/PlugIns/platforms/libqcocoa.dylib$" "$loaded"; then
     cat "$loaded" >&2
     fail "hitokoto did not load the platform plugin of the bundle (libqcocoa.dylib)"
 fi
 outside=$(grep -v -e "^$installed/" -e '^/usr/lib/' -e '^/System/Library/' -e '^/Library/Apple/' \
-    "$loaded" || true)
+    -e '^/System/Volumes/Preboot/Cryptexes/OS/' "$loaded" || true)
 if [ -n "$outside" ]; then
     fail "hitokoto loaded libraries from outside the bundle and macOS: $(echo "$outside" | tr '\n' ' ')"
 fi
