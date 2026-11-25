@@ -100,8 +100,10 @@ fi
 loaded="$work/loaded.txt"
 # dyld of macOS 15 prints "dyld[PID]: <UUID> PATH", older ones "dyld[PID]: PATH"; a path may hold
 # spaces, so only the prefix and the UUID are cut off (S049 dry run on pull request 80 read the
-# UUIDs as paths).
-sed -n 's/^dyld\[[0-9]*\]: //p' "$err" | sed 's/^<[0-9A-Fa-f-]*> //' | LC_ALL=C sort -u > "$loaded"
+# UUIDs as paths). dyld also prints notes such as "move delayed to loaded: NAME" about images it
+# loads lazily; a loaded image is always named by its absolute path, so only those lines count.
+sed -n 's/^dyld\[[0-9]*\]: //p' "$err" | sed 's/^<[0-9A-Fa-f-]*> //' | grep '^/' |
+    LC_ALL=C sort -u > "$loaded" || true
 if ! grep -q "^$installed/Contents/PlugIns/platforms/libqcocoa.dylib$" "$loaded"; then
     cat "$loaded" >&2
     fail "hitokoto did not load the platform plugin of the bundle (libqcocoa.dylib)"
