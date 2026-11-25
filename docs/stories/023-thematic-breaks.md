@@ -16,6 +16,9 @@
   flows as a single wrapped heading paragraph while the caret is outside the heading and its
   underline, and reveals its individual source lines when the caret or selection touches any line of
   the heading or its underline.
+- **Updated by S049** (`docs/stories/049-empty-bullet-after-text.md`): a marker followed by a
+  blank (`- `, `* `, `+ `) is an empty list item even directly after paragraph text, and `- `
+  underlines nothing; `Foo` / `- ` is no heading. A bare `-` still underlines.
 
 ## Story
 

@@ -67,9 +67,11 @@ public:
     [[nodiscard]] bool startsAfterParagraph(std::u16string_view line, const LineMatch& match,
                                             bool lazy) const noexcept override {
         // An empty item may not interrupt a paragraph (CommonMark 5.2); outside the paragraph's
-        // container (a lazy line) it starts a list.
+        // container (a lazy line) it starts a list. S049 deviates: a marker followed by a blank
+        // (`- `, what Enter and Tab write) starts an empty item, so that indenting a new bullet
+        // under a bullet with text does not continue (or underline) that text while typing.
         const std::u16string_view rest = line.substr(match.markerChar + 1U);
-        return lazy || blocks::firstNonBlank(rest) < rest.size();
+        return lazy || !rest.empty();
     }
 
     void render(std::u16string_view /*line*/, const LineMatch& match, const LineContext& context,
