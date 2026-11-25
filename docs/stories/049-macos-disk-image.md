@@ -39,7 +39,8 @@ start on a Mac without Qt.
    action and release of aqtinstall as the macOS CI (a lint keeps the recipe, `QT_VERSION` and the
    macOS row of `ci.yml` the same), the source of the tag is configured in Release with the version
    `X.Y.Z`, for `arm64` (Daniel, 2026-11-25: Apple silicon only; Intel Macs get nothing) and with the
-   deployment target of the recipe, `13.0` (docs/stories/README.md decision 2: macOS 13 or newer),
+   deployment target of the recipe, `13.3` (docs/stories/README.md decision 2: macOS 13 or newer;
+   13.3 rather than 13.0, see "Fix of 2026-11-25"),
    built with Xcode's Clang, and its tests run (`ctest`, platform `offscreen`, benchmarks off). Qt's
    `clang_64` files hold arm64 and x86_64; every Mach-O file of the bundle is thinned to arm64. The
    build fails if any Mach-O file needs a newer macOS than the recipe's (`LC_BUILD_VERSION`), so a
@@ -99,14 +100,14 @@ start on a Mac without Qt.
   listing all three
 
 **Scenario: installing on a Mac**
-- Given a Mac with Apple silicon and macOS 13 or newer, without Qt
+- Given a Mac with Apple silicon and macOS 13.3 or newer, without Qt
 - When the user opens `hitokoto-X.Y.Z-arm64.dmg`, drags `hitokoto` onto `Applications` and allows
   it once under Privacy & Security
 - Then hitokoto starts from Launchpad and the Dock with its icon, and its settings show version
   `X.Y.Z`
 
 **Scenario: a disk image that does not work is not released**
-- Given a test fails, the bundle misses or adds a file, a file needs a newer macOS than 13.0 or a
+- Given a test fails, the bundle misses or adds a file, a file needs a newer macOS than 13.3 or a
   library outside the bundle, or `hitokoto --version` prints another version or does not start on a
   runner without Qt
 - Then the run is red and no release is created or changed for that version
@@ -142,7 +143,7 @@ start on a Mac without Qt.
 - What only macOS shows, in the dry run on the pull request: which frameworks and plugins
   `macdeployqt` of Qt 6.12.0 delivers (`files.txt` is written from what `windeployqt` delivers on
   Windows and from Qt's dependencies; the build prints the real list), whether Qt 6.12.0's
-  frameworks run on macOS 13.0, and whether `hitokoto --version` starts with the cocoa platform on
+  frameworks run on macOS 13.3, and whether `hitokoto --version` starts with the cocoa platform on
   the runner.
 - The S037 lint `S037_WindowsInstallsAqtinstallFromAPinnedCommit` now reads only the job
   `windows-package`: the macOS job takes the release of aqtinstall the macOS CI takes, as ADR 0013
@@ -151,3 +152,13 @@ start on a Mac without Qt.
   installers (`S049_TheBundleCarriesTheLicences` keeps it there).
 - The release notes, which `scripts/packaging/DebianPackage.cmake` writes, still name the Debian
   package alone, as they did after S037.
+
+## Fix of 2026-11-25
+
+The first dry run on pull request 80 (DMG of 0.10.1) did not compile:
+`src/core/src/properties.cpp` calls the floating-point `std::to_chars`, which Apple's libc++ marks
+"introduced in macOS 13.3", so a build with the deployment target 13.0 refuses it. The macOS CI
+never saw it, because it builds for the runner's own macOS. The recipe applies to the source of
+the tags, which cannot change, so the recipe's oldest macOS is now 13.3 (March 2023, a free update
+on every Mac that runs macOS 13): still "macOS 13" in the sense of docs/stories/README.md decision
+2, but not 13.0 to 13.2. `S049_TheRecipeRunsOnMacos13` expects 13.3.

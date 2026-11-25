@@ -1,6 +1,6 @@
 # macOS disk image (DMG)
 
-Every version of hitokoto released after this recipe's merge gets a disk image for macOS 13 or
+Every version of hitokoto released after this recipe's merge gets a disk image for macOS 13.3 or
 newer on Apple silicon (arm64) in the same GitHub release as its Debian package and its MSI
 (S049). The release of a version is published only when every package passed its checks; a
 release published before (0.5.1 up to the version of the merge) stays without a disk image. This
@@ -47,7 +47,9 @@ remove hitokoto, move `hitokoto` from `Applications` to the Trash; its settings 
 What the bundle contains besides the program: Qt's frameworks and plugins (`macdeployqt`, without
 the image format plugins: hitokoto opens no image, and its icon is drawn by the SVG icon engine),
 and in `Contents/Resources` `LICENSE.txt`, `LGPL-3.0.txt` and `THIRD-PARTY.txt`. Every file holds
-arm64 code alone; Intel Macs are not supported.
+arm64 code alone; Intel Macs are not supported. macOS 13.0 to 13.2 are not supported either: the
+program uses a part of the C++ library that Apple added in macOS 13.3, a free update for every Mac
+that runs macOS 13.
 
 ## Building locally
 
@@ -60,5 +62,5 @@ export QT_ROOT_DIR="$HOME/Qt/6.12.0/macos"
 export PATH="$QT_ROOT_DIR/bin:$PATH"
 mkdir -p dmg-work/source
 git archive v0.5.1 | tar -x -C dmg-work/source
-bash packaging/macos/build-package.sh dmg-work/source 0.5.1 dmg-work/out 13.0
+bash packaging/macos/build-package.sh dmg-work/source 0.5.1 dmg-work/out 13.3
 ```

@@ -290,9 +290,11 @@ elseif("${CASE}" STREQUAL "TheRecipeBuildsWithTheCiQt")
     expect_eq("${recipe_arch}" "qt-arch ${ci_arch}" "the recipe's Qt arch against ci.yml")
 
 elseif("${CASE}" STREQUAL "TheRecipeRunsOnMacos13")
-    # Decision 4 (docs/stories/README.md decision 2: macOS 13 or newer).
+    # Decision 4 (docs/stories/README.md decision 2: macOS 13 or newer). 13.3, not 13.0: the
+    # floating-point std::to_chars of the tags' core (properties.cpp) is in Apple's libc++ only
+    # from macOS 13.3 on; with 13.0 the first dry run on pull request 80 did not compile.
     file(STRINGS "${RECIPE_DIR}/recipe.txt" target REGEX "^macos ")
-    expect_eq("${target}" "macos 13.0" "the oldest macOS of the recipe")
+    expect_eq("${target}" "macos 13.3" "the oldest macOS of the recipe")
     file(READ "${RECIPE_DIR}/build-package.sh" build)
     expect_contains("${build}" "-DCMAKE_OSX_DEPLOYMENT_TARGET=\"$target\"" "the deployment target")
     expect_contains("${build}" "plutil -replace LSMinimumSystemVersion -string \"$target\""
