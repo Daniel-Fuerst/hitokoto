@@ -161,4 +161,5 @@ The first dry run on pull request 80 (DMG of 0.10.1) did not compile:
 never saw it, because it builds for the runner's own macOS. The recipe applies to the source of
 the tags, which cannot change, so the recipe's oldest macOS is now 13.3 (March 2023, a free update
 on every Mac that runs macOS 13): still "macOS 13" in the sense of docs/stories/README.md decision
-2, but not 13.0 to 13.2. `S049_TheRecipeRunsOnMacos13` expects 13.3.
+2, but not 13.0 to 13.2. `S049_TheRecipeRunsOnMacos13` expects 13.3. Daniel confirmed 13.3 as
+the oldest macOS on 2026-11-25, rather than keeping 13.0 through a change of the core.
