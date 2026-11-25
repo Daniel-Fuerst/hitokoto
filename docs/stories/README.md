@@ -60,6 +60,7 @@ story ID (see "Conventions").
 | 51 | [S046](046-typeset-inline-math.md) | Inline formulas shown typeset | S044, S045, S010, S019 | L | In review |
 | 52 | [S047](047-typeset-display-math.md) | Display formulas shown typeset | S044, S045, S046 | M | In review |
 | 53 | [S048](048-settings-section-headings.md) | Section headings in the settings flyout stand out | S039, S043 | S | In progress |
+| 54 | [S049](049-macos-disk-image.md) | Every version gets a macOS disk image (Apple silicon) | S030, S035, S036, S037 | M | In progress |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 

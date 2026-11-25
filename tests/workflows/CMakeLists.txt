@@ -45,6 +45,22 @@ foreach(name IN ITEMS
                 -DWORKFLOWS_DIR=${PROJECT_SOURCE_DIR}/.github/workflows -P ${s037_cases})
 endforeach()
 
+# S049: lints over packaging.yml (the macOS disk image in the same releases).
+set(s049_cases "${CMAKE_CURRENT_SOURCE_DIR}/s049_release_cases.cmake")
+foreach(name IN ITEMS
+        TheMacosJobsOnlyRead
+        TheMacosJobsRunOnTheCiImage
+        OneMacosVersionDoesNotStopTheOthers
+        OnlyACheckedDiskImageIsReleased
+        TheReleaseWaitsForTheDiskImage
+        TheMacosRecipeStartsADryRun
+        TheHandOverOfTheDiskImageIsCheckedInADryRun
+        TheMacosJobsTakeTheToolsOfThePlan)
+    add_test(NAME S049_${name}
+        COMMAND ${CMAKE_COMMAND} -DCASE=${name}
+                -DWORKFLOWS_DIR=${PROJECT_SOURCE_DIR}/.github/workflows -P ${s049_cases})
+endforeach()
+
 # S000: lints over every workflow file (actions from a fixed commit, the rights of each token, what
 # the CI checks beside the suite).
 set(s000_cases "${CMAKE_CURRENT_SOURCE_DIR}/s000_workflow_cases.cmake")

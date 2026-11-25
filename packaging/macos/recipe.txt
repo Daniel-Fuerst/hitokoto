@@ -1,0 +1,12 @@
+# S049: the settings of the macOS disk image; read by scripts/packaging/MacosPackage.cmake.
+# qt X.Y.Z, qt-arch <arch>: the Qt the DMG is built with and ships; the same as the macOS row of
+#   .github/workflows/ci.yml and QT_VERSION (checked by S049_TheRecipeBuildsWithTheCiQt). Qt's
+#   clang_64 build holds arm64 and x86_64; the bundle keeps arm64 alone (decision 4).
+# macos X.Y: the oldest macOS the DMG runs on (brief, docs/stories/README.md decision 2: macOS 13
+#   or newer); the deployment target of the build, LSMinimumSystemVersion of the bundle, and every
+#   Mach-O file of the bundle is checked against it.
+# skip X.Y.Z <reason>: a version that cannot get a DMG for good; it is released without one and
+#   named in the job summary.
+qt 6.12.0
+qt-arch clang_64
+macos 13.0
