@@ -163,3 +163,9 @@ the tags, which cannot change, so the recipe's oldest macOS is now 13.3 (March 2
 on every Mac that runs macOS 13): still "macOS 13" in the sense of docs/stories/README.md decision
 2, but not 13.0 to 13.2. `S049_TheRecipeRunsOnMacos13` expects 13.3. Daniel confirmed 13.3 as
 the oldest macOS on 2026-11-25, rather than keeping 13.0 through a change of the core.
+
+The second dry run (same day, with 13.3) compiled, passed all 646 tests, deployed, thinned and
+signed the bundle, and stopped at the file list: `macdeployqt` of Qt 6.12.0 brings
+`QtDBus.framework` and writes no `qt.conf`, and CMake writes no `PkgInfo`. `files.txt` now lists
+what the run delivered; that Qt finds the cocoa plugin without `qt.conf` is checked when
+`install-check.sh` starts the program.
