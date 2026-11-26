@@ -77,11 +77,13 @@ elseif("${CASE}" STREQUAL "AFileMovedIntoDocsCountsWithItsOldPath")
     expect_contains("${r_LOG}" "  src/core/notes.cpp" "the message names the old path")
 
 elseif("${CASE}" STREQUAL "OtherFilesOutsideDocsNeverCount")
-    # Decision 2: CLAUDE.md, LICENSE and a path that only starts like docs/ do not count.
-    run_docs_only(r LABELS version:doc
-        CHANGED CLAUDE.md LICENSE docs.md docsearch/x.md tests/docs-read-by-tests.txt LIST ${theming})
+    # Decision 2: CLAUDE.md, LICENSE, the list itself, paths that only start like docs/ and a docs
+    # directory below the top do not count.
+    set(elsewhere "src/docs/notes.md")  # S042-mention: a changed path
+    set(others CLAUDE.md LICENSE docs.md docsearch/x.md tests/docs-read-by-tests.txt ${elsewhere})
+    run_docs_only(r LABELS version:doc CHANGED ${others} LIST ${theming})
     expect_eq("${r_CODE}" "1" "exit code")
-    foreach(path IN ITEMS CLAUDE.md LICENSE docs.md docsearch/x.md tests/docs-read-by-tests.txt)
+    foreach(path IN LISTS others)
         expect_contains("${r_LOG}" "  ${path}" "the message names ${path}")
     endforeach()
 

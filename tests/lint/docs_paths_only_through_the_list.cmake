@@ -57,7 +57,8 @@ function(is_excluded real out)
 endfunction()
 
 # The part of <line> that is code, not comment, with its string literals: sets <out_code> to the
-# code with every literal replaced by @STR@ and <out_strings> to the literals in that part, in order.
+# code with every literal replaced by @STR@ and <out_strings> to the literals in that part, in
+# order.
 function(code_and_strings line comment out_code out_strings)
     set(work "${line}")
     if(comment STREQUAL "//")
