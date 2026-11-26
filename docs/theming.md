@@ -151,6 +151,11 @@ follows the general tokens above.
 | `table.padding` | number (px) | Horizontal and vertical space inside cells, 0 to 64 | `layout.spacing` |
 | `table.font-family` | string | Font family of table cells; "" = editor font | "" |
 | `table.font-scale` | number | Font size of table cells relative to the editor font, 0.5 to 2 | 1 |
+| `table.selection-background` | color | Background of cells selected as cells, and of every cell of a table a selection in the editor covers | `colors.selection` |
+| `table.selection-text` | color | Text of selected cells | `colors.selection-text` |
+| `table.current-background` | color | Background of the cell with the caret while no cell is selected | colors.selection at an alpha of 60 of 255 |
+| `table.select-pointer-fill` | color | Fill of the pointers over the areas that select rows and columns | #000000 |
+| `table.select-pointer-outline` | color | Outline of those pointers, 1 px at 1x | #ffffff |
 | `escape.marker` | color | Backslash when revealed | `colors.marker` |
 | `link.text` | color | Colour of link text | `colors.accent` |
 | `link.marker` | color | Delimiters and destination when revealed | `colors.marker` |

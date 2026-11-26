@@ -355,6 +355,11 @@ const std::map<std::string, Resolved>& resolvedTokens() {
         ELEMENT_TOKEN("table.padding", tableStyle, padding),
         ELEMENT_TOKEN("table.font-family", tableStyle, fontFamily),
         ELEMENT_TOKEN("table.font-scale", tableStyle, fontScale),
+        ELEMENT_TOKEN("table.selection-background", tableStyle, selectionBackground),
+        ELEMENT_TOKEN("table.selection-text", tableStyle, selectionText),
+        ELEMENT_TOKEN("table.current-background", tableStyle, currentBackground),
+        ELEMENT_TOKEN("table.select-pointer-fill", tableStyle, selectPointerFill),
+        ELEMENT_TOKEN("table.select-pointer-outline", tableStyle, selectPointerOutline),
         ELEMENT_TOKEN("escape.marker", escapeStyle, marker),
         ELEMENT_TOKEN("link.text", linkStyle, text),
         ELEMENT_TOKEN("link.marker", linkStyle, marker),
@@ -528,6 +533,16 @@ TEST(S005_Theme, UnsetElementTokensShowTheirDocumentedFallback) {
             ASSERT_FALSE(r.usedFallback) << file;
             ASSERT_NE(other->second(r.theme), other->second(light)) << "the probe value is the built-in one";
             EXPECT_EQ(element->second(r.theme), other->second(r.theme));
+        } else if (const auto alpha = fallback.find(" at an alpha of "); alpha != std::string::npos) {
+            // "<colour token> at an alpha of <n> of 255" (S040): that colour, opaque in the built-in
+            // themes, with the alpha appended as two hex digits.
+            const auto base = resolved.find(fallback.substr(0, alpha));
+            ASSERT_NE(base, resolved.end()) << "add the fallback to resolvedTokens()";
+            const int value = std::stoi(fallback.substr(alpha + 16));
+            const char digits[] = "0123456789abcdef";
+            const std::string hex{digits[value / 16], digits[value % 16]};
+            EXPECT_EQ(element->second(light), base->second(light) + hex);
+            EXPECT_EQ(element->second(dark), base->second(dark) + hex);
         } else if (fallback == "text colour of the surrounding element") {
             EXPECT_EQ(element->second(light), "(none)");
             EXPECT_EQ(element->second(dark), "(none)");
