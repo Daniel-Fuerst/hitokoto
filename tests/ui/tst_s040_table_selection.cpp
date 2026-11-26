@@ -272,6 +272,63 @@ private slots:
         QCOMPARE(selected(view_), cells(0, 2, 3, 3));
     }
 
+    void rowsAndColumnsWithTheMouse() {
+        // Decision 6: between a row's control and the table, its border included, lies the row's
+        // area; above the table the columns'. Not drawn: the pointer shows it.
+        QWidget* widget = view_->parentWidget();
+        QVERIFY(widget != nullptr);
+        const QSize sizeBefore = widget->size();
+        const QPoint viewAt = view_->pos();
+        const int frame = view_->frameWidth();
+        const QPoint origin = view_->pos() + QPoint(frame, frame);
+        const auto rowArea = [&](int row) {
+            return QPoint(view_->x() - 1, origin.y() + view_->visualRect(view_->model()->index(row, 0)).center().y());
+        };
+        const auto columnArea = [&](int column) {
+            return QPoint(origin.x() + view_->visualRect(view_->model()->index(0, column)).center().x(),
+                          view_->y() - 1);
+        };
+        const auto shapeAt = [&](QPoint at) {
+            QTest::mouseMove(widget, at);
+            QCoreApplication::processEvents();
+            return widget->cursor().shape();
+        };
+        QCOMPARE(shapeAt(rowArea(2)), Qt::BitmapCursor);
+        const QCursor rowPointer = widget->cursor();
+        QCOMPARE(shapeAt(columnArea(1)), Qt::BitmapCursor);
+        const QCursor columnPointer = widget->cursor();
+        // The arrows: tip at the hot spot, black with a white outline (table.select-pointer-*).
+        QCOMPARE(rowPointer.hotSpot(), QPoint(30, 16));
+        QCOMPARE(columnPointer.hotSpot(), QPoint(16, 30));
+        const QImage right = rowPointer.pixmap().toImage();
+        const qreal scale = rowPointer.pixmap().devicePixelRatio();
+        QCOMPARE(right.pixelColor(QPoint(int(8 * scale), int(16 * scale))), QColor(Qt::black));  // the shaft
+        QCOMPARE(right.pixelColor(QPoint(int(8 * scale), int(4 * scale))).alpha(), 0);           // beside it
+        QCOMPARE(shapeAt(QPoint(view_->x() + view_->width() / 2, view_->y() + view_->height() / 2)), Qt::ArrowCursor);
+
+        QTest::mouseClick(widget, Qt::LeftButton, {}, rowArea(2));
+        QCoreApplication::processEvents();
+        QCOMPARE(selected(view_), cells(2, 0, 2, 3));
+        QTest::mouseClick(widget, Qt::LeftButton, Qt::ShiftModifier, rowArea(3));
+        QCoreApplication::processEvents();
+        QCOMPARE(selected(view_), cells(2, 0, 3, 3));
+        QTest::mouseClick(widget, Qt::LeftButton, {}, columnArea(1));
+        QCoreApplication::processEvents();
+        QCOMPARE(selected(view_), cells(0, 1, 3, 1));
+        // Dragging across adjacent areas.
+        QTest::mousePress(widget, Qt::LeftButton, {}, columnArea(0));
+        QMouseEvent drag(QEvent::MouseMove, QPointF(columnArea(2)), QPointF(widget->mapToGlobal(columnArea(2))),
+                         Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(widget, &drag);
+        QTest::mouseRelease(widget, Qt::LeftButton, {}, columnArea(2));
+        QCoreApplication::processEvents();
+        QCOMPARE(selected(view_), cells(0, 0, 3, 2));
+        // The table and its controls stay where they were.
+        QCOMPARE(widget->size(), sizeBefore);
+        QCOMPARE(view_->pos(), viewAt);
+        QCOMPARE(text(), QString::fromUtf8(kTable));
+    }
+
     void ctrlATwiceSelectsTheTable() {
         QPlainTextEdit* cell = caretIn(view_, 1, 1, 1);
         QVERIFY(cell != nullptr);
