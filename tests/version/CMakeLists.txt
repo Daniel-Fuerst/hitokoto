@@ -13,9 +13,11 @@ endfunction()
 foreach(name IN ITEMS
         NextPatchMinorMajor
         NoneMakesNoTag
+        DocMakesNoTag
         OtherLabelsDoNotCount
         NextNeedsExactlyOneLabel
         LabelCheck
+        DocBesideAnotherLabelFails
         OnlyExactVersionTagsCount
         BaseIsTheHighestVersion
         NoVersionTagFails
@@ -23,6 +25,7 @@ foreach(name IN ITEMS
         OnlyMergesOfPullRequestsIntoMain
         AnUnconfirmedMergeStops
         NoneThenPatch
+        DocThenPatch
         MergesInQuickSuccession
         MissingLabelStops
         MissingLabelAfterAVersion
