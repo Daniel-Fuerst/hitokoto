@@ -58,6 +58,31 @@ add_test(NAME S031_PersonalDataLintFindsEachKind
 set_tests_properties(S031_PersonalDataLintFindsEachKind PROPERTIES
                      PASS_REGULAR_EXPRESSION "personal-data-lint: 5 findings")
 
+# S042, decision 3: tests, benchmarks and fuzzers read files under docs/ only through the helper
+# generated from tests/docs-read-by-tests.txt; the second test shows that the lint finds each kind
+# of path, the third that the helper refuses a document not on the list.
+set(s042_lint ${CMAKE_CURRENT_SOURCE_DIR}/lint/docs_paths_only_through_the_list.cmake)
+set(s042_scan "${CMAKE_CURRENT_SOURCE_DIR}|${PROJECT_SOURCE_DIR}/bench|${PROJECT_SOURCE_DIR}/fuzz")
+# Left out: the lint's samples, the lint itself and the helper's generator.
+set(s042_exclude
+    "${CMAKE_CURRENT_SOURCE_DIR}/lint/data|${s042_lint}|${CMAKE_CURRENT_SOURCE_DIR}/cmake/DocsReadByTests.cmake")
+add_test(NAME S042_TestsReadDocsOnlyThroughTheList
+    COMMAND ${CMAKE_COMMAND} "-DSCAN_DIRS=${s042_scan}" "-DEXCLUDE=${s042_exclude}" -P ${s042_lint})
+add_test(NAME S042_DocsPathLintFindsEachKind
+    COMMAND ${CMAKE_COMMAND} -DSCAN_DIRS=${CMAKE_CURRENT_SOURCE_DIR}/lint/data/s042_docs_paths
+            -P ${s042_lint})
+set_tests_properties(S042_DocsPathLintFindsEachKind PROPERTIES
+                     PASS_REGULAR_EXPRESSION "docs-paths-lint: 6 findings")
+# Built only by the test, never by the build or clang-tidy: the file must not compile.
+add_library(s042_unlisted_doc OBJECT EXCLUDE_FROM_ALL compile_fail/s042_unlisted_doc.cpp)
+target_compile_features(s042_unlisted_doc PRIVATE cxx_std_20)
+target_include_directories(s042_unlisted_doc PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+set_target_properties(s042_unlisted_doc PROPERTIES EXPORT_COMPILE_COMMANDS OFF)
+add_test(NAME S042_TheHelperRefusesAnUnlistedDocument
+    COMMAND ${CMAKE_COMMAND} --build ${PROJECT_BINARY_DIR} --target s042_unlisted_doc --config $<CONFIG>)
+set_tests_properties(S042_TheHelperRefusesAnUnlistedDocument PROPERTIES
+                     PASS_REGULAR_EXPRESSION "this document is not on tests/docs-read-by-tests.txt")
+
 # S029: the benchmark gate.
 add_subdirectory(bench)
 
