@@ -150,6 +150,28 @@ can act on exactly what I see.
     that Qt's accessible table interface reports the selected cells, rows and columns. S009 gains a
     scenario for it.
 
+## Implementation (2026-11-26, night mode; in progress)
+
+- Core: `core::TableCellSelection` (`table_selection.hpp`) holds the rectangle from its anchor,
+  whole rows and columns, and the steps of decision 8; `shiftStepSelectsCell` the step from text
+  to cell; `emptyTableCells`, `removeTableRows` and `removeTableColumns` the lines of decision 10.
+- The table view selects nothing by itself (`NoSelection`); a selection of cells is set in its
+  selection model, which the accessible table reports (decision 13, S009 scenario). The open editor
+  of the current cell, which covers its cell, takes the selection colours through a style sheet of
+  its own while cells are selected or the editor's selection covers the table: the view's style
+  sheet reaches it, so its palette alone does not show.
+- The areas of rows and columns (decision 6) are found by `TableWidget::areaAt`; the pointers are
+  `icons/select-row.svg` and `icons/select-column.svg`, rendered in the theme's colours.
+- A selection in the editor that ends inside a table's lines is widened to the table's end (from
+  above, the hidden blank line below it included) or start (from below) on every selection change,
+  so keys and the mouse behave alike.
+
+Open before "In review": the benchmarks `s040_*` (scenario "selecting keeps the budgets"); dragging
+with the mouse from a selection of cells to below or above the table (the view keeps the mouse
+while the button is held, so the drag stops at the edge rows; Shift with the arrows does extend it
+into the editor); the manual checks (a key the system takes, the pointers on Windows and macOS at
+2x).
+
 ## Acceptance scenarios
 
 **Scenario: a rectangle of cells is selected and visible**
