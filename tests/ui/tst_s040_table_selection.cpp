@@ -347,6 +347,70 @@ private slots:
         QCOMPARE(selected(view_), cells(0, 0, 3, 3));
     }
 
+    void aThirdCtrlASelectsTheDocument() {
+        QVERIFY(caretIn(view_, 1, 1, 1) != nullptr);
+        press(Qt::Key_A, Qt::ControlModifier);
+        press(Qt::Key_A, Qt::ControlModifier);
+        press(Qt::Key_A, Qt::ControlModifier);
+        const QTextCursor cursor = f_->editor()->textCursor();
+        QCOMPARE(cursor.selectionStart(), 0);
+        QCOMPARE(cursor.selectionEnd(), static_cast<int>(text().size()));
+        QCOMPARE(paintedSelected(view_), cells(0, 0, 3, 3));  // the table shows all its cells as selected
+        QCOMPARE(text(), QString::fromUtf8(kTable));
+    }
+
+    void aSelectionInTheEditorCoversWholeTables() {
+        // Decision 12: with keys as before, and a selection that ends inside a table's lines
+        // (dragging into it) reaches to its end, the hidden blank line below it included.
+        QTextCursor cursor(f_->editor()->document());
+        cursor.setPosition(2);  // in "above"
+        f_->editor()->setTextCursor(cursor);
+        f_->editor()->setFocus();
+        press(Qt::Key_Down, Qt::ShiftModifier);
+        press(Qt::Key_Down, Qt::ShiftModifier);
+        const int tableEnd = static_cast<int>(text().indexOf(QStringLiteral("below")));
+        QCOMPARE(f_->editor()->textCursor().selectionEnd(), tableEnd);
+        QCOMPARE(selected(view_), cells(0, 0, 3, 3));
+        QCOMPARE(paintedSelected(view_), cells(0, 0, 3, 3));
+        // As a drag into a cell leaves it: the selection ends inside the table's lines.
+        cursor.setPosition(2);
+        cursor.setPosition(static_cast<int>(text().indexOf(QStringLiteral("b2"))), QTextCursor::KeepAnchor);
+        f_->editor()->setTextCursor(cursor);
+        QCoreApplication::processEvents();
+        QCOMPARE(f_->editor()->textCursor().selectionEnd(), tableEnd);
+        // From below upwards: to the table's start.
+        cursor.setPosition(static_cast<int>(text().size()));
+        cursor.setPosition(static_cast<int>(text().indexOf(QStringLiteral("c2"))), QTextCursor::KeepAnchor);
+        f_->editor()->setTextCursor(cursor);
+        QCoreApplication::processEvents();
+        QCOMPARE(f_->editor()->textCursor().selectionStart(), static_cast<int>(text().indexOf(QStringLiteral("| A"))));
+        // No selection: no cell shows as selected.
+        cursor.setPosition(1);
+        f_->editor()->setTextCursor(cursor);
+        QCoreApplication::processEvents();
+        QCOMPARE(selected(view_), QString());
+        QCOMPARE(text(), QString::fromUtf8(kTable));
+    }
+
+    void aSelectionOfCellsExtendedBeyondTheTable() {
+        QVERIFY(caretIn(view_, 3, 0, 0) != nullptr);
+        press(Qt::Key_Space, Qt::ShiftModifier);
+        press(Qt::Key_Down, Qt::ShiftModifier);
+        const QTextCursor cursor = f_->editor()->textCursor();
+        QCOMPARE(cursor.selectionStart(), static_cast<int>(text().indexOf(QStringLiteral("| A"))));
+        QCOMPARE(cursor.selectionEnd(), static_cast<int>(text().size()));  // to the end of the line below
+        QCOMPARE(paintedSelected(view_), cells(0, 0, 3, 3));
+        // Upwards from the header row: from the table's end to the line above.
+        QVERIFY(caretIn(view_, 0, 0, 0) != nullptr);
+        press(Qt::Key_Right, Qt::ShiftModifier);
+        press(Qt::Key_Right, Qt::ShiftModifier);
+        press(Qt::Key_Up, Qt::ShiftModifier);
+        const QTextCursor up = f_->editor()->textCursor();
+        QCOMPARE(up.selectionEnd(), static_cast<int>(text().indexOf(QStringLiteral("below"))));
+        QCOMPARE(up.selectionStart(), static_cast<int>(text().indexOf(QStringLiteral("\n\n| A"))) + 1);
+        QCOMPARE(text(), QString::fromUtf8(kTable));
+    }
+
     void theContextMenuSelects() {
         QPlainTextEdit* cell = caretIn(view_, 2, 1, 0);
         QVERIFY(cell != nullptr);
