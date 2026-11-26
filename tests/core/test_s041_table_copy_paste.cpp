@@ -78,10 +78,11 @@ TEST(S041_TableCopyPaste, CopyingTheHeaderRowKeepsItTheHeader) {
 }
 
 TEST(S041_TableCopyPaste, TheWholeTableGivesExactlyItsLines) {
-    EXPECT_EQ(copiedTableCells(looseTable(), {0, 0, 2, 1}), u"|Name|Mitte  |\n|:-|--:|\n|a|b|");
+    EXPECT_EQ(copiedTableCells(looseTable(), {0, 0, 1, 1}), u"|Name|Mitte  |\n|:-|--:|\n|a|b|");
     EXPECT_EQ(copiedTableCells(scenarioTable(), {0, 0, 3, 3}), joined(scenarioTable()));
     // Less than the whole table is written in the minimal form.
-    EXPECT_EQ(copiedTableCells(looseTable(), {0, 0, 1, 1}), u"| Name | Mitte |\n| :--- | ---: |\n| a | b |");
+    EXPECT_EQ(copiedTableCells(looseTable(), {0, 0, 1, 0}), u"| Name |\n| :--- |\n| a |");
+    EXPECT_EQ(copiedTableCells(looseTable(), {0, 1, 1, 1}), u"| Mitte |\n| ---: |\n| b |");
 }
 
 TEST(S041_TableCopyPaste, OneCellGivesItsText) {
@@ -112,7 +113,10 @@ TEST(S041_TableCopyPaste, TabSeparatedTextQuotesAsExcelDoes) {
               u"say \"hi\"\t\"a\n\"\"b\"\"\"\t\"t\tu\"\n");
     // S031 reads it back as the same cells.
     const auto read = parseExcelPlainText(copiedTableCellsAsTabSeparated(registry, table, {0, 0, 1, 2}));
-    ASSERT_TRUE(read.has_value());
+    // Explicit branch for bugprone-unchecked-optional-access (it ignores ASSERT_TRUE).
+    if (!read) {
+        FAIL() << "S031 reads no table";
+    }
     const TableCellGrid cells = pastedTableCells(*read);
     ASSERT_EQ(cells.size(), 2U);
     EXPECT_EQ(cells[1], (std::vector<std::u16string>{u"say \"hi\"", u"a<br>\"b\"", u"t\tu"}));
@@ -161,37 +165,36 @@ TEST(S041_TableCopyPaste, PastedTablesGiveTheirCellsAsS031WritesThem) {
 TEST(S041_TableCopyPaste, PastingCellsAddsRowsAndKeepsTheOthers) {
     // Scenario: a table of 2 x 3 cells pasted with the top-left cell in the last row.
     const auto lines = pasteCellsIntoTable(pasteTarget(), {2, 0}, {{u"1", u"2", u"3"}, {u"4", u"5", u"6"}});
-    ASSERT_TRUE(lines.has_value());
-    EXPECT_EQ(*lines, (Lines{u"| A | B | C |", u"| --- | --- | --- |", u"| a1 |  b1  | c1 |", u"| 1 | 2 | 3 |",
-                             u"| 4 | 5 | 6 |"}));
+    EXPECT_EQ(lines, (Lines{u"| A | B | C |", u"| --- | --- | --- |", u"| a1 |  b1  | c1 |", u"| 1 | 2 | 3 |",
+                            u"| 4 | 5 | 6 |"}));
 }
 
 TEST(S041_TableCopyPaste, PastingCellsAddsColumns) {
     const auto lines = pasteCellsIntoTable(pasteTarget(), {1, 2}, {{u"x", u"y"}, {u"z", u"w"}});
-    ASSERT_TRUE(lines.has_value());
-    EXPECT_EQ(*lines, (Lines{u"| A | B | C |  |", u"| --- | --- | --- | --- |", u"| a1 |  b1  | x | y |",
-                             u"| a2 | b2 | z | w |"}));
+    EXPECT_EQ(lines, (Lines{u"| A | B | C |  |", u"| --- | --- | --- | --- |", u"| a1 |  b1  | x | y |",
+                            u"| a2 | b2 | z | w |"}));
 }
 
 TEST(S041_TableCopyPaste, ThePastedHeaderIsAnOrdinaryRow) {
     // Pasted from the header row on, the block's first row lands in the header; blanks around a
     // replaced cell stay.
     const auto lines = pasteCellsIntoTable(pasteTarget(), {0, 1}, {{u"h"}, {u"v"}});
-    ASSERT_TRUE(lines.has_value());
-    EXPECT_EQ(*lines, (Lines{u"| A | h | C |", u"| --- | --- | --- |", u"| a1 |  v  | c1 |", u"| a2 | b2 | c2 |"}));
+    EXPECT_EQ(lines, (Lines{u"| A | h | C |", u"| --- | --- | --- |", u"| a1 |  v  | c1 |", u"| a2 | b2 | c2 |"}));
     // A short row gets the cells it needs.
     const auto shortRow = pasteCellsIntoTable({u"| A | B | C |", u"| --- | --- | --- |", u"| a2 |"}, {1, 2}, {{u"q"}});
-    ASSERT_TRUE(shortRow.has_value());
-    EXPECT_EQ(shortRow->back(), u"| a2 |  | q |");
+    EXPECT_EQ(shortRow, (Lines{u"| A | B | C |", u"| --- | --- | --- |", u"| a2 |  | q |"}));
 }
 
 TEST(S041_TableCopyPaste, PastingStopsAt255Columns) {
     // Scenario: a paste that would need more than 255 columns changes nothing.
     EXPECT_EQ(pasteCellsIntoTable(pasteTarget(), {0, 254}, {{u"x", u"y"}}), std::nullopt);
     const auto widest = pasteCellsIntoTable(pasteTarget(), {0, 253}, {{u"x", u"y"}});
-    ASSERT_TRUE(widest.has_value());
+    // Explicit branch for bugprone-unchecked-optional-access (it ignores ASSERT_TRUE).
+    if (!widest) {
+        FAIL() << "a paste up to 255 columns changes the table";
+    }
     EXPECT_EQ(tableRowCells(widest->front()).size(), kMaxTableColumns);
-    EXPECT_EQ(tableDelimiterAligns((*widest)[1])->size(), kMaxTableColumns);
+    EXPECT_EQ(tableDelimiterAligns((*widest)[1]).value_or(std::vector<TableAlign>{}).size(), kMaxTableColumns);
     EXPECT_EQ(widest->size(), pasteTarget().size());
 }
 
@@ -204,4 +207,7 @@ TEST(S041_TableCopyPaste, TextReplacesEverySelectedCell) {
     EXPECT_EQ(pasteTextIntoTableCells(pasteTarget(), {2, 1, 2, 1}, u"x\n\n")[3], u"| a2 | x<br> | c2 |");
     // A short row gets the cells it needs.
     EXPECT_EQ(pasteTextIntoTableCells({u"| A | B |", u"| - | - |", u"| a |"}, {1, 0, 1, 1}, u"t")[2], u"| t | t |");
+    // A row that has its cells keeps every other byte, the blanks at its end too (ADR 0002).
+    EXPECT_EQ(pasteTextIntoTableCells({u"| A | B |", u"| - | - |", u"| a | b |  "}, {1, 0, 1, 0}, u"t")[2],
+              u"| t | b |  ");
 }
