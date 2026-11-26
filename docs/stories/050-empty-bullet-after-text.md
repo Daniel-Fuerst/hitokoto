@@ -1,4 +1,4 @@
-# S049 — An empty bullet under text stays a bullet
+# S050 — An empty bullet under text stays a bullet
 
 - **Status:** In progress (confirmed by the user on 2026-11-25) · **Order:** 54 · **Size:** S ·
   **Depends on:** S003, S023
@@ -59,8 +59,8 @@ item above does not turn into a heading while I type.
 
 ## Tests
 
-- **Core (`tests/core/test_s049_empty_bullet_after_text.cpp`):**
-  `S049_EmptyBulletAfterText.IndentedEmptyBulletDoesNotUnderlineTheItemAbove`,
+- **Core (`tests/core/test_s050_empty_bullet_after_text.cpp`):**
+  `S050_EmptyBulletAfterText.IndentedEmptyBulletDoesNotUnderlineTheItemAbove`,
   `EveryMarkerWithABlankStartsAnItemAfterText`, `TheEmptyItemEndsTheParagraph`,
   `BareMarkerKeepsCommonMark`.
 - `S023_ThematicBreaks.LinesThatCannotInterruptAParagraphContinueIt` now uses `Foo` / `+` / `===`

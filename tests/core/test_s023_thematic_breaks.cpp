@@ -372,7 +372,7 @@ TEST(S023_ThematicBreaks, LinesThatCannotInterruptAParagraphContinueIt) {
     for (const auto& [lines, level] : std::vector<std::pair<std::vector<std::u16string>, std::uint8_t>>{
              {{u"Foo", u"*", u"---"}, 2},
              {{u"Foo", u"+", u"---"}, 2},
-             {{u"Foo", u"+", u"==="}, 1},  // `* ` with a blank starts an item since S049
+             {{u"Foo", u"+", u"==="}, 1},  // `* ` with a blank starts an item since S050
              {{u"Foo", u"    - bar", u"---"}, 2},
              {{u"- foo", u"  bar", u"  *", u"  ---"}, 2},
          }) {

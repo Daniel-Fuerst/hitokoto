@@ -266,7 +266,7 @@ std::uint8_t setextUnderline(std::u16string_view line, std::uint32_t column) noe
         return 0;
     }
     if (line[start] == u'-' && end == start + 1 && end < line.size()) {
-        return 0;  // `- ` is an empty list item, as Enter and Tab write it (S049)
+        return 0;  // `- ` is an empty list item, as Enter and Tab write it (S050)
     }
     return line[start] == u'=' ? 1 : 2;
 }

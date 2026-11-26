@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S049: an empty bullet whose marker is followed by a blank (`- `, `* `, `+ `, what Enter and Tab
+// S050: an empty bullet whose marker is followed by a blank (`- `, `* `, `+ `, what Enter and Tab
 // produce) is an empty list item even directly after paragraph text, and `- ` underlines nothing.
 // A deliberate deviation from CommonMark 0.31.2, 4.3 and 5.2: otherwise indenting a new bullet
 // under a bullet with text turns that text into a level-2 heading while the user types.
@@ -32,7 +32,7 @@ std::string context(const std::vector<std::u16string>& lines) {
 }  // namespace
 
 // The reported case: Tab on a new bullet under `  - second bullet`, caret on the new bullet.
-TEST(S049_EmptyBulletAfterText, IndentedEmptyBulletDoesNotUnderlineTheItemAbove) {
+TEST(S050_EmptyBulletAfterText, IndentedEmptyBulletDoesNotUnderlineTheItemAbove) {
     const std::vector<std::u16string> lines = {u"# Title", u"", u"- first bullet", u"  - second bullet", u"    - "};
     for (const std::int64_t caret : {std::int64_t{4}, std::int64_t{-1}}) {
         const auto r = showAll(lines, caret);
@@ -45,7 +45,7 @@ TEST(S049_EmptyBulletAfterText, IndentedEmptyBulletDoesNotUnderlineTheItemAbove)
     }
 }
 
-TEST(S049_EmptyBulletAfterText, EveryMarkerWithABlankStartsAnItemAfterText) {
+TEST(S050_EmptyBulletAfterText, EveryMarkerWithABlankStartsAnItemAfterText) {
     for (const std::vector<std::u16string>& lines : std::vector<std::vector<std::u16string>>{
              {u"Foo", u"- "},
              {u"Foo", u"* "},
@@ -62,14 +62,14 @@ TEST(S049_EmptyBulletAfterText, EveryMarkerWithABlankStartsAnItemAfterText) {
 
 // A line of text after the empty item is no paragraph text of the item above: `---` under it is a
 // break, not an underline of `Foo`.
-TEST(S049_EmptyBulletAfterText, TheEmptyItemEndsTheParagraph) {
+TEST(S050_EmptyBulletAfterText, TheEmptyItemEndsTheParagraph) {
     const auto r = showAll({u"Foo", u"- ", u"---"});
     EXPECT_EQ(r[0].headingLevel, 0);
     EXPECT_TRUE(r[2].thematicBreak);
 }
 
 // Without a blank after the marker CommonMark still applies (S023).
-TEST(S049_EmptyBulletAfterText, BareMarkerKeepsCommonMark) {
+TEST(S050_EmptyBulletAfterText, BareMarkerKeepsCommonMark) {
     const auto dash = showAll({u"Foo", u"-"});
     EXPECT_EQ(dash[0].headingLevel, 2);
     EXPECT_EQ(dash[1].setextUnderline, 2);

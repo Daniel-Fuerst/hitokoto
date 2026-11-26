@@ -31,7 +31,7 @@ namespace hitokoto::core::blocks {
 /// CommonMark 4.3: 1 (`=`) or 2 (`-`) if `line` can underline paragraph text whose content column
 /// is `column`: indented by `column` to `column + 3` columns, one or more `=` or `-` without blanks
 /// between them, then only blanks. Else 0. A single `-` followed by a blank is no underline but
-/// an empty list item (S049, a deviation from CommonMark).
+/// an empty list item (S050, a deviation from CommonMark).
 [[nodiscard]] std::uint8_t setextUnderline(std::u16string_view line, std::uint32_t column) noexcept;
 /// An ATX heading opening at `start`: one to six `#`, then a blank or the end of the line.
 [[nodiscard]] bool isAtxHeadingFrom(std::u16string_view line, std::size_t start) noexcept;
