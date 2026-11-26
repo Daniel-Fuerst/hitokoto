@@ -32,6 +32,7 @@ add_executable(hitokoto_core_tests
     core/test_s047_display_math.cpp
     core/test_s048_settings_section_headings.cpp
     core/test_s040_table_selection.cpp
+    core/test_s041_table_copy_paste.cpp
     core/test_s050_empty_bullet_after_text.cpp
     core/test_s004_save.cpp
     core/test_s005_theme.cpp
