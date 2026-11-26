@@ -1,5 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 include(GoogleTest)
+include(cmake/DocsReadByTests.cmake)
+
+# S042: test::docsFile, the only way for tests to reach a file under docs/.
+hitokoto_docs_read_by_tests(${CMAKE_CURRENT_BINARY_DIR}/generated)
 
 add_executable(hitokoto_core_tests
     core/test_s001_open_decode.cpp
@@ -34,6 +38,7 @@ add_executable(hitokoto_core_tests
 )
 target_link_libraries(hitokoto_core_tests PRIVATE hitokoto::core GTest::gtest_main)
 target_compile_definitions(hitokoto_core_tests PRIVATE HITOKOTO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_include_directories(hitokoto_core_tests PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
 hitokoto_set_compile_options(hitokoto_core_tests)
 gtest_discover_tests(hitokoto_core_tests DISCOVERY_MODE PRE_TEST)
 
