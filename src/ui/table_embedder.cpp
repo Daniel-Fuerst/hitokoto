@@ -6,19 +6,26 @@
 #include "editor_formats.hpp"
 #include "editor_widget.hpp"
 #include "hitokoto/core/table.hpp"
+#include "hitokoto/core/table_clipboard.hpp"
 #include "qt_bridge.hpp"
 #include "table_model.hpp"
+#include "table_paste.hpp"
 #include "table_view.hpp"
+#include "text_input.hpp"
 
 #include <QApplication>
+#include <QClipboard>
+#include <QGuiApplication>
 #include <QKeyEvent>
 #include <QMetaObject>
+#include <QMimeData>
 #include <QScopedValueRollback>
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QTextLayout>
 
 #include <algorithm>
+#include <optional>
 
 namespace hitokoto::ui {
 namespace {
@@ -550,6 +557,12 @@ TableWidget* TableEmbedder::createWidget() {
     connect(view, &TableView::deleteColumns, this,
             on([this](Table& t, int first, int last) { deleteColumns(t, first, last); }));
     connect(view, &TableView::removeTable, this, on([this](Table& t) { removeTable(t); }));
+    connect(view, &TableView::copySelectedCells, this,
+            on([this](Table& t, core::TableCellRange range, bool tsv) { copyCells(t, range, tsv); }));
+    view->setPasteHandler([this, widget](const QMimeData* source, core::TableCellRange range, bool caretOnly) {
+        Table* table = tableOf(widget);
+        return table != nullptr && pasteIntoCells(*table, source, range, caretOnly);
+    });
     connect(view, &TableView::selectDocument, editor_, [this] {
         editor_->setFocus();
         editor_->selectAll();
@@ -1039,6 +1052,15 @@ TableEmbedder::Table* TableEmbedder::replaceLines(Table& table, const std::vecto
         cursor.setPosition(line.position() - 1);
         cursor.setPosition(last.position() + static_cast<int>(last.text().size()), QTextCursor::KeepAnchor);
         cursor.removeSelectedText();
+    } else if (i < lines.size()) {
+        // More lines than before (S041, rows added by a paste): after the table's last line.
+        QString added;
+        for (; i < lines.size(); ++i) {
+            added += QLatin1Char('\n');
+            added += toQString(lines[i]);
+        }
+        cursor.setPosition(last.position() + static_cast<int>(last.text().size()));
+        cursor.insertText(added);
     }
     cursor.endEditBlock();
     return update(header);
@@ -1069,6 +1091,60 @@ void TableEmbedder::emptyCells(Table& table, core::TableCellRange range) {
         changed != nullptr && changed->widget != nullptr) {
         focusCell(*changed, row, column);
     }
+}
+
+// --- S041: copying and pasting cells ---------------------------------------------------------------
+
+void TableEmbedder::copyCells(Table& table, core::TableCellRange range, bool tabSeparated) {
+    const std::vector<std::u16string> lines = tableLines(table.header, table.last);
+    if (tabSeparated) {
+        // Decision 4: text/plain alone, for spreadsheets.
+        auto* data = new QMimeData;
+        data->setText(toQString(core::copiedTableCellsAsTabSeparated(styler_->registry(), lines, range)));
+        QGuiApplication::clipboard()->setMimeData(data);
+        return;
+    }
+    QGuiApplication::clipboard()->setMimeData(
+        EditorWidget::ownCopyData(toQString(core::copiedTableCells(lines, range))));
+}
+
+bool TableEmbedder::pasteIntoCells(Table& table, const QMimeData* source, core::TableCellRange range, bool caretOnly) {
+    if (table.widget == nullptr || source == nullptr) {
+        return false;
+    }
+    if (editor_->isReadOnly()) {
+        return true;
+    }
+    const std::vector<std::u16string> lines = tableLines(table.header, table.last);
+    std::optional<std::vector<std::u16string>> changed;
+    if (std::optional<core::TableCellGrid> cells = pastedCells(source, styler_->registry())) {
+        // Every cell enters the document as text may (S004, rework of 2026-11-21).
+        for (auto& row : *cells) {
+            for (auto& cell : row) {
+                const QString insertable = insertableText(toQString(cell));
+                cell.assign(view(insertable));
+            }
+        }
+        changed = core::pasteCellsIntoTable(lines, {range.top, range.left}, *cells);
+        if (!changed) {
+            return true;  // more than 255 columns: nothing changes
+        }
+    } else {
+        if (caretOnly) {
+            return false;  // text goes to the caret in the cell, as before
+        }
+        const QString text = insertableText(EditorWidget::pastedText(source));
+        if (text.isEmpty()) {
+            return true;
+        }
+        changed = core::pasteTextIntoTableCells(lines, range, view(text));
+    }
+    const int row = std::max(table.widget->view()->currentIndex().row(), 0);
+    const int column = std::max(table.widget->view()->currentIndex().column(), 0);
+    if (Table* after = replaceLines(table, *changed); after != nullptr && after->widget != nullptr) {
+        focusCell(*after, row, column);
+    }
+    return true;
 }
 
 void TableEmbedder::deleteRows(Table& table, int first, int last) {

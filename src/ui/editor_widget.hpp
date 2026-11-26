@@ -7,6 +7,7 @@
 #include "block_layout.hpp"
 #include "block_styler.hpp"
 #include "editor_painters.hpp"
+#include "hitokoto/core/paste.hpp"
 #include "hitokoto/core/settings.hpp"
 #include "hitokoto/core/theme.hpp"
 #include "list_editing.hpp"
@@ -120,12 +121,16 @@ public:
     /// S031: whether the clipboard holds plain text to paste.
     [[nodiscard]] static bool canPastePlainText();
     /// S031 review (code) O9: the format that marks a copy made in hitokoto, whose paste skips the
-    /// HTML (it holds Markdown source, never a table).
+    /// HTML. Since S041 (decision 5) a paste with it takes the copy's Markdown.
     [[nodiscard]] static QString ownCopyFormat();
+    /// S041, decision 1: hitokoto's own copy of `markdown`, the selected text of the file, in
+    /// `text/plain` and `text/markdown` (UTF-8), with the marker (ownCopyFormat); no HTML.
+    [[nodiscard]] static QMimeData* ownCopyData(const QString& markdown);
     /// S031: the text of a paste or drop that does not convert: its plain text, or its Markdown
-    /// as it is written if it holds no plain text; null without either. The editor and the cell
-    /// editors insert this and never hand Qt the data itself: Qt reads data whose first format is
-    /// text/markdown as Markdown and inserts what it shows of it.
+    /// as it is written if it holds no plain text; null without either. hitokoto's own copy gives
+    /// its Markdown (S041, decision 5). The editor and the cell editors insert this and never hand
+    /// Qt the data itself: Qt reads data whose first format is text/markdown as Markdown and
+    /// inserts what it shows of it.
     [[nodiscard]] static QString pastedText(const QMimeData* source);
 
 signals:
@@ -186,6 +191,11 @@ private:
     /// false if it stays plain text (no table that counts, or the caret is in a code block, front
     /// matter or a table's lines).
     bool pasteTables(const QMimeData* source);
+    /// S041, decision 5: pastes hitokoto's own copy as a table block if its Markdown is exactly one
+    /// table; false otherwise (then it is inserted as text).
+    bool pasteOwnTable(const QMimeData* source);
+    /// S031: places converted blocks at the caret, replacing the selection, in one undo step.
+    void placeBlocks(const std::vector<core::PasteBlock>& blocks);
 
     BlockLayout* layout_ = nullptr;
     bool insideEdit_ = false;           ///< between contentsChange and contentsChanged of the document

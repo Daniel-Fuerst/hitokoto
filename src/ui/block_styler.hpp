@@ -34,6 +34,8 @@ public:
 
     void setFormats(EditorFormats formats);
     [[nodiscard]] const EditorFormats& formats() const noexcept { return formats_; }
+    /// The elements the lines are read with (S041: reading a pasted table, the text of cells).
+    [[nodiscard]] const core::ElementRegistry& registry() const noexcept { return registry_; }
 
     /// Reveals the lines of `range` (caret or selection) and, for a range in a code block, the
     /// block's fences too (S021): the opening fence of the block that holds the first line and the

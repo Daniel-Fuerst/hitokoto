@@ -13,6 +13,7 @@
 #include "find_bar.hpp"
 #include "find_controller.hpp"
 #include "menu_bar.hpp"
+#include "table_view.hpp"
 
 #include <QAction>
 #include <QApplication>
@@ -152,8 +153,9 @@ void MainWindow::createMenus() {
     edit->addAction(tr("&Paste"), QKeySequence::Paste, editor_, &QTextEdit::paste);
     // S031: paste the clipboard's plain text without converting tables (decision 5).
     // The key reaches the window from every widget: it acts where the focus is (review O2), in a
-    // cell editor or a text field as Ctrl+V there (both take plain text only), in the editor
-    // without converting tables, elsewhere not at all.
+    // text field as Ctrl+V there, in a cell editor with the plain text at the caret (since S041
+    // Ctrl+V there fills cells with a table), in the editor without converting tables, elsewhere
+    // not at all.
     QAction* pastePlain =
         edit->addAction(tr("Paste as &Plain Text"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V), this, [this] {
             QWidget* focus = QApplication::focusWidget();
@@ -161,6 +163,8 @@ void MainWindow::createMenus() {
                 editor_->pasteAsPlainText();
             } else if (auto* line = qobject_cast<QLineEdit*>(focus)) {
                 line->paste();
+            } else if (auto* cell = qobject_cast<CellEditor*>(focus)) {
+                cell->pasteAsPlainText();  // never fills cells with a table (S041)
             } else if (auto* text = qobject_cast<QPlainTextEdit*>(focus)) {
                 text->paste();
             }

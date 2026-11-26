@@ -12,6 +12,8 @@
 #include <QPoint>
 #include <QTextBlock>
 
+class QMimeData;
+
 #include <vector>
 
 class QKeyEvent;
@@ -179,7 +181,14 @@ private:
     void deleteColumns(Table& table, int first, int last);
     void removeTable(Table& table);
     void extendBeyond(Table& table, bool down);
+    /// S041: the cells of `range` on the clipboard, as Markdown (decision 2) or tab-separated
+    /// text (decision 4).
+    void copyCells(Table& table, core::TableCellRange range, bool tabSeparated);
+    /// S041, decision 7: `source` into the cells of `range` (from the cell with the caret if
+    /// `caretOnly`), one undo step; see TableView::PasteHandler.
+    bool pasteIntoCells(Table& table, const QMimeData* source, core::TableCellRange range, bool caretOnly);
     /// Replaces the table's lines with `lines` in one edit block and returns the updated table.
+    /// More lines than the table has are added after its last line (S041: pasted rows).
     Table* replaceLines(Table& table, const std::vector<std::u16string>& lines);
     /// To the line above (`atEnd`: its end), adding one if the table starts the document.
     void leaveAbove(Table& table, bool atEnd);

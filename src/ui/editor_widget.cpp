@@ -4,6 +4,7 @@
 #include "editor_painters.hpp"
 #include "floating_toolbar.hpp"
 #include "hitokoto/core/table.hpp"
+#include "hitokoto/core/table_clipboard.hpp"
 #include "math_block_embedder.hpp"
 #include "properties_embedder.hpp"
 #include "qt_bridge.hpp"
@@ -17,7 +18,6 @@
 
 #include <QAction>
 #include <QApplication>
-#include <QBuffer>
 #include <QClipboard>
 #include <QContextMenuEvent>
 #include <QCoreApplication>
@@ -41,8 +41,6 @@
 #include <QTableView>
 #include <QTextBlock>
 #include <QTextCursor>
-#include <QTextDocumentFragment>
-#include <QTextDocumentWriter>
 #include <QTextLayout>
 #include <QToolTip>
 
@@ -659,15 +657,27 @@ void EditorWidget::insertFromMimeData(const QMimeData* source) {
     QTextEdit::insertFromMimeData(&plain);
 }
 
+namespace {
+
+const QString& markdownFormat() {
+    static const QString format = QStringLiteral("text/markdown");
+    return format;
+}
+
+}  // namespace
+
 QString EditorWidget::pastedText(const QMimeData* source) {
     if (source == nullptr) {
         return {};
     }
+    // S041, decision 5: hitokoto's own copy is pasted as its Markdown, its other formats unread.
+    if (source->hasFormat(ownCopyFormat()) && source->hasFormat(markdownFormat())) {
+        return QString::fromUtf8(source->data(markdownFormat()));
+    }
     if (source->hasText()) {
         return source->text();
     }
-    const QString markdown = QStringLiteral("text/markdown");
-    return source->hasFormat(markdown) ? QString::fromUtf8(source->data(markdown)) : QString();
+    return source->hasFormat(markdownFormat()) ? QString::fromUtf8(source->data(markdownFormat())) : QString();
 }
 
 void EditorWidget::dropEvent(QDropEvent* event) {
@@ -680,69 +690,21 @@ QString EditorWidget::ownCopyFormat() {
     return QStringLiteral("application/x-hitokoto-copy");
 }
 
-namespace {
-
-/// A copy made in hitokoto (S031 review (code) O9): the formats Qt's own data offers for a
-/// selection (plain text, HTML, Markdown, ODF; QTextEditMimeData), each made from the selection
-/// only when asked for, plus the marker of EditorWidget::ownCopyFormat. Qt's data makes all of
-/// them at the first request, so that pasting even the plain text paid for the HTML and the ODF.
-class OwnCopy : public QMimeData {
-public:
-    explicit OwnCopy(const QTextDocumentFragment& selection) : selection_(selection) {}
-
-    [[nodiscard]] QStringList formats() const override {
-        if (selection_.isEmpty()) {
-            return QMimeData::formats();
-        }
-        QStringList all = {QStringLiteral("text/plain"), QStringLiteral("text/html")};
-#if QT_CONFIG(textmarkdownwriter)
-        all << QStringLiteral("text/markdown");
-#endif
-#if QT_CONFIG(textodfwriter)
-        all << QStringLiteral("application/vnd.oasis.opendocument.text");
-#endif
-        all << EditorWidget::ownCopyFormat();
-        return all;
-    }
-
-protected:
-    [[nodiscard]] QVariant retrieveData(const QString& mimeType, QMetaType type) const override {
-        if (selection_.isEmpty()) {
-            return QMimeData::retrieveData(mimeType, type);
-        }
-        if (mimeType == EditorWidget::ownCopyFormat()) {
-            return QByteArrayLiteral("1");  // not empty: some platforms drop empty formats
-        }
-        if (mimeType == QStringLiteral("text/plain")) {
-            return selection_.toPlainText();
-        }
-        if (mimeType == QStringLiteral("text/html")) {
-            return selection_.toHtml();
-        }
-#if QT_CONFIG(textmarkdownwriter)
-        if (mimeType == QStringLiteral("text/markdown")) {
-            return selection_.toMarkdown().toUtf8();
-        }
-#endif
-#if QT_CONFIG(textodfwriter)
-        if (mimeType == QStringLiteral("application/vnd.oasis.opendocument.text")) {
-            QBuffer buffer;
-            QTextDocumentWriter writer(&buffer, "ODF");
-            writer.write(selection_);
-            return buffer.data();
-        }
-#endif
-        return {};
-    }
-
-private:
-    QTextDocumentFragment selection_;
-};
-
-}  // namespace
+QMimeData* EditorWidget::ownCopyData(const QString& markdown) {
+    auto* data = new QMimeData;
+    data->setText(markdown);
+    data->setData(markdownFormat(), markdown.toUtf8());
+    data->setData(ownCopyFormat(), QByteArrayLiteral("1"));  // not empty: some platforms drop empty formats
+    return data;
+}
 
 QMimeData* EditorWidget::createMimeDataFromSelection() const {
-    return new OwnCopy(QTextDocumentFragment(textCursor()));
+    // S041, decision 1: exactly the selected text of the file, as the file is written from the
+    // document (blocks separated by U+2029, which a file never holds; ADR 0002). Qt's rich-text
+    // formats (HTML, ODF) rendered the lines as paragraphs, and Obsidian took the HTML.
+    QString text = textCursor().selectedText();
+    text.replace(QChar::ParagraphSeparator, QLatin1Char('\n'));
+    return ownCopyData(text);
 }
 
 bool EditorWidget::canPastePlainText() {
@@ -791,11 +753,6 @@ bool EditorWidget::pasteTables(const QMimeData* source) {
     if (source == nullptr || isReadOnly()) {
         return false;
     }
-    // A copy made in hitokoto holds Markdown source, never a table: its HTML is not even asked
-    // for, Qt would first generate it from the selection (S031 review (code) O9).
-    if (source->hasFormat(ownCopyFormat())) {
-        return false;
-    }
     QTextCursor cursor = textCursor();
     // Only in the editor text: not in a code block, front matter or a table's lines (S031), and
     // not in a block quote or list item, which a table would split (S031 review O4).
@@ -819,6 +776,11 @@ bool EditorWidget::pasteTables(const QMimeData* source) {
         if (core::pasteLineInContainer(view(block.text()), above)) {
             return false;
         }
+    }
+    // S041, decision 5: hitokoto's own copy is pasted as its Markdown; exactly one table lands as
+    // its own block, anything else is inserted as text. Its other formats are not looked at.
+    if (source->hasFormat(ownCopyFormat())) {
+        return pasteOwnTable(source);
     }
     if (!source->hasHtml() && !source->hasText()) {
         return false;
@@ -853,7 +815,30 @@ bool EditorWidget::pasteTables(const QMimeData* source) {
     if (!blocks) {
         return false;
     }
+    placeBlocks(*blocks);
+    restore.dismiss();
+    QMetaObject::invokeMethod(qApp, [] { QGuiApplication::restoreOverrideCursor(); }, Qt::QueuedConnection);
+    return true;
+}
 
+bool EditorWidget::pasteOwnTable(const QMimeData* source) {
+    if (!source->hasFormat(markdownFormat())) {
+        return false;
+    }
+    QString markdown = QString::fromUtf8(source->data(markdownFormat()));
+    if (!core::markdownTableCells(styler_->registry(), view(markdown))) {
+        return false;  // inserted as text (pastedText gives the Markdown)
+    }
+    markdown.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    if (markdown.endsWith(u'\n')) {
+        markdown.chop(1);
+    }
+    placeBlocks({core::PasteBlock{true, std::u16string(view(markdown))}});
+    return true;
+}
+
+void EditorWidget::placeBlocks(const std::vector<core::PasteBlock>& blocks) {
+    QTextCursor cursor = textCursor();
     // One step, undone at once: the text replaces the selection; the tables land as their own
     // blocks around the line split at the caret.
     const int start = cursor.selectionStart();
@@ -874,7 +859,7 @@ bool EditorWidget::pasteTables(const QMimeData* source) {
     if (last.next().isValid()) {
         place.lineBelow = view(below);
     }
-    const core::PasteInsertion insertion = core::placePastedBlocks(*blocks, place);
+    const core::PasteInsertion insertion = core::placePastedBlocks(blocks, place);
     const TableEmbedder::NotTyping notTyping(tables_.get());
     // The cells' text comes from other programs, through Qt's HTML import or as Excel's plain text
     // (S004, rework of 2026-11-21).
@@ -883,9 +868,6 @@ bool EditorWidget::pasteTables(const QMimeData* source) {
     setTextCursor(cursor);
     ensureCursorVisible();
     tables_->scheduleRefresh();  // queued already by the insertion; makes the order explicit
-    restore.dismiss();
-    QMetaObject::invokeMethod(qApp, [] { QGuiApplication::restoreOverrideCursor(); }, Qt::QueuedConnection);
-    return true;
 }
 
 void EditorWidget::paintCodeBlockPanels() {
