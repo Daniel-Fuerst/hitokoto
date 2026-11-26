@@ -7,6 +7,7 @@
 #include "hitokoto/core/properties.hpp"
 #include "hitokoto/core/text_codec.hpp"
 #include "hitokoto/core/theme.hpp"
+#include "hitokoto/test/docs_files.hpp"
 
 #include "support.hpp"
 
@@ -175,7 +176,7 @@ std::vector<std::u16string> keys(const Properties& p) {
 
 /// Armin's example (2026-10-30): the YAML of the review record 022-inline-links-code-recheck3.md,
 /// between its `---` lines (document lines 1 and 27, counted from 1).
-constexpr std::u16string_view kReviewRecord =
+constexpr std::u16string_view kReviewRecord =  // S042-mention: front matter text, not a file read
     uR"(mode: code
 spec: docs/stories/022-inline-links.md
 branch: feature/links_references  # Daniel's branch, pull request #21
@@ -929,8 +930,8 @@ TEST(S024_FrontMatter, ThemeTokensFallBack) {
 }
 
 TEST(S024_FrontMatter, TokensAreDocumented) {
-    std::ifstream in(std::string(HITOKOTO_SOURCE_DIR) + "/docs/theming.md", std::ios::binary);
-    ASSERT_TRUE(in) << "docs/theming.md not found";
+    std::ifstream in(test::docsFile<"theming.md">(), std::ios::binary);
+    ASSERT_TRUE(in) << test::docsFile<"theming.md">() << " not found";
     std::stringstream doc;
     doc << in.rdbuf();
     for (const std::string_view key : {"background",

@@ -260,8 +260,9 @@ bool changesToolchainFiles(const std::vector<std::string>& changedPaths) {
 std::vector<std::string> pathsBesideToolchain(const std::vector<std::string>& changedPaths) {
     std::vector<std::string> beside;
     for (const auto& p : changedPaths) {
-        const bool allowed =
-            startsWith(p, "docs/") || endsWith(p, ".md") || isToolchainFile(p) || p == ".github/workflows/ci.yml";
+        // Changed paths compared as text; the marker tells the lint of S042 that no document is read.
+        const bool allowed = startsWith(p, "docs/")  // S042-mention
+                             || endsWith(p, ".md") || isToolchainFile(p) || p == ".github/workflows/ci.yml";
         if (!allowed) {
             beside.push_back(p);
         }

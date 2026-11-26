@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S005: theme files.
 #include "hitokoto/core/theme.hpp"
+#include "hitokoto/test/docs_files.hpp"
 
 #include <gtest/gtest.h>
 
@@ -172,8 +173,8 @@ TEST(S005_Theme, PropertyArbitraryInputIsSafe) {
 
 // docs/theming.md documents every token, and its example themes are valid.
 TEST(S005_Theme, DocumentationCoversAllTokensAndExamplesParse) {
-    std::ifstream in(std::string(HITOKOTO_SOURCE_DIR) + "/docs/theming.md", std::ios::binary);
-    ASSERT_TRUE(in) << "docs/theming.md not found";
+    std::ifstream in(test::docsFile<"theming.md">(), std::ios::binary);
+    ASSERT_TRUE(in) << test::docsFile<"theming.md">() << " not found";
     std::string doc{std::istreambuf_iterator<char>(in), {}};
     std::erase(doc, '\r');  // Windows checkouts use CRLF
     for (const auto& t : themeTokens()) {
@@ -197,7 +198,7 @@ TEST(S005_Theme, DocumentationCoversAllTokensAndExamplesParse) {
 namespace {
 
 std::string themingDoc() {
-    std::ifstream in(std::string(HITOKOTO_SOURCE_DIR) + "/docs/theming.md", std::ios::binary);
+    std::ifstream in(test::docsFile<"theming.md">(), std::ios::binary);
     std::string doc{std::istreambuf_iterator<char>(in), {}};
     std::erase(doc, '\r');  // Windows checkouts use CRLF
     return doc;
@@ -253,17 +254,17 @@ std::string tableRows(const std::string& doc, const std::string& header) {
 // tokens, then the element tokens with their fallbacks, in the order of themeTokens().
 TEST(S005_Theme, TokenTablesAreTheTokenList) {
     const std::string doc = themingDoc();
-    ASSERT_FALSE(doc.empty()) << "docs/theming.md not found";
+    ASSERT_FALSE(doc.empty()) << test::docsFile<"theming.md">() << " not found";
     std::string general;
     std::string elements;
     for (const auto& t : themeTokens()) {
         (t.fallback.empty() ? general : elements) += tokenRow(t);
     }
     EXPECT_EQ(tableRows(doc, "| Token | Type | Meaning |\n|---|---|---|\n"), general)
-        << "the table of general tokens in docs/theming.md should be:\n"
+        << "the table of general tokens in " << test::docsFile<"theming.md">() << " should be:\n"
         << general;
     EXPECT_EQ(tableRows(doc, "| Token | Type | Meaning | Fallback |\n|---|---|---|---|\n"), elements)
-        << "the table of element tokens in docs/theming.md should be:\n"
+        << "the table of element tokens in " << test::docsFile<"theming.md">() << " should be:\n"
         << elements;
 }
 

@@ -25,12 +25,13 @@ Read before any work: `docs/brief.md` (the full brief), `docs/adr/` (accepted de
   (accepted on the branch before the merge), a later status change rides with the next pull request
   into main (a pull request of its own with `version:none` only when nothing else is due). Every
   pull request into main carries exactly one label `version:major`, `version:minor`,
-  `version:patch` or `version:none` (meanings in ADR 0010; anything that ships in the program is at
-  least `version:patch`); the label is part of the review and must fit the pull request's final
-  content. The version comes only from the tag `vMAJOR.MINOR.PATCH` that `version.yml` sets after
-  the merge: no `VERSION` in `project()`, no `v*` tag by hand (apart from the starting tag
-  `v0.3.0`). Builds take it from `git describe` at configure time, so a build keeps the version of
-  its last configure.
+  `version:patch`, `version:none` or `version:doc` (meanings in ADR 0010; `version:doc` only when
+  every changed file is under `docs/` and not read by tests, S042; anything that ships in the
+  program is at least `version:patch`); the label is part of the review and must fit the pull
+  request's final content. The version comes only from the tag `vMAJOR.MINOR.PATCH` that
+  `version.yml` sets after the merge: no `VERSION` in `project()`, no `v*` tag by hand (apart from
+  the starting tag `v0.3.0`). Builds take it from `git describe` at configure time, so a build
+  keeps the version of its last configure.
 - Workflows: every action comes from a full commit with its version as a comment
   (`uses: owner/repo@<40-digit commit> # vX.Y.Z`), and every job asks for its own `permissions`;
   the lints `S000_*` in `tests/workflows` enforce it. A new CI job must be added to the required

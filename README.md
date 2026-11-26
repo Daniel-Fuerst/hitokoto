@@ -63,6 +63,10 @@ Every pull request merged into main gives hitokoto its version step (story S030,
 - **Exactly one label per pull request into main**, checked by "Version label":
   - `version:none`: no functional change, only documentation (stories, notes, reviews, README,
     `docs/`) or infrastructure (CI, workflows, build scripts, tests, tooling); no new version.
+  - `version:doc`: like `version:none`, but the pull request changes only files under `docs/`, apart
+    from those that tests read (`tests/docs-read-by-tests.txt`); the CI checks that and skips its
+    builds and tests, and the merge starts no CI run on main (S042). Anything else, `README.md`
+    included, takes `version:none` or higher.
   - `version:patch`: fixes, follow-up work and refactoring of what ships, build changes that change
     the built program. Anything that ships in the program (`src/`, themes, icons) is at least
     `version:patch`.

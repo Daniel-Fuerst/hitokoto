@@ -25,7 +25,8 @@ foreach(v IN ITEMS GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_CEILING_DIRECTORIES)
 endforeach()
 
 set(next_script "${SCRIPTS_DIR}/NextVersion.cmake")
-set(four_labels "version:major, version:minor, version:patch, version:none")
+# S042 added version:doc, which counts as version:none.
+set(version_labels_text "version:major, version:minor, version:patch, version:none, version:doc")
 
 # Runs NextVersion.cmake. Named arguments: MODE, TAGS (list), LABELS (list), CANDIDATES (text).
 # Sets <prefix>_CODE (exit code), <prefix>_OUTPUT (content of the output file, stripped) and
@@ -83,6 +84,10 @@ elseif("${CASE}" STREQUAL "NoneMakesNoTag")
     # Scenario: merging makes the next version (version:none).
     expect_next(version:none none v0.3.1)
 
+elseif("${CASE}" STREQUAL "DocMakesNoTag")
+    # S042, scenario: the next version after a merge labelled version:doc is "none".
+    expect_next(version:doc none v0.3.1)
+
 elseif("${CASE}" STREQUAL "OtherLabelsDoNotCount")
     run_next(r MODE next TAGS v0.3.1 LABELS bench-accepted version:patch "good first issue")
     expect_eq("${r_CODE}" "0" "exit code\n${r_LOG}")
@@ -91,11 +96,11 @@ elseif("${CASE}" STREQUAL "OtherLabelsDoNotCount")
 elseif("${CASE}" STREQUAL "NextNeedsExactlyOneLabel")
     run_next(r MODE next TAGS v0.3.1 LABELS bench-accepted)
     expect_eq("${r_CODE}" "1" "exit code without a version label")
-    expect_contains("${r_LOG}" "${four_labels}" "message without a version label")
+    expect_contains("${r_LOG}" "${version_labels_text}" "message without a version label")
     expect_eq("${r_OUTPUT}" "" "output without a version label")
     run_next(r MODE next TAGS v0.3.1 LABELS version:patch version:minor)
     expect_eq("${r_CODE}" "1" "exit code with two version labels")
-    expect_contains("${r_LOG}" "${four_labels}" "message with two version labels")
+    expect_contains("${r_LOG}" "${version_labels_text}" "message with two version labels")
 
 # --- NextVersion.cmake: the check "Version label" ----------------------------------------------
 
@@ -103,15 +108,15 @@ elseif("${CASE}" STREQUAL "LabelCheck")
     # Scenario: a pull request into main needs exactly one version label.
     run_next(r MODE labels LABELS)
     expect_eq("${r_CODE}" "1" "exit code without labels")
-    expect_contains("${r_LOG}" "${four_labels}" "message without labels")
+    expect_contains("${r_LOG}" "${version_labels_text}" "message without labels")
     run_next(r MODE labels LABELS bench-accepted)
     expect_eq("${r_CODE}" "1" "exit code without a version label")
-    expect_contains("${r_LOG}" "${four_labels}" "message without a version label")
+    expect_contains("${r_LOG}" "${version_labels_text}" "message without a version label")
     run_next(r MODE labels LABELS version:minor version:none)
     expect_eq("${r_CODE}" "1" "exit code with two version labels")
-    expect_contains("${r_LOG}" "${four_labels}" "message with two version labels")
+    expect_contains("${r_LOG}" "${version_labels_text}" "message with two version labels")
     expect_contains("${r_LOG}" "version:minor, version:none" "message names the labels it found")
-    foreach(label IN ITEMS version:major version:minor version:patch version:none)
+    foreach(label IN ITEMS version:major version:minor version:patch version:none version:doc)
         run_next(r MODE labels LABELS bench-accepted ${label})
         expect_eq("${r_CODE}" "0" "exit code with ${label}\n${r_LOG}")
     endforeach()
@@ -214,6 +219,28 @@ label version:patch
     expect_eq("${r_CODE}" "0" "exit code\n${r_LOG}")
     expect_eq("${r_OUTPUT}" "${c2} v0.3.2 41" "plan")
 
+elseif("${CASE}" STREQUAL "DocBesideAnotherLabelFails")
+    # S042, scenario: version:doc is one of the version labels, not one beside them.
+    foreach(other IN ITEMS version:major version:minor version:patch version:none)
+        run_next(r MODE labels LABELS version:doc ${other})
+        expect_eq("${r_CODE}" "1" "exit code with version:doc and ${other}")
+        expect_contains("${r_LOG}" "${version_labels_text}" "message with version:doc and ${other}")
+    endforeach()
+
+elseif("${CASE}" STREQUAL "DocThenPatch")
+    # S042, scenario: the next merge with a version passes over documentation merges as over
+    # version:none.
+    run_next(r MODE plan TAGS v0.3.1 CANDIDATES
+"commit ${c1}
+pr 40
+label version:doc
+commit ${c2}
+pr 41
+label version:patch
+")
+    expect_eq("${r_CODE}" "0" "exit code\n${r_LOG}")
+    expect_eq("${r_OUTPUT}" "${c2} v0.3.2 41" "plan")
+
 elseif("${CASE}" STREQUAL "MergesInQuickSuccession")
     # Scenario: merges in quick succession each get their version, in merge order.
     run_next(r MODE plan TAGS v0.3.1 CANDIDATES
@@ -243,7 +270,7 @@ label version:patch
     expect_eq("${r_CODE}" "1" "exit code")
     expect_contains("${r_LOG}" "pull request #50" "message names the pull request")
     expect_contains("${r_LOG}" "Set its label and re-run this job" "message says what to do")
-    expect_contains("${r_LOG}" "${four_labels}" "message names the labels")
+    expect_contains("${r_LOG}" "${version_labels_text}" "message names the labels")
     expect_eq("${r_OUTPUT}" "" "plan")
 
 elseif("${CASE}" STREQUAL "MissingLabelAfterAVersion")
