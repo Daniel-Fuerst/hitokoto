@@ -24,6 +24,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QClipboard>
 #include <QCommandLineParser>
 #include <QElapsedTimer>
 #include <QEventLoop>
@@ -499,6 +500,99 @@ std::vector<double> measureTableSelection(ui::MainWindow& w, int rounds) {
         }
     }
     return samples;
+}
+
+/// S041: key-to-paint of copying the 1,000-row table (scenario "copying and pasting keep the
+/// budgets"): Ctrl+A twice selects the table from a cell in the middle (not measured), then Ctrl+C
+/// and Copy as Tab-Separated Text are measured; Escape ends the selection.
+std::vector<double> measureTableCopy(ui::MainWindow& w, int rounds) {
+    ui::EditorWidget* e = w.editor();
+    QTableView* view = e->tableViewAt(2);
+    if (view == nullptr) {
+        std::fprintf(stderr, "no table view to copy from\n");
+        return {};
+    }
+    const QModelIndex middle = view->model()->index(view->model()->rowCount() / 2, 1);
+    view->scrollTo(middle);
+    view->setCurrentIndex(middle);
+    view->edit(middle);
+    QCoreApplication::processEvents();
+    auto* tabSeparated = view->findChild<QAction*>(QStringLiteral("tableCopyTabSeparated"));
+    std::vector<double> samples;
+    const auto target = [&] { return QApplication::focusWidget() != nullptr ? QApplication::focusWidget() : view; };
+    for (int round = 0; round < rounds; ++round) {
+        test::keyClick(target(), Qt::Key_A, Qt::ControlModifier);
+        test::keyClick(target(), Qt::Key_A, Qt::ControlModifier);
+        QCoreApplication::processEvents();
+        QElapsedTimer t;
+        t.start();
+        test::keyClick(target(), Qt::Key_C, Qt::ControlModifier);
+        e->viewport()->repaint();
+        samples.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
+        if (tabSeparated != nullptr) {
+            t.start();
+            tabSeparated->trigger();
+            e->viewport()->repaint();
+            samples.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
+        }
+        test::keyClick(target(), Qt::Key_Escape);
+        QCoreApplication::processEvents();
+    }
+    return samples;
+}
+
+/// S041: from Ctrl+V with the caret in the first body cell of the 1,000-row table until the table
+/// shows the pasted block of `rows` x 3 cells (hitokoto's own copy; rows beyond the table are
+/// added); then undone. If the block does not show within 2 s, the sample is the time waited.
+double measureCellPaste(ui::MainWindow& w, int rows) {
+    ui::EditorWidget* e = w.editor();
+    QString markdown;
+    for (int r = 0; r < rows; ++r) {
+        markdown += QStringLiteral("| p%1 | %2 | q |\n").arg(r).arg(r * 3);
+        if (r == 0) {
+            markdown += QStringLiteral("| --- | --- | --- |\n");
+        }
+    }
+    QApplication::clipboard()->setMimeData(ui::EditorWidget::ownCopyData(markdown));
+    QTableView* view = e->tableViewAt(2);
+    if (view == nullptr) {
+        return 2000;
+    }
+    const QModelIndex first = view->model()->index(1, 0);
+    view->scrollTo(first);
+    view->setCurrentIndex(first);
+    view->edit(first);
+    QCoreApplication::processEvents();
+    const QString last = QStringLiteral("p%1").arg(rows - 1);
+    const auto shown = [&] {
+        const QTableView* v = e->tableViewAt(2);
+        return v != nullptr && v->isVisible() && v->model()->rowCount() > rows &&
+               v->model()->index(rows, 0).data().toString() == last;
+    };
+    QElapsedTimer t;
+    t.start();
+    test::keyClick(QApplication::focusWidget() != nullptr ? QApplication::focusWidget() : view, Qt::Key_V,
+                   Qt::ControlModifier);
+    while (!shown() && t.elapsed() < 2000) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents);
+    }
+    e->viewport()->repaint();
+    const double ms = static_cast<double>(t.nsecsElapsed()) / 1e6;
+    e->document()->undo();
+    QCoreApplication::processEvents();
+    e->document()->setModified(false);
+    return ms;
+}
+
+/// Median of kPasteRuns pastes of `rows` x 3 cells into the 1,000-row table.
+double medianCellPaste(ui::MainWindow& w, const char* key, int rows) {
+    std::vector<double> samples;
+    samples.reserve(kPasteRuns);
+    for (int i = 0; i < kPasteRuns; ++i) {
+        samples.push_back(measureCellPaste(w, rows));
+    }
+    printSamples(key, samples);
+    return stats(samples).median;
 }
 
 /// S021: key-to-paint of caret moves inside a large code block (Down, Up, End, Home, Right, Left).
@@ -1005,6 +1099,10 @@ const Budget kBudgets[] = {
     {"s028_table_step_max_ms", 50, "no next match above 50 ms, 1000-row table, highlight all (hard)", true},
     {"s040_selection_p95_ms", 16, "selecting key to screen <= 16 ms (1000-row table)"},
     {"s040_selection_max_ms", 50, "no selecting key above 50 ms, 1000-row table (hard)", true},
+    {"s041_copy_p95_ms", 16, "copying cells to the clipboard <= 16 ms (1000-row table)"},
+    {"s041_copy_max_ms", 50, "no copy of cells above 50 ms, 1000-row table (hard)", true},
+    {"s041_paste_400_cells_ms", 50, "paste 399 cells into a table <= 50 ms (hard)", true},
+    {"s041_paste_4000_cells_ms", 500, "paste 3,999 cells into a table <= 500 ms (hard)", true},
     {"s028_doc_typing_p95_ms", 16, "key to screen <= 16 ms (10 MB, highlight all)"},
     {"s028_doc_typing_max_ms", 50, "no key event above 50 ms, 10 MB with find open (hard)", true},
     {"s007_bound_lines_typing_max_ms", 50, "no key event above 50 ms, lines at the bounds (hard)", true},
@@ -1281,6 +1379,20 @@ int main(int argc, char* argv[]) {
         r["s040_selection_p95_ms"] = selecting.p95;
         r["s040_selection_max_ms"] = selecting.max;
         r["s040_selection_over_16ms"] = selecting.over16;
+        w.editor()->document()->setModified(false);
+    }
+
+    // S041: copying the 1000-row table both ways, and pasting blocks of cells into it.
+    w.session()->newDocument();
+    (void)measureOpen(w, table1000);
+    {
+        const auto copying = stats(measureTableCopy(w, 10));
+        r["s041_copy_median_ms"] = copying.median;
+        r["s041_copy_p95_ms"] = copying.p95;
+        r["s041_copy_max_ms"] = copying.max;
+        r["s041_copy_over_16ms"] = copying.over16;
+        r["s041_paste_400_cells_ms"] = medianCellPaste(w, "s041_paste_400_cells_ms", 133);
+        r["s041_paste_4000_cells_ms"] = medianCellPaste(w, "s041_paste_4000_cells_ms", 1333);
         w.editor()->document()->setModified(false);
     }
 
