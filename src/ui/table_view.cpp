@@ -1466,12 +1466,13 @@ QCursor TableWidget::areaPointer(bool row) const {
     if (file.open(QIODevice::ReadOnly)) {
         svg = file.readAll();
     }
-    svg.replace("#000000", pointerFill_.name(QColor::HexRgb).toLatin1());
-    svg.replace("#ffffff", pointerOutline_.name(QColor::HexRgb).toLatin1());
+    // The SVG's own colours are placeholders for the theme's. theme-lint: allow (placeholders)
+    svg.replace("#000000", pointerFill_.name(QColor::HexRgb).toLatin1());     // theme-lint: allow (placeholder)
+    svg.replace("#ffffff", pointerOutline_.name(QColor::HexRgb).toLatin1());  // theme-lint: allow (placeholder)
     QSvgRenderer renderer(svg);
     constexpr int kSize = 32;
     QPixmap pixmap(QSize(kSize, kSize) * scale);
-    pixmap.fill(Qt::transparent);
+    pixmap.fill(Qt::transparent);  // theme-lint: allow (a pointer's empty pixels, not styling)
     {
         QPainter painter(&pixmap);
         renderer.render(&painter);

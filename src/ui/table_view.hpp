@@ -279,9 +279,9 @@ private:
     int gutter_ = 18;     ///< thickness_ plus the gaps around it
     int hoverRow_ = -1;
     int hoverColumn_ = -1;
-    std::optional<Area> areaDrag_;  ///< S040: dragging across the areas of rows or columns
-    QColor pointerFill_{Qt::black};
-    QColor pointerOutline_{Qt::white};
+    std::optional<Area> areaDrag_;              ///< S040: dragging across the areas of rows or columns
+    QColor pointerFill_;                        ///< table.select-pointer-fill, from applyStyle
+    QColor pointerOutline_;                     ///< table.select-pointer-outline
     mutable QHash<QString, QCursor> pointers_;  ///< by direction, colours and scale
 };
 
