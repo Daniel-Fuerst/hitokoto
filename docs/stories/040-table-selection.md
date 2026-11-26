@@ -171,10 +171,12 @@ can act on exactly what I see.
   table; `s040_selection_max_ms` is a hard budget of the gate. Release build in the cloud VM
   (2 vCPU, Qt 6.12.0, offscreen), 2026-11-26: p95 9.75 ms, highest 14.4 ms, none over 16 ms.
 
-Open before "In review": dragging with the mouse from a selection of cells to below or above the table (the view keeps the mouse
-while the button is held, so the drag stops at the edge rows; Shift with the arrows does extend it
-into the editor); the manual checks (a key the system takes, the pointers on Windows and macOS at
-2x).
+Open before "In review": the manual checks (a key the system takes, the pointers on Windows and
+macOS at 2x) and a green CI on Linux, Windows and macOS.
+
+Left as it is for now (Armin, 2026-11-26, to gather practical experience): dragging with the mouse
+from a selection of cells to below or above the table stops at the edge rows, because the view
+keeps the mouse while the button is held; Shift with the arrows does extend it into the editor.
 
 ## Acceptance scenarios
 
