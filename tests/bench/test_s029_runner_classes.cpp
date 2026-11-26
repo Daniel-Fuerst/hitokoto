@@ -37,6 +37,7 @@ const std::vector<std::string> kHardKeys = {
     "s028_step_incomplete_max_ms",
     "s028_table_field_typing_max_ms",
     "s028_table_step_max_ms",
+    "s040_selection_max_ms",
     "s028_doc_typing_max_ms",
     "s007_bound_lines_typing_max_ms",
     "s007_long_lines_typing_max_ms",
@@ -169,6 +170,9 @@ TEST(S029_RunnerClasses, ReportOnlyKeysAndHardBudgetsMatchHitokotoBench) {
     EXPECT_TRUE(isReportOnly("save_10mb_total_ms"));
     EXPECT_TRUE(isReportOnly("s028_full_count_ms"));
     EXPECT_TRUE(isReportOnly("startup_p95_ms"));
+    EXPECT_TRUE(isReportOnly("s040_selection_max_ms"));  // S040: a hard budget instead
+    EXPECT_TRUE(isReportOnly("s040_selection_over_16ms"));
+    EXPECT_FALSE(isReportOnly("s040_selection_p95_ms"));
     EXPECT_FALSE(isReportOnly("typing_small_p99_ms"));
     EXPECT_FALSE(isReportOnly("s024_open_10mb_properties_ms"));
     std::vector<std::string> keys;
