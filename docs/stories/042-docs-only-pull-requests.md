@@ -91,6 +91,39 @@ proves that it changed only documentation.
    "CI result" none), and `GH_TOKEN` only in the `env` of the step that calls `gh`, never in the
    job's `env`.
 
+## Implementation (2026-11-26)
+
+- `version:doc` in `scripts/version/NextVersion.cmake` (next version "none"), ADR 0010 amended, the
+  README's "Versions" and `CLAUDE.md` name it.
+- `tests/docs-read-by-tests.txt` lists `docs/theming.md`. `tests/cmake/DocsReadByTests.cmake`
+  generates the helper `test::docsFile<"theming.md">()` (a template argument rather than the working
+  name's function argument, so that a `static_assert` refuses a name not on the list with the same
+  message on GCC, Clang and MSVC). The lint `S042_TestsReadDocsOnlyThroughTheList`
+  (`tests/lint/docs_paths_only_through_the_list.cmake`) leaves out comments and lines with the marker
+  `S042-mention`; the lines of a raw string literal take the marker on the line where it begins or
+  on the line before, since they cannot hold a comment. Marked today: the front matter of the S024
+  tests, the changed paths in the S029 tests and the comparison in `bench/gate/src/gate.cpp`.
+- `scripts/ci/DocsOnly.cmake` is the decision of "Changes"; `ci.yml` calls it after reading the
+  labels with `gh api` and listing the changed files with
+  `git diff --name-only --no-renames HEAD^1...HEAD^2` on the merge commit the CI tests.
+- "CI result" needs every job but "Version", which needs it in turn; its script is plain bash and is
+  tested from `ci.yml` itself (`S042_CiResult*`, not on Windows).
+
+## Ruleset of main after the merge
+
+Within seven days after a pull request run in which "CI result" passed (GitHub offers a check as
+required only then; otherwise after one more run):
+
+1. Labels: create `version:doc`, for example with the description "Only documentation under docs/:
+   skips the build (S042)".
+2. Settings › Rules › Rulesets › the ruleset of main › "Require status checks to pass": add
+   "CI result"; remove the checks of `ci.yml` one by one ("Format (clang-format)", "Core with
+   ASan/UBSan, without Qt (layering check)", "UI with ASan/UBSan (Linux)", "Fuzz core (60 s per
+   target)", the four "Build and test (…)", "Lint (clang-tidy)", "Benchmarks (Linux)"); keep
+   "Version label". "Changes" need not be required: "CI result" fails whenever it fails.
+3. The first pull request labelled `version:doc`: check that every job but "Changes" and "CI result"
+   is skipped, that it can be merged, and that no CI run starts on main; record the result here.
+
 ## Acceptance scenarios
 
 **Scenario: a documentation pull request is merged without the build**
