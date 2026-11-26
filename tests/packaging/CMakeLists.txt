@@ -108,3 +108,36 @@ foreach(name IN ITEMS
                 -DRECIPE_DIR=${PROJECT_SOURCE_DIR}/packaging/windows -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
                 -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/cases/s037/${name} -P ${s037_cases})
 endforeach()
+
+# S049: the decision logic of the macOS disk image (scripts/packaging) and the recipe in
+# packaging/macos.
+set(s049_script "${PROJECT_SOURCE_DIR}/scripts/packaging/MacosPackage.cmake")
+set(s049_cases "${CMAKE_CURRENT_SOURCE_DIR}/s049_macos_cases.cmake")
+foreach(name IN ITEMS
+        TheVersionsToReleaseGetADiskImage
+        ADryRunBuildsTheHighestVersion
+        NothingToBuildBuildsNothing
+        SkippedVersionsAreLeftOutAndNamed
+        AReleaseWithoutTheDiskImageIsReported
+        TheToolVersionsComeFromTheRecipe
+        BadRecipesFail
+        CarriageReturnsAreIgnored
+        TheFileListMatches
+        AMissingOrExtraFileFails
+        AFileForANewerMacosFails
+        ALibraryOutsideTheBundleFails
+        TheNoticeNamesTheQtVersion
+        TheRecipeBuildsWithTheCiQt
+        TheRecipeRunsOnTheOldestMacosOfItsQt
+        TheDiskImageIsForAppleSiliconAlone
+        TheBundleIsSignedAdHoc
+        TheDiskImageShipsNoImageFormatPlugins
+        TheBundleCarriesTheLicences
+        TheBundleIdentityStays
+        TheScriptsRunWithTheBashOfMacos
+        TheReadmeChecksTheDownload)
+    add_test(NAME S049_${name}
+        COMMAND ${CMAKE_COMMAND} -DCASE=${name} -DSCRIPT=${s049_script}
+                -DRECIPE_DIR=${PROJECT_SOURCE_DIR}/packaging/macos -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
+                -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/cases/s049/${name} -P ${s049_cases})
+endforeach()

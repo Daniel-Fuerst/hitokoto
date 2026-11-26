@@ -26,8 +26,8 @@ The package installs:
 ## Installing
 
 Download `hitokoto_X.Y.Z-1_amd64.deb` from the release and check it against `SHA256SUMS`, which
-lists every package of the release (since S037 also the Windows installer), so files not
-downloaded are left out:
+lists every package of the release (since S037 also the Windows installer, since S049 the macOS
+disk image), so files not downloaded are left out:
 
 ```sh
 sha256sum -c --ignore-missing SHA256SUMS

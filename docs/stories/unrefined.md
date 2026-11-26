@@ -146,6 +146,12 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   the same release as the Debian package (Armin, 2026-11-13). Open here: signing, a version
   resource in `hitokoto.exe` (Explorer's file properties show no version), and the MSI build in the
   CI of every pull request.
+- **Refined so far (5):** S049 builds a macOS disk image (Apple silicon, signed ad hoc, not
+  notarised) for every version and attaches it to the same release (Daniel, 2026-11-25). Open
+  here: a Developer ID and notarisation, Intel Macs, and opening `.md` files from Finder: macOS
+  hands a file opened with "Open With" or a double click to the running program as an Apple event
+  (`QFileOpenEvent`), not on the command line, and hitokoto handles no such event yet; only then
+  may the bundle declare `.md` as a document type (`CFBundleDocumentTypes`).
 - **Open:** the formats per platform and whether this refines S012 or becomes a story of its own
   (S012 still says the `.deb` follows separate Debian packaging conventions; for Armin, a `.deb`
   built by CI belongs to this project); signing (Windows certificate, macOS notarisation); where the

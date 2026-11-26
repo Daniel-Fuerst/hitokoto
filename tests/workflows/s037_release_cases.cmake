@@ -270,10 +270,11 @@ elseif("${CASE}" STREQUAL "WindowsInstallsAqtinstallFromAPinnedCommit")
     endforeach()
 
     # packaging.yml: the Windows installer's job runs on Windows only and names the commit itself.
-    install_qt_steps("${packaging}" packaging_steps)
+    # The macOS disk image's job (S049) takes the release of the macOS CI instead.
+    install_qt_steps("${job_windows-package}" packaging_steps)
     list(LENGTH packaging_steps count)
     if(count EQUAL 0)
-        message(FATAL_ERROR "packaging.yml has no call of install-qt-action")
+        message(FATAL_ERROR "windows-package in packaging.yml has no call of install-qt-action")
     endif()
     foreach(step IN LISTS packaging_steps)
         if(NOT step MATCHES "\n( +#[^\n]*\n)? +aqtsource: ${source}( #[^\n]*)?(\n|$)")

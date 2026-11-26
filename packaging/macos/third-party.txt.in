@@ -1,0 +1,24 @@
+hitokoto for macOS: third-party components
+==========================================
+
+hitokoto is free software under the GNU General Public License, version 3 or (at your option)
+any later version; see LICENSE.txt. This application bundle also contains:
+
+Qt @QT_VERSION@ (the frameworks in Contents/Frameworks and the plugins in Contents/PlugIns)
+  Copyright (C) The Qt Company Ltd. and other contributors.
+  Used under the GNU Lesser General Public License version 3 (LGPL-3.0.txt), which builds on the
+  GNU General Public License version 3 (LICENSE.txt). The libraries are linked dynamically and can
+  be replaced by your own build of the same Qt version. The complete source code of Qt
+  @QT_VERSION@ is available at https://download.qt.io/archive/qt/@QT_SERIES@/@QT_VERSION@/ and
+  at https://code.qt.io/.
+
+STIX Two Math 2.13 (compiled into the program hitokoto; the font formulas are typeset with)
+  Copyright 2001-2021 The STIX Fonts Project Authors (https://github.com/stipub/stixfonts);
+  portions copyright 1998-2003 MicroPress, Inc., with Reserved Font Name TM Math; 1990 Elsevier,
+  Inc.; 2010, 2012, 2014 Adobe Systems Incorporated. STIX Fonts is a trademark of The Institute
+  of Electrical and Electronics Engineers, Inc. Used unchanged under the SIL Open Font License,
+  Version 1.1, https://openfontlicense.org; the full text is in the source code of hitokoto at
+  fonts/stix-two-math/OFL.txt.
+
+The source code of hitokoto, and the recipe this disk image was built with, are at
+https://github.com/Daniel-Fuerst/hitokoto.
