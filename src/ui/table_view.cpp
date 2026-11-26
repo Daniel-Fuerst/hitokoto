@@ -1026,96 +1026,114 @@ void TableView::deleteSelectedColumns() {
     emit deleteColumns(r.left, r.right);
 }
 
+namespace {
+
+/// The step of a key with Shift (Ctrl+Shift for Home and End), or none (S040, decision 8).
+std::optional<core::TableStep> shiftStep(int key, Qt::KeyboardModifiers modifiers) {
+    const bool ctrlShift = modifiers == (Qt::ShiftModifier | Qt::ControlModifier);
+    if (modifiers != Qt::ShiftModifier && !(ctrlShift && (key == Qt::Key_Home || key == Qt::Key_End))) {
+        return std::nullopt;
+    }
+    switch (key) {
+        case Qt::Key_Left:
+            return core::TableStep::Left;
+        case Qt::Key_Right:
+            return core::TableStep::Right;
+        case Qt::Key_Up:
+            return core::TableStep::Up;
+        case Qt::Key_Down:
+            return core::TableStep::Down;
+        case Qt::Key_Home:
+            return ctrlShift ? core::TableStep::TableStart : core::TableStep::RowStart;
+        case Qt::Key_End:
+            return ctrlShift ? core::TableStep::TableEnd : core::TableStep::RowEnd;
+        default:
+            return std::nullopt;
+    }
+}
+
+}  // namespace
+
 bool TableView::selectionKey(QKeyEvent* event, CellEditor* editor) {
-    QAbstractItemModel* m = model();
     const QModelIndex current = currentIndex();
-    if (m == nullptr || !current.isValid() || editor == nullptr) {
+    if (model() == nullptr || !current.isValid() || editor == nullptr) {
         return false;
     }
     const Qt::KeyboardModifiers modifiers = event->modifiers() & ~Qt::KeypadModifier;
-    const int key = event->key();
 #ifdef Q_OS_MACOS
     // Decision 4: the Control key, which Qt calls Meta on macOS (Ctrl there is Command).
     constexpr Qt::KeyboardModifiers columnModifiers = Qt::MetaModifier;
 #else
     constexpr Qt::KeyboardModifiers columnModifiers = Qt::ControlModifier;
 #endif
-    if (key == Qt::Key_Space && modifiers == Qt::ShiftModifier) {
+    if (event->key() == Qt::Key_Space && modifiers == Qt::ShiftModifier) {
         selectRows();
         return true;
     }
-    if (key == Qt::Key_Space && modifiers == columnModifiers) {
+    if (event->key() == Qt::Key_Space && modifiers == columnModifiers) {
         selectColumns();
         return true;
     }
-    const int length = static_cast<int>(editor->toPlainText().size());
     if (event->matches(QKeySequence::SelectAll)) {
-        // Decision 3: the cell's text, then the table, then the document; an empty cell first
-        // as a cell.
-        if (cells_ && cells_->coversWholeTable()) {
-            endCellSelection(false);
-            emit selectDocument();
-            return true;
-        }
-        if (cells_) {
-            selectTable();
-            return true;
-        }
-        const QTextCursor cursor = editor->textCursor();
-        if (length == 0) {
-            setCells(core::TableCellSelection(m->rowCount(), m->columnCount(), {current.row(), current.column()}));
-            return true;
-        }
-        if (cursor.selectionStart() == 0 && cursor.selectionEnd() == length) {
-            selectTable();
-            return true;
-        }
-        return false;
+        return selectAllKey(editor);
     }
-    const auto stepOf = [&](bool shifted) -> std::optional<core::TableStep> {
-        const bool ctrl = (modifiers & Qt::ControlModifier) != 0;
-        if (modifiers != Qt::ShiftModifier && !(shifted && modifiers == (Qt::ShiftModifier | Qt::ControlModifier) &&
-                                                (key == Qt::Key_Home || key == Qt::Key_End))) {
-            return std::nullopt;
-        }
-        switch (key) {
-            case Qt::Key_Left:
-                return core::TableStep::Left;
-            case Qt::Key_Right:
-                return core::TableStep::Right;
-            case Qt::Key_Up:
-                return core::TableStep::Up;
-            case Qt::Key_Down:
-                return core::TableStep::Down;
-            case Qt::Key_Home:
-                return ctrl ? core::TableStep::TableStart : core::TableStep::RowStart;
-            case Qt::Key_End:
-                return ctrl ? core::TableStep::TableEnd : core::TableStep::RowEnd;
-            default:
-                return std::nullopt;
-        }
-    };
     if (!cells_) {
-        // Decision 8: a Shift step at the edge of the cell's text selects the cell as a cell.
-        const auto step = stepOf(false);
-        if (!step) {
-            return false;
-        }
-        const QTextCursor cursor = editor->textCursor();
-        const QTextBlock block = cursor.block();
-        const QTextLayout* layout = block.layout();
-        const QTextLine line = layout->lineForTextPosition(cursor.positionInBlock());
-        const bool onFirstLine =
-            block == editor->document()->firstBlock() && (!line.isValid() || line.lineNumber() == 0);
-        const bool onLastLine = block == editor->document()->lastBlock() &&
-                                (!line.isValid() || line.lineNumber() == layout->lineCount() - 1);
-        if (!core::shiftStepSelectsCell(*step, cursor.position(), length, onFirstLine, onLastLine)) {
-            return false;
-        }
-        setCells(core::TableCellSelection(m->rowCount(), m->columnCount(), {current.row(), current.column()}));
+        return startCellsKey(event, editor);
+    }
+    return cellsKey(event);
+}
+
+bool TableView::selectAllKey(CellEditor* editor) {
+    // Decision 3: the cell's text, then the table, then the document; an empty cell first as a
+    // cell.
+    if (cells_ && cells_->coversWholeTable()) {
+        endCellSelection(false);
+        emit selectDocument();
         return true;
     }
-    switch (key) {
+    if (cells_) {
+        selectTable();
+        return true;
+    }
+    const int length = static_cast<int>(editor->toPlainText().size());
+    const QTextCursor cursor = editor->textCursor();
+    if (length == 0) {
+        setCells(core::TableCellSelection(model()->rowCount(), model()->columnCount(),
+                                          {currentIndex().row(), currentIndex().column()}));
+        return true;
+    }
+    if (cursor.selectionStart() == 0 && cursor.selectionEnd() == length) {
+        selectTable();
+        return true;
+    }
+    return false;
+}
+
+bool TableView::startCellsKey(QKeyEvent* event, CellEditor* editor) {
+    // Decision 8: a Shift step at the edge of the cell's text selects the cell as a cell.
+    const auto step = shiftStep(event->key(), event->modifiers() & ~Qt::KeypadModifier);
+    if (!step) {
+        return false;
+    }
+    const QTextCursor cursor = editor->textCursor();
+    const QTextBlock block = cursor.block();
+    const QTextLayout* layout = block.layout();
+    const QTextLine line = layout->lineForTextPosition(cursor.positionInBlock());
+    const bool onFirstLine = block == editor->document()->firstBlock() && (!line.isValid() || line.lineNumber() == 0);
+    const bool onLastLine =
+        block == editor->document()->lastBlock() && (!line.isValid() || line.lineNumber() == layout->lineCount() - 1);
+    const int length = static_cast<int>(editor->toPlainText().size());
+    if (!core::shiftStepSelectsCell(*step, cursor.position(), length, onFirstLine, onLastLine)) {
+        return false;
+    }
+    setCells(core::TableCellSelection(model()->rowCount(), model()->columnCount(),
+                                      {currentIndex().row(), currentIndex().column()}));
+    return true;
+}
+
+bool TableView::cellsKey(QKeyEvent* event) {
+    const Qt::KeyboardModifiers modifiers = event->modifiers() & ~Qt::KeypadModifier;
+    switch (event->key()) {
         case Qt::Key_Shift:
         case Qt::Key_Control:
         case Qt::Key_Meta:
@@ -1135,38 +1153,14 @@ bool TableView::selectionKey(QKeyEvent* event, CellEditor* editor) {
         case Qt::Key_Down:
         case Qt::Key_Home:
         case Qt::Key_End:
-            if (const auto step = stepOf(true)) {
-                // Decision 12: past the last row or above the header row, a selection in the editor.
-                const bool beyondDown = *step == core::TableStep::Down && cells_->focus().row == m->rowCount() - 1;
-                const bool beyondUp = *step == core::TableStep::Up && cells_->focus().row == 0;
-                if ((beyondDown || beyondUp) && cells_->kind() != core::TableCellSelection::Kind::Columns) {
-                    endCellSelection(false);
-                    emit extendBeyond(beyondDown);
-                    return true;
-                }
-                cells_->extend(*step);
-                showCells();
+            if (const auto step = shiftStep(event->key(), modifiers)) {
+                extendCells(*step);
                 return true;
             }
             break;
         case Qt::Key_Delete:
         case Qt::Key_Backspace:
-            // Decision 10: empty the cells, or remove the whole table; the keys of S018 remove the
-            // selected rows or columns.
-            if (modifiers == Qt::NoModifier) {
-                if (cells_->coversWholeTable()) {
-                    emit removeTable();
-                } else {
-                    emit emptyCells(cells_->range());
-                }
-                return true;
-            }
-            if (modifiers == (Qt::ControlModifier | Qt::AltModifier)) {
-                deleteSelectedColumns();
-                return true;
-            }
-            if (modifiers == (Qt::ControlModifier | Qt::ShiftModifier)) {
-                deleteSelectedRows();
+            if (deleteKey(modifiers)) {
                 return true;
             }
             break;
@@ -1176,6 +1170,47 @@ bool TableView::selectionKey(QKeyEvent* event, CellEditor* editor) {
     // Any other key ends the selection; it then acts as if there had been none, from where the
     // caret was before the selection began (decisions 9 and 11).
     endCellSelection(true);
+    return false;
+}
+
+void TableView::extendCells(core::TableStep step) {
+    if (!cells_) {
+        return;
+    }
+    // Decision 12: past the last row or above the header row, a selection in the editor.
+    const bool beyondDown = step == core::TableStep::Down && cells_->focus().row == model()->rowCount() - 1;
+    const bool beyondUp = step == core::TableStep::Up && cells_->focus().row == 0;
+    if ((beyondDown || beyondUp) && cells_->kind() != core::TableCellSelection::Kind::Columns) {
+        endCellSelection(false);
+        emit extendBeyond(beyondDown);
+        return;
+    }
+    cells_->extend(step);
+    showCells();
+}
+
+bool TableView::deleteKey(Qt::KeyboardModifiers modifiers) {
+    if (!cells_) {
+        return false;
+    }
+    // Decision 10: empty the cells, or remove the whole table; the keys of S018 remove the
+    // selected rows or columns.
+    if (modifiers == Qt::NoModifier) {
+        if (cells_->coversWholeTable()) {
+            emit removeTable();
+        } else {
+            emit emptyCells(cells_->range());
+        }
+        return true;
+    }
+    if (modifiers == (Qt::ControlModifier | Qt::AltModifier)) {
+        deleteSelectedColumns();
+        return true;
+    }
+    if (modifiers == (Qt::ControlModifier | Qt::ShiftModifier)) {
+        deleteSelectedRows();
+        return true;
+    }
     return false;
 }
 

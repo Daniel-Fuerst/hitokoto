@@ -197,6 +197,11 @@ protected:
 private:
     /// S040: keys while cells are selected, and the keys that select them; true if handled.
     bool selectionKey(QKeyEvent* event, CellEditor* editor);
+    bool selectAllKey(CellEditor* editor);
+    bool startCellsKey(QKeyEvent* event, CellEditor* editor);
+    bool cellsKey(QKeyEvent* event);
+    void extendCells(core::TableStep step);
+    bool deleteKey(Qt::KeyboardModifiers modifiers);
     /// Starts or replaces the selection of cells, remembering the caret first.
     void setCells(const core::TableCellSelection& selection);
     /// The selection model, the look of the current cell's editor and the actions follow cells_.
