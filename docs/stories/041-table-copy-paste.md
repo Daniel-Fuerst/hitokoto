@@ -84,6 +84,27 @@ and I want to paste a table into cells.
      pasted at the caret as today.
    - Each paste is one undo step, and the file is saved byte for byte as always (ADR 0002).
 
+## Implementation (2026-11-26, night mode; in progress)
+
+- Core (`table_clipboard.hpp`): `copiedTableCells` gives the text of decision 2 (the whole table as
+  its lines, one cell as its text, any other rectangle as a GFM table whose delimiter row keeps the
+  colons of each column, so a column without alignment keeps none);
+  `copiedTableCellsAsTabSeparated` the text of decision 4 from the cells' find units (S028);
+  `markdownTableCells` reads hitokoto's own Markdown back when the registry reads it as exactly one
+  table (decision 5); `pastedTableCells` gives the cells of an HTML or tab-separated paste as S031
+  writes them; `pasteCellsIntoTable` and `pasteTextIntoTableCells` give the lines of decision 7.
+- Assumption: one line break at the end of pasted text is dropped before it fills cells, as a
+  spreadsheet ends the copy of a single cell with one.
+- The core's share in the 1,000-row table of five columns (release, cloud VM, 2026-11-26, best of
+  nine): the whole table as Markdown 0.01 ms, its body rows as a table 0.13 ms, as tab-separated
+  text 2.1 ms, reading the copy back 0.5 ms, pasting it as a block of 5,000 cells 0.7 to 0.9 ms,
+  text into 5,000 cells 0.6 ms.
+
+Open: the table view and the editor (the clipboard's formats, `Copy as Tab-Separated Text`, the
+marker on paste, cut, pasting into cells, one undo step each), `tst_s041_table_copy_paste`, the
+benchmarks `s041_*`, the dated notes in S031 and ADR 0011, the manual checks, and a green CI on
+Linux, Windows and macOS.
+
 ## Acceptance scenarios
 
 **Scenario: copying cells gives a Markdown table**
