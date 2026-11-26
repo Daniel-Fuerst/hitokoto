@@ -16,21 +16,7 @@ endforeach()
 file(REMOVE_RECURSE "${WORK_DIR}")
 file(MAKE_DIRECTORY "${WORK_DIR}")
 
-function(expect_eq actual expected what)
-    if(NOT "${actual}" STREQUAL "${expected}")
-        message(FATAL_ERROR "${what}: '${actual}', expected '${expected}'")
-    endif()
-endfunction()
-
-# CMake wraps long messages, so runs of white space count as one space.
-function(expect_contains text part what)
-    string(REGEX REPLACE "[ \t\r\n]+" " " flat_text "${text}")
-    string(REGEX REPLACE "[ \t\r\n]+" " " flat_part "${part}")
-    string(FIND "${flat_text}" "${flat_part}" pos)
-    if(pos EQUAL -1)
-        message(FATAL_ERROR "${what}: '${part}' not in\n${text}")
-    endif()
-endfunction()
+include("${CMAKE_CURRENT_LIST_DIR}/../cmake/expect.cmake")
 
 # The same, character for character (line breaks and indentation count).
 function(expect_contains_exactly text part what)
@@ -38,22 +24,6 @@ function(expect_contains_exactly text part what)
     if(pos EQUAL -1)
         message(FATAL_ERROR "${what}: '${part}' not in\n${text}")
     endif()
-endfunction()
-
-function(expect_not_contains text part what)
-    string(FIND "${text}" "${part}" pos)
-    if(NOT pos EQUAL -1)
-        message(FATAL_ERROR "${what}: '${part}' found in\n${text}")
-    endif()
-endfunction()
-
-# Writes the items of a list one per line (an empty list gives an empty file).
-function(write_lines file)
-    set(text "")
-    foreach(item IN LISTS ARGN)
-        string(APPEND text "${item}\n")
-    endforeach()
-    file(WRITE "${file}" "${text}")
 endfunction()
 
 # The settings file of the recipe with the given first version and skip lines.
@@ -567,6 +537,23 @@ elseif("${CASE}" STREQUAL "TheTestsRunWithoutRoot")
     expect_contains("${text}" "if [ \"$(id -u)\" -eq 0 ]; then" "the check for root")
     expect_contains("${text}" "setpriv --reuid=nobody --regid=nogroup --clear-groups"
                     "ctest as nobody")
+
+elseif("${CASE}" STREQUAL "ThePackageIsBuiltWithDebiansHardeningFlags")
+    # Debian builds its packages with the flags of dpkg-buildflags (fortify, stack protector,
+    # relro, ...); with hardening=+all also bindnow. CMake reads CXXFLAGS and LDFLAGS from the
+    # environment but not CPPFLAGS, so those go into CXXFLAGS. lintian names a missing one.
+    file(READ "${RECIPE_DIR}/build-package.sh" text)
+    expect_contains("${text}" "export DEB_BUILD_MAINT_OPTIONS=hardening=+all" "all hardening features")
+    expect_contains("${text}" "CXXFLAGS=\"$(dpkg-buildflags --get CXXFLAGS) $(dpkg-buildflags --get CPPFLAGS)\""
+                    "CXXFLAGS with CPPFLAGS")
+    expect_contains("${text}" "LDFLAGS=\"$(dpkg-buildflags --get LDFLAGS)\"" "LDFLAGS")
+    string(FIND "${text}" "dpkg-buildflags" flags_at)
+    string(FIND "${text}" "cmake -S \"$src\"" configure_at)
+    if(configure_at LESS flags_at)
+        message(FATAL_ERROR "build-package.sh configures before it takes the flags")
+    endif()
+    expect_contains("${text}" "lintian -I --fail-on error" "lintian with its informational tags")
+    expect_contains("${text}" "grep -q ' hardening-' \"$out/lintian.txt\"" "a hardening tag fails the build")
 
 else()
     message(FATAL_ERROR "unknown case ${CASE}")

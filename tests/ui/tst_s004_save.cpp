@@ -3,6 +3,7 @@
 #include "ui_test_support.hpp"
 
 #include "hitokoto/core/markdown.hpp"
+#include "hitokoto/core/table.hpp"
 
 #include <QClipboard>
 #include <QDir>

@@ -31,9 +31,7 @@
 using namespace hitokoto;
 
 namespace {
-QColor qcolor(const core::Color& c) {
-    return {c.r, c.g, c.b, c.a};
-}
+using test::qcolor;
 
 QString text(const test::Fixture& f) {
     return f.editor()->toPlainText();

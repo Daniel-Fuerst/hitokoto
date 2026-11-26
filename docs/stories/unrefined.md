@@ -146,6 +146,12 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   the same release as the Debian package (Armin, 2026-11-13). Open here: signing, a version
   resource in `hitokoto.exe` (Explorer's file properties show no version), and the MSI build in the
   CI of every pull request.
+- **Refined so far (5):** S049 builds a macOS disk image (Apple silicon, signed ad hoc, not
+  notarised) for every version and attaches it to the same release (Daniel, 2026-11-25). Open
+  here: a Developer ID and notarisation, Intel Macs, and opening `.md` files from Finder: macOS
+  hands a file opened with "Open With" or a double click to the running program as an Apple event
+  (`QFileOpenEvent`), not on the command line, and hitokoto handles no such event yet; only then
+  may the bundle declare `.md` as a document type (`CFBundleDocumentTypes`).
 - **Open:** the formats per platform and whether this refines S012 or becomes a story of its own
   (S012 still says the `.deb` follows separate Debian packaging conventions; for Armin, a `.deb`
   built by CI belongs to this project); signing (Windows certificate, macOS notarisation); where the
@@ -313,3 +319,111 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
 - **Open:** whether cutting or deleting the blank line below a table should keep the next line a
   paragraph (a blank line added in the same undo step, as typing does) or join it to the table as
   GFM reads the text; what undo and the source view show then.
+
+## Math accents (`\hat`, `\vec`, …)
+
+- **Seen:** 2026-11-24, while finishing S045–S047: `$\hat{x}$`, `$\vec{v}$`, `$\bar{z}$`,
+  `$\tilde{a}$`, `$\dot{x}$` and `$\widehat{AB}$` show their source in `math.error` with the
+  tooltip "unknown command \hat" (and so on); S045 lists accents under "Not yet".
+- **LaTeX, KaTeX, Pandoc:** LaTeX sets the accent over its base, centred on the base's skew (for
+  italic letters to the right), with wide accents (`\widehat`, `\widetilde`) and `\overline`
+  stretching to the base's width; with OpenType math fonts (unicode-math) the font's
+  `MathTopAccentAttachment`, `AccentBaseHeight` and flattened accent forms (`flac`) place them.
+  KaTeX supports the same accents. Pandoc passes the TeX on to MathJax or KaTeX for HTML and
+  converts it to MathML (texmath) or keeps it for LaTeX output.
+- **hitokoto:** no accent in the parser or the layout engine (`math_parse.cpp`, `math_layout.cpp`).
+- **Open:** which accents (at least the ten of LaTeX's `\hat` family, `\overline`/`\underline`,
+  the wide ones); attachment from the MATH table (`MathTopAccentAttachment`, `AccentBaseHeight`,
+  `flac`) or a simpler centring; stretching of wide accents from variants and assemblies, as
+  delimiters do.
+
+## Math macros (`\newcommand`)
+
+- **Seen:** 2026-11-24, while finishing S045–S047: `$\newcommand{\R}{\mathbb{R}}$` and a later
+  `$\R$` both show their source in `math.error` ("unknown command").
+- **LaTeX, KaTeX, Pandoc:** LaTeX defines macros with `\newcommand`, `\renewcommand` and `\def`,
+  valid to the end of the group (for a formula, the formula). KaTeX keeps `\newcommand` local to one
+  render call unless the caller shares a `macros` object, and `\gdef` (or `\global\def`) then
+  carries over to later formulas. Pandoc (extension `latex_macros`, on by default for Markdown)
+  reads `\newcommand` definitions anywhere in the document and expands them in every later formula.
+- **hitokoto:** no macros; every formula is parsed alone and cached by its source (S046 decision 4).
+- **Open:** whether definitions hold for one formula, for the rest of the document (as Pandoc), or
+  come from a front-matter property; how the cache keys a formula whose meaning depends on
+  definitions above it; what an edit of a definition re-lays out; limits against runaway
+  expansion (recursion depth, output size) for the fuzzer.
+
+## Script-style glyph variants (`ssty`) and cut-ins (MathKern)
+
+- **Seen:** 2026-11-24, while finishing S045–S047 (S045 "Not yet"): in `$x^{y'}$` and `$f_{a}^{b}$`
+  the scripts use the base glyphs scaled down, and a superscript after an italic `f` or `P` keeps
+  the plain italic correction instead of following the glyph's outline.
+- **LaTeX, KaTeX, Pandoc:** LuaLaTeX and XeLaTeX with unicode-math apply the font's `ssty`
+  feature (script-style variants: heavier, wider glyphs and the right primes at script and
+  scriptscript size) and its `MathKernInfo` cut-ins for scripts at the corners of a base. Classic
+  LaTeX uses separate fonts at script sizes (cmmi7, cmmi5) and no cut-ins. KaTeX uses its own fonts
+  scaled to the script sizes, with no `ssty` and no cut-ins. Pandoc leaves this to the renderer.
+- **hitokoto:** scripts take the same glyph IDs at `ScriptPercentScaleDown` and
+  `ScriptScriptPercentScaleDown`; scripts attach by the italic correction and the MATH constants
+  (`math_layout.cpp`); STIX Two Math has both `ssty` and `MathKernInfo`.
+- **Open:** whether `ssty` (a GSUB lookup, which the core does not read yet) and cut-ins are worth
+  their cost; how much of GSUB the core should read (only `ssty` single substitutions?); pictures
+  to compare against LuaLaTeX output.
+
+## Left-aligned display formulas (`math.display-align`)
+
+- **Seen:** 2026-11-24: S047 centres every display formula and leaves a `math.display-align` for
+  a later story (S047, "Theme tokens").
+- **LaTeX, KaTeX, Pandoc:** LaTeX centres display math by default; the class option `fleqn` sets
+  it flush left, indented by `\mathindent`. KaTeX has the option `fleqn` (left, no indent). Pandoc
+  keeps the TeX and lets the output decide (`fleqn` for LaTeX, `displayAlign` for MathJax, a CSS
+  rule for KaTeX).
+- **hitokoto:** `paintDisplayFormula` centres the formula in the panel; the panel spans the text
+  column.
+- **Open:** values (`center`, `left`, perhaps `right`) and an indent token for `left`; whether the
+  panel then shrinks to the formula or keeps the column's width; what a formula wider than the
+  column does in each alignment (today it is clipped by the viewport like an unwrapped line).
+
+## `\(…\)` and `\[…\]` math delimiters
+
+- **Seen:** 2026-11-24: S044 recognises `$…$` and `$$…$$` only and names `\(…\)` and `\[…\]`
+  under "Out of scope"; text pasted from LaTeX or from chat assistants often uses them.
+- **LaTeX, KaTeX, Pandoc:** in LaTeX `\(…\)` is inline and `\[…\]` display math (the dollars are
+  TeX's older form). KaTeX's auto-render recognises `$$`, `\(` and `\[` by default (single `$`
+  only when configured). Pandoc reads `\(…\)` and `\[…\]` only with the extension
+  `tex_math_single_backslash` and `\\(…\\)` with `tex_math_double_backslash`, both off by
+  default for its `markdown`, which uses dollars (`tex_math_dollars`). In CommonMark `\(` is an
+  escaped `(` and shows as `(`, so `\(x\)` reads `(x)` in every other CommonMark renderer.
+- **hitokoto:** `\(` and `\[` are backslash escapes (S020); the text shows `(x)` with the
+  backslashes concealed.
+- **Open:** whether to recognise them at all, given the clash with CommonMark escapes (a file
+  that renders `(x)` elsewhere would show a formula here); if so, behind a setting or always; how
+  `\[…\]` over several lines fits S047's block detection.
+
+## Formulas in table cells
+
+- **Seen:** 2026-11-24, while finishing S046: a table cell holding `$x^2$` shows the formula's
+  source in the table view (the cell delegate draws it as text, not typeset), while the same
+  formula in a paragraph is typeset.
+- **LaTeX, KaTeX, Pandoc:** Pandoc typesets inline math in pipe-table cells like anywhere else;
+  a `|` inside such a formula must be written `\|` (GFM splits the row first). KaTeX-based
+  Markdown renderers (markdown-it with a math plugin, GitHub) typeset formulas in cells as well.
+- **hitokoto:** `TableDelegate::paint` lays out the cell through a `QTextDocument`; it knows no
+  typeset formulas and paints nothing of `core::layoutMath`.
+- **Open:** typesetting in the delegate (size hint from the formula's width and height, painted
+  as in `paintFormulas`); what the cell editor shows (the source, as on the caret's line); how
+  `\|` inside a formula in a cell is read (S018 splits cells at unescaped pipes).
+
+## UI benchmark for a document with many formulas
+
+- **Seen:** 2026-11-24, while finishing S046/S047: the benchmarks measure one layout in the core
+  (`S045_LayoutMaxwellEquations`) and the cache hit while typing elsewhere is a UI test, but no
+  UI benchmark opens, scrolls or types in a document with many formulas.
+- **LaTeX, KaTeX, Pandoc:** not applicable; KaTeX documents its speed per formula, MathJax 3 lays
+  out lazily for long pages.
+- **hitokoto:** S007 budgets (open, first paint, keystroke, scrolling) are measured on documents
+  without math (`bench/hitokoto_bench.cpp`); a cold cache lays out every formula on screen and
+  within 200 lines for display blocks (`MathBlockEmbedder`).
+- **Open:** a generated document (for example 5,000 inline formulas and 500 `$$` blocks, the
+  sample's mix) with budgets for opening, first paint, a keystroke on a line with and without a
+  formula, and scrolling page by page with a cold cache; a baseline per runner class as the other
+  UI benchmarks have.

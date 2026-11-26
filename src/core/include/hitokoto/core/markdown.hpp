@@ -4,7 +4,6 @@
 #pragma once
 
 #include "hitokoto/core/reveal.hpp"
-#include "hitokoto/core/text_codec.hpp"
 
 #include <array>
 #include <cstddef>
@@ -37,6 +36,16 @@ enum class Role : std::uint8_t {
     EscapeMarker,      ///< a revealed backslash escape delimiter (\)
     LinkText,          ///< text of an inline link
     LinkMarker,        ///< a revealed link delimiter or target
+    Math,              ///< LaTeX source of a formula (S044)
+    MathMarker,        ///< a revealed math delimiter (`$`, `$$`; S044)
+};
+
+/// A LaTeX formula on a line (S044): where its source is, and whether it is display math (`$$`)
+/// or inline math (`$`). The source excludes the delimiters.
+struct MathSpan {
+    Span source;
+    bool display = false;
+    friend bool operator==(const MathSpan&, const MathSpan&) = default;
 };
 
 /// An inline Markdown link with its text span, target URL and optional title.
@@ -148,8 +157,10 @@ struct LineRender {
     bool thematicBreak = false;        ///< thematic break (S023); concealed, the UI draws a horizontal line
     std::uint8_t setextUnderline = 0;  ///< 1 or 2: the line underlines a setext heading of that level (S023)
     bool frontMatter = false;          ///< line of closed front matter, delimiters included (S024)
-    bool flowsToNext = false;          ///< soft line break: the next line continues this paragraph (S032)
-    bool hardBreak = false;            ///< hard line break (2+ spaces or `\`) before the next paragraph line (S032)
+    bool mathBlock = false;            ///< line of a `$$` display math block, delimiter lines included (S044)
+    bool mathDelimiter = false;        ///< opening or closing `$$` line of a display math block (S044)
+    bool flowsToNext = false;          ///< soft line break: the next line continues this paragraph (S033)
+    bool hardBreak = false;            ///< hard line break (2+ spaces or `\`) before the next paragraph line (S033)
     BlockState blockState;             ///< state to pass when rendering the next line
     std::vector<TableCell> cells;      ///< cells of a table header or body row
     std::vector<StyleRun> runs;
@@ -157,14 +168,16 @@ struct LineRender {
     std::vector<HiddenRange> hidden;
     std::vector<Decoration> decorations;
     std::vector<LinkTarget> links;
+    std::vector<MathSpan> math;        ///< formulas on the line, in order (S044)
     std::vector<Span> opaqueSpans;     ///< spans that later inline elements must not parse (code spans, link markers)
     std::vector<Span> inlineContexts;  ///< isolated inline contexts (e.g. link text: delimiters never pair outside)
     std::u16string codeLanguage;       ///< opening fence: language of the info string (S021), else empty
     std::uint32_t wrapIndent = 0;      ///< column where continuation lines align (hanging indent, S003); 0 = none
     [[nodiscard]] bool empty() const noexcept {
         return headingLevel == 0 && !codeBlock && !fenceLine && !table && !thematicBreak && setextUnderline == 0 &&
-               !frontMatter && !flowsToNext && !hardBreak && runs.empty() && inlineStyles.empty() && hidden.empty() &&
-               decorations.empty() && links.empty() && opaqueSpans.empty() && inlineContexts.empty() && wrapIndent == 0;
+               !frontMatter && !mathBlock && !mathDelimiter && !flowsToNext && !hardBreak && runs.empty() &&
+               inlineStyles.empty() && hidden.empty() && decorations.empty() && links.empty() && math.empty() &&
+               opaqueSpans.empty() && inlineContexts.empty() && wrapIndent == 0;
     }
     friend bool operator==(const LineRender&, const LineRender&) = default;
 };
@@ -178,11 +191,11 @@ struct LineContext {
     /// that level, found by walking the lines below (`ElementRegistry::paragraphLink`); else 0.
     /// Ignored on lines that are no paragraph text.
     std::uint8_t setextLevel = 0;
-    /// S032 (ADR 0006): true if the caret or selection is on any line of this line's paragraph (or
+    /// S033 (ADR 0006): true if the caret or selection is on any line of this line's paragraph (or
     /// its setext underline), so the paragraph's source lines and hard-break markers are revealed
     /// even when `revealed` is false for inline elements on this line.
     bool paragraphRevealed = false;
-    /// S032: line after `nextLine` in the document (so `render` can tell whether `nextLine` opens a
+    /// S033: line after `nextLine` in the document (so `render` can tell whether `nextLine` opens a
     /// pipe table or continues this paragraph).
     std::u16string_view nextNextLine{};
 
@@ -223,7 +236,6 @@ public:
     LineElement& operator=(const LineElement&) = delete;
     virtual ~LineElement() = default;
 
-    [[nodiscard]] virtual std::string_view id() const noexcept = 0;
     /// Parse rule: does this line belong to the element?
     [[nodiscard]] virtual std::optional<LineMatch> parse(std::u16string_view line) const = 0;
     /// Render rule: how to show a matched line.
@@ -251,6 +263,32 @@ public:
     }
 };
 
+/// What the elements registered before an inline element have claimed on its line, one entry per
+/// character: inside an opaque span (a code span, link syntax; `LineRender::opaqueSpans`) or
+/// hidden (`LineRender::hidden`, also by a block element). The registry builds it once per line
+/// and adds what each inline element claims before the next one runs, so no element walks the
+/// spans of the others itself.
+class InlineScan {
+public:
+    explicit InlineScan(std::size_t length) : flags_(length, 0) {}
+
+    /// Character `i` lies in an opaque span.
+    [[nodiscard]] bool isOpaque(std::size_t i) const noexcept { return (flags_[i] & kOpaque) != 0; }
+    /// Character `i` lies in an opaque span or is hidden.
+    [[nodiscard]] bool isTaken(std::size_t i) const noexcept { return flags_[i] != 0; }
+
+    /// Takes in the opaque spans and hidden ranges `out` gained since the last call (the parts
+    /// within the line); returns how many characters it marked.
+    std::size_t update(const LineRender& out);
+
+private:
+    static constexpr std::uint8_t kOpaque = 1;
+    static constexpr std::uint8_t kHidden = 2;
+    std::vector<std::uint8_t> flags_;
+    std::size_t opaqueSeen_ = 0;
+    std::size_t hiddenSeen_ = 0;
+};
+
 /// An inline Markdown element that decorates text spans without owning or changing the source.
 class InlineElement {
 public:
@@ -259,11 +297,13 @@ public:
     InlineElement& operator=(const InlineElement&) = delete;
     virtual ~InlineElement() = default;
 
-    [[nodiscard]] virtual std::string_view id() const noexcept = 0;
     /// Characters that can start this element. The registry scans each line once and skips the
     /// element on lines that contain none of them. Empty (the default) = run on every line.
     [[nodiscard]] virtual std::u16string_view triggerCharacters() const noexcept { return {}; }
-    virtual void render(std::u16string_view line, const LineContext& context, LineRender& out) const = 0;
+    /// Adds this element's runs, hidden ranges and spans to `out`; `scan` tells what the elements
+    /// before it claimed on the line.
+    virtual void render(std::u16string_view line, const LineContext& context, const InlineScan& scan,
+                        LineRender& out) const = 0;
 };
 
 /// Result of a multi-line element's parse rule for one line.
@@ -287,15 +327,11 @@ public:
     /// Parse rule. `state` is 0 outside a block: return a BlockLine if `line` opens one, else
     /// nullopt. Inside, `state` is the element's state from the previous line: return the line's
     /// BlockLine, or nullopt if the block ended before `line` (the line is then parsed afresh).
-    /// Runs for every line above the visible ones, so it must be cheap and must not allocate.
-    [[nodiscard]] virtual std::optional<BlockLine> parse(std::u16string_view line,
-                                                         std::uint32_t state) const noexcept = 0;
-    /// Parse rule with one-line lookahead (default: ignores `nextLine` and calls `parse`).
+    /// `nextLine` is the line below, for an element that opens only with it (a table's delimiter
+    /// row); empty where the caller has none. Runs for every line above the visible ones, so it
+    /// must be cheap and must not allocate.
     [[nodiscard]] virtual std::optional<BlockLine> parseWithNextLine(std::u16string_view line, std::uint32_t state,
-                                                                     std::u16string_view nextLine) const noexcept {
-        (void)nextLine;
-        return parse(line, state);
-    }
+                                                                     std::u16string_view nextLine) const noexcept = 0;
     /// Render rule: how to show a line the parse rule accepted.
     virtual void render(std::u16string_view line, const BlockLine& parsed, const LineContext& context,
                         LineRender& out) const = 0;
@@ -433,93 +469,12 @@ std::unique_ptr<InlineElement> makeInlineCodeElement();
 std::unique_ptr<InlineElement> makeLinkElement();
 std::unique_ptr<InlineElement> makeEmphasisElement();
 std::unique_ptr<InlineElement> makeEscapeElement();
+/// S044: inline math `$…$` and display math written on one line `$$…$$`.
+std::unique_ptr<InlineElement> makeInlineMathElement();
+/// S044: display math blocks between `$$` lines.
+std::unique_ptr<MultiLineElement> makeDisplayMathElement();
 std::unique_ptr<MultiLineElement> makeFencedCodeElement();
 std::unique_ptr<MultiLineElement> makeTableElement();
 std::unique_ptr<MultiLineElement> makeFrontMatterElement();
-
-struct BulletLineInfo {
-    std::uint32_t prefixLength = 0;  ///< length of the full prefix up to content (e.g. 4 for "  - ")
-    std::uint32_t markerChar = 0;    ///< column of '-', '*', '+'
-    char16_t marker = 0;             ///< '-', '*', or '+'
-    bool isEmpty = false;            ///< true if content after prefix is empty or only whitespace
-    friend bool operator==(const BulletLineInfo&, const BulletLineInfo&) = default;
-};
-
-/// If `line` is a bullet item, returns its prefix information; else nullopt.
-[[nodiscard]] std::optional<BulletLineInfo> parseBulletLine(std::u16string_view line);
-
-/// Returns the new line with one level of indentation added (2 spaces before marker).
-[[nodiscard]] std::u16string indentBulletLine(std::u16string_view line);
-
-/// Returns the new line with one level of indentation removed (up to 2 spaces before marker),
-/// or the original line if it is already at the top level.
-[[nodiscard]] std::u16string outdentBulletLine(std::u16string_view line);
-
-/// ADR 0002, decision 6 (S018): adds a blank line before each line without `|` that directly
-/// follows a table's rows, which GFM would make a row and Obsidian ends the table with. Added
-/// breaks take the majority ending in `decoded.perBreak`. Returns how many lines were added.
-std::size_t separateTextAfterTables(DecodedText& decoded, const ElementRegistry& registry);
-
-/// Returns a blank GFM pipe-table row with `columns` empty cells, e.g. "|  |  |".
-[[nodiscard]] std::u16string makeEmptyTableRow(std::size_t columns);
-/// Returns a GFM pipe table with `columns` empty header cells, a delimiter row, and `bodyRows`
-/// empty body rows, separated by '\n' (S026).
-[[nodiscard]] std::u16string makeEmptyTable(std::size_t columns, std::size_t bodyRows = 1);
-/// Appends one new column to a table line (`|  |` for header/body rows, `| --- |` for delimiter rows).
-[[nodiscard]] std::u16string appendTableColumn(std::u16string_view line, bool delimiterRow);
-/// Removes `column` (0-based) from a table header, delimiter or body row when the row has at least 2 columns.
-[[nodiscard]] std::u16string removeTableColumn(std::u16string_view line, std::size_t column);
-/// Ensures a table header or body row has at least `columns` cells by appending empty ` |` cells.
-[[nodiscard]] std::u16string padTableRowCells(std::u16string_view line, std::size_t columns);
-/// Every cell of a table row under GFM rules (also cells beyond the header's column count). A line
-/// without a pipe is one cell.
-[[nodiscard]] std::vector<TableCell> tableRowCells(std::u16string_view line);
-/// The column alignments of a delimiter row, or nothing if `line` is not one.
-[[nodiscard]] std::optional<std::vector<TableAlign>> tableDelimiterAligns(std::u16string_view line);
-/// Whether the character at `pos` follows an odd number of backslashes, so that CommonMark
-/// reads it escaped (S031 review O3: an escaped `<br>` is text).
-[[nodiscard]] bool escapedAt(std::u16string_view text, std::size_t pos) noexcept;
-/// Cell Markdown as text to edit: `\|` becomes `|`, `<br>` (any spelling, not escaped) a line break.
-[[nodiscard]] std::u16string tableCellToText(std::u16string_view markdown);
-/// Whether GFM shows the cell Markdown as exactly its characters in one plain paragraph: no
-/// character that could start syntax (escapes, emphasis, code, links, HTML, entities, autolinks;
-/// a colon only before `//`, an ampersand only before an entity) and no block marker at its start. The UI then lays the
-/// cell out as plain text, which is several times faster than Qt's Markdown import (S031: sizing pasted tables).
-/// Conservative: false does not mean the cell holds syntax.
-[[nodiscard]] bool tableCellIsPlainText(std::u16string_view markdown) noexcept;
-/// Cell Markdown with a block marker at its start escaped, for laying the cell out as a Markdown
-/// document of its own: GFM reads a cell as inline text, so `# 12`, `> 5 kg`, `- 5 %`, `1. Jänner`,
-/// `---` or a fence show their characters there, while a document of their own would show a
-/// heading, quote, list, rule or code block (S031 review O3). Display only; the file keeps its
-/// Markdown.
-[[nodiscard]] std::u16string escapeTableCellBlockStart(std::u16string_view markdown);
-/// The characters to lay a cell out as plain text, if GFM shows the cell Markdown as exactly them:
-/// plain characters as for tableCellIsPlainText, backslash escapes of ASCII punctuation resolved,
-/// and each `<br>` (any spelling, not escaped, no blank beside it, not at the start or end) as
-/// U+2028, a line break inside one block (S031 review (code) O10: two-line cells laid out several
-/// times faster than with Qt's Markdown import). Nothing if the cell may hold other syntax.
-[[nodiscard]] std::optional<std::u16string> tableCellPlainLayout(std::u16string_view markdown);
-/// Cell Markdown prepared for Qt's Markdown import of a cell, which the UI runs without raw HTML.
-struct TableCellImport {
-    std::u16string markdown;
-    /// What stands for a line break in `markdown`: a space (U+2000) that the UI turns into U+2028
-    /// after the import, because Markdown reads a space beside emphasis as it reads the `<br>` tag
-    /// and U+2028 not; U+2028 itself if the cell holds U+2000 or an entity, which could spell it.
-    char16_t lineBreak = u'\u2000';
-};
-/// Cell Markdown (escaped pipes already resolved) for Qt's Markdown import of the cell, which runs
-/// without raw HTML so that tags show as their characters. An image shows as its characters, as in
-/// the editor outside tables: the brackets of `![...]` are escaped, so `![x](y)` is text and a link
-/// around it stays a link. Each `<br>` (any spelling, not escaped) becomes `lineBreak`. Code spans
-/// and autolinks stay as they are; they, escapes and brackets are read as CommonMark reads them
-/// (checked with commonmark.js 0.31.2 and markdown-it-py 4.2.0). Display only; the file keeps its
-/// Markdown.
-[[nodiscard]] TableCellImport tableCellImport(std::u16string_view markdown);
-/// Edited text as cell Markdown: `|` becomes `\|`, a line break `<br>`.
-[[nodiscard]] std::u16string tableCellFromText(std::u16string_view text);
-/// `line` with the content of cell `column` replaced by `markdown`; the rest stays byte for byte.
-/// A missing cell is added after the existing ones.
-[[nodiscard]] std::u16string replaceTableCell(std::u16string_view line, std::size_t column,
-                                              std::u16string_view markdown);
 
 }  // namespace hitokoto::core

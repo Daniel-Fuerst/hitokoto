@@ -22,8 +22,18 @@
 #include <QTextLayout>
 
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace hitokoto::test {
+
+/// Factor for the time limits inside the UI tests. A build with sanitizers (HITOKOTO_SANITIZE, the
+/// CI's job ui-sanitizers) runs several times slower; what a limit guards is the same there.
+#ifdef HITOKOTO_TESTS_UNDER_SANITIZERS
+inline constexpr int kTimeScale = 4;
+#else
+inline constexpr int kTimeScale = 1;
+#endif
 
 inline const core::ElementRegistry& registry() {
     static const core::ElementRegistry r = core::ElementRegistry::withBuiltins();
@@ -154,6 +164,79 @@ inline int redPixels(const QImage& image) {
         }
     }
     return count;
+}
+
+/// A theme colour as Qt's colour.
+inline QColor qcolor(const core::Color& c) {
+    return {c.r, c.g, c.b, c.a};
+}
+
+/// The colour of the editor's viewport at (x, y), as it is painted.
+inline QColor pixel(ui::EditorWidget* editor, qreal x, qreal y) {
+    return editor->viewport()->grab().toImage().pixelColor(static_cast<int>(x), static_cast<int>(y));
+}
+
+/// A Markdown document of at least `target` bytes: headings, paragraphs and lists in turn.
+inline QByteArray largeDocument(qsizetype target) {
+    QByteArray out;
+    out.reserve(target + 512);
+    int i = 0;
+    while (out.size() < target) {
+        ++i;
+        out += QByteArray(1 + i % 3, '#') + " Section " + QByteArray::number(i) + "\n\n";
+        out +=
+            "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore.\n\n";
+        out += "- first item of the list\n- second item of the list\n\n";
+    }
+    return out;
+}
+
+/// The lines of `document`, one per block.
+inline std::vector<std::u16string> linesOf(const QTextDocument* document) {
+    std::vector<std::u16string> lines;
+    for (QTextBlock b = document->begin(); b.isValid(); b = b.next()) {
+        lines.push_back(b.text().toStdU16String());
+    }
+    return lines;
+}
+
+/// Every line as the styler renders it and as it is formatted equals the whole-document reference
+/// (ADR 0006); empty if so, else the first difference.
+inline QString differenceFromTheReference(ui::EditorWidget* editor) {
+    const auto* doc = editor->document();
+    const QTextCursor cursor = editor->textCursor();
+    const int anchor = doc->findBlock(cursor.anchor()).blockNumber();
+    const auto reference = registry().renderDocument(linesOf(doc), core::revealedLines(anchor, cursor.blockNumber()));
+    auto& styler = editor->styler();
+    for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+        auto got = styler.renderFor(b);
+        auto want = reference.at(static_cast<std::size_t>(b.blockNumber()));
+        if (!got.table && b.layout()->formats() != styler.formats().ranges(got, b.text())) {
+            return QStringLiteral("line %1 \"%2\" is formatted for another render").arg(b.blockNumber()).arg(b.text());
+        }
+        got.blockState = {};
+        want.blockState = {};
+        if (!(got == want)) {
+            return QStringLiteral(
+                       "line %1 \"%2\" differs (heading %3/%4, break %5/%6, underline %7/%8, flows %9/%10, "
+                       "hard break %11/%12, wrap indent %13/%14)")
+                .arg(b.blockNumber())
+                .arg(b.text())
+                .arg(got.headingLevel)
+                .arg(want.headingLevel)
+                .arg(got.thematicBreak)
+                .arg(want.thematicBreak)
+                .arg(got.setextUnderline)
+                .arg(want.setextUnderline)
+                .arg(got.flowsToNext)
+                .arg(want.flowsToNext)
+                .arg(got.hardBreak)
+                .arg(want.hardBreak)
+                .arg(got.wrapIndent)
+                .arg(want.wrapIndent);
+        }
+    }
+    return {};
 }
 
 }  // namespace hitokoto::test

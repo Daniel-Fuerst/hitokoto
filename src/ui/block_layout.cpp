@@ -2,6 +2,7 @@
 #include "block_layout.hpp"
 
 #include "block_data.hpp"
+#include "block_user_state.hpp"
 
 #include <QFontMetricsF>
 #include <QMetaObject>
@@ -383,7 +384,7 @@ bool BlockLayout::estimatedToFlowOn(const QTextBlock& block) const {
     if (!prev.isValid()) {
         return false;
     }
-    if (prev.userState() >= 0 && (prev.userState() & kStyleBits) != 0) {
+    if (prev.userState() >= 0 && (prev.userState() & kStyleMask) != 0) {
         return flowsToNext(prev) && continuesFlowFrom(prev, block);
     }
     // Not styled yet: only the lengths, which cost nothing; reading the text of every block would
@@ -521,6 +522,7 @@ void BlockLayout::layoutContinuationBlock(const QTextBlock& prev, const QTextBlo
     }
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity): above the threshold when the check came in
 int BlockLayout::layoutParagraphChain(const QTextBlock& target, bool emitNow, ChainScope scope) const {
     if (!target.isValid()) {
         return -1;

@@ -50,7 +50,9 @@ For packaging/distributable builds, see [`docs/stories/012-distributable-builds.
 
 Packages: every version from 0.5.1 on has a GitHub release with a Debian package for trixie
 ([`packaging/debian/README.md`](packaging/debian/README.md)), and every version after 0.5.1 also
-an MSI for Windows ([`packaging/windows/README.md`](packaging/windows/README.md)); the AUR package
+an MSI for Windows ([`packaging/windows/README.md`](packaging/windows/README.md)); versions
+released after S049 also carry a disk image for macOS on Apple silicon
+([`packaging/macos/README.md`](packaging/macos/README.md)); the AUR package
 `hitokoto` follows every version ([`packaging/archlinux/README.md`](packaging/archlinux/README.md)).
 
 ## Versions
@@ -104,6 +106,11 @@ Every pull request merged into main gives hitokoto its version step (story S030,
 - [`docs/stories/`](docs/stories/) — Story backlog and acceptance scenarios
 - [`docs/theming.md`](docs/theming.md) — Theme file reference
 - [`docs/performance.md`](docs/performance.md) — Performance budgets and benchmarks
+
+## Security
+
+Please report a vulnerability privately through GitHub (**Security** › **Report a vulnerability**),
+not in a public issue. [`SECURITY.md`](SECURITY.md) says how, and which versions get fixes.
 
 ## License
 

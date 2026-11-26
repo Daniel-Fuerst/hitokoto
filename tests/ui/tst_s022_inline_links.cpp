@@ -9,9 +9,7 @@
 using namespace hitokoto;
 
 namespace {
-QColor qcolor(const core::Color& c) {
-    return {c.r, c.g, c.b, c.a};
-}
+using test::qcolor;
 
 class UrlCollector : public QObject {
     Q_OBJECT

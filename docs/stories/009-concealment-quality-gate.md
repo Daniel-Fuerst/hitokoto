@@ -49,13 +49,11 @@ depend on it.
   underline is revealed exactly while the caret is on a line of its heading or on the underline;
   no line moves or changes height
 
-**Scenario: front matter shown as properties (S024)**
+**Scenario: front matter stays graphical (S024/S025)**
 - Given front matter with several properties, followed by a heading, a code block and text
 - When the caret walks with arbitrary sequences of Up/Down/Left/Right/Home/End/PageUp/PageDown
-- Then the YAML shows exactly while the caret is on a line of the front matter, the properties
-  block exactly while it is not, and the caret is never on a concealed line
-- And no line other than those of the front matter changes height; the lines below move only when
-  the caret enters or leaves the front matter, as when a table switches to its source (S018)
+- Then valid front matter remains a properties block and its source stays concealed
+- And no line other than those of the front matter changes height; the lines below stay in place
 - And a screen reader reads the properties block as a title and one element per row, `key: value`
 
 **Scenario: table cells (S018)**
@@ -78,10 +76,9 @@ depend on it.
 - When the caret walks with arbitrary sequences of Up/Down/Left/Right/Home/End/PageUp/PageDown and
   the current match moves
 - Then no concealed marker becomes visible under a highlight and no line moves or changes height;
-  only a table or properties block that switches to or from its source for the current match
-  changes height, at that moment
-- And after `Escape` selects a match in a table or front matter, the caret and the selection are
-  only ever on lines that are shown
+  only a table that switches to or from its source for the current match changes height
+- And after `Escape` selects a match in a table or front matter, the table's source may show but
+  front matter stays graphical
 
 **Scenario: flowing paragraphs, soft and hard line breaks (S033)**
 - Given multi-line paragraphs and bullet continuations with leading spaces, trailing spaces,
@@ -89,6 +86,21 @@ depend on it.
 - When the caret walks with arbitrary sequences of Up/Down/Left/Right/Home/End/PageUp/PageDown
 - Then the caret is never placed inside a concealed range, and whenever the caret is on any line of
   a flowing paragraph, all source lines of that paragraph are revealed onto their own lines
+
+**Scenario: typeset formulas (S046/S047)**
+- Given a line with two typeset inline formulas, a typeset `$$` block and a line below it with
+  another formula, with the caret elsewhere
+- When the caret walks with arbitrary sequences of Up/Down/Left/Right/Home/End/PageUp/PageDown
+- Then the caret's line shows the source of every formula on it (none reserves a typeset width,
+  the caret is never in collapsed or hidden source), and while the caret is on any line of the
+  block every line of it shows its source, none reserved or hidden; off the caret, both are typeset
+- And Down or Right from the line above and Up from the line below enter the block on its opening
+  line; Left (and Shift+Left) from the line below lands on the end of the closing `$$`
+- When an input method composes and commits inside a formula on the caret's line
+- Then the pre-edit appears at the caret, the committed text lands in the formula's source, and
+  the formula is typeset again once the caret leaves the line
+- And the accessible text of lines with typeset formulas is their LaTeX source, dollars included,
+  with the caret elsewhere and on them
 
 ## Outcome
 
@@ -103,6 +115,11 @@ concealment stays; this gate keeps checking it on the new surface.
   bullets, emphasis, inline code and code blocks; with S022 inline links; with S023 a walk over
   thematic breaks and setext headings; with S024 a walk into and out of front matter shown as
   properties; with S028 a walk with find highlights; the caret never in concealed text, code block
-  fences revealed and the block still).
+  fences revealed and the block still; with S046/S047 a walk over typeset inline formulas and a
+  `$$` block, entering the block from above and below, an input method commit inside a formula,
+  and the accessible text of typeset formulas). The S046/S047 extension found that Left from the
+  line below a typeset block put the caret at the start of the hidden formula line (Qt's visual
+  navigation skips to a hidden neighbour's start); `EditorWidget::handleMathBlockKey` now moves
+  one character back onto the closing `$$` line.
   Residue measurement via `cursorRect` is still to come.
 - IME and screen-reader checks are manual, documented with platform and version in the ADR.

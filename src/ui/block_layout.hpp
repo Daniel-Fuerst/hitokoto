@@ -58,7 +58,7 @@ public:
     /// Default indent applied to the start of a bullet list item (S003).
     [[nodiscard]] qreal bulletIndent() const;
 
-    /// S032: whether `block` flows into `block.next()` (soft break) or starts `block.next()` on a
+    /// S033: whether `block` flows into `block.next()` (soft break) or starts `block.next()` on a
     /// new line of the same flowing paragraph (hard break).
     void setParagraphFlow(const QTextBlock& block, bool flowsToNext, bool hardBreak);
     [[nodiscard]] bool flowsToNext(const QTextBlock& block) const;
@@ -173,7 +173,7 @@ private:
     qreal lineSpacing_ = 0;       ///< of the default font, for estimates
     qreal averageCharWidth_ = 0;  ///< of the default font (the bullet indent)
     qreal textCharWidth_ = 0;     ///< per character of running text in the default font, for estimates
-    qreal spaceWidth_ = 0;        ///< width of a space in the default font (S032)
+    qreal spaceWidth_ = 0;        ///< width of a space in the default font (S033)
     int cursorWidth_ = 1;
     int batch_ = 0;
     mutable bool batchChanged_ = false;

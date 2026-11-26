@@ -270,6 +270,17 @@ const Token kTokens[] = {
     {{"escape", "marker", "color", "Backslash when revealed", "colors.marker"}, &applyOptColor<&Theme::escape, &EscapeTokens::marker>},
     {{"link", "text", "color", "Colour of link text", "colors.accent"}, &applyOptColor<&Theme::link, &LinkTokens::text>},
     {{"link", "marker", "color", "Delimiters and destination when revealed", "colors.marker"}, &applyOptColor<&Theme::link, &LinkTokens::marker>},
+    {{"math", "text", "color", "Colour of formulas, typeset (S046) or as source (S044)", "colors.text"}, &applyOptColor<&Theme::math, &MathTokens::text>},
+    {{"math", "marker", "color", "Math delimiters ($ and $$) when revealed", "colors.marker"}, &applyOptColor<&Theme::math, &MathTokens::marker>},
+    {{"math", "error", "color", "Source of a formula that cannot be typeset (S046)", "colors.accent"}, &applyOptColor<&Theme::math, &MathTokens::error>},
+    {{"math", "font-family", "string", "Font family of formula source; \"\" = editor font", "\"\""}, &applyOptString<&Theme::math, &MathTokens::fontFamily>},
+    {{"math", "font-scale", "number", "Size of formulas (typeset or source) relative to the text around them, 0.5 to 2", "1"}, &applyOptNumber<&Theme::math, &MathTokens::fontScale, 5, 20>},
+    {{"math", "display-background", "color", "Background of a display formula's panel (S047)", "colors.background"}, &applyOptColor<&Theme::math, &MathTokens::displayBackground>},
+    {{"math", "display-border", "color", "Border of a display formula's panel", "colors.border"}, &applyOptColor<&Theme::math, &MathTokens::displayBorder>},
+    {{"math", "display-border-width", "number (px)", "Border width of the panel, 0 to 8", "0"}, &applyOptNumber<&Theme::math, &MathTokens::displayBorderWidth, 0, 80>},
+    {{"math", "display-radius", "number (px)", "Corner radius of the panel, 0 to 32", "layout.radius"}, &applyOptNumber<&Theme::math, &MathTokens::displayRadius, 0, 320>},
+    {{"math", "display-padding", "number (px)", "Space between the panel's edge and the formula, 0 to 64", "layout.spacing"}, &applyOptNumber<&Theme::math, &MathTokens::displayPadding, 0, 640>},
+    {{"math", "display-margin", "number (px)", "Space above and below the panel, 0 to 64", "3"}, &applyOptNumber<&Theme::math, &MathTokens::displayMargin, 0, 640>},
     {{"thematic-break", "border", "color", "Colour of the horizontal line", "colors.border"}, &applyOptColor<&Theme::thematicBreak, &ThematicBreakTokens::border>},
     {{"thematic-break", "border-width", "number (px)", "Thickness of the line, 0 to 8; drawn as max(1, round(width x device pixel ratio)) device pixels", "1"}, &applyOptNumber<&Theme::thematicBreak, &ThematicBreakTokens::borderWidth, 0, 80>},
     {{"thematic-break", "margin", "number (px)", "Space above and below the line, 0 to 64; part of the line's geometry, the same when revealed", "0"}, &applyOptNumber<&Theme::thematicBreak, &ThematicBreakTokens::margin, 0, 640>},
@@ -291,6 +302,13 @@ const Token kTokens[] = {
     {{"properties", "chip-border-width", "number (px)", "Border width of a list item or tag, 0 to 8", "0"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::chipBorderWidth, 0, 80>},
     {{"properties", "chip-radius", "number (px)", "Corner radius of a list item or tag, 0 to 32", "layout.radius"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::chipRadius, 0, 320>},
     {{"properties", "chip-padding", "number (px)", "Horizontal space inside a list item or tag, 0 to 32", "4"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::chipPadding, 0, 320>},
+    {{"properties", "editor-background", "color", "Background of an inline property editor", "properties.background"}, &applyOptColor<&Theme::properties, &PropertiesTokens::editorBackground>},
+    {{"properties", "editor-text", "color", "Text of an inline property editor", "properties.text"}, &applyOptColor<&Theme::properties, &PropertiesTokens::editorText>},
+    {{"properties", "editor-border", "color", "Border of an inline property editor", "colors.border"}, &applyOptColor<&Theme::properties, &PropertiesTokens::editorBorder>},
+    {{"properties", "editor-focus-border", "color", "Focused border of an inline property editor", "colors.accent"}, &applyOptColor<&Theme::properties, &PropertiesTokens::editorFocusBorder>},
+    {{"properties", "editor-border-width", "number (px)", "Border width of an inline property editor, 0 to 8", "1"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::editorBorderWidth, 0, 80>},
+    {{"properties", "editor-radius", "number (px)", "Corner radius of an inline property editor, 0 to 32", "layout.radius"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::editorRadius, 0, 320>},
+    {{"properties", "editor-padding", "number (px)", "Padding inside an inline property editor, 0 to 32", "4"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::editorPadding, 0, 320>},
     {{"properties", "border", "color", "Border of the block", "colors.border"}, &applyOptColor<&Theme::properties, &PropertiesTokens::border>},
     {{"properties", "border-width", "number (px)", "Border width, 0 to 8", "0"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::borderWidth, 0, 80>},
     {{"properties", "radius", "number (px)", "Corner radius of the block, 0 to 32", "layout.radius"}, &applyOptNumber<&Theme::properties, &PropertiesTokens::radius, 0, 320>},
@@ -354,6 +372,21 @@ const Token kTokens[] = {
     {{"menu-bar", "item-padding-vertical", "number (px)", "Vertical space inside each menu bar item pill, 0 to 32", "4"}, &applyOptNumber<&Theme::menuBar, &MenuBarTokens::itemPaddingVertical, 0, 320>},
     {{"menu-bar", "font-family", "string", "Font family of the menu bar; \"\" = UI font", "\"\""}, &applyOptString<&Theme::menuBar, &MenuBarTokens::fontFamily>},
     {{"menu-bar", "font-scale", "number", "Font size of the menu bar relative to the UI font, 0.5 to 2", "1"}, &applyOptNumber<&Theme::menuBar, &MenuBarTokens::fontScale, 5, 20>},
+    {{"switch", "track", "color", "Track of a toggle switch that is off", "colors.border"}, &applyOptColor<&Theme::toggleSwitch, &SwitchTokens::track>},
+    {{"switch", "checked-track", "color", "Track of a toggle switch that is on", "colors.accent"}, &applyOptColor<&Theme::toggleSwitch, &SwitchTokens::checkedTrack>},
+    {{"switch", "knob", "color", "Knob of a toggle switch that is off", "colors.background"}, &applyOptColor<&Theme::toggleSwitch, &SwitchTokens::knob>},
+    {{"switch", "checked-knob", "color", "Knob of a toggle switch that is on", "colors.background"}, &applyOptColor<&Theme::toggleSwitch, &SwitchTokens::checkedKnob>},
+    {{"switch", "border", "color", "Border of the track of a toggle switch", "colors.border"}, &applyOptColor<&Theme::toggleSwitch, &SwitchTokens::border>},
+    {{"switch", "border-width", "number (px)", "Border width of the track of a toggle switch, 0 to 8", "0"}, &applyOptNumber<&Theme::toggleSwitch, &SwitchTokens::borderWidth, 0, 80>},
+    {{"switch", "width", "number (px)", "Width of a toggle switch, 16 to 128", "36"}, &applyOptNumber<&Theme::toggleSwitch, &SwitchTokens::width, 160, 1280>},
+    {{"switch", "height", "number (px)", "Height of a toggle switch, 8 to 64", "20"}, &applyOptNumber<&Theme::toggleSwitch, &SwitchTokens::height, 80, 640>},
+    {{"switch", "radius", "number (px)", "Corner radius of the track of a toggle switch; the knob is rounded alike, 0 to 32", "10"}, &applyOptNumber<&Theme::toggleSwitch, &SwitchTokens::radius, 0, 320>},
+    {{"switch", "knob-margin", "number (px)", "Space between the knob and the edge of the track, 0 to 16", "2"}, &applyOptNumber<&Theme::toggleSwitch, &SwitchTokens::knobMargin, 0, 160>},
+    {{"settings-section", "text", "color", "Section headings of the settings flyout", "colors.accent"}, &applyOptColor<&Theme::settingsSection, &SettingsSectionTokens::text>},
+    {{"settings-section", "weight", "number", "Font weight of the section headings, 100 to 900", "600"}, &applyOptNumber<&Theme::settingsSection, &SettingsSectionTokens::weight, 1000, 9000>},
+    {{"settings-section", "rule", "color", "Line to the right of a section heading", "colors.border"}, &applyOptColor<&Theme::settingsSection, &SettingsSectionTokens::rule>},
+    {{"settings-section", "rule-width", "number (px)", "Thickness of the line, 0 to 8", "1"}, &applyOptNumber<&Theme::settingsSection, &SettingsSectionTokens::ruleWidth, 0, 80>},
+    {{"settings-section", "rule-gap", "number (px)", "Space between a section heading and its line, 0 to 64", "layout.spacing"}, &applyOptNumber<&Theme::settingsSection, &SettingsSectionTokens::ruleGap, 0, 640>},
 };
 // clang-format on
 
@@ -817,6 +850,22 @@ LinkStyle linkStyle(const Theme& t) {
     };
 }
 
+MathStyle mathStyle(const Theme& t) {
+    return {
+        .text = t.math.text.value_or(t.text),
+        .marker = t.math.marker.value_or(t.marker),
+        .error = t.math.error.value_or(t.accent),
+        .fontFamily = t.math.fontFamily.value_or(""),
+        .fontScale = t.math.fontScale.value_or(1.0),
+        .displayBackground = t.math.displayBackground.value_or(t.background),
+        .displayBorder = t.math.displayBorder.value_or(t.border),
+        .displayBorderWidth = t.math.displayBorderWidth.value_or(0),
+        .displayRadius = t.math.displayRadius.value_or(t.radius),
+        .displayPadding = t.math.displayPadding.value_or(t.spacing),
+        .displayMargin = t.math.displayMargin.value_or(3),
+    };
+}
+
 ThematicBreakStyle thematicBreakStyle(const Theme& t) {
     const ThematicBreakTokens& b = t.thematicBreak;
     return {
@@ -846,6 +895,10 @@ PropertiesStyle propertiesStyle(const Theme& t) {
         .chipText = p.chipText.value_or(text),
         .chipBorder = p.chipBorder.value_or(t.border),
         .border = p.border.value_or(t.border),
+        .editorBackground = p.editorBackground.value_or(background),
+        .editorText = p.editorText.value_or(text),
+        .editorBorder = p.editorBorder.value_or(t.border),
+        .editorFocusBorder = p.editorFocusBorder.value_or(t.accent),
         .badgeFontScale = p.badgeFontScale.value_or(1),
         .badgeFontFamily = p.badgeFontFamily.value_or(""),
         .chipBorderWidth = p.chipBorderWidth.value_or(0),
@@ -859,6 +912,9 @@ PropertiesStyle propertiesStyle(const Theme& t) {
         .keyWidth = p.keyWidth.value_or(160),
         .fontScale = p.fontScale.value_or(1),
         .fontFamily = p.fontFamily.value_or(""),
+        .editorBorderWidth = p.editorBorderWidth.value_or(1),
+        .editorRadius = p.editorRadius.value_or(t.radius),
+        .editorPadding = p.editorPadding.value_or(4),
     };
 }
 
@@ -939,6 +995,33 @@ MenuBarStyle menuBarStyle(const Theme& t) {
         .itemPaddingVertical = mb.itemPaddingVertical.value_or(4),
         .fontScale = mb.fontScale.value_or(1),
         .fontFamily = mb.fontFamily.value_or(""),
+    };
+}
+
+SwitchStyle switchStyle(const Theme& t) {
+    const SwitchTokens& sw = t.toggleSwitch;
+    return {
+        .track = sw.track.value_or(t.border),
+        .checkedTrack = sw.checkedTrack.value_or(t.accent),
+        .knob = sw.knob.value_or(t.background),
+        .checkedKnob = sw.checkedKnob.value_or(t.background),
+        .border = sw.border.value_or(t.border),
+        .borderWidth = sw.borderWidth.value_or(0),
+        .width = sw.width.value_or(36),
+        .height = sw.height.value_or(20),
+        .radius = sw.radius.value_or(10),
+        .knobMargin = sw.knobMargin.value_or(2),
+    };
+}
+
+SettingsSectionStyle settingsSectionStyle(const Theme& t) {
+    const SettingsSectionTokens& ss = t.settingsSection;
+    return {
+        .text = ss.text.value_or(t.accent),
+        .rule = ss.rule.value_or(t.border),
+        .weight = static_cast<int>(ss.weight.value_or(600)),
+        .ruleWidth = ss.ruleWidth.value_or(1),
+        .ruleGap = ss.ruleGap.value_or(t.spacing),
     };
 }
 

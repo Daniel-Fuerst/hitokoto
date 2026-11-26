@@ -6,14 +6,18 @@
 
 #include "block_layout.hpp"
 #include "block_styler.hpp"
+#include "editor_painters.hpp"
 #include "hitokoto/core/settings.hpp"
 #include "hitokoto/core/theme.hpp"
+#include "list_editing.hpp"
 #include "theme_manager.hpp"
 
 #include <QPointF>
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextEdit>
+
+#include <vector>
 
 #include <memory>
 #include <optional>
@@ -26,10 +30,12 @@ class QTableView;
 namespace hitokoto::ui {
 
 class FloatingToolbar;
+class MathBlockEmbedder;
 class PropertiesEmbedder;
 class SettingsMenu;
 class SmoothScroller;
 class TableEmbedder;
+class ViewAnchor;
 
 class EditorWidget : public QTextEdit {
     Q_OBJECT
@@ -54,9 +60,11 @@ public:
     [[nodiscard]] quint64 editCount() const noexcept { return editCount_; }
     /// How often the reading position was restored after a new width or theme (instrumentation for
     /// tests, S033 review O3).
-    [[nodiscard]] quint64 anchorRestores() const noexcept { return anchorRestores_; }
+    [[nodiscard]] quint64 anchorRestores() const noexcept;
     /// First and last block number on screen.
     [[nodiscard]] std::pair<int, int> visibleBlockRange() const;
+    /// S047: the display math blocks shown typeset, for tests.
+    [[nodiscard]] const MathBlockEmbedder& mathBlocks() const noexcept { return *mathBlocks_; }
     /// The language badge painted on `block` (an opening fence while concealed), else empty (S021).
     [[nodiscard]] QString codeBlockBadge(const QTextBlock& block);
     /// S024: the properties block shown in place of the front matter; null while there is none, the
@@ -68,9 +76,9 @@ public:
     /// S024 review O2: front matter as a properties block (on) or as plain text, as in S023 (off).
     void setFrontMatterAsProperties(bool on);
     [[nodiscard]] bool frontMatterAsProperties() const noexcept { return frontMatterAsProperties_; }
-    /// S028 review O8: a table or the front matter with lines in [first, last] shows its source
-    /// while the find bar's current match is there; `untilCaretLeaves` (after Escape, tables): until
-    /// the caret and the anchor have left it. first < 0 releases it.
+    /// S028 review O8: a table with lines in [first, last] shows its source while the find bar's
+    /// current match is there; `untilCaretLeaves` (after Escape): until the caret and the anchor
+    /// have left it. first < 0 releases it.
     void setFindHold(int first, int last, bool untilCaretLeaves);
     /// S028: scrolls so that document position `position` is on screen, without moving the caret.
     void showPosition(int position);
@@ -127,6 +135,8 @@ signals:
     void settingsLoaded(const hitokoto::core::Settings& settings);
     /// S039: config.toml was read with problems (one line each); emitted once per setThemeConfigDir.
     void settingsProblemsFound(const QString& path, const QStringList& problems);
+    /// S043: the user turned smooth scrolling on or off in the settings flyout.
+    void smoothScrollingChosen(bool on);
 
 protected:
     bool viewportEvent(QEvent* event) override;
@@ -154,77 +164,38 @@ private:
     [[nodiscard]] QRectF blockBoundingGeometry(const QTextBlock& block) const;
     [[nodiscard]] QPointF contentOffset() const;
     [[nodiscard]] QTextBlock firstVisibleBlock() const;
-    /// The reading position: the first character of the line at the top of the viewport (a cursor,
-    /// so that it follows edits) and how far below the top of that line the view starts. Null at
-    /// the top of the document.
-    struct ScrollAnchor {
-        QTextCursor text;
-        qreal offset = 0;
-    };
-    [[nodiscard]] ScrollAnchor captureAnchor() const;
-    /// The reading position held since the last scroll, taken now if none is held: consecutive
-    /// resizes and theme changes return to the same line instead of a position taken anew each
-    /// time, which would drift (S033).
-    [[nodiscard]] ScrollAnchor readingAnchor();
-    /// The scroll value that shows `anchor` at the top (lays its block out).
-    [[nodiscard]] int anchorValue(const ScrollAnchor& anchor) const;
-    /// Scrolls `anchor` to the top as far as the document allows. It may make a scroll range larger
-    /// for heights not taken in yet, never a range that does not scroll: that would show the scroll
-    /// bar for a document that fits the view.
-    void restoreAnchor(const ScrollAnchor& anchor);
-    /// Restores the held reading position again if it moved since a resize or theme change.
-    void settleAnchor();
-    void keepContentStill(qreal top, qreal oldHeight, qreal newHeight);
-    /// Whether the caret is wholly on screen.
-    [[nodiscard]] bool caretOnScreen() const;
-    /// Checks once the event loop runs whether the followed caret left the screen.
-    void scheduleCaretCheck();
-    /// Scrolls the followed caret back on screen (S033: heights change while blocks are restyled in
-    /// idle slices).
-    void keepCaretOnScreen();
-    void applyPendingShift();
 
     void updateReveal();
     void updateMargins();
     void positionToolbar();
     [[nodiscard]] int availableTableWidth() const;
     void paintCodeBlockPanels();
-    void paintInlineCodeBoxes(QPainter& painter, const QTextBlock& block, const core::LineRender& render,
-                              QPointF origin, const core::CodeStyle& style);
     void paintDecorations();
-    /// S023: the line of a concealed thematic break (`rect`: the block in viewport coordinates).
-    void paintThematicBreak(QPainter& painter, const QTextBlock& block, const QRectF& rect);
+    /// S047: the panels of typeset display formulas and the bars of those that failed.
+    void paintDisplayFormulas(QPainter& painter, QPointF offset, qreal bottom);
+    /// S046: the selection and find highlights typeset formulas take (decision 6).
+    [[nodiscard]] std::vector<FormulaHighlight> formulaHighlightRanges() const;
+    /// Enter, Tab and Shift+Tab in bullet items (S003), through list_.
     bool handleBulletKey(QKeyEvent* event);
+    /// S009 for S047: Left (and word left) from the start of the line below a typeset `$$` block
+    /// moves one character (word) back into the block's closing line.
+    bool handleMathBlockKey(QKeyEvent* event);
     /// keyPressEvent for a key whose text may enter the document as it is (text_input.hpp).
     void pressKey(QKeyEvent* event);
-    bool handleBulletEnter(QTextCursor& cursor);
-    bool handleBulletTab(QTextCursor& cursor, bool outdent);
     /// S031: pastes the tables of `source` as Markdown tables, if the paste converts; returns
     /// false if it stays plain text (no table that counts, or the caret is in a code block, front
     /// matter or a table's lines).
     bool pasteTables(const QMimeData* source);
 
     BlockLayout* layout_ = nullptr;
-    qreal pendingShift_ = 0;  ///< height change above the viewport not yet scrolled away
-    bool applyingShift_ = false;
-    bool resizing_ = false;
-    ScrollAnchor heldAnchor_;        ///< reading position across resizes until the view scrolls
-    bool rangeClamps_ = false;       ///< a new scroll range is about to clamp the value
-    bool followCaret_ = false;       ///< the view follows the caret (no scroll left it off screen)
-    bool followingCaret_ = false;    ///< keepCaretOnScreen is scrolling
-    bool typing_ = false;            ///< inside a key, input method or paste event
-    bool insideEdit_ = false;        ///< between contentsChange and contentsChanged of the document
-    bool caretCheckQueued_ = false;  ///< a caret check waits for the event loop
-    int settlePasses_ = 0;           ///< settleAnchor calls that moved the view since the last restore
-    /// settleAnchor shows the held reading position again at most this often after a restore. In the
-    /// tests, and in probes over several widths and fonts, it took at most one pass; the limit only
-    /// ends a back and forth if the layout does not come to rest. After it, the position may be off
-    /// by the last correction until the reader scrolls (review O10).
-    static constexpr int kMaxSettlePasses = 4;
-    quint64 anchorRestores_ = 0;  ///< reading positions restored by a resize or theme change
+    bool insideEdit_ = false;           ///< between contentsChange and contentsChanged of the document
+    bool propertiesClickHeld_ = false;  ///< a click in front-matter source protected by the properties view
+    ViewAnchor* view_ = nullptr;        ///< the reading position and the followed caret (S033)
     BlockStyler* styler_ = nullptr;
+    ListEditing list_{[this](const QTextBlock& block) { return styler_->renderFor(block).codeBlock; }};
     std::unique_ptr<TableEmbedder> tables_;
     std::unique_ptr<PropertiesEmbedder> properties_;
+    std::unique_ptr<MathBlockEmbedder> mathBlocks_;  ///< S047: display formulas
     FloatingToolbar* toolbar_ = nullptr;
     SettingsMenu* settingsMenu_ = nullptr;
     SmoothScroller* verticalScroller_ = nullptr;

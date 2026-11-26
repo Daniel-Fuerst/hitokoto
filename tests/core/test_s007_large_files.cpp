@@ -15,9 +15,8 @@ namespace {
 class CountingElement final : public InlineElement {
 public:
     CountingElement(std::u16string_view triggers, int& calls) : triggers_(triggers), calls_(calls) {}
-    [[nodiscard]] std::string_view id() const noexcept override { return "test-counting"; }
     [[nodiscard]] std::u16string_view triggerCharacters() const noexcept override { return triggers_; }
-    void render(std::u16string_view, const LineContext&, LineRender&) const override { ++calls_; }
+    void render(std::u16string_view, const LineContext&, const InlineScan&, LineRender&) const override { ++calls_; }
 
 private:
     std::u16string_view triggers_;

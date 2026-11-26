@@ -67,6 +67,17 @@ struct LinkTokens {
     friend bool operator==(const LinkTokens&, const LinkTokens&) = default;
 };
 
+/// Tokens of `[math]` (S044); resolved by mathStyle().
+struct MathTokens {
+    std::optional<Color> text, marker, error;
+    std::optional<double> fontScale;
+    // Display formulas (S047): the panel.
+    std::optional<Color> displayBackground, displayBorder;
+    std::optional<double> displayBorderWidth, displayRadius, displayPadding, displayMargin;
+    std::optional<std::string> fontFamily;
+    friend bool operator==(const MathTokens&, const MathTokens&) = default;
+};
+
 /// Tokens of `[thematic-break]` (S023); resolved by thematicBreakStyle().
 struct ThematicBreakTokens {
     std::optional<Color> border, marker;
@@ -77,9 +88,10 @@ struct ThematicBreakTokens {
 /// Tokens of `[properties]` (S024); resolved by propertiesStyle().
 struct PropertiesTokens {
     std::optional<Color> background, text, keyText, titleText, icon, unsupportedText, badgeText, checkbox,
-        checkboxBackground, chipBackground, chipText, chipBorder, border;
+        checkboxBackground, chipBackground, chipText, chipBorder, border, editorBackground, editorText, editorBorder,
+        editorFocusBorder;
     std::optional<double> badgeFontScale, chipBorderWidth, chipRadius, chipPadding, borderWidth, radius, padding,
-        margin, rowSpacing, keyWidth, fontScale;
+        margin, rowSpacing, keyWidth, fontScale, editorBorderWidth, editorRadius, editorPadding;
     std::optional<std::string> badgeFontFamily, fontFamily;
     friend bool operator==(const PropertiesTokens&, const PropertiesTokens&) = default;
 };
@@ -109,6 +121,20 @@ struct MenuBarTokens {
         fontScale;
     std::optional<std::string> fontFamily;
     friend bool operator==(const MenuBarTokens&, const MenuBarTokens&) = default;
+};
+
+/// Tokens of `[switch]` (S043); resolved by switchStyle().
+struct SwitchTokens {
+    std::optional<Color> track, checkedTrack, knob, checkedKnob, border;
+    std::optional<double> borderWidth, width, height, radius, knobMargin;
+    friend bool operator==(const SwitchTokens&, const SwitchTokens&) = default;
+};
+
+/// Tokens of `[settings-section]` (S048); resolved by settingsSectionStyle().
+struct SettingsSectionTokens {
+    std::optional<Color> text, rule;
+    std::optional<double> weight, ruleWidth, ruleGap;
+    friend bool operator==(const SettingsSectionTokens&, const SettingsSectionTokens&) = default;
 };
 
 /// Every value the UI uses for colours, fonts, radii and spacing. Hard-coded styling values
@@ -147,11 +173,14 @@ struct Theme {
     TableTokens table;
     EscapeTokens escape;
     LinkTokens link;
+    MathTokens math;
     ThematicBreakTokens thematicBreak;
     PropertiesTokens properties;
     ToolbarTokens toolbar;
     FindTokens find;
     MenuBarTokens menuBar;
+    SwitchTokens toggleSwitch;  ///< `[switch]`; `switch` is a C++ keyword
+    SettingsSectionTokens settingsSection;
 
     friend bool operator==(const Theme&, const Theme&) = default;
 };
@@ -221,6 +250,21 @@ struct LinkStyle {
     friend bool operator==(const LinkStyle&, const LinkStyle&) = default;
 };
 
+/// Resolved look of formula source (S044).
+struct MathStyle {
+    Color text, marker;
+    Color error;             ///< source of a formula that cannot be typeset (S046)
+    std::string fontFamily;  ///< empty = editor font
+    double fontScale = 1;    ///< relative to the editor font
+    // The panel of a display formula (S047).
+    Color displayBackground, displayBorder;
+    double displayBorderWidth = 0;
+    double displayRadius = 0;
+    double displayPadding = 0;  ///< between the panel's edge and the formula
+    double displayMargin = 0;   ///< above and below the panel
+    friend bool operator==(const MathStyle&, const MathStyle&) = default;
+};
+
 /// Resolved look of a thematic break (S023).
 struct ThematicBreakStyle {
     Color border;            ///< colour of the line
@@ -233,7 +277,7 @@ struct ThematicBreakStyle {
 /// Resolved look of the properties block of front matter (S024).
 struct PropertiesStyle {
     Color background, text, keyText, titleText, icon, unsupportedText, badgeText, checkbox, checkboxBackground,
-        chipBackground, chipText, chipBorder, border;
+        chipBackground, chipText, chipBorder, border, editorBackground, editorText, editorBorder, editorFocusBorder;
     double badgeFontScale = 1;    ///< relative to the editor font
     std::string badgeFontFamily;  ///< empty = editor font
     double chipBorderWidth = 0;
@@ -247,6 +291,9 @@ struct PropertiesStyle {
     double keyWidth = 0;     ///< width of the key column
     double fontScale = 1;    ///< relative to the editor font
     std::string fontFamily;  ///< empty = editor font
+    double editorBorderWidth = 1;
+    double editorRadius = 0;
+    double editorPadding = 0;
     friend bool operator==(const PropertiesStyle&, const PropertiesStyle&) = default;
 };
 
@@ -294,17 +341,40 @@ struct MenuBarStyle {
     friend bool operator==(const MenuBarStyle&, const MenuBarStyle&) = default;
 };
 
+/// Resolved look of a toggle switch in the settings flyout (S043).
+struct SwitchStyle {
+    Color track, checkedTrack, knob, checkedKnob, border;
+    double borderWidth = 0;
+    double width = 36;
+    double height = 20;
+    double radius = 10;
+    double knobMargin = 2;
+    friend bool operator==(const SwitchStyle&, const SwitchStyle&) = default;
+};
+
+/// Resolved look of a section heading in the settings flyout (S048): the heading and the line after it.
+struct SettingsSectionStyle {
+    Color text, rule;
+    int weight = 600;
+    double ruleWidth = 1;
+    double ruleGap = 8;  ///< space between the heading and the line
+    friend bool operator==(const SettingsSectionStyle&, const SettingsSectionStyle&) = default;
+};
+
 [[nodiscard]] CodeStyle codeBlockStyle(const Theme& theme);
 [[nodiscard]] CodeStyle inlineCodeStyle(const Theme& theme);
 [[nodiscard]] EmphasisStyle emphasisStyle(const Theme& theme);
 [[nodiscard]] TableStyle tableStyle(const Theme& theme);
 [[nodiscard]] EscapeStyle escapeStyle(const Theme& theme);
 [[nodiscard]] LinkStyle linkStyle(const Theme& theme);
+[[nodiscard]] MathStyle mathStyle(const Theme& theme);
 [[nodiscard]] ThematicBreakStyle thematicBreakStyle(const Theme& theme);
 [[nodiscard]] PropertiesStyle propertiesStyle(const Theme& theme);
 [[nodiscard]] ToolbarStyle toolbarStyle(const Theme& theme);
 [[nodiscard]] FindStyle findStyle(const Theme& theme);
 [[nodiscard]] MenuBarStyle menuBarStyle(const Theme& theme);
+[[nodiscard]] SwitchStyle switchStyle(const Theme& theme);
+[[nodiscard]] SettingsSectionStyle settingsSectionStyle(const Theme& theme);
 
 /// All tokens of the theme format, in documentation order.
 std::span<const ThemeTokenInfo> themeTokens();

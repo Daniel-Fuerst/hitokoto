@@ -8,6 +8,8 @@
 #include "hitokoto/core/text_codec.hpp"
 #include "hitokoto/core/theme.hpp"
 
+#include "support.hpp"
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -20,18 +22,9 @@
 using namespace hitokoto::core;
 
 namespace {
-const ElementRegistry& registry() {
-    static const ElementRegistry r = ElementRegistry::withBuiltins();
-    return r;
-}
+using hitokoto::test::registry;
 
-std::string narrow(std::u16string_view text) {
-    std::string out;
-    for (const char16_t c : text) {
-        out += c < 0x80 ? static_cast<char>(c) : '?';
-    }
-    return out;
-}
+using hitokoto::test::narrow;
 
 /// The lines of `text` (split at '\n'; a final '\n' ends the last line).
 std::vector<std::u16string> linesOf(std::u16string_view text) {
@@ -47,6 +40,117 @@ std::vector<std::u16string> linesOf(std::u16string_view text) {
 
 Properties parse(std::u16string_view yaml) {
     return parseProperties(linesOf(yaml));
+}
+
+TEST(S025_EditProperties, SerializesScalarsAsQuotedYaml) {
+    EXPECT_EQ(serializePropertyScalar(u"draft: \"yes\"\nnext"), u"\"draft: \\\"yes\\\"\\nnext\"");
+    EXPECT_EQ(serializePropertyScalar(u""), u"\"\"");
+}
+
+TEST(S025_EditProperties, KeepsValidNumberAndDateTypes) {
+    EXPECT_EQ(serializePropertyValue(PropertyType::Number, u"-1.25"), u"-1.25");
+    EXPECT_EQ(serializePropertyValue(PropertyType::Number, u"not a number"), u"\"not a number\"");
+    EXPECT_EQ(serializePropertyValue(PropertyType::Date, u"2026-11-21"), u"2026-11-21");
+    EXPECT_EQ(serializePropertyValue(PropertyType::Date, u"next week"), u"\"next week\"");
+}
+
+// QTextDocument starts a new line at U+2029, U+FDD0 and U+FDD1 (ADR 0002), and
+// YAML readers break or fold a line at U+2028 and U+0085. Each is written as its YAML 1.2 escape, so
+// that the value stays on its line and reads back as it was entered.
+TEST(S025_EditProperties, LineBreakingCharactersAreWrittenAsEscapes) {
+    EXPECT_EQ(serializePropertyScalar(u"a\u2029---\u2029b"), u"\"a\\P---\\Pb\"");
+    EXPECT_EQ(serializePropertyScalar(u"a\u2028b"), u"\"a\\Lb\"");
+    EXPECT_EQ(serializePropertyScalar(u"a\u0085b"), u"\"a\\Nb\"");
+    EXPECT_EQ(serializePropertyScalar(u"a\uFDD0b\uFDD1c"), u"\"a\\uFDD0b\\uFDD1c\"");
+    const std::vector<std::u16string> texts{u"First paragraph.\u2029Second paragraph.", u"x\u2028y\u0085z",
+                                            u"\uFDD0\uFDD1", u"\u2029\u2029"};
+    for (const std::u16string& text : texts) {
+        const Properties properties = parse(u"key: " + serializePropertyScalar(text));
+        ASSERT_FALSE(properties.error);
+        ASSERT_EQ(properties.rows.size(), 1U);
+        EXPECT_EQ(properties.rows.front().text, text);
+    }
+}
+
+// Half of a surrogate pair read from an escape in the file is written back as
+// that escape, so that the line can be saved as UTF-8; a whole pair stays as it is.
+TEST(S025_EditProperties, HalfOfACharacterIsWrittenAsAnEscape) {
+    const std::u16string high(1, char16_t{0xD83D});
+    const std::u16string low(1, char16_t{0xDE00});
+    EXPECT_EQ(serializePropertyScalar(u"smile" + high), u"\"smile\\uD83D\"");
+    EXPECT_EQ(serializePropertyScalar(low + u"x"), u"\"\\uDE00x\"");
+    EXPECT_EQ(serializePropertyScalar(low + high), u"\"\\uDE00\\uD83D\"");
+    EXPECT_EQ(serializePropertyScalar(high + low), u"\"" + high + low + u"\"");
+    const std::vector<std::u16string> texts{u"smile" + high, low + high, high + high + low};
+    for (const std::u16string& text : texts) {
+        const std::u16string written = serializePropertyScalar(text);
+        EXPECT_EQ(findLoneSurrogate(written), std::u16string_view::npos) << narrow(written);
+        const Properties properties = parse(u"tags: [" + written + u"]");
+        ASSERT_FALSE(properties.error);
+        ASSERT_EQ(properties.rows.size(), 1U);
+        ASSERT_EQ(properties.rows.front().items.size(), 1U);
+        EXPECT_EQ(properties.rows.front().items.front(), text);
+    }
+}
+
+// A number or date is written bare only as it was entered; a comment or a line
+// break after it would leave the line, so such text is written as a quoted string.
+TEST(S025_EditProperties, ANumberOrDateIsWrittenBareOnlyAsEntered) {
+    EXPECT_EQ(serializePropertyValue(PropertyType::Number, u"5"), u"5");
+    EXPECT_EQ(serializePropertyValue(PropertyType::Number, u"5 #\n---"), u"\"5 #\\n---\"");
+    EXPECT_EQ(serializePropertyValue(PropertyType::Number, u"5 #\u2029---"), u"\"5 #\\P---\"");
+    EXPECT_EQ(serializePropertyValue(PropertyType::Number, u"5 # note"), u"\"5 # note\"");
+    EXPECT_EQ(serializePropertyValue(PropertyType::Date, u"2026-11-21 # due"), u"\"2026-11-21 # due\"");
+    EXPECT_EQ(serializePropertyValue(PropertyType::DateTime, u"2026-11-21T10:00:00 #\n---"),
+              u"\"2026-11-21T10:00:00 #\\n---\"");
+}
+
+TEST(S025_EditProperties, SerializesListsWithoutLosingCommasOrEmptyItems) {
+    const std::vector<std::u16string> items{u"one, two", u"", u"three"};
+    EXPECT_EQ(serializePropertyList(items), u"[\"one, two\", \"\", \"three\"]");
+    EXPECT_EQ(serializePropertyList({}), u"[]");
+}
+
+// A property's own lines run from its key to the last line of its value; a comment or blank line
+// after the value belongs to no property. The key's source span includes its quotes.
+TEST(S025_EditProperties, APropertyOwnsItsKeyAndValueLinesOnly) {
+    const Properties nested = parse(
+        u"author:\n  name: Ada\n  url: https://example.org\nsummary: |\n  first line\n  second line\n"
+        u"# reviewed by B, do not remove\nstatus: draft\nempty:\nstamp: 2026-11-21\n");
+    ASSERT_FALSE(nested.error);
+    ASSERT_EQ(nested.rows.size(), 5U);
+    const std::size_t ends[] = {3, 6, 8, 9, 10};
+    const std::size_t keyEnds[] = {6, 7, 6, 5, 5};
+    for (std::size_t i = 0; i < 5; ++i) {
+        EXPECT_TRUE(nested.rows[i].ownLines) << i;
+        EXPECT_EQ(nested.rows[i].endLine, ends[i]) << i;
+        EXPECT_EQ(nested.rows[i].keyColumn, 0U) << i;
+        EXPECT_EQ(nested.rows[i].keyEndColumn, keyEnds[i]) << i;
+    }
+
+    const Properties quoted = parse(u"\"my key\"  : 1   # note\ntitle: A note\n# trailing comment\n\n");
+    ASSERT_FALSE(quoted.error);
+    ASSERT_EQ(quoted.rows.size(), 2U);
+    EXPECT_EQ(quoted.rows[0].keyColumn, 0U);
+    EXPECT_EQ(quoted.rows[0].keyEndColumn, 8U);
+    EXPECT_EQ(quoted.rows[0].endLine, 1U);
+    EXPECT_EQ(quoted.rows[1].endLine, 2U);
+
+    const Properties flowList = parse(u"tags: [a,\n  b\n]\n# about next\nnext: 1\n");
+    ASSERT_FALSE(flowList.error);
+    ASSERT_EQ(flowList.rows.size(), 2U);
+    EXPECT_EQ(flowList.rows[0].endLine, 3U);
+    EXPECT_EQ(flowList.rows[1].keyLine, 4U);
+    EXPECT_EQ(flowList.rows[1].endLine, 5U);
+}
+
+// The entries of a flow mapping share its lines: none of them owns a line.
+TEST(S025_EditProperties, EntriesOfAFlowMappingOwnNoLines) {
+    const Properties flow = parse(u"{a: 1, b: two}\n");
+    ASSERT_FALSE(flow.error);
+    ASSERT_EQ(flow.rows.size(), 2U);
+    EXPECT_FALSE(flow.rows[0].ownLines);
+    EXPECT_FALSE(flow.rows[1].ownLines);
 }
 
 /// The row with `key`, or a failure.
@@ -724,6 +828,8 @@ TEST(S024_FrontMatter, ThemeTokensAreParsed) {
         "badge-font-family = \"Badge Sans\"\nbadge-font-scale = 0.75\ncheckbox = \"#161718\"\n"
         "checkbox-background = \"#191a1b\"\nchip-background = \"#1c1d1e\"\nchip-text = \"#1f2021\"\n"
         "chip-border = \"#222324\"\nchip-border-width = 2\nchip-radius = 5\nchip-padding = 6\n"
+        "editor-background = \"#252627\"\neditor-text = \"#28292a\"\neditor-border = \"#2b2c2d\"\n"
+        "editor-focus-border = \"#2e2f30\"\neditor-border-width = 2\neditor-radius = 5\neditor-padding = 6\n"
         "border = \"#252627\"\nborder-width = 1\nradius = 7\npadding = 9\nmargin = 11\nrow-spacing = 4\n"
         "key-width = 200\nfont-family = \"Props Sans\"\nfont-scale = 0.9\n",
         ColorScheme::Light);
@@ -746,6 +852,13 @@ TEST(S024_FrontMatter, ThemeTokensAreParsed) {
     EXPECT_DOUBLE_EQ(s.chipBorderWidth, 2);
     EXPECT_DOUBLE_EQ(s.chipRadius, 5);
     EXPECT_DOUBLE_EQ(s.chipPadding, 6);
+    EXPECT_EQ(s.editorBackground, (Color{37, 38, 39, 255}));
+    EXPECT_EQ(s.editorText, (Color{40, 41, 42, 255}));
+    EXPECT_EQ(s.editorBorder, (Color{43, 44, 45, 255}));
+    EXPECT_EQ(s.editorFocusBorder, (Color{46, 47, 48, 255}));
+    EXPECT_DOUBLE_EQ(s.editorBorderWidth, 2);
+    EXPECT_DOUBLE_EQ(s.editorRadius, 5);
+    EXPECT_DOUBLE_EQ(s.editorPadding, 6);
     EXPECT_EQ(s.border, (Color{37, 38, 39, 255}));
     EXPECT_DOUBLE_EQ(s.borderWidth, 1);
     EXPECT_DOUBLE_EQ(s.radius, 7);
@@ -757,9 +870,10 @@ TEST(S024_FrontMatter, ThemeTokensAreParsed) {
     EXPECT_DOUBLE_EQ(s.fontScale, 0.9);
 
     for (const char* bad :
-         {"border-width = 9", "chip-border-width = -1", "radius = 33", "chip-radius = 33", "padding = 65",
-          "chip-padding = 33", "margin = 65", "row-spacing = 33", "key-width = 39", "key-width = 1001",
-          "font-scale = 0.4", "badge-font-scale = 2.1", "add-text = \"#000000\""}) {
+         {"border-width = 9", "chip-border-width = -1", "editor-border-width = 9", "radius = 33", "chip-radius = 33",
+          "editor-radius = 33", "padding = 65", "editor-padding = 33", "chip-padding = 33", "margin = 65",
+          "row-spacing = 33", "key-width = 39", "key-width = 1001", "font-scale = 0.4", "badge-font-scale = 2.1",
+          "add-text = \"#000000\""}) {
         EXPECT_TRUE(loadTheme(std::string("[properties]\n") + bad + "\n", ColorScheme::Light).usedFallback) << bad;
     }
 }
@@ -785,6 +899,13 @@ TEST(S024_FrontMatter, ThemeTokensFallBack) {
         EXPECT_DOUBLE_EQ(s.chipBorderWidth, 0);
         EXPECT_DOUBLE_EQ(s.chipRadius, t.radius);
         EXPECT_DOUBLE_EQ(s.chipPadding, 4);
+        EXPECT_EQ(s.editorBackground, t.background);
+        EXPECT_EQ(s.editorText, t.text);
+        EXPECT_EQ(s.editorBorder, t.border);
+        EXPECT_EQ(s.editorFocusBorder, t.accent);
+        EXPECT_DOUBLE_EQ(s.editorBorderWidth, 1);
+        EXPECT_DOUBLE_EQ(s.editorRadius, t.radius);
+        EXPECT_DOUBLE_EQ(s.editorPadding, 4);
         EXPECT_EQ(s.border, t.border);
         EXPECT_DOUBLE_EQ(s.borderWidth, 0);
         EXPECT_DOUBLE_EQ(s.radius, t.radius);

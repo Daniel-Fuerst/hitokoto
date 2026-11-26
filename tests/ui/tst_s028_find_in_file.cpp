@@ -97,7 +97,7 @@ void search(const test::Fixture& f, const QString& text) {
 }
 
 bool waitComplete(const test::Fixture& f, int timeoutMs = 10000) {
-    return QTest::qWaitFor([&] { return controller(f)->isComplete(); }, timeoutMs);
+    return QTest::qWaitFor([&] { return controller(f)->isComplete(); }, timeoutMs * test::kTimeScale);
 }
 
 int positionOf(const test::Fixture& f, core::DocPos p) {
@@ -124,9 +124,7 @@ QRect matchRect(const test::Fixture& f, const core::FindMatch& m) {
     return QRect(QPoint(ra.left(), ra.top()), QPoint(rb.left(), ra.bottom()));
 }
 
-QColor qcolor(const core::Color& c) {
-    return {c.r, c.g, c.b, c.a};
-}
+using test::qcolor;
 
 /// How many pixels of `rect` in `image` have exactly `color`.
 int pixelsOf(const QImage& image, const QRect& rect, const QColor& color) {
@@ -718,7 +716,7 @@ private slots:
 
     // --- Decision 3 and review O8: front matter ------------------------------------------------
 
-    void aMatchInFrontMatterShowsItsYamlWhileCurrent() {
+    void aMatchInFrontMatterKeepsPropertiesVisible() {
         test::Fixture f;
         QVERIFY(load(f, kFrontMatter));
         QTRY_VERIFY(f.editor()->propertiesView() != nullptr);
@@ -729,7 +727,7 @@ private slots:
         QVERIFY(f.editor()->propertiesView() != nullptr);
         test::keyClick(bar(f)->searchField(), Qt::Key_Return);
         QCOMPARE(controller(f)->countText(), QStringLiteral("1 of 2"));
-        QTRY_VERIFY(f.editor()->propertiesView() == nullptr);  // the YAML shows
+        QTRY_VERIFY(f.editor()->propertiesView() != nullptr);
         QCOMPARE(current(f).start, (core::DocPos{1, 7}));
         test::keyClick(bar(f)->searchField(), Qt::Key_Return);
         QTRY_VERIFY(f.editor()->propertiesView() != nullptr);
@@ -739,7 +737,7 @@ private slots:
     void yamlSyntaxIsNotFoundEvenWithTheCaretInTheBlock() {
         test::Fixture f;
         QVERIFY(load(f, kFrontMatter));
-        f.placeCaret(1, 0);  // the YAML shows
+        f.placeCaret(1, 0);  // the properties view stays visible
         search(f, QStringLiteral("title: Hallo"));
         QVERIFY(waitComplete(f));
         QCOMPARE(controller(f)->matchCount(), 0);
@@ -1391,7 +1389,7 @@ private slots:
         timer.start();
         test::keyClicks(bar(f)->searchField(), QStringLiteral("w"));
         const qint64 keyMs = timer.elapsed();
-        QVERIFY2(keyMs < 200, qPrintable(QStringLiteral("key took %1 ms").arg(keyMs)));
+        QVERIFY2(keyMs < qint64{200} * test::kTimeScale, qPrintable(QStringLiteral("key took %1 ms").arg(keyMs)));
         QVERIFY(!controller(f)->isComplete());
         QTRY_VERIFY(controller(f)->currentMatch().has_value());
         if (!controller(f)->isComplete()) {

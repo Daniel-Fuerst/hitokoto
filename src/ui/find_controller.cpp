@@ -998,8 +998,8 @@ void FindController::onContentsChange(int position, int charsRemoved, int charsA
             return;
         }
         if (current_) {
-            // Until it is found again, a table or the properties block holding it keeps its source
-            // where it now is (code review).
+            // Until it is found again, a table holding it keeps its source where it now is (code
+            // review).
             editor_->setFindHold(shiftLine(static_cast<int>(current_->start.line)),
                                  shiftLine(static_cast<int>(current_->end.line)), false);
         }
@@ -1133,7 +1133,7 @@ void FindController::showCurrent() {
         return;
     }
     editor_->showPosition(position(current_->start));
-    // A table or the properties block shows its source only after the layout has followed.
+    // A table shows its source only after the layout has followed; properties remain graphical.
     QTimer::singleShot(0, this, [this] {
         if (current_ && open_) {
             editor_->showPosition(position(current_->start));
@@ -1167,6 +1167,7 @@ void FindController::updateBar() {
     bar_->setNoMatch(open_ && complete_ && !query_.findsNothing() && matchCount() == 0);
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity): above the threshold when the check came in
 void FindController::updateHighlights() {
     shown_.clear();
     selections_.clear();
@@ -1241,6 +1242,7 @@ void FindController::updateHighlights() {
     editor_->setExtraSelections(selections_);
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity): above the threshold when the check came in
 void FindController::updateEmbeddedMarks() {
     // Highlight all in tables shown as cells and in the properties block (review O7): only what is
     // on screen (code review O8), the key, value or chip that holds a match (code review O3).

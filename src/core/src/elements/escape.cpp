@@ -18,33 +18,18 @@ bool isAsciiPunctuation(char16_t c) noexcept {
 
 class EscapeElement final : public InlineElement {
 public:
-    [[nodiscard]] std::string_view id() const noexcept override { return "escape"; }
     [[nodiscard]] std::u16string_view triggerCharacters() const noexcept override { return u"\\"; }
 
-    void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
+    void render(std::u16string_view line, const LineContext& context, const InlineScan& scan,
+                LineRender& out) const override {
         detail::InlineSteps steps;
         steps.add(line.size());
-        std::vector<bool> codeCharacters(line.size(), false);
-        for (const auto& span : out.opaqueSpans) {
-            if (span.start < line.size()) {
-                const auto end = std::min<std::size_t>(span.end(), line.size());
-                steps.add(end - span.start);
-                std::fill(codeCharacters.begin() + static_cast<std::ptrdiff_t>(span.start),
-                          codeCharacters.begin() + static_cast<std::ptrdiff_t>(end), true);
-            }
-        }
-        for (const auto& h : out.hidden) {
-            steps.add(h.span.length);
-            std::fill(codeCharacters.begin() + static_cast<std::ptrdiff_t>(h.span.start),
-                      codeCharacters.begin() + static_cast<std::ptrdiff_t>(h.span.end()), true);
-        }
-
         for (std::size_t i = 0; i < line.size();) {
-            if (codeCharacters[i]) {
+            if (scan.isTaken(i)) {
                 ++i;
                 continue;
             }
-            if (line[i] == u'\\' && i + 1 < line.size() && !codeCharacters[i + 1] && isAsciiPunctuation(line[i + 1])) {
+            if (line[i] == u'\\' && i + 1 < line.size() && !scan.isTaken(i + 1) && isAsciiPunctuation(line[i + 1])) {
                 const auto span = Span{static_cast<std::uint32_t>(i), 1};
                 out.runs.push_back({span, Role::EscapeMarker, 0});
                 if (!context.revealed) {

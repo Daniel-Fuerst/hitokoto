@@ -50,10 +50,18 @@ story ID (see "Conventions").
 | 41 | [S007](007-large-files.md) | 10 MB files open within budget and type without lag | S006 | L | Partly done |
 | 42 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
 | 43 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |
-| 44 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | Open |
+| 44 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | In progress |
 | 45 | [S042](042-docs-only-pull-requests.md) | Pull requests that change only documentation skip the build | S030, S032, S035 | S | Confirmed |
 | 46 | [S040](040-table-selection.md) | Selecting cells, rows and columns in a table | S018, S019, S028, S031 | L | Confirmed |
 | 47 | [S041](041-table-copy-paste.md) | Copying and pasting table cells as Markdown | S031, S040 | M | Confirmed |
+| 48 | [S043](043-smooth-scrolling-toggle.md) | Toggle switches and a "Feel" section for smooth scrolling | S027, S039 | M | In progress |
+| 49 | [S044](044-latex-math.md) | Math source: `$…$` and `$$…$$` recognised and styled | S014, S015, S020, S021 | M | In review |
+| 50 | [S045](045-math-layout-engine.md) | Math layout engine in the core (ADR 0014) | S044 | L | In review |
+| 51 | [S046](046-typeset-inline-math.md) | Inline formulas shown typeset | S044, S045, S010, S019 | L | In review |
+| 52 | [S047](047-typeset-display-math.md) | Display formulas shown typeset | S044, S045, S046 | M | In review |
+| 53 | [S048](048-settings-section-headings.md) | Section headings in the settings flyout stand out | S039, S043 | S | In progress |
+| 54 | [S049](049-macos-disk-image.md) | Every version gets a macOS disk image (Apple silicon) | S030, S035, S036, S037 | M | In progress |
+| 55 | [S050](050-empty-bullet-after-text.md) | An empty bullet under text stays a bullet | S003, S023 | S | In progress |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 
@@ -67,7 +75,8 @@ sets it).
 ## Decisions (confirmed 2026-10-24)
 
 1. **Licence:** GPL-3.0-or-later (`LICENSE`). Qt is used under LGPLv3 (dynamic linking).
-2. **Minimum platforms:** Windows 10 22H2 and 11 (x64), macOS 13 or newer, Linux with Qt 6.8 or
+2. **Minimum platforms:** Windows 10 22H2 and 11 (x64), macOS 13 or newer (since ADR 0015, 2026-11-25:
+   macOS 14.4 or newer, the oldest macOS of the Qt the disk image ships), Linux with Qt 6.8 or
    newer (Debian trixie). CI builds with Qt 6.12 and, on Linux, with Qt 6.8 as the minimum.
 3. **Text buffer ownership:** ADR 0002 – the editor's `QTextDocument` is the only copy of the text.
 4. **Encoding and line endings:** ADR 0002 – UTF-8 only, invalid files refused; LF, CRLF and CR

@@ -9,8 +9,6 @@ namespace {
 
 class HeadingElement final : public LineElement {
 public:
-    [[nodiscard]] std::string_view id() const noexcept override { return "heading"; }
-
     [[nodiscard]] std::optional<LineMatch> parse(std::u16string_view line) const override {
         std::size_t i = 0;
         while (i < line.size() && i < 3 && line[i] == u' ') {

@@ -243,20 +243,11 @@ DestinationAndTitle parseDestinationAndTitle(std::u16string_view line, std::size
 
 class LinkElement final : public InlineElement {
 public:
-    [[nodiscard]] std::string_view id() const noexcept override { return "link"; }
     [[nodiscard]] std::u16string_view triggerCharacters() const noexcept override { return u"["; }
 
-    void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
+    void render(std::u16string_view line, const LineContext& context, const InlineScan& scan,
+                LineRender& out) const override {
         detail::InlineSteps steps;
-        std::vector<bool> inCode(line.size(), false);
-        for (const auto& span : out.opaqueSpans) {
-            if (span.start < line.size()) {
-                const auto end = std::min<std::size_t>(span.end(), line.size());
-                steps.add(end - span.start);
-                std::fill(inCode.begin() + static_cast<std::ptrdiff_t>(span.start),
-                          inCode.begin() + static_cast<std::ptrdiff_t>(end), true);
-            }
-        }
 
         struct ParsedLink {
             std::size_t openBracket = 0;
@@ -275,7 +266,7 @@ public:
 
         for (std::size_t i = 0; i < line.size();) {
             steps.add();
-            if (inCode[i]) {
+            if (scan.isOpaque(i)) {
                 ++i;
                 continue;
             }

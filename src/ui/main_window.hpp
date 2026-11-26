@@ -78,6 +78,9 @@ private:
     [[nodiscard]] QString documentName() const;
     bool saveBlocking(const QString& path);
     void reportThemeNotSaved(const QString& reason);
+    void applySmoothScrollingChoice(bool on);
+    void reportSettingNotSaved(const QString& reason);
+    void reportNotSaved(const QString& title, const QString& intro, const QString& reason);
 
     EditorWidget* editor_;
     DocumentSession* session_;

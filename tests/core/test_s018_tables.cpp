@@ -2,7 +2,10 @@
 // S018: Markdown pipe tables (ADR 0005). Expectations checked against cmark-gfm 0.29.0.gfm
 // (Python cmarkgfm 2025.10.22) on 2026-10-27.
 #include "hitokoto/core/markdown.hpp"
+#include "hitokoto/core/table.hpp"
 #include "hitokoto/core/theme.hpp"
+
+#include "support.hpp"
 
 #include <gtest/gtest.h>
 
@@ -13,10 +16,7 @@
 using namespace hitokoto::core;
 
 namespace {
-const ElementRegistry& registry() {
-    static const ElementRegistry r = ElementRegistry::withBuiltins();
-    return r;
-}
+using hitokoto::test::registry;
 
 /// Renders `lines` top to bottom, each with the next line as lookahead.
 std::vector<LineRender> showAll(const std::vector<std::u16string>& lines) {
@@ -39,14 +39,7 @@ std::vector<std::u16string> cellTexts(std::u16string_view line) {
     return texts;
 }
 
-/// ASCII text of a line for failure messages; other characters as '?'.
-std::string narrow(std::u16string_view text) {
-    std::string out;
-    for (const char16_t c : text) {
-        out += c < 0x80 ? static_cast<char>(c) : '?';
-    }
-    return out;
-}
+using hitokoto::test::narrow;
 }  // namespace
 
 TEST(S018_Tables, RecognizesHeaderDelimiterAndBodyRows) {

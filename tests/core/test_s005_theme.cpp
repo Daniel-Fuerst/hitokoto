@@ -7,7 +7,12 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
+#include <optional>
 #include <random>
+#include <sstream>
+#include <string>
+#include <string_view>
 
 using namespace hitokoto::core;
 
@@ -187,6 +192,355 @@ TEST(S005_Theme, DocumentationCoversAllTokensAndExamplesParse) {
         pos = end + 3;
     }
     EXPECT_GE(examples, 2u);
+}
+
+namespace {
+
+std::string themingDoc() {
+    std::ifstream in(std::string(HITOKOTO_SOURCE_DIR) + "/docs/theming.md", std::ios::binary);
+    std::string doc{std::istreambuf_iterator<char>(in), {}};
+    std::erase(doc, '\r');  // Windows checkouts use CRLF
+    return doc;
+}
+
+std::string tokenName(const ThemeTokenInfo& t) {
+    return t.section.empty() ? std::string(t.key) : std::string(t.section) + "." + std::string(t.key);
+}
+
+bool isTokenName(std::string_view text) {
+    for (const auto& t : themeTokens()) {
+        if (tokenName(t) == text) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// A row of the token tables in docs/theming.md, written from the token list: a type with "|"
+// says "or" (a pipe would end the cell), a fallback that names a token is code.
+std::string tokenRow(const ThemeTokenInfo& t) {
+    std::string type(t.type);
+    for (std::size_t at = type.find(" | "); at != std::string::npos; at = type.find(" | ", at)) {
+        type.replace(at, 3, " or ");
+    }
+    std::string row = "| `" + tokenName(t) + "` | " + type + " | " + std::string(t.description) + " |";
+    if (!t.fallback.empty()) {
+        const std::string fallback(t.fallback);
+        row += " " + (isTokenName(fallback) ? "`" + fallback + "`" : fallback) + " |";
+    }
+    return row + "\n";
+}
+
+// The rows of the table under `header` in `doc`, or "" if there is no such table.
+std::string tableRows(const std::string& doc, const std::string& header) {
+    const auto start = doc.find(header);
+    if (start == std::string::npos) {
+        return {};
+    }
+    std::string rows;
+    for (auto at = start + header.size(); at < doc.size() && doc[at] == '|';) {
+        const auto end = doc.find('\n', at);
+        const auto next = end == std::string::npos ? doc.size() : end + 1;
+        rows += doc.substr(at, next - at);
+        at = next;
+    }
+    return rows;
+}
+
+}  // namespace
+
+// docs/theming.md holds the two token tables exactly as the token list makes them: the general
+// tokens, then the element tokens with their fallbacks, in the order of themeTokens().
+TEST(S005_Theme, TokenTablesAreTheTokenList) {
+    const std::string doc = themingDoc();
+    ASSERT_FALSE(doc.empty()) << "docs/theming.md not found";
+    std::string general;
+    std::string elements;
+    for (const auto& t : themeTokens()) {
+        (t.fallback.empty() ? general : elements) += tokenRow(t);
+    }
+    EXPECT_EQ(tableRows(doc, "| Token | Type | Meaning |\n|---|---|---|\n"), general)
+        << "the table of general tokens in docs/theming.md should be:\n"
+        << general;
+    EXPECT_EQ(tableRows(doc, "| Token | Type | Meaning | Fallback |\n|---|---|---|---|\n"), elements)
+        << "the table of element tokens in docs/theming.md should be:\n"
+        << elements;
+}
+
+namespace {
+
+std::string shown(const Color& c) {
+    return c.toHex();
+}
+std::string shown(const std::optional<Color>& c) {
+    return c ? c->toHex() : "(none)";
+}
+std::string shown(double v) {
+    std::ostringstream out;
+    out << v;
+    return out.str();
+}
+std::string shown(int v) {
+    return std::to_string(v);
+}
+std::string shown(const std::string& v) {
+    return v;
+}
+
+using Resolved = std::string (*)(const Theme&);
+
+// Every element token as the program reads it (resolved), and the general tokens element tokens
+// fall back on. An element token added to the theme gets a line here.
+#define GENERAL_TOKEN(name, field)                          \
+    {                                                       \
+        name, [](const Theme& t) { return shown(t.field); } \
+    }
+#define ELEMENT_TOKEN(name, style, field)                          \
+    {                                                              \
+        name, [](const Theme& t) { return shown(style(t).field); } \
+    }
+const std::map<std::string, Resolved>& resolvedTokens() {
+    static const std::map<std::string, Resolved> tokens{
+        GENERAL_TOKEN("colors.primary", primary),
+        GENERAL_TOKEN("colors.secondary", secondary),
+        GENERAL_TOKEN("colors.accent", accent),
+        GENERAL_TOKEN("colors.background", background),
+        GENERAL_TOKEN("colors.surface", surface),
+        GENERAL_TOKEN("colors.border", border),
+        GENERAL_TOKEN("colors.text", text),
+        GENERAL_TOKEN("colors.text-muted", textMuted),
+        GENERAL_TOKEN("colors.selection", selection),
+        GENERAL_TOKEN("colors.selection-text", selectionText),
+        GENERAL_TOKEN("colors.marker", marker),
+        GENERAL_TOKEN("colors.bullet", bullet),
+        GENERAL_TOKEN("headings.weight", headingWeight),
+        GENERAL_TOKEN("layout.radius", radius),
+        GENERAL_TOKEN("layout.spacing", spacing),
+        ELEMENT_TOKEN("code-block.background", codeBlockStyle, background),
+        ELEMENT_TOKEN("code-block.text", codeBlockStyle, text),
+        ELEMENT_TOKEN("code-block.border", codeBlockStyle, border),
+        ELEMENT_TOKEN("code-block.border-width", codeBlockStyle, borderWidth),
+        ELEMENT_TOKEN("code-block.radius", codeBlockStyle, radius),
+        ELEMENT_TOKEN("code-block.padding", codeBlockStyle, padding),
+        ELEMENT_TOKEN("code-block.margin", codeBlockStyle, margin),
+        ELEMENT_TOKEN("code-block.font-family", codeBlockStyle, fontFamily),
+        ELEMENT_TOKEN("code-block.font-scale", codeBlockStyle, fontScale),
+        ELEMENT_TOKEN("code-block.marker", codeBlockStyle, marker),
+        ELEMENT_TOKEN("code-block.badge-text", codeBlockStyle, badgeText),
+        ELEMENT_TOKEN("code-block.badge-font-family", codeBlockStyle, badgeFontFamily),
+        ELEMENT_TOKEN("code-block.badge-font-scale", codeBlockStyle, badgeFontScale),
+        ELEMENT_TOKEN("inline-code.background", inlineCodeStyle, background),
+        ELEMENT_TOKEN("inline-code.text", inlineCodeStyle, text),
+        ELEMENT_TOKEN("inline-code.border", inlineCodeStyle, border),
+        ELEMENT_TOKEN("inline-code.border-width", inlineCodeStyle, borderWidth),
+        ELEMENT_TOKEN("inline-code.radius", inlineCodeStyle, radius),
+        ELEMENT_TOKEN("inline-code.padding", inlineCodeStyle, padding),
+        ELEMENT_TOKEN("inline-code.font-family", inlineCodeStyle, fontFamily),
+        ELEMENT_TOKEN("inline-code.font-scale", inlineCodeStyle, fontScale),
+        ELEMENT_TOKEN("inline-code.marker", inlineCodeStyle, marker),
+        ELEMENT_TOKEN("emphasis.bold-weight", emphasisStyle, boldWeight),
+        ELEMENT_TOKEN("emphasis.bold-text", emphasisStyle, boldText),
+        ELEMENT_TOKEN("emphasis.italic-text", emphasisStyle, italicText),
+        ELEMENT_TOKEN("emphasis.strikethrough-text", emphasisStyle, strikethroughText),
+        ELEMENT_TOKEN("emphasis.marker", emphasisStyle, marker),
+        ELEMENT_TOKEN("table.background", tableStyle, background),
+        ELEMENT_TOKEN("table.header-background", tableStyle, headerBackground),
+        ELEMENT_TOKEN("table.stripe-background", tableStyle, stripeBackground),
+        ELEMENT_TOKEN("table.text", tableStyle, text),
+        ELEMENT_TOKEN("table.header-text", tableStyle, headerText),
+        ELEMENT_TOKEN("table.header-weight", tableStyle, headerWeight),
+        ELEMENT_TOKEN("table.border", tableStyle, border),
+        ELEMENT_TOKEN("table.border-width", tableStyle, borderWidth),
+        ELEMENT_TOKEN("table.radius", tableStyle, radius),
+        ELEMENT_TOKEN("table.padding", tableStyle, padding),
+        ELEMENT_TOKEN("table.font-family", tableStyle, fontFamily),
+        ELEMENT_TOKEN("table.font-scale", tableStyle, fontScale),
+        ELEMENT_TOKEN("escape.marker", escapeStyle, marker),
+        ELEMENT_TOKEN("link.text", linkStyle, text),
+        ELEMENT_TOKEN("link.marker", linkStyle, marker),
+        ELEMENT_TOKEN("math.text", mathStyle, text),
+        ELEMENT_TOKEN("math.marker", mathStyle, marker),
+        ELEMENT_TOKEN("math.error", mathStyle, error),
+        ELEMENT_TOKEN("math.font-family", mathStyle, fontFamily),
+        ELEMENT_TOKEN("math.font-scale", mathStyle, fontScale),
+        ELEMENT_TOKEN("math.display-background", mathStyle, displayBackground),
+        ELEMENT_TOKEN("math.display-border", mathStyle, displayBorder),
+        ELEMENT_TOKEN("math.display-border-width", mathStyle, displayBorderWidth),
+        ELEMENT_TOKEN("math.display-radius", mathStyle, displayRadius),
+        ELEMENT_TOKEN("math.display-padding", mathStyle, displayPadding),
+        ELEMENT_TOKEN("math.display-margin", mathStyle, displayMargin),
+        ELEMENT_TOKEN("thematic-break.border", thematicBreakStyle, border),
+        ELEMENT_TOKEN("thematic-break.border-width", thematicBreakStyle, borderWidth),
+        ELEMENT_TOKEN("thematic-break.margin", thematicBreakStyle, margin),
+        ELEMENT_TOKEN("thematic-break.marker", thematicBreakStyle, marker),
+        ELEMENT_TOKEN("properties.background", propertiesStyle, background),
+        ELEMENT_TOKEN("properties.text", propertiesStyle, text),
+        ELEMENT_TOKEN("properties.key-text", propertiesStyle, keyText),
+        ELEMENT_TOKEN("properties.title-text", propertiesStyle, titleText),
+        ELEMENT_TOKEN("properties.icon", propertiesStyle, icon),
+        ELEMENT_TOKEN("properties.unsupported-text", propertiesStyle, unsupportedText),
+        ELEMENT_TOKEN("properties.badge-text", propertiesStyle, badgeText),
+        ELEMENT_TOKEN("properties.badge-font-family", propertiesStyle, badgeFontFamily),
+        ELEMENT_TOKEN("properties.badge-font-scale", propertiesStyle, badgeFontScale),
+        ELEMENT_TOKEN("properties.checkbox", propertiesStyle, checkbox),
+        ELEMENT_TOKEN("properties.checkbox-background", propertiesStyle, checkboxBackground),
+        ELEMENT_TOKEN("properties.chip-background", propertiesStyle, chipBackground),
+        ELEMENT_TOKEN("properties.chip-text", propertiesStyle, chipText),
+        ELEMENT_TOKEN("properties.chip-border", propertiesStyle, chipBorder),
+        ELEMENT_TOKEN("properties.chip-border-width", propertiesStyle, chipBorderWidth),
+        ELEMENT_TOKEN("properties.chip-radius", propertiesStyle, chipRadius),
+        ELEMENT_TOKEN("properties.chip-padding", propertiesStyle, chipPadding),
+        ELEMENT_TOKEN("properties.editor-background", propertiesStyle, editorBackground),
+        ELEMENT_TOKEN("properties.editor-text", propertiesStyle, editorText),
+        ELEMENT_TOKEN("properties.editor-border", propertiesStyle, editorBorder),
+        ELEMENT_TOKEN("properties.editor-focus-border", propertiesStyle, editorFocusBorder),
+        ELEMENT_TOKEN("properties.editor-border-width", propertiesStyle, editorBorderWidth),
+        ELEMENT_TOKEN("properties.editor-radius", propertiesStyle, editorRadius),
+        ELEMENT_TOKEN("properties.editor-padding", propertiesStyle, editorPadding),
+        ELEMENT_TOKEN("properties.border", propertiesStyle, border),
+        ELEMENT_TOKEN("properties.border-width", propertiesStyle, borderWidth),
+        ELEMENT_TOKEN("properties.radius", propertiesStyle, radius),
+        ELEMENT_TOKEN("properties.padding", propertiesStyle, padding),
+        ELEMENT_TOKEN("properties.margin", propertiesStyle, margin),
+        ELEMENT_TOKEN("properties.row-spacing", propertiesStyle, rowSpacing),
+        ELEMENT_TOKEN("properties.key-width", propertiesStyle, keyWidth),
+        ELEMENT_TOKEN("properties.font-family", propertiesStyle, fontFamily),
+        ELEMENT_TOKEN("properties.font-scale", propertiesStyle, fontScale),
+        ELEMENT_TOKEN("toolbar.background", toolbarStyle, background),
+        ELEMENT_TOKEN("toolbar.border", toolbarStyle, border),
+        ELEMENT_TOKEN("toolbar.border-width", toolbarStyle, borderWidth),
+        ELEMENT_TOKEN("toolbar.radius", toolbarStyle, radius),
+        ELEMENT_TOKEN("toolbar.padding", toolbarStyle, padding),
+        ELEMENT_TOKEN("toolbar.spacing", toolbarStyle, spacing),
+        ELEMENT_TOKEN("toolbar.margin", toolbarStyle, margin),
+        ELEMENT_TOKEN("toolbar.icon", toolbarStyle, icon),
+        ELEMENT_TOKEN("toolbar.button-size", toolbarStyle, buttonSize),
+        ELEMENT_TOKEN("toolbar.button-radius", toolbarStyle, buttonRadius),
+        ELEMENT_TOKEN("toolbar.hover-background", toolbarStyle, hoverBackground),
+        ELEMENT_TOKEN("toolbar.active-background", toolbarStyle, activeBackground),
+        ELEMENT_TOKEN("toolbar.active-icon", toolbarStyle, activeIcon),
+        ELEMENT_TOKEN("find.background", findStyle, background),
+        ELEMENT_TOKEN("find.border", findStyle, border),
+        ELEMENT_TOKEN("find.border-width", findStyle, borderWidth),
+        ELEMENT_TOKEN("find.padding", findStyle, padding),
+        ELEMENT_TOKEN("find.spacing", findStyle, spacing),
+        ELEMENT_TOKEN("find.text", findStyle, text),
+        ELEMENT_TOKEN("find.font-family", findStyle, fontFamily),
+        ELEMENT_TOKEN("find.font-scale", findStyle, fontScale),
+        ELEMENT_TOKEN("find.field-background", findStyle, fieldBackground),
+        ELEMENT_TOKEN("find.field-text", findStyle, fieldText),
+        ELEMENT_TOKEN("find.field-border", findStyle, fieldBorder),
+        ELEMENT_TOKEN("find.field-focus-border", findStyle, fieldFocusBorder),
+        ELEMENT_TOKEN("find.field-border-width", findStyle, fieldBorderWidth),
+        ELEMENT_TOKEN("find.field-radius", findStyle, fieldRadius),
+        ELEMENT_TOKEN("find.no-match-background", findStyle, noMatchBackground),
+        ELEMENT_TOKEN("find.icon", findStyle, icon),
+        ELEMENT_TOKEN("find.button-size", findStyle, buttonSize),
+        ELEMENT_TOKEN("find.button-radius", findStyle, buttonRadius),
+        ELEMENT_TOKEN("find.hover-background", findStyle, hoverBackground),
+        ELEMENT_TOKEN("find.active-background", findStyle, activeBackground),
+        ELEMENT_TOKEN("find.active-icon", findStyle, activeIcon),
+        ELEMENT_TOKEN("find.current-background", findStyle, currentBackground),
+        ELEMENT_TOKEN("find.current-text", findStyle, currentText),
+        ELEMENT_TOKEN("find.match-background", findStyle, matchBackground),
+        ELEMENT_TOKEN("find.match-text", findStyle, matchText),
+        ELEMENT_TOKEN("menu-bar.background", menuBarStyle, background),
+        ELEMENT_TOKEN("menu-bar.border", menuBarStyle, border),
+        ELEMENT_TOKEN("menu-bar.border-width", menuBarStyle, borderWidth),
+        ELEMENT_TOKEN("menu-bar.padding", menuBarStyle, padding),
+        ELEMENT_TOKEN("menu-bar.spacing", menuBarStyle, spacing),
+        ELEMENT_TOKEN("menu-bar.text", menuBarStyle, text),
+        ELEMENT_TOKEN("menu-bar.hover-text", menuBarStyle, hoverText),
+        ELEMENT_TOKEN("menu-bar.active-text", menuBarStyle, activeText),
+        ELEMENT_TOKEN("menu-bar.hover-background", menuBarStyle, hoverBackground),
+        ELEMENT_TOKEN("menu-bar.active-background", menuBarStyle, activeBackground),
+        ELEMENT_TOKEN("menu-bar.mnemonic", menuBarStyle, mnemonic),
+        ELEMENT_TOKEN("menu-bar.item-radius", menuBarStyle, itemRadius),
+        ELEMENT_TOKEN("menu-bar.item-padding-horizontal", menuBarStyle, itemPaddingHorizontal),
+        ELEMENT_TOKEN("menu-bar.item-padding-vertical", menuBarStyle, itemPaddingVertical),
+        ELEMENT_TOKEN("menu-bar.font-family", menuBarStyle, fontFamily),
+        ELEMENT_TOKEN("menu-bar.font-scale", menuBarStyle, fontScale),
+        ELEMENT_TOKEN("switch.track", switchStyle, track),
+        ELEMENT_TOKEN("switch.checked-track", switchStyle, checkedTrack),
+        ELEMENT_TOKEN("switch.knob", switchStyle, knob),
+        ELEMENT_TOKEN("switch.checked-knob", switchStyle, checkedKnob),
+        ELEMENT_TOKEN("switch.border", switchStyle, border),
+        ELEMENT_TOKEN("switch.border-width", switchStyle, borderWidth),
+        ELEMENT_TOKEN("switch.width", switchStyle, width),
+        ELEMENT_TOKEN("switch.height", switchStyle, height),
+        ELEMENT_TOKEN("switch.radius", switchStyle, radius),
+        ELEMENT_TOKEN("switch.knob-margin", switchStyle, knobMargin),
+        ELEMENT_TOKEN("settings-section.text", settingsSectionStyle, text),
+        ELEMENT_TOKEN("settings-section.weight", settingsSectionStyle, weight),
+        ELEMENT_TOKEN("settings-section.rule", settingsSectionStyle, rule),
+        ELEMENT_TOKEN("settings-section.rule-width", settingsSectionStyle, ruleWidth),
+        ELEMENT_TOKEN("settings-section.rule-gap", settingsSectionStyle, ruleGap),
+    };
+    return tokens;
+}
+#undef GENERAL_TOKEN
+#undef ELEMENT_TOKEN
+
+const ThemeTokenInfo* tokenInfo(std::string_view name) {
+    for (const auto& t : themeTokens()) {
+        if (tokenName(t) == name) {
+            return &t;
+        }
+    }
+    return nullptr;
+}
+
+// A value for `name` that a theme file may set and that differs from both built-in themes.
+std::string probeValue(const ThemeTokenInfo& t) {
+    if (t.type == "color") {
+        return "\"#13579b\"";
+    }
+    if (t.type == "string") {
+        return "\"Probe Sans\"";
+    }
+    return t.key.ends_with("weight") ? "300" : "13";
+}
+
+}  // namespace
+
+// Each element token the theme leaves unset shows its documented fallback: the token it names
+// (set here to a value of its own), the number or text it gives, or the colours of the built-in
+// themes it lists.
+TEST(S005_Theme, UnsetElementTokensShowTheirDocumentedFallback) {
+    const auto& resolved = resolvedTokens();
+    const Theme& light = builtinTheme(ColorScheme::Light);
+    const Theme& dark = builtinTheme(ColorScheme::Dark);
+    for (const auto& t : themeTokens()) {
+        if (t.fallback.empty()) {
+            continue;
+        }
+        const std::string name = tokenName(t);
+        SCOPED_TRACE(name + " falls back on " + std::string(t.fallback));
+        const auto element = resolved.find(name);
+        ASSERT_NE(element, resolved.end()) << "add the token to resolvedTokens()";
+        const std::string fallback(t.fallback);
+        if (const ThemeTokenInfo* source = tokenInfo(fallback)) {
+            const auto other = resolved.find(fallback);
+            ASSERT_NE(other, resolved.end()) << "add the fallback to resolvedTokens()";
+            const std::string file = "[" + std::string(source->section) + "]\n" + std::string(source->key) + " = " +
+                                     probeValue(*source) + "\n";
+            const auto r = loadTheme(file, ColorScheme::Light);
+            ASSERT_FALSE(r.usedFallback) << file;
+            ASSERT_NE(other->second(r.theme), other->second(light)) << "the probe value is the built-in one";
+            EXPECT_EQ(element->second(r.theme), other->second(r.theme));
+        } else if (fallback == "text colour of the surrounding element") {
+            EXPECT_EQ(element->second(light), "(none)");
+            EXPECT_EQ(element->second(dark), "(none)");
+        } else if (fallback == "\"\"") {
+            EXPECT_EQ(element->second(light), "");
+            EXPECT_EQ(element->second(dark), "");
+        } else if (const auto split = fallback.find(" (light), "); split != std::string::npos) {
+            EXPECT_EQ(element->second(light) + " (light), " + element->second(dark) + " (dark)", fallback);
+        } else {
+            EXPECT_EQ(element->second(light), fallback);
+            EXPECT_EQ(element->second(dark), fallback);
+        }
+    }
 }
 
 TEST(S005_Theme, ShippedThemesParseWithoutDiagnostics) {

@@ -33,8 +33,8 @@ public:
 
     [[nodiscard]] std::uint32_t documentStartState() const noexcept override { return kDocumentStart; }
 
-    [[nodiscard]] std::optional<BlockLine> parse(std::u16string_view line,
-                                                 std::uint32_t state) const noexcept override {
+    [[nodiscard]] std::optional<BlockLine> parseWithNextLine(std::u16string_view line, std::uint32_t state,
+                                                             std::u16string_view /*nextLine*/) const noexcept override {
         if (state == kDocumentStart) {
             return isDelimiter(line) ? std::optional<BlockLine>{BlockLine{kInside, true}} : std::nullopt;
         }

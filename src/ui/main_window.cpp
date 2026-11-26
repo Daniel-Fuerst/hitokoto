@@ -64,6 +64,8 @@ MainWindow::MainWindow(const core::ElementRegistry& registry, QWidget* parent)
                 showMessage(tr("Settings error"), tr("%1 has errors; the settings concerned keep their defaults.\n\n%2")
                                                       .arg(path, problems.join(QLatin1Char('\n'))));
             });
+    // S043: smooth scrolling chosen in the flyout applies at once and is saved in config.toml.
+    connect(editor_, &EditorWidget::smoothScrollingChosen, this, &MainWindow::applySmoothScrollingChoice);
     connect(editor_, &EditorWidget::settingsLoaded, this, [this](const core::Settings& settings) {
         options_.reportBlankLinesAdded = settings.reportBlankLinesAdded;
         options_.frontMatterAsProperties = settings.frontMatterAsProperties;
@@ -221,9 +223,31 @@ void MainWindow::applyThemeEntry(const ThemeEntry& entry) {
     }
 }
 
-void MainWindow::reportThemeNotSaved(const QString& reason) {
+void MainWindow::applySmoothScrollingChoice(bool on) {
+    options_.smoothScrolling = on;
     const QString path = ThemeManager::configFilePath(editor_->themeConfigDir());
-    QString text = tr("The theme is used for now, but it could not be saved in %1: %2").arg(path, reason);
+    if (path.isEmpty()) {
+        reportSettingNotSaved(QStringLiteral("there is no configuration folder"));
+        return;
+    }
+    if (const auto error = core::updateSmoothScrollingSettingInFile(std::filesystem::path(path.toStdU16String()), on)) {
+        reportSettingNotSaved(QString::fromStdString(error->message));
+    }
+}
+
+void MainWindow::reportSettingNotSaved(const QString& reason) {
+    reportNotSaved(tr("Setting not saved"), tr("The setting is used for now, but it could not be saved in %1: %2"),
+                   reason);
+}
+
+void MainWindow::reportThemeNotSaved(const QString& reason) {
+    reportNotSaved(tr("Theme not saved"), tr("The theme is used for now, but it could not be saved in %1: %2"), reason);
+}
+
+// S039, S043: a choice kept for the session but not saved names the file, the reason and the problems of the file.
+void MainWindow::reportNotSaved(const QString& title, const QString& intro, const QString& reason) {
+    const QString path = ThemeManager::configFilePath(editor_->themeConfigDir());
+    QString text = intro.arg(path, reason);
     if (!path.isEmpty()) {
         const QStringList problems = ThemeManager::formatSettingsDiagnostics(
             core::loadSettingsFile(std::filesystem::path(path.toStdU16String())));
@@ -231,7 +255,7 @@ void MainWindow::reportThemeNotSaved(const QString& reason) {
             text += QStringLiteral("\n\n") + problems.join(QLatin1Char('\n'));
         }
     }
-    showMessage(tr("Theme not saved"), text);
+    showMessage(title, text);
 }
 
 void MainWindow::showMessage(const QString& title, const QString& text) {

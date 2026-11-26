@@ -8,6 +8,8 @@
 #include "hitokoto/core/markdown.hpp"
 #include "hitokoto/core/theme.hpp"
 
+#include "support.hpp"
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -20,10 +22,7 @@
 using namespace hitokoto::core;
 
 namespace {
-const ElementRegistry& registry() {
-    static const ElementRegistry r = ElementRegistry::withBuiltins();
-    return r;
-}
+using hitokoto::test::registry;
 
 std::vector<std::u16string> splitLines(std::u16string_view text) {
     std::vector<std::u16string> lines;

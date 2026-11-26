@@ -75,12 +75,11 @@ void appendOpenings(std::vector<Opening>& openings, const Delimiter& delimiter, 
     }
 }
 
-std::vector<Delimiter> findDelimiters(std::u16string_view line, const std::vector<bool>& codeCharacters,
-                                      detail::InlineSteps& steps) {
+std::vector<Delimiter> findDelimiters(std::u16string_view line, const InlineScan& scan, detail::InlineSteps& steps) {
     std::vector<Delimiter> delimiters;
     steps.add(line.size());  // every character is passed once, by the search or one at a time
     for (std::size_t i = 0; i < line.size();) {
-        if (codeCharacters[i]) {
+        if (scan.isTaken(i)) {
             ++i;
             continue;
         }
@@ -88,7 +87,7 @@ std::vector<Delimiter> findDelimiters(std::u16string_view line, const std::vecto
         if (i == std::u16string_view::npos) {
             break;
         }
-        if (codeCharacters[i]) {
+        if (scan.isTaken(i)) {
             ++i;
             continue;
         }
@@ -229,29 +228,12 @@ std::uint32_t contextFor(Span span, const std::vector<Span>& contexts) noexcept 
 
 class EmphasisElement final : public InlineElement {
 public:
-    [[nodiscard]] std::string_view id() const noexcept override { return "emphasis"; }
     [[nodiscard]] std::u16string_view triggerCharacters() const noexcept override { return u"*_~"; }
 
-    void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
+    void render(std::u16string_view line, const LineContext& context, const InlineScan& scan,
+                LineRender& out) const override {
         detail::InlineSteps steps;
-        std::vector<bool> codeCharacters(line.size(), false);
-        for (const auto& span : out.opaqueSpans) {
-            if (span.start < line.size()) {
-                const auto end = std::min<std::size_t>(span.end(), line.size());
-                steps.add(end - span.start);
-                std::fill(codeCharacters.begin() + static_cast<std::ptrdiff_t>(span.start),
-                          codeCharacters.begin() + static_cast<std::ptrdiff_t>(end), true);
-            }
-        }
-        for (const auto& h : out.hidden) {
-            if (h.span.start < line.size()) {
-                const auto end = std::min<std::size_t>(h.span.end(), line.size());
-                steps.add(end - h.span.start);
-                std::fill(codeCharacters.begin() + static_cast<std::ptrdiff_t>(h.span.start),
-                          codeCharacters.begin() + static_cast<std::ptrdiff_t>(end), true);
-            }
-        }
-        const auto delimiters = findDelimiters(line, codeCharacters, steps);
+        const auto delimiters = findDelimiters(line, scan, steps);
         if (delimiters.empty()) {
             return;
         }
@@ -325,7 +307,7 @@ public:
         }
 
         for (std::size_t i = 0; i < line.size();) {
-            while (i < line.size() && (styles[i] == InlineStyle::None || markerCharacters[i] || codeCharacters[i])) {
+            while (i < line.size() && (styles[i] == InlineStyle::None || markerCharacters[i] || scan.isTaken(i))) {
                 ++i;
             }
             const std::size_t start = i;
@@ -333,7 +315,7 @@ public:
                 break;
             }
             const auto style = styles[i];
-            while (i < line.size() && styles[i] == style && !markerCharacters[i] && !codeCharacters[i]) {
+            while (i < line.size() && styles[i] == style && !markerCharacters[i] && !scan.isTaken(i)) {
                 ++i;
             }
             out.inlineStyles.push_back(

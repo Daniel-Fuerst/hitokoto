@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "editor_widget.hpp"
 
+#include "editor_painters.hpp"
 #include "floating_toolbar.hpp"
+#include "hitokoto/core/table.hpp"
+#include "math_block_embedder.hpp"
 #include "properties_embedder.hpp"
 #include "qt_bridge.hpp"
 #include "settings_menu.hpp"
@@ -10,6 +13,7 @@
 #include "table_paste.hpp"
 #include "text_input.hpp"
 #include "theme_applier.hpp"
+#include "view_anchor.hpp"
 
 #include <QAction>
 #include <QApplication>
@@ -50,19 +54,6 @@
 
 namespace hitokoto::ui {
 
-namespace {
-
-void drawBox(QPainter& painter, const QRectF& rect, const core::CodeStyle& style) {
-    const qreal border = style.borderWidth;
-    painter.setPen(border > 0 ? QPen(toQColor(style.border), border) : QPen(Qt::NoPen));
-    painter.setBrush(toQColor(style.background));
-    const QRectF inner = rect.adjusted(border / 2, border / 2, -border / 2, -border / 2);
-    const qreal radius = std::max<qreal>(0, style.radius - border / 2);
-    painter.drawRoundedRect(inner, radius, radius);
-}
-
-}  // namespace
-
 EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* parent) : QTextEdit(parent) {
     // ADR 0003: our own layout on a plain document; QTextEdit connects to the layout of the
     // document it is given, so the layout is set first.
@@ -77,50 +68,11 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     styler_ = new BlockStyler(document(), registry, [this] { return visibleBlockRange(); }, this);
     tables_ = std::make_unique<TableEmbedder>(this, styler_, layout_);
     properties_ = std::make_unique<PropertiesEmbedder>(this, styler_, layout_);
-    connect(layout_, &BlockLayout::blockHeightChanged, this, &EditorWidget::keepContentStill);
-    connect(layout_, &BlockLayout::batchFinished, this, &EditorWidget::applyPendingShift);
-    // A scroll of the reader's lets go of the reading position held across resizes (S033); the
-    // scrolls of a resize or theme change and those that keep the content still do not. The view
-    // follows the caret while the caret is on screen after a scroll; one that leaves it off screen
-    // lets it go.
-    connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this] {
-        if (resizing_ || applyingShift_) {
-            return;
-        }
-        if (rangeClamps_) {
-            rangeClamps_ = false;  // the end of the document cut the value short, no scroll
-            return;
-        }
-        heldAnchor_ = {};
-        if (!followingCaret_ && !typing_ && followCaret_ && !caretOnScreen()) {
-            followCaret_ = false;
-        }
-    });
-    // A new scroll range that no longer holds the value clamps it right after this signal. While a
-    // reading position is held or the view follows the caret, that is no scroll of the reader's; the
-    // reading position is shown again once the range allows it.
-    connect(verticalScrollBar(), &QScrollBar::rangeChanged, this, [this](int min, int max) {
-        if (heldAnchor_.text.isNull() && !followCaret_) {
-            return;
-        }
-        const int value = verticalScrollBar()->value();
-        rangeClamps_ = value > max || value < min;
-        if (!resizing_ && !heldAnchor_.text.isNull()) {
-            QMetaObject::invokeMethod(this, &EditorWidget::settleAnchor, Qt::QueuedConnection);
-        }
-        scheduleCaretCheck();
-    });
-    // S033: a caret that moved, or text typed at it, is followed while blocks are laid out and
-    // restyled in idle slices; their heights change the place of the caret on screen.
-    connect(this, &QTextEdit::cursorPositionChanged, this, [this] {
-        // The caret is followed after typing and after a move of its own (keys, a click, the
-        // program placing it); not when an edit through another cursor carried it along off screen
-        // (opening a file, a program's insert).
-        followCaret_ = typing_ || !insideEdit_ || caretOnScreen();
-        scheduleCaretCheck();
-    });
-    connect(layout_, &BlockLayout::batchFinished, this, &EditorWidget::scheduleCaretCheck);
-    connect(layout_, &BlockLayout::documentSizeChanged, this, &EditorWidget::scheduleCaretCheck);
+    mathBlocks_ =
+        std::make_unique<MathBlockEmbedder>(document(), styler_, layout_, [this] { return visibleBlockRange(); });
+    // S033: the reading position across resizes and theme changes, the text on screen while
+    // blocks above it change height, and the caret on screen while it is followed.
+    view_ = new ViewAnchor(this, layout_, verticalScroller_, insideEdit_);
 
     setFrameShape(QFrame::NoFrame);
     setLineWrapMode(QTextEdit::WidgetWidth);
@@ -151,6 +103,12 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     connect(styler_, &BlockStyler::completed, properties_.get(), &PropertiesEmbedder::schedule);
     connect(layout_, &BlockLayout::documentSizeChanged, properties_.get(), &PropertiesEmbedder::reposition);
     connect(layout_, &BlockLayout::blocksGoneUnreported, properties_.get(), &PropertiesEmbedder::forgetAll);
+    // S047: display formulas follow the caret, the selection, edits and the styler.
+    connect(this, &QTextEdit::cursorPositionChanged, mathBlocks_.get(), &MathBlockEmbedder::scheduleRefresh);
+    connect(this, &QTextEdit::selectionChanged, mathBlocks_.get(), &MathBlockEmbedder::scheduleRefresh);
+    connect(document(), &QTextDocument::contentsChange, mathBlocks_.get(), &MathBlockEmbedder::scheduleRefresh);
+    connect(styler_, &BlockStyler::completed, mathBlocks_.get(), &MathBlockEmbedder::scheduleRefresh);
+    connect(layout_, &BlockLayout::blocksGoneUnreported, mathBlocks_.get(), &MathBlockEmbedder::forgetAll);
 
     // S026: floating toolbar on the right-hand side and its settings flyout.
     themeConfigDir_ = ThemeManager::defaultConfigDir();
@@ -163,6 +121,12 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
         activeThemePath_ = entry.builtinScheme.has_value() ? QString() : QFileInfo(entry.path).absoluteFilePath();
         emit themeEntrySelected(entry);
     });
+    // S043: the switch "Smooth scrolling" of the flyout; MainWindow saves the choice.
+    connect(settingsMenu_, &SettingsMenu::smoothScrollingToggled, this, [this](bool on) {
+        setSmoothScrolling(on);
+        emit smoothScrollingChosen(on);
+    });
+    settingsMenu_->setSmoothScrolling(smoothScrolling_);
     positionToolbar();
 }
 
@@ -172,6 +136,9 @@ void EditorWidget::setSmoothScrolling(bool on) {
     smoothScrolling_ = on;
     if (!smoothScrolling_) {
         verticalScroller_->stop();
+    }
+    if (settingsMenu_ != nullptr) {
+        settingsMenu_->setSmoothScrolling(on);
     }
 }
 
@@ -196,168 +163,13 @@ QTextBlock EditorWidget::firstVisibleBlock() const {
     return block.isValid() ? block : document()->lastBlock();
 }
 
-void EditorWidget::keepContentStill(qreal top, qreal oldHeight, qreal newHeight) {
-    // A block wholly above the viewport changed height (laid out lazily or restyled): scroll by
-    // the same amount so the text on screen does not move. Blocks on screen are left alone; they
-    // are what the reader sees. Inside a layout batch the scroll range is not updated yet; the
-    // shift is applied when the batch ends.
-    const QScrollBar* bar = verticalScrollBar();
-    const qreal visualBottom = oldHeight > 0 ? top + oldHeight : top + newHeight;
-    if (bar->value() <= 0 || visualBottom > bar->value() + 0.5) {
-        scheduleCaretCheck();  // a block on screen or below moves the caret, if it is below
-        return;
-    }
-    pendingShift_ += newHeight - oldHeight;
-    if (!layout_->inBatch()) {
-        applyPendingShift();
-    }
-}
-
-void EditorWidget::applyPendingShift() {
-    if (applyingShift_) {
-        return;  // scrolling restyles; a shift that causes reaches us again
-    }
-    const int shift = static_cast<int>(std::lround(pendingShift_));
-    pendingShift_ -= shift;  // keep the fraction: lazily laid-out blocks change by parts of a pixel
-    if (shift != 0) {
-        applyingShift_ = true;
-        QScrollBar* bar = verticalScrollBar();
-        bar->setMaximum(std::max(bar->maximum(), bar->value() + shift));
-        verticalScroller_->shift(shift);  // moves the bar, and a running wheel animation with it
-        applyingShift_ = false;
-    }
-}
-
-bool EditorWidget::caretOnScreen() const {
-    const QRect caret = cursorRect();
-    return caret.top() >= 0 && caret.bottom() <= viewport()->height();
-}
-
-void EditorWidget::scheduleCaretCheck() {
-    // Queued and once per turn of the event loop: heights change inside layout queries, often
-    // while painting, where the view must not scroll.
-    if (!followCaret_ || caretCheckQueued_) {
-        return;
-    }
-    caretCheckQueued_ = true;
-    QMetaObject::invokeMethod(
-        this,
-        [this] {
-            caretCheckQueued_ = false;
-            keepCaretOnScreen();
-        },
-        Qt::QueuedConnection);
-}
-
-void EditorWidget::keepCaretOnScreen() {
-    if (!followCaret_ || resizing_ || followingCaret_ || caretOnScreen()) {
-        return;
-    }
-    const QScopedValueRollback<bool> guard(followingCaret_, true);
-    ensureCursorVisible();
-}
-
-EditorWidget::ScrollAnchor EditorWidget::captureAnchor() const {
-    const qreal y = verticalScrollBar()->value();
-    if (y <= 0) {
-        return {};
-    }
-    // The text of the top line itself, not a share of a block's height: a block that shares its first
-    // line with the blocks before it has more or fewer lines at another width, and the same share
-    // would land on another of its lines (S033).
-    QTextBlock block = layout_->blockOfTextAt(y);
-    if (!block.isValid()) {
-        block = document()->lastBlock();
-    }
-    const QRectF rect = blockBoundingGeometry(block);  // lays the block out
-    const QTextLayout* text = block.layout();
-    if (layout_->reservedHeight(block) > 0 || text->lineCount() == 0) {
-        QTextCursor cursor(block);
-        return {cursor, y - rect.top()};
-    }
-    int index = 0;
-    while (index + 1 < text->lineCount() && text->lineAt(index + 1).y() <= y - rect.top()) {
-        ++index;
-    }
-    const qreal lineTop = rect.top() + text->lineAt(index).y();
-    // A first line that goes on in the line before: the line starts in an earlier block.
-    while (index == 0 && layout_->sharesLineWithPrevious(block) && block.previous().isValid() &&
-           block.previous().layout()->lineCount() > 0) {
-        block = block.previous();
-        index = block.layout()->lineCount() - 1;
-    }
-    QTextCursor cursor(block);
-    cursor.setPosition(block.position() + block.layout()->lineAt(index).textStart());
-    return {cursor, y - lineTop};
-}
-
-EditorWidget::ScrollAnchor EditorWidget::readingAnchor() {
-    if (heldAnchor_.text.isNull()) {
-        heldAnchor_ = captureAnchor();
-    }
-    return heldAnchor_;
-}
-
-int EditorWidget::anchorValue(const ScrollAnchor& anchor) const {
-    const QTextBlock block = anchor.text.block();
-    qreal top = blockBoundingGeometry(block).top();  // lays the block out
-    if (const QTextLayout* text = block.layout(); layout_->reservedHeight(block) <= 0 && text->lineCount() > 0) {
-        const QTextLine line = text->lineForTextPosition(anchor.text.positionInBlock());
-        if (line.isValid()) {
-            top += line.y();
-        }
-    }
-    return static_cast<int>(std::lround(top + anchor.offset));
-}
-
-void EditorWidget::restoreAnchor(const ScrollAnchor& anchor) {
-    // A new width or font re-estimates every block, so the same scroll value would show other
-    // text; scroll back to the line that was at the top.
-    if (anchor.text.isNull()) {
-        return;
-    }
-    pendingShift_ = 0;
-    // Laying blocks out changes heights that the scroll range takes in only once the event loop
-    // runs, and scrolling lays out the blocks that come into view: near the end of the document
-    // either can cut the value short while the estimates below are still too small. Set it again
-    // once the blocks on screen have their lines; the range follows the document size later.
-    // A range that does not scroll stays as it is: the document fits the view. A larger range
-    // would show the scroll bar; the narrower text column gives the document its own range again,
-    // which hides the scroll bar at once, and the restore of that resize would make the range
-    // larger again, without end. Should the laid-out document not fit after all, its range comes
-    // with the next size report, and settleAnchor shows the reading position then.
-    QScrollBar* bar = verticalScrollBar();
-    for (int pass = 0; pass < 2; ++pass) {
-        const int value = anchorValue(anchor);
-        if (bar->maximum() > bar->minimum()) {
-            bar->setMaximum(std::max(bar->maximum(), value));
-        }
-        bar->setValue(value);
-        if (bar->value() == value) {
-            break;
-        }
-    }
-}
-
-void EditorWidget::settleAnchor() {
-    // Heights above the reading position can still change after it was restored, and the end of the
-    // document can cut the value short until the blocks below are laid out (S033). While the reader
-    // has not scrolled, show the reading position again, as far as the scroll range allows.
-    if (heldAnchor_.text.isNull() || resizing_ || settlePasses_ >= kMaxSettlePasses) {
-        return;
-    }
-    const QScopedValueRollback<bool> guard(resizing_, true);
-    const int value = anchorValue(heldAnchor_);
-    if (value != verticalScrollBar()->value()) {
-        ++settlePasses_;
-        pendingShift_ = 0;
-        verticalScrollBar()->setValue(value);
-    }
+quint64 EditorWidget::anchorRestores() const noexcept {
+    return view_->restores();
 }
 
 void EditorWidget::applyTheme(const core::Theme& theme) {
-    const QScopedValueRollback<bool> guard(resizing_, true);
-    const ScrollAnchor anchor = readingAnchor();
+    const ViewAnchor::Reshape reshape(*view_);
+    const ViewAnchor::ScrollAnchor anchor = view_->readingAnchor();
     EditorFormats formats(theme);
     // Changing fonts and margins marks the document as modified in Qt; a theme is not an edit.
     const bool wasModified = document()->isModified();
@@ -369,6 +181,7 @@ void EditorWidget::applyTheme(const core::Theme& theme) {
     updateMargins();
     styler_->setFormats(formats);
     tables_->setFormats(&styler_->formats());
+    mathBlocks_->setFormats(&styler_->formats());
     tables_->setAvailableWidth(availableTableWidth());
     properties_->setAvailableWidth(availableTableWidth());
     properties_->setLook(styler_->formats().properties(), styler_->formats().propertiesFont(),
@@ -383,13 +196,9 @@ void EditorWidget::applyTheme(const core::Theme& theme) {
     if (!wasModified) {
         document()->setModified(false);
     }
-    if (!anchor.text.isNull()) {
-        ++anchorRestores_;
-    }
-    settlePasses_ = 0;
-    restoreAnchor(anchor);
+    view_->restore(anchor);
     viewport()->update();
-    QMetaObject::invokeMethod(this, &EditorWidget::settleAnchor, Qt::QueuedConnection);
+    view_->settleLater();
 }
 
 int EditorWidget::availableTableWidth() const {
@@ -525,30 +334,27 @@ void EditorWidget::refreshAvailableThemes() {
 }
 
 void EditorWidget::resizeEvent(QResizeEvent* event) {
-    if (resizing_) {
+    if (view_->reshaping()) {
         QTextEdit::resizeEvent(event);
         return;
     }
-    const QScopedValueRollback<bool> guard(resizing_, true);
+    const ViewAnchor::Reshape reshape(*view_);
     verticalScroller_->stop();
-    const ScrollAnchor anchor = readingAnchor();
+    const ViewAnchor::ScrollAnchor anchor = view_->readingAnchor();
     updateMargins();
     QTextEdit::resizeEvent(event);
     positionToolbar();
     tables_->setAvailableWidth(availableTableWidth());
     properties_->setAvailableWidth(availableTableWidth());
-    if (!anchor.text.isNull()) {
-        ++anchorRestores_;
-    }
-    settlePasses_ = 0;
-    restoreAnchor(anchor);
+    view_->restore(anchor);
     styler_->styleVisible();
     // The widgets follow at once; finding tables waits for the event loop, so it never runs in
     // the middle of a document change (opening a file scrolls while it replaces the text).
     tables_->reposition();
     properties_->reposition();
     tables_->scheduleRefresh();
-    QMetaObject::invokeMethod(this, &EditorWidget::settleAnchor, Qt::QueuedConnection);
+    mathBlocks_->scheduleRefresh();
+    view_->settleLater();
 }
 
 void EditorWidget::scrollContentsBy(int dx, int dy) {
@@ -557,6 +363,7 @@ void EditorWidget::scrollContentsBy(int dx, int dy) {
     tables_->reposition();
     properties_->reposition();
     tables_->scheduleRefresh();
+    mathBlocks_->scheduleRefresh();
 }
 
 namespace {
@@ -578,6 +385,11 @@ void EditorWidget::paintEvent(QPaintEvent* event) {
 }
 
 void EditorWidget::mouseReleaseEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton && propertiesClickHeld_) {
+        propertiesClickHeld_ = false;
+        event->accept();
+        return;
+    }
     QTextEdit::mouseReleaseEvent(event);
     if (event->button() == Qt::LeftButton) {
         properties_->setMouseHeld(false);  // S024 review O6: the block may switch now
@@ -588,6 +400,11 @@ void EditorWidget::mousePressEvent(QMouseEvent* event) {
     verticalScroller_->stop();
     const QTextCursor hit = cursorForPosition(event->position().toPoint());
     const QTextBlock block = hit.block();
+    if (event->button() == Qt::LeftButton && properties_->handleEditorClick(block.blockNumber())) {
+        propertiesClickHeld_ = true;
+        event->accept();
+        return;
+    }
     const bool wasConcealed = block.isValid() && !styler_->isRevealed(block.blockNumber());
 
     if (event->button() == Qt::LeftButton) {
@@ -633,6 +450,10 @@ void EditorWidget::mousePressEvent(QMouseEvent* event) {
 }
 
 void EditorWidget::mouseMoveEvent(QMouseEvent* event) {
+    if (propertiesClickHeld_) {
+        event->accept();
+        return;
+    }
     const QTextCursor hit = cursorForPosition(event->position().toPoint());
     const QTextBlock block = hit.block();
     const bool isConcealed = block.isValid() && !styler_->isRevealed(block.blockNumber());
@@ -704,6 +525,15 @@ bool EditorWidget::viewportEvent(QEvent* event) {
             QToolTip::showText(help->globalPos(), fmt.toolTip(), viewport());
             return true;
         }
+        // S047: the reason a display block is not typeset, over its lines.
+        const int hovered = cursorForPosition(help->pos()).blockNumber();
+        for (const MathBlockEmbedder::Failed& f : mathBlocks_->failed()) {
+            if (hovered >= f.open && hovered <= f.last) {
+                QToolTip::showText(help->globalPos(), Qt::convertFromPlainText(QString::fromStdString(f.reason)),
+                                   viewport());
+                return true;
+            }
+        }
         QToolTip::hideText();
     }
     return QTextEdit::viewportEvent(event);
@@ -767,7 +597,7 @@ void EditorWidget::keyPressEvent(QKeyEvent* event) {
 void EditorWidget::pressKey(QKeyEvent* event) {
     // Qt scrolls to the caret of a key from layouts that the edit has not updated yet; that is no
     // scroll of the reader's, and the caret is followed further (S033).
-    const QScopedValueRollback<bool> input(typing_, true);
+    const ViewAnchor::Input input(*view_);
     verticalScroller_->stop();
     if (event->key() == Qt::Key_Escape && settingsMenu_->isVisible()) {
         setSettingsMenuOpen(false);
@@ -777,7 +607,7 @@ void EditorWidget::pressKey(QKeyEvent* event) {
     if (tables_->handleEditorKey(event) || properties_->handleEditorKey(event)) {
         return;
     }
-    if (handleBulletKey(event)) {
+    if (handleBulletKey(event) || handleMathBlockKey(event)) {
         return;
     }
     const TableEmbedder::Typing typing(tables_.get());
@@ -790,12 +620,12 @@ void EditorWidget::pressKey(QKeyEvent* event) {
 }
 
 void EditorWidget::undoEdit() {
-    const QScopedValueRollback<bool> input(typing_, true);
+    const ViewAnchor::Input input(*view_);
     undo();
 }
 
 void EditorWidget::redoEdit() {
-    const QScopedValueRollback<bool> input(typing_, true);
+    const ViewAnchor::Input input(*view_);
     redo();
 }
 
@@ -803,7 +633,7 @@ void EditorWidget::inputMethodEvent(QInputMethodEvent* event) {
     // The committed text enters as insertableText makes it (S004, rework of 2026-11-21).
     const auto insertable = insertableInput(*event);
     QInputMethodEvent* input = insertable ? insertable.get() : event;
-    const QScopedValueRollback<bool> inputScope(typing_, true);
+    const ViewAnchor::Input inputScope(*view_);
     const TableEmbedder::Typing typing(tables_.get());
     if (!input->commitString().isEmpty()) {
         tables_->beforeWritingBelow();
@@ -813,7 +643,7 @@ void EditorWidget::inputMethodEvent(QInputMethodEvent* event) {
 }
 
 void EditorWidget::insertFromMimeData(const QMimeData* source) {
-    const QScopedValueRollback<bool> input(typing_, true);
+    const ViewAnchor::Input input(*view_);
     if (!plainPaste_ && pasteTables(source)) {
         return;
     }
@@ -1099,13 +929,13 @@ void EditorWidget::paintCodeBlockPanels() {
             continue;
         }
         if (inPanel) {
-            drawBox(painter, panel.adjusted(-padding, 0, padding, 0), block);
+            drawCodeBox(painter, panel.adjusted(-padding, 0, padding, 0), block);
             inPanel = false;
         }
         paintInlineCodeBoxes(painter, b, render, rect.topLeft(), inlineCode);
     }
     if (inPanel) {
-        drawBox(painter, panel.adjusted(-padding, 0, padding, 0), block);
+        drawCodeBox(painter, panel.adjusted(-padding, 0, padding, 0), block);
     }
 
     if (!badges.empty()) {
@@ -1143,7 +973,6 @@ void EditorWidget::setFrontMatterAsProperties(bool on) {
 
 void EditorWidget::setFindHold(int first, int last, bool untilCaretLeaves) {
     tables_->setFindHold(first, last, untilCaretLeaves);
-    properties_->setFindHold(untilCaretLeaves ? -1 : first, last);  // after Escape the caret holds the YAML
 }
 
 void EditorWidget::showPosition(int position) {
@@ -1244,52 +1073,6 @@ void EditorWidget::insertInlineCode() {
     setFocus();
 }
 
-void EditorWidget::paintInlineCodeBoxes(QPainter& painter, const QTextBlock& block, const core::LineRender& render,
-                                        QPointF origin, const core::CodeStyle& style) {
-    const QTextLayout* layout = block.layout();
-    origin += layout->position();
-    for (const auto& run : render.runs) {
-        if (run.role != core::Role::InlineCode) {
-            continue;
-        }
-        // The box covers the backticks around the code (the concealed ones reserve the padding).
-        const int from = static_cast<int>(run.span.start) - 1;
-        const int to = static_cast<int>(run.span.end()) + 1;
-        for (int i = 0; i < layout->lineCount(); ++i) {
-            const QTextLine line = layout->lineAt(i);
-            const int a = std::max(from, line.textStart());
-            const int z = std::min(to, line.textStart() + line.textLength());
-            if (a >= z) {
-                continue;
-            }
-            const qreal x1 = line.cursorToX(a);
-            const qreal x2 = line.cursorToX(z);
-            drawBox(painter, QRectF(origin.x() + x1, origin.y() + line.y(), x2 - x1, line.height()), style);
-        }
-    }
-}
-
-void EditorWidget::paintThematicBreak(QPainter& painter, const QTextBlock& block, const QRectF& rect) {
-    // S023: a concealed break is a line across the text column, centred vertically in its block
-    // (margins included), max(1, round(border-width x device pixel ratio)) device pixels thick and
-    // on whole device pixel rows, so it stays crisp at fractional scaling.
-    const core::ThematicBreakStyle& style = styler_->formats().thematicBreak();
-    const QTextLayout* layout = block.layout();
-    if (style.borderWidth <= 0 || style.border.a == 0 || layout == nullptr || layout->lineCount() == 0) {
-        return;
-    }
-    const qreal dpr = viewport()->devicePixelRatioF();
-    const int thickness = std::max(1, static_cast<int>(std::lround(style.borderWidth * dpr)));
-    const QTextLine line = layout->lineAt(0);
-    const qreal left = rect.left() + layout->position().x() + line.x();
-    const qreal right = std::min(left + line.width(), static_cast<qreal>(viewport()->width()));
-    const int top = static_cast<int>(std::lround(rect.center().y() * dpr - thickness / 2.0));
-    const bool antialiased = painter.testRenderHint(QPainter::Antialiasing);
-    painter.setRenderHint(QPainter::Antialiasing, false);
-    painter.fillRect(QRectF(left, top / dpr, right - left, thickness / dpr), toQColor(style.border));
-    painter.setRenderHint(QPainter::Antialiasing, antialiased);
-}
-
 void EditorWidget::paintDecorations() {
     QPainter painter(viewport());
     painter.setRenderHint(QPainter::Antialiasing);
@@ -1298,6 +1081,9 @@ void EditorWidget::paintDecorations() {
     const qreal radius = std::max<qreal>(1.5, metrics.xHeight() * 0.32);
     const QPointF offset = contentOffset();
     const qreal bottom = viewport()->height();
+    std::vector<FormulaHighlight> formulaHighlights;  // made once per paint, when a formula is on screen
+    bool highlightsMade = false;
+    paintDisplayFormulas(painter, offset, bottom);
 
     for (QTextBlock block = firstVisibleBlock(); block.isValid(); block = block.next()) {
         const QRectF rect = blockBoundingGeometry(block).translated(offset);
@@ -1311,34 +1097,94 @@ void EditorWidget::paintDecorations() {
         if (styler_->isRevealed(block.blockNumber())) {
             continue;
         }
+        if (!render.math.empty()) {
+            if (!highlightsMade) {
+                formulaHighlights = formulaHighlightRanges();
+                highlightsMade = true;
+            }
+            paintFormulas(painter, block, rect, render, styler_->formats(), formulaHighlights);
+        }
         if (render.thematicBreak) {
-            paintThematicBreak(painter, block, rect);
+            paintThematicBreak(painter, block, rect, styler_->formats().thematicBreak(),
+                               viewport()->devicePixelRatioF(), static_cast<qreal>(viewport()->width()));
         }
         if (render.decorations.empty()) {
             continue;
         }
-        const QTextLayout* layout = block.layout();
-        for (const auto& d : render.decorations) {
-            const int column = static_cast<int>(d.column);
-            const QTextLine line = layout->lineForTextPosition(column);
-            if (!line.isValid()) {
-                continue;
-            }
-            const qreal x1 = line.cursorToX(column);
-            const qreal x2 = line.cursorToX(column + 1);
-            const QPointF centre(
-                rect.left() + layout->position().x() + (x1 + x2) / 2.0,
-                rect.top() + layout->position().y() + line.y() + line.ascent() - metrics.xHeight() / 2.0);
-            if (d.depth % 2 == 0) {
-                painter.setPen(Qt::NoPen);
-                painter.setBrush(color);
-            } else {
-                painter.setPen(QPen(color, std::max<qreal>(1.0, radius / 2.5)));
-                painter.setBrush(Qt::NoBrush);
-            }
-            painter.drawEllipse(centre, radius, radius);
+        paintBullets(painter, block, rect, render, color, metrics, radius);
+    }
+}
+
+void EditorWidget::paintDisplayFormulas(QPainter& painter, QPointF offset, qreal bottom) {
+    // S047: each typeset block's panel on its opening line, which reserves its height; a block that
+    // could not be laid out gets a bar in math.error beside its source.
+    const EditorFormats& formats = styler_->formats();
+    for (const MathBlockEmbedder::Typeset& t : mathBlocks_->typeset()) {
+        const QTextBlock block = document()->findBlockByNumber(t.open);
+        if (!block.isValid() || layout_->reservedHeight(block) <= 0 || !mathBlocks_->claims(block)) {
+            continue;
+        }
+        const QRectF rect = blockBoundingGeometry(block).translated(offset);
+        if (rect.bottom() < 0 || rect.top() > bottom) {
+            continue;
+        }
+        paintDisplayFormula(painter, rect, *formats.mathLayout(t.source, 0, true), formats.math());
+    }
+    for (const MathBlockEmbedder::Failed& f : mathBlocks_->failed()) {
+        const QTextBlock first = document()->findBlockByNumber(f.open);
+        const QTextBlock last = document()->findBlockByNumber(f.last);
+        if (!first.isValid() || !last.isValid()) {
+            continue;
+        }
+        const QRectF top = blockBoundingGeometry(first).translated(offset);
+        const QRectF end = blockBoundingGeometry(last).translated(offset);
+        if (end.bottom() < 0 || top.top() > bottom) {
+            continue;
+        }
+        paintFormulaErrorBar(painter, QRectF(top.topLeft(), end.bottomRight()), formats.math());
+    }
+}
+
+std::vector<FormulaHighlight> EditorWidget::formulaHighlightRanges() const {
+    // S046, decision 6: the find highlights, then the selection on top.
+    std::vector<FormulaHighlight> out;
+    for (const QTextEdit::ExtraSelection& s : extraSelections()) {
+        if (s.cursor.hasSelection() && s.format.hasProperty(QTextFormat::BackgroundBrush)) {
+            out.push_back({s.cursor.selectionStart(), s.cursor.selectionEnd(), s.format.background(), std::nullopt});
         }
     }
+    const QTextCursor cursor = textCursor();
+    if (cursor.hasSelection()) {
+        out.push_back({cursor.selectionStart(), cursor.selectionEnd(), palette().brush(QPalette::Highlight),
+                       palette().color(QPalette::HighlightedText)});
+    }
+    return out;
+}
+
+bool EditorWidget::handleMathBlockKey(QKeyEvent* event) {
+    // Qt's visual navigation moves a caret that lands on a hidden line to the start of a hidden
+    // neighbour, so Left from the line below a typeset block put it at the start of the formula
+    // line instead of the end of the closing `$$` (S009 extended for S047). The move is made
+    // without visual navigation; the caret in the block then reveals its source.
+    const bool select =
+        event->matches(QKeySequence::SelectPreviousChar) || event->matches(QKeySequence::SelectPreviousWord);
+    const bool word =
+        event->matches(QKeySequence::MoveToPreviousWord) || event->matches(QKeySequence::SelectPreviousWord);
+    if (!select && !word && !event->matches(QKeySequence::MoveToPreviousChar)) {
+        return false;
+    }
+    QTextCursor cursor = textCursor();
+    const QTextBlock above = cursor.block().previous();
+    if (!cursor.atBlockStart() || (cursor.hasSelection() && !select) || !above.isValid() || above.isVisible() ||
+        !mathBlocks_->claims(above)) {
+        return false;
+    }
+    cursor.setVisualNavigation(false);
+    cursor.movePosition(word ? QTextCursor::PreviousWord : QTextCursor::PreviousCharacter,
+                        select ? QTextCursor::KeepAnchor : QTextCursor::MoveAnchor);
+    setTextCursor(cursor);
+    event->accept();
+    return true;
 }
 
 bool EditorWidget::handleBulletKey(QKeyEvent* event) {
@@ -1357,138 +1203,13 @@ bool EditorWidget::handleBulletKey(QKeyEvent* event) {
     }
 
     QTextCursor cursor = textCursor();
-    if (isEnter) {
-        return handleBulletEnter(cursor);
-    }
-    return handleBulletTab(cursor, isBacktab);
-}
-
-bool EditorWidget::handleBulletEnter(QTextCursor& cursor) {
-    QTextBlock block = cursor.block();
-    const auto info = core::parseBulletLine(view(block.text()));
-    if (!info.has_value() || styler_->renderFor(block).codeBlock) {
+    const ListEditing::Outcome outcome = isEnter ? list_.enter(cursor) : list_.tab(cursor, isBacktab);
+    if (outcome == ListEditing::Outcome::None) {
         return false;
     }
-
-    if (cursor.hasSelection()) {
-        cursor.removeSelectedText();
-        block = cursor.block();
-    }
-
-    const int posInBlock = cursor.positionInBlock();
-
-    if (info->isEmpty) {
-        cursor.beginEditBlock();
-        cursor.movePosition(QTextCursor::StartOfBlock);
-        cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
-        if (info->markerChar > 0) {
-            const QString outdented = toQString(core::outdentBulletLine(view(block.text())));
-            cursor.insertText(outdented);
-        } else {
-            cursor.removeSelectedText();
-        }
-        cursor.endEditBlock();
+    if (outcome == ListEditing::Outcome::CaretPlaced) {
         setTextCursor(cursor);
-        ensureCursorVisible();
-        return true;
     }
-
-    if (posInBlock >= static_cast<int>(info->prefixLength)) {
-        cursor.beginEditBlock();
-        const QString prefix = block.text().left(static_cast<qsizetype>(info->prefixLength));
-        cursor.insertText(QLatin1Char('\n') + prefix);
-        cursor.endEditBlock();
-        setTextCursor(cursor);
-        ensureCursorVisible();
-        return true;
-    }
-
-    return false;
-}
-
-bool EditorWidget::handleBulletTab(QTextCursor& cursor, bool outdent) {
-    const int startPos = cursor.selectionStart();
-    const int endPos = cursor.selectionEnd();
-    QTextBlock startBlock = document()->findBlock(startPos);
-    QTextBlock endBlock = document()->findBlock(endPos);
-    if (endPos > startPos && endBlock.position() == endPos) {
-        endBlock = endBlock.previous();
-    }
-
-    if (!startBlock.isValid() || !endBlock.isValid()) {
-        return false;
-    }
-
-    if (startBlock == endBlock) {
-        const auto info = core::parseBulletLine(view(startBlock.text()));
-        if (!info.has_value() || styler_->renderFor(startBlock).codeBlock) {
-            return false;
-        }
-
-        cursor.beginEditBlock();
-        const int oldPos = cursor.position();
-        const int blockPos = startBlock.position();
-        if (!outdent) {
-            QTextCursor lineStart(startBlock);
-            lineStart.insertText(QStringLiteral("  "));
-            cursor.setPosition(oldPos + 2);
-        } else {
-            const QString text = startBlock.text();
-            int toRemove = 0;
-            if (text.startsWith(QStringLiteral("  "))) {
-                toRemove = 2;
-            } else if (text.startsWith(QLatin1Char(' ')) || text.startsWith(QLatin1Char('\t'))) {
-                toRemove = 1;
-            }
-            if (toRemove > 0) {
-                QTextCursor remover(startBlock);
-                remover.setPosition(blockPos + toRemove, QTextCursor::KeepAnchor);
-                remover.removeSelectedText();
-                cursor.setPosition(std::max(blockPos, oldPos - toRemove));
-            }
-        }
-        cursor.endEditBlock();
-        setTextCursor(cursor);
-        ensureCursorVisible();
-        return true;
-    }
-
-    bool anyBullet = false;
-    for (QTextBlock b = startBlock; b.isValid() && b.blockNumber() <= endBlock.blockNumber(); b = b.next()) {
-        if (core::parseBulletLine(view(b.text())).has_value() && !styler_->renderFor(b).codeBlock) {
-            anyBullet = true;
-            break;
-        }
-    }
-    if (!anyBullet) {
-        return false;
-    }
-
-    cursor.beginEditBlock();
-    for (QTextBlock b = startBlock; b.isValid() && b.blockNumber() <= endBlock.blockNumber(); b = b.next()) {
-        if (!core::parseBulletLine(view(b.text())).has_value() || styler_->renderFor(b).codeBlock) {
-            continue;
-        }
-        const int blockPos = b.position();
-        if (!outdent) {
-            QTextCursor lineStart(b);
-            lineStart.insertText(QStringLiteral("  "));
-        } else {
-            const QString text = b.text();
-            int toRemove = 0;
-            if (text.startsWith(QStringLiteral("  "))) {
-                toRemove = 2;
-            } else if (text.startsWith(QLatin1Char(' ')) || text.startsWith(QLatin1Char('\t'))) {
-                toRemove = 1;
-            }
-            if (toRemove > 0) {
-                QTextCursor remover(b);
-                remover.setPosition(blockPos + toRemove, QTextCursor::KeepAnchor);
-                remover.removeSelectedText();
-            }
-        }
-    }
-    cursor.endEditBlock();
     ensureCursorVisible();
     return true;
 }

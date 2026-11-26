@@ -27,17 +27,7 @@ using namespace hitokoto;
 
 namespace {
 
-QColor qcolor(const core::Color& c) {
-    return {c.r, c.g, c.b, c.a};
-}
-
-std::vector<std::u16string> linesOf(const QTextDocument* doc) {
-    std::vector<std::u16string> lines;
-    for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
-        lines.push_back(b.text().toStdU16String());
-    }
-    return lines;
-}
+using test::qcolor;
 
 int laidOutBlocks(const QTextDocument* doc) {
     int count = 0;
@@ -47,35 +37,7 @@ int laidOutBlocks(const QTextDocument* doc) {
     return count;
 }
 
-QString differenceFromTheReference(ui::EditorWidget* editor) {
-    const auto* doc = editor->document();
-    const QTextCursor cursor = editor->textCursor();
-    const int anchor = doc->findBlock(cursor.anchor()).blockNumber();
-    const auto reference =
-        test::registry().renderDocument(linesOf(doc), core::revealedLines(anchor, cursor.blockNumber()));
-    auto& styler = editor->styler();
-    for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
-        auto got = styler.renderFor(b);
-        auto want = reference.at(static_cast<std::size_t>(b.blockNumber()));
-        if (!got.table && b.layout()->formats() != styler.formats().ranges(got)) {
-            return QStringLiteral("line %1 \"%2\" is formatted for another render").arg(b.blockNumber()).arg(b.text());
-        }
-        got.blockState = {};
-        want.blockState = {};
-        if (!(got == want)) {
-            return QStringLiteral("line %1 \"%2\" differs (flows %3/%4, hardBreak %5/%6, wrapIndent %7/%8)")
-                .arg(b.blockNumber())
-                .arg(b.text())
-                .arg(got.flowsToNext)
-                .arg(want.flowsToNext)
-                .arg(got.hardBreak)
-                .arg(want.hardBreak)
-                .arg(got.wrapIndent)
-                .arg(want.wrapIndent);
-        }
-    }
-    return {};
-}
+using test::differenceFromTheReference;
 
 /// Counts the resize events a widget receives itself (not those of its viewport).
 class ResizeCounter : public QObject {

@@ -4,6 +4,7 @@
 #include "qt_bridge.hpp"
 
 #include <QFontDatabase>
+#include <QFontInfo>
 #include <QFontMetricsF>
 #include <QTextDocument>
 
@@ -57,6 +58,17 @@ std::optional<core::Span> bulletSpaceSpan(const core::LineRender& render) {
     return std::nullopt;
 }
 
+/// The item of `items` (sorted, not overlapping, each with a `span`) that covers [start, end), if
+/// any; `index` walks along with the pieces of a line, so a line is walked once.
+template <class Item>
+const Item* covering(const std::vector<Item>& items, std::size_t& index, std::uint32_t start, std::uint32_t end) {
+    while (index < items.size() && items[index].span.end() <= start) {
+        ++index;
+    }
+    return index < items.size() && items[index].span.start <= start && items[index].span.end() >= end ? &items[index]
+                                                                                                      : nullptr;
+}
+
 QTextCharFormat zeroWidthFormat(const QTextCharFormat& base, QStringView text) {
     QTextCharFormat format = base;
     format.setForeground(Qt::transparent);  // theme-lint: allow
@@ -84,6 +96,7 @@ EditorFormats::EditorFormats(const core::Theme& theme)
       table_(core::tableStyle(theme)),
       escape_(core::escapeStyle(theme)),
       link_(core::linkStyle(theme)),
+      math_(core::mathStyle(theme)),
       thematicBreak_(core::thematicBreakStyle(theme)),
       properties_(core::propertiesStyle(theme)),
       codeBlockFamilies_(codeFamilies(codeBlock_.fontFamily)),
@@ -93,6 +106,15 @@ EditorFormats::EditorFormats(const core::Theme& theme)
         baseFont_.setFamilies({QString::fromStdString(theme.editorFontFamily)});
     }
     baseFont_.setPointSizeF(theme.editorFontSize);
+    {
+        // Pixels per point as Qt lays out fonts on this screen: a 72 pt font is that many pixels.
+        QFont probe = baseFont_;
+        probe.setPointSizeF(72);  // theme-lint: allow (a measurement, not a style)
+        pointToPixel_ = QFontInfo(probe).pixelSize() / 72.0;
+        if (pointToPixel_ <= 0) {
+            pointToPixel_ = 1;
+        }
+    }
     const QFontMetricsF metrics(baseFont_);
     bulletSpacing_ = std::max<double>(3.0, std::round(metrics.horizontalAdvance(QLatin1Char(' ')) * 0.75));
     for (int level = 1; level <= 6; ++level) {
@@ -101,23 +123,20 @@ EditorFormats::EditorFormats(const core::Theme& theme)
         f.setFontWeight(theme.headingWeight);
         heading_[static_cast<std::size_t>(level)] = f;
     }
+    // The formats of the most common pieces, which formatFor() and the shortcuts of rangesOf() hand
+    // out without composing them again: composed here once per theme, so they cannot differ.
+    const core::HiddenRange keep{{0, 1}, core::HideMode::KeepSpace};
+    const core::HiddenRange collapse{{0, 1}, core::HideMode::Collapse};
+    const core::InlineStyleRun italic{{0, 1}, core::InlineStyle::Italic};
+    core::LineRender line;
     for (std::size_t level = 0; level <= 6; ++level) {
-        QTextCharFormat ks = heading_[level];
-        ks.setForeground(Qt::transparent);  // theme-lint: allow
-        keepSpace_[level] = ks;
-        QTextCharFormat col = ks;
-        col.clearProperty(QTextFormat::FontPointSize);
-        col.setProperty(QTextFormat::FontPixelSize, 1);
-        collapse_[level] = col;
+        line.headingLevel = static_cast<std::uint8_t>(level);
+        keepSpace_[level] = composedFormat(line, Piece{.hidden = &keep}, {});
+        collapse_[level] = composedFormat(line, Piece{.hidden = &collapse}, {});
     }
-    bulletSpace_ = heading_[0];
-    bulletSpace_.setFontLetterSpacingType(QFont::AbsoluteSpacing);
-    bulletSpace_.setFontLetterSpacing(bulletSpacing_);
-    italic0_ = heading_[0];
-    italic0_.setFontItalic(true);
-    if (emphasis_.italicText) {
-        italic0_.setForeground(toQColor(*emphasis_.italicText));
-    }
+    line.headingLevel = 0;
+    bulletSpace_ = composedFormat(line, Piece{.bulletSpace = true}, {});
+    italic0_ = composedFormat(line, Piece{.inlineRun = &italic}, {});
 }
 
 QFont EditorFormats::badgeFont() const {
@@ -156,221 +175,403 @@ QTextCharFormat EditorFormats::heading(int level) const {
 }
 
 QList<QTextLayout::FormatRange> EditorFormats::ranges(const core::LineRender& render, QStringView text) const {
-    if (render.headingLevel == 0 && !render.codeBlock && render.runs.empty() && render.inlineStyles.empty() &&
-        render.hidden.empty() && render.links.empty() && render.wrapIndent == 0) {
-        return {};
-    }
-    if (render.headingLevel == 0 && !render.codeBlock && render.runs.empty() && render.inlineStyles.empty() &&
-        render.links.empty() && render.hidden.size() == 1 && render.decorations.size() == 1 &&
-        render.decorations[0].kind == core::DecorationKind::Bullet &&
-        render.hidden[0].mode == core::HideMode::KeepSpace &&
-        render.hidden[0].span == (core::Span{render.decorations[0].column, 1})) {
-        const auto col = render.decorations[0].column;
-        if (render.wrapIndent > col + 1) {
-            return {{static_cast<int>(col), 1, keepSpace_[0]}, {static_cast<int>(col + 1), 1, bulletSpace_}};
+    return rangesOf(render, text, true);
+}
+
+QList<QTextLayout::FormatRange> EditorFormats::rangesWithoutShortcuts(const core::LineRender& render,
+                                                                      QStringView text) const {
+    return rangesOf(render, text, false);
+}
+
+QList<QTextLayout::FormatRange> EditorFormats::rangesOf(const core::LineRender& render, QStringView text,
+                                                        bool shortcuts) const {
+    if (shortcuts) {
+        if (auto whole = wholeLineShortcut(render)) {
+            return *std::move(whole);
         }
-        return {{static_cast<int>(col), 1, keepSpace_[0]}};
     }
-    if (!render.codeBlock && render.inlineStyles.empty() && render.links.empty() && render.wrapIndent == 0 &&
-        render.hidden.size() == 1 && render.runs.size() == 1 && render.runs[0].role == core::Role::HeadingText &&
-        render.hidden[0].span.end() == render.runs[0].span.start) {
-        const int lvl = render.runs[0].level != 0 ? render.runs[0].level : render.headingLevel;
-        const auto idx = static_cast<std::size_t>(lvl >= 1 && lvl <= 6 ? lvl : 0);
-        const QTextCharFormat& hfmt =
-            render.hidden[0].mode == core::HideMode::KeepSpace ? keepSpace_[idx] : collapse_[idx];
-        return {
-            {static_cast<int>(render.hidden[0].span.start), static_cast<int>(render.hidden[0].span.length), hfmt},
-            {static_cast<int>(render.runs[0].span.start), static_cast<int>(render.runs[0].span.length), heading(lvl)}};
-    }
-    QList<QTextLayout::FormatRange> out;
-    const QTextCharFormat lineFormat = heading(render.headingLevel);
+    // The general path: the line is cut at every boundary of a run, inline style, hidden range,
+    // link and bullet space, and each piece takes the format of what covers it.
     auto& boundaries = boundaries_;
     boundaries.clear();
-    for (const auto& run : render.runs) {
-        boundaries.push_back(run.span.start);
-        boundaries.push_back(run.span.end());
-    }
-    for (const auto& run : render.inlineStyles) {
-        boundaries.push_back(run.span.start);
-        boundaries.push_back(run.span.end());
-    }
-    for (const auto& hidden : render.hidden) {
-        boundaries.push_back(hidden.span.start);
-        boundaries.push_back(hidden.span.end());
-    }
-    for (const auto& link : render.links) {
-        boundaries.push_back(link.span.start);
-        boundaries.push_back(link.span.end());
+    const auto addSpans = [&boundaries](const auto& items) {
+        for (const auto& item : items) {
+            boundaries.push_back(item.span.start);
+            boundaries.push_back(item.span.end());
+        }
+    };
+    addSpans(render.runs);
+    addSpans(render.inlineStyles);
+    addSpans(render.hidden);
+    addSpans(render.links);
+    // S046: the source of a typeset formula is cut after its first character, which reserves the
+    // formula's width; a character outside the BMP stays whole (S044 code review O4).
+    formulas_.clear();
+    for (const core::MathSpan& m : render.math) {
+        if (!typeset(render, m) || text.size() < static_cast<qsizetype>(m.source.end()) || m.source.length == 0) {
+            continue;
+        }
+        const QStringView source = text.sliced(m.source.start, m.source.length);
+        const std::u16string_view view(reinterpret_cast<const char16_t*>(source.utf16()),
+                                       static_cast<std::size_t>(source.size()));
+        formulas_.push_back({m.source, mathLayout(view, render.headingLevel, m.display), source});
+        boundaries.push_back(m.source.start);
+        boundaries.push_back(m.source.start + static_cast<std::uint32_t>(formulaHeadLength(source)));
+        boundaries.push_back(m.source.end());
     }
     const auto bulletSpace = bulletSpaceSpan(render);
-    if (bulletSpace.has_value()) {
-        boundaries.push_back(bulletSpace->start);
-        boundaries.push_back(bulletSpace->end());
+    // Read once, so that the loop below needs no access to the optional (clang-tidy follows it
+    // only so far through a long function).
+    const bool hasBulletSpace = bulletSpace.has_value();
+    const core::Span bullet = bulletSpace.value_or(core::Span{});
+    if (hasBulletSpace) {
+        boundaries.push_back(bullet.start);
+        boundaries.push_back(bullet.end());
     }
     std::sort(boundaries.begin(), boundaries.end());
     boundaries.erase(std::unique(boundaries.begin(), boundaries.end()), boundaries.end());
 
+    QList<QTextLayout::FormatRange> out;
     std::size_t runIndex = 0;
     std::size_t inlineIndex = 0;
     std::size_t hiddenIndex = 0;
     std::size_t linkIndex = 0;
+    std::size_t formulaIndex = 0;
     for (std::size_t i = 1; i < boundaries.size(); ++i) {
         const auto start = boundaries[i - 1];
         const auto end = boundaries[i];
-        if (start == end) {
+        Piece piece{.run = covering(render.runs, runIndex, start, end),
+                    .inlineRun = covering(render.inlineStyles, inlineIndex, start, end),
+                    .hidden = covering(render.hidden, hiddenIndex, start, end),
+                    .link = covering(render.links, linkIndex, start, end),
+                    .bulletSpace = hasBulletSpace && start >= bullet.start && end <= bullet.end()};
+        if (piece.run == nullptr && piece.inlineRun == nullptr && piece.hidden == nullptr && piece.link == nullptr &&
+            !piece.bulletSpace) {
             continue;
         }
-
-        while (runIndex < render.runs.size() && render.runs[runIndex].span.end() <= start) {
-            ++runIndex;
+        piece.inlineCodeDelimiter = piece.hidden != nullptr && isInlineCodeDelimiter(render, start);
+        while (formulaIndex < formulas_.size() && formulas_[formulaIndex].source.end() <= start) {
+            ++formulaIndex;
         }
-        while (inlineIndex < render.inlineStyles.size() && render.inlineStyles[inlineIndex].span.end() <= start) {
-            ++inlineIndex;
+        if (formulaIndex < formulas_.size() && formulas_[formulaIndex].source.start <= start &&
+            formulas_[formulaIndex].source.end() >= end) {
+            piece.formula = formulas_[formulaIndex].layout.get();
+            piece.formulaHead = start == formulas_[formulaIndex].source.start;
+            piece.formulaSource = formulas_[formulaIndex].text;
         }
-        while (hiddenIndex < render.hidden.size() && render.hidden[hiddenIndex].span.end() <= start) {
-            ++hiddenIndex;
-        }
-        while (linkIndex < render.links.size() && render.links[linkIndex].span.end() <= start) {
-            ++linkIndex;
-        }
-        const auto* baseRun = runIndex < render.runs.size() && render.runs[runIndex].span.start <= start &&
-                                      render.runs[runIndex].span.end() >= end
-                                  ? &render.runs[runIndex]
-                                  : nullptr;
-        const auto* inlineRun = inlineIndex < render.inlineStyles.size() &&
-                                        render.inlineStyles[inlineIndex].span.start <= start &&
-                                        render.inlineStyles[inlineIndex].span.end() >= end
-                                    ? &render.inlineStyles[inlineIndex]
-                                    : nullptr;
-        const auto* hidden = hiddenIndex < render.hidden.size() && render.hidden[hiddenIndex].span.start <= start &&
-                                     render.hidden[hiddenIndex].span.end() >= end
-                                 ? &render.hidden[hiddenIndex]
-                                 : nullptr;
-        const auto* link = linkIndex < render.links.size() && render.links[linkIndex].span.start <= start &&
-                                   render.links[linkIndex].span.end() >= end
-                               ? &render.links[linkIndex]
-                               : nullptr;
-        const bool isBulletSpace = bulletSpace.has_value() && start >= bulletSpace->start && end <= bulletSpace->end();
-        if (baseRun == nullptr && inlineRun == nullptr && hidden == nullptr && link == nullptr && !isBulletSpace) {
-            continue;
-        }
-
-        if (isBulletSpace && baseRun == nullptr && inlineRun == nullptr && hidden == nullptr && link == nullptr &&
-            render.headingLevel == 0 && !render.codeBlock) {
-            out.append({static_cast<int>(start), static_cast<int>(end - start), bulletSpace_});
-            continue;
-        }
-        if (hidden != nullptr && baseRun == nullptr && link == nullptr && !render.codeBlock && !isBulletSpace &&
-            !isInlineCodeDelimiter(render, start)) {
-            const auto idx = static_cast<std::size_t>(
-                render.headingLevel >= 1 && render.headingLevel <= 6 ? render.headingLevel : 0);
-            if (hidden->mode == core::HideMode::ZeroWidth && text.size() >= static_cast<qsizetype>(end)) {
-                const QTextCharFormat fmt = zeroWidthFormat(heading_[idx], text.sliced(start, end - start));
-                out.append({static_cast<int>(start), static_cast<int>(end - start), fmt});
-            } else {
-                const QTextCharFormat& fmt =
-                    hidden->mode == core::HideMode::KeepSpace ? keepSpace_[idx] : collapse_[idx];
-                out.append({static_cast<int>(start), static_cast<int>(end - start), fmt});
-            }
-            continue;
-        }
-        if (inlineRun != nullptr && inlineRun->style == core::InlineStyle::Italic && baseRun == nullptr &&
-            hidden == nullptr && link == nullptr && render.headingLevel == 0 && !render.codeBlock && !isBulletSpace) {
-            out.append({static_cast<int>(start), static_cast<int>(end - start), italic0_});
-            continue;
-        }
-        if (baseRun != nullptr && baseRun->role == core::Role::HeadingText && inlineRun == nullptr &&
-            hidden == nullptr && link == nullptr && !render.codeBlock && !isBulletSpace) {
-            const int lvl = baseRun->level != 0 ? baseRun->level : render.headingLevel;
-            out.append({static_cast<int>(start), static_cast<int>(end - start), heading(lvl)});
-            continue;
-        }
-
-        const int level = baseRun != nullptr && baseRun->level != 0 ? baseRun->level : render.headingLevel;
-        QTextCharFormat format = baseRun != nullptr ? heading(level) : lineFormat;
-        // A pointer rather than std::optional<core::Role>: GCC 13 in Release builds (-O3) reports a false
-        // -Wmaybe-uninitialized for the optional, which breaks the Release build with -Werror (CI).
-        const core::Role* role = baseRun != nullptr ? &baseRun->role : nullptr;
-        const auto is = [role](core::Role r) { return role != nullptr && *role == r; };
-        if (render.codeBlock) {
-            applyCodeFont(format, codeBlockFamilies_, editorFontSize_ * codeBlock_.fontScale);
-        }
-        if (is(core::Role::Marker)) {
-            // A revealed thematic break has its own marker token (S023); a setext underline uses
-            // colors.marker like an ATX heading's '#'.
-            format.setForeground(render.thematicBreak ? toQColor(thematicBreak_.marker) : marker_);
-        } else if (is(core::Role::CodeBlock)) {
-            format.setForeground(toQColor(render.fenceLine ? codeBlock_.marker : codeBlock_.text));
-        } else if (is(core::Role::InlineCode) || is(core::Role::InlineCodeMarker)) {
-            // The background is a box painted by EditorWidget (radius, border, padding).
-            applyCodeFont(format, inlineCodeFamilies_, textSize(level) * inlineCode_.fontScale);
-            format.setForeground(toQColor(is(core::Role::InlineCode) ? inlineCode_.text : inlineCode_.marker));
-        } else if (is(core::Role::EmphasisMarker)) {
-            format.setForeground(toQColor(emphasis_.marker));
-        } else if (is(core::Role::EscapeMarker)) {
-            format.setForeground(toQColor(escape_.marker));
-        } else if (is(core::Role::LinkText)) {
-            format.setForeground(toQColor(link_.text));
-        } else if (is(core::Role::LinkMarker)) {
-            format.setForeground(toQColor(link_.marker));
-        }
-        if (link != nullptr) {
-            format.setAnchor(true);
-            format.setAnchorHref(QString::fromStdU16String(link->destination));
-            if (!link->title.empty()) {
-                // As its characters, wherever Qt shows the tooltip of the format: Qt shows text that
-                // looks like rich text as rich text.
-                format.setToolTip(Qt::convertFromPlainText(QString::fromStdU16String(link->title), Qt::WhiteSpacePre));
-            }
-        }
-        if (inlineRun != nullptr && !is(core::Role::InlineCode)) {
-            const auto styles = inlineRun->style;
-            if (core::hasStyle(styles, core::InlineStyle::Bold)) {
-                // Never lighter than the surrounding text: in a heading the bold weight applies only
-                // when it is above headings.weight (docs/theming.md).
-                format.setFontWeight(std::max(format.fontWeight(), emphasis_.boldWeight));
-            }
-            if (core::hasStyle(styles, core::InlineStyle::Italic)) {
-                format.setFontItalic(true);
-            }
-            if (core::hasStyle(styles, core::InlineStyle::Strikethrough)) {
-                format.setFontStrikeOut(true);
-            }
-            // Precedence: bold, italic, strikethrough (docs/theming.md).
-            const std::optional<core::Color> color =
-                core::hasStyle(styles, core::InlineStyle::Bold) && emphasis_.boldText       ? emphasis_.boldText
-                : core::hasStyle(styles, core::InlineStyle::Italic) && emphasis_.italicText ? emphasis_.italicText
-                : core::hasStyle(styles, core::InlineStyle::Strikethrough) ? emphasis_.strikethroughText
-                                                                           : std::nullopt;
-            if (color && !is(core::Role::EscapeMarker) && !is(core::Role::Marker) && !is(core::Role::LinkMarker)) {
-                format.setForeground(toQColor(*color));
-            }
-        }
-        if (hidden != nullptr) {
-            if (!is(core::Role::CodeBlock) && !render.codeBlock) {
-                format = lineFormat;
-            }
-            if (isInlineCodeDelimiter(render, start)) {
-                // Reserves inline-code padding after each concealed backtick (theme token, ADR 0004).
-                format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
-                format.setFontLetterSpacing(inlineCode_.padding);
-            }
-            // Concealment mechanism (ADR 0001), not a styling value.
-            format.setForeground(Qt::transparent);  // theme-lint: allow
-            if (hidden->mode == core::HideMode::Collapse) {
-                format.clearProperty(QTextFormat::FontPointSize);
-                format.setProperty(QTextFormat::FontPixelSize, 1);
-            } else if (hidden->mode == core::HideMode::ZeroWidth && text.size() >= static_cast<qsizetype>(end)) {
-                format = zeroWidthFormat(format, text.sliced(start, end - start));
-            }
-        }
-        if (isBulletSpace) {
-            format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
-            format.setFontLetterSpacing(bulletSpacing_);
-        }
-        out.append({static_cast<int>(start), static_cast<int>(end - start), format});
+        const QStringView pieceText =
+            text.size() >= static_cast<qsizetype>(end) ? text.sliced(start, end - start) : QStringView{};
+        out.append(
+            {static_cast<int>(start), static_cast<int>(end - start), formatFor(render, piece, pieceText, shortcuts)});
     }
     return out;
+}
+
+std::optional<QList<QTextLayout::FormatRange>> EditorFormats::wholeLineShortcut(const core::LineRender& render) const {
+    // Nothing to format, a lone concealed bullet, a plain heading. Their formats are those
+    // formatFor() gives the same pieces (made once per theme, see the constructor).
+    const bool plain = render.headingLevel == 0 && !render.codeBlock && render.runs.empty() &&
+                       render.inlineStyles.empty() && render.links.empty();
+    if (plain && render.hidden.empty() && render.wrapIndent == 0) {
+        return QList<QTextLayout::FormatRange>{};
+    }
+    if (plain && render.hidden.size() == 1 && render.decorations.size() == 1 &&
+        render.decorations[0].kind == core::DecorationKind::Bullet &&
+        render.hidden[0].mode == core::HideMode::KeepSpace &&
+        render.hidden[0].span == (core::Span{render.decorations[0].column, 1})) {
+        const auto col = static_cast<int>(render.decorations[0].column);
+        if (render.wrapIndent > render.decorations[0].column + 1) {
+            return QList<QTextLayout::FormatRange>{{col, 1, keepSpace_[0]}, {col + 1, 1, bulletSpace_}};
+        }
+        return QList<QTextLayout::FormatRange>{{col, 1, keepSpace_[0]}};
+    }
+    if (!render.codeBlock && render.inlineStyles.empty() && render.links.empty() && render.wrapIndent == 0 &&
+        render.hidden.size() == 1 && render.runs.size() == 1 && render.runs[0].role == core::Role::HeadingText &&
+        render.hidden[0].span.end() == render.runs[0].span.start) {
+        const core::HiddenRange& hidden = render.hidden[0];
+        const core::StyleRun& run = render.runs[0];
+        const int lvl = run.level != 0 ? run.level : render.headingLevel;
+        const auto idx = static_cast<std::size_t>(lvl >= 1 && lvl <= 6 ? lvl : 0);
+        return QList<QTextLayout::FormatRange>{
+            {static_cast<int>(hidden.span.start), static_cast<int>(hidden.span.length),
+             hidden.mode == core::HideMode::KeepSpace ? keepSpace_[idx] : collapse_[idx]},
+            {static_cast<int>(run.span.start), static_cast<int>(run.span.length), heading(lvl)}};
+    }
+    return std::nullopt;
+}
+
+QTextCharFormat EditorFormats::formatFor(const core::LineRender& render, const Piece& piece, QStringView pieceText,
+                                         bool shortcuts) const {
+    if (shortcuts) {
+        // Shortcuts for the most common pieces: formats made once per theme by composedFormat().
+        const bool plainLine = render.headingLevel == 0 && !render.codeBlock;
+        if (piece.bulletSpace && piece.run == nullptr && piece.inlineRun == nullptr && piece.hidden == nullptr &&
+            piece.link == nullptr && plainLine) {
+            return bulletSpace_;
+        }
+        if (piece.hidden != nullptr && piece.run == nullptr && piece.link == nullptr && !render.codeBlock &&
+            !piece.bulletSpace && !piece.inlineCodeDelimiter) {
+            const auto idx = static_cast<std::size_t>(
+                render.headingLevel >= 1 && render.headingLevel <= 6 ? render.headingLevel : 0);
+            if (piece.hidden->mode == core::HideMode::ZeroWidth && !pieceText.isEmpty()) {
+                return zeroWidthFormat(heading_[idx], pieceText);
+            }
+            return piece.hidden->mode == core::HideMode::KeepSpace ? keepSpace_[idx] : collapse_[idx];
+        }
+        if (piece.inlineRun != nullptr && piece.inlineRun->style == core::InlineStyle::Italic && piece.run == nullptr &&
+            piece.hidden == nullptr && piece.link == nullptr && plainLine && !piece.bulletSpace) {
+            return italic0_;
+        }
+        if (piece.run != nullptr && piece.run->role == core::Role::HeadingText && piece.inlineRun == nullptr &&
+            piece.hidden == nullptr && piece.link == nullptr && !render.codeBlock && !piece.bulletSpace) {
+            return heading(piece.run->level != 0 ? piece.run->level : render.headingLevel);
+        }
+    }
+    return composedFormat(render, piece, pieceText);
+}
+
+namespace {
+/// What a role does to the format of its text (the role chain of EditorFormats).
+struct RoleFormat {
+    core::Role role;
+    void (EditorFormats::*apply)(QTextCharFormat&, const core::LineRender&, int level) const;
+    bool takesInlineStyles;    ///< bold, italic and strikethrough apply to the text
+    bool takesEmphasisColour;  ///< and so do their colours
+};
+}  // namespace
+
+QTextCharFormat EditorFormats::composedFormat(const core::LineRender& render, const Piece& piece,
+                                              QStringView pieceText) const {
+    static constexpr std::array<RoleFormat, 11> kRoles{{
+        {core::Role::Marker, &EditorFormats::applyMarker, true, false},
+        {core::Role::HeadingText, nullptr, true, true},
+        {core::Role::CodeBlock, &EditorFormats::applyCodeBlock, true, true},
+        {core::Role::InlineCode, &EditorFormats::applyInlineCode, false, false},
+        {core::Role::InlineCodeMarker, &EditorFormats::applyInlineCodeMarker, true, true},
+        {core::Role::EmphasisMarker, &EditorFormats::applyEmphasisMarker, true, true},
+        {core::Role::EscapeMarker, &EditorFormats::applyEscapeMarker, true, false},
+        {core::Role::LinkText, &EditorFormats::applyLinkText, true, true},
+        {core::Role::LinkMarker, &EditorFormats::applyLinkMarker, true, false},
+        // S044: formula source keeps its look inside emphasis, as inline code does.
+        {core::Role::Math, &EditorFormats::applyMath, false, false},
+        {core::Role::MathMarker, &EditorFormats::applyMathMarker, true, false},
+    }};
+    static_assert(kRoles.size() == static_cast<std::size_t>(core::Role::MathMarker) + 1, "a row for every role");
+    static_assert(
+        [] {
+            for (std::size_t i = 0; i < kRoles.size(); ++i) {
+                if (static_cast<std::size_t>(kRoles[i].role) != i) {
+                    return false;
+                }
+            }
+            return true;
+        }(),
+        "the rows in the order of core::Role");
+
+    const core::StyleRun* run = piece.run;
+    const RoleFormat* role = run != nullptr ? &kRoles[static_cast<std::size_t>(run->role)] : nullptr;
+    const int level = run != nullptr && run->level != 0 ? run->level : render.headingLevel;
+    QTextCharFormat format = heading(level);
+    if (render.codeBlock) {
+        applyCodeFont(format, codeBlockFamilies_, editorFontSize_ * codeBlock_.fontScale);
+    }
+    if (role != nullptr && role->apply != nullptr) {
+        (this->*role->apply)(format, render, level);
+    }
+    if (piece.link != nullptr) {
+        format.setAnchor(true);
+        format.setAnchorHref(QString::fromStdU16String(piece.link->destination));
+        if (!piece.link->title.empty()) {
+            // As its characters, wherever Qt shows the tooltip of the format: Qt shows text that
+            // looks like rich text as rich text.
+            format.setToolTip(
+                Qt::convertFromPlainText(QString::fromStdU16String(piece.link->title), Qt::WhiteSpacePre));
+        }
+    }
+    if (piece.inlineRun != nullptr && (role == nullptr || role->takesInlineStyles)) {
+        const auto styles = piece.inlineRun->style;
+        if (core::hasStyle(styles, core::InlineStyle::Bold)) {
+            // Never lighter than the surrounding text: in a heading the bold weight applies only
+            // when it is above headings.weight (docs/theming.md).
+            format.setFontWeight(std::max(format.fontWeight(), emphasis_.boldWeight));
+        }
+        if (core::hasStyle(styles, core::InlineStyle::Italic)) {
+            format.setFontItalic(true);
+        }
+        if (core::hasStyle(styles, core::InlineStyle::Strikethrough)) {
+            format.setFontStrikeOut(true);
+        }
+        // Precedence: bold, italic, strikethrough (docs/theming.md).
+        const std::optional<core::Color> color =
+            core::hasStyle(styles, core::InlineStyle::Bold) && emphasis_.boldText       ? emphasis_.boldText
+            : core::hasStyle(styles, core::InlineStyle::Italic) && emphasis_.italicText ? emphasis_.italicText
+            : core::hasStyle(styles, core::InlineStyle::Strikethrough)                  ? emphasis_.strikethroughText
+                                                                                        : std::nullopt;
+        if (color && (role == nullptr || role->takesEmphasisColour)) {
+            format.setForeground(toQColor(*color));
+        }
+    }
+    if (piece.hidden != nullptr) {
+        if ((run == nullptr || run->role != core::Role::CodeBlock) && !render.codeBlock) {
+            format = heading(render.headingLevel);
+        }
+        if (piece.inlineCodeDelimiter) {
+            // Reserves inline-code padding after each concealed backtick (theme token, ADR 0004).
+            format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
+            format.setFontLetterSpacing(inlineCode_.padding);
+        }
+        // Concealment mechanism (ADR 0001), not a styling value.
+        format.setForeground(Qt::transparent);  // theme-lint: allow
+        if (piece.hidden->mode == core::HideMode::Collapse) {
+            format.clearProperty(QTextFormat::FontPointSize);
+            format.setProperty(QTextFormat::FontPixelSize, 1);
+        } else if (piece.hidden->mode == core::HideMode::ZeroWidth && !pieceText.isEmpty()) {
+            format = zeroWidthFormat(format, pieceText);
+        }
+    }
+    if (piece.bulletSpace) {
+        format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
+        format.setFontLetterSpacing(bulletSpacing_);
+    }
+    applyFormula(format, piece, pieceText);
+    return format;
+}
+
+void EditorFormats::applyFormula(QTextCharFormat& format, const Piece& piece, QStringView pieceText) const {
+    if (piece.formula == nullptr) {
+        return;
+    }
+    const core::MathLayout& layout = *piece.formula;
+    if (layout.error) {
+        // Decision 5: the source stays, in the error colour, with the reason.
+        format.setForeground(toQColor(math_.error));
+        format.setToolTip(Qt::convertFromPlainText(QString::fromStdString(layout.error->message)));
+        return;
+    }
+    // Fractional advances where the font engine allows them; the width below is measured either way.
+    format.setFontHintingPreference(QFont::PreferNoHinting);
+    if (!piece.formulaHead) {
+        format = zeroWidthFormat(format, pieceText);
+        return;
+    }
+    // Decisions 1 and 2: the first character is invisible and takes the formula's width; its font
+    // grows until its ascent and descent cover the formula, so the line makes room.
+    const QTextCharFormat sourceFormat = format;
+    format.setForeground(Qt::transparent);  // theme-lint: allow (concealment mechanism)
+    const QFont font = format.font().resolve(baseFont_);
+    const QFontMetricsF metrics(font);
+    const double scale = std::max({1.0, metrics.ascent() > 0 ? layout.ascent / metrics.ascent() : 1.0,
+                                   metrics.descent() > 0 ? layout.descent / metrics.descent() : 1.0});
+    if (scale > 1.0) {
+        format.setFontPointSize(font.pointSizeF() * scale);
+    }
+    format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
+    format.setFontLetterSpacing(layout.width - laidOutWidth(piece.formulaSource, format, sourceFormat));
+}
+
+qsizetype EditorFormats::formulaHeadLength(QStringView source) noexcept {
+    // A surrogate pair is one character: cutting it apart would give Qt two halves to shape.
+    return source.size() >= 2 && source[0].isHighSurrogate() && source[1].isLowSurrogate() ? 2 : 1;
+}
+
+qreal EditorFormats::laidOutWidth(QStringView source, const QTextCharFormat& head, const QTextCharFormat& rest) const {
+    // The source as Qt lays it out in the line, the first character in `head` (without the letter
+    // spacing yet), the rest without width. Measured, not predicted: font engines round advances
+    // and letter spacing their own way (hinted fonts on the CI runners to whole pixels, pull
+    // request 78), so the reserved width follows what Qt does with these very formats.
+    if (source.isEmpty()) {
+        return 0;
+    }
+    QTextLayout probe(source.toString(), baseFont_);
+    const auto headLength = static_cast<int>(formulaHeadLength(source));
+    QList<QTextLayout::FormatRange> formats{{0, headLength, head}};
+    if (source.size() > headLength) {
+        formats.append({headLength, static_cast<int>(source.size() - headLength),
+                        zeroWidthFormat(rest, source.sliced(headLength))});
+    }
+    probe.setFormats(formats);
+    probe.beginLayout();
+    QTextLine line = probe.createLine();
+    if (!line.isValid()) {
+        probe.endLayout();
+        return 0;
+    }
+    line.setNumColumns(static_cast<int>(source.size()));
+    probe.endLayout();
+    return line.naturalTextWidth();
+}
+
+double EditorFormats::mathPixelSize(int level) const {
+    return textSize(level) * math_.fontScale * pointToPixel_;
+}
+
+std::shared_ptr<const core::MathLayout> EditorFormats::mathLayout(std::u16string_view source, int level,
+                                                                  bool display) const {
+    return mathCache_->layout(source, mathPixelSize(level), display);
+}
+
+bool EditorFormats::typeset(const core::LineRender& render, const core::MathSpan& formula) {
+    if (render.mathBlock || formula.source.start == 0) {
+        return false;
+    }
+    // Concealed: the dollar before the source is hidden (S044 hides it only off the caret's line).
+    const std::uint32_t dollar = formula.source.start - 1;
+    return std::any_of(render.hidden.begin(), render.hidden.end(), [dollar](const core::HiddenRange& h) {
+        return dollar >= h.span.start && dollar < h.span.end();
+    });
+}
+
+void EditorFormats::applyMarker(QTextCharFormat& format, const core::LineRender& render, int /*level*/) const {
+    // A revealed thematic break has its own marker token (S023); a setext underline uses
+    // colors.marker like an ATX heading's '#'.
+    format.setForeground(render.thematicBreak ? toQColor(thematicBreak_.marker) : marker_);
+}
+
+void EditorFormats::applyCodeBlock(QTextCharFormat& format, const core::LineRender& render, int /*level*/) const {
+    format.setForeground(toQColor(render.fenceLine ? codeBlock_.marker : codeBlock_.text));
+}
+
+void EditorFormats::applyInlineCode(QTextCharFormat& format, const core::LineRender& /*render*/, int level) const {
+    // The background is a box painted by EditorWidget (radius, border, padding).
+    applyCodeFont(format, inlineCodeFamilies_, textSize(level) * inlineCode_.fontScale);
+    format.setForeground(toQColor(inlineCode_.text));
+}
+
+void EditorFormats::applyInlineCodeMarker(QTextCharFormat& format, const core::LineRender& /*render*/,
+                                          int level) const {
+    applyCodeFont(format, inlineCodeFamilies_, textSize(level) * inlineCode_.fontScale);
+    format.setForeground(toQColor(inlineCode_.marker));
+}
+
+void EditorFormats::applyEmphasisMarker(QTextCharFormat& format, const core::LineRender& /*render*/,
+                                        int /*level*/) const {
+    format.setForeground(toQColor(emphasis_.marker));
+}
+
+void EditorFormats::applyEscapeMarker(QTextCharFormat& format, const core::LineRender& /*render*/,
+                                      int /*level*/) const {
+    format.setForeground(toQColor(escape_.marker));
+}
+
+void EditorFormats::applyLinkText(QTextCharFormat& format, const core::LineRender& /*render*/, int /*level*/) const {
+    format.setForeground(toQColor(link_.text));
+}
+
+void EditorFormats::applyLinkMarker(QTextCharFormat& format, const core::LineRender& /*render*/, int /*level*/) const {
+    format.setForeground(toQColor(link_.marker));
+}
+
+void EditorFormats::applyMath(QTextCharFormat& format, const core::LineRender& /*render*/, int level) const {
+    if (!math_.fontFamily.empty()) {
+        format.setFontFamilies({QString::fromStdString(math_.fontFamily)});
+    }
+    format.setFontPointSize(textSize(level) * math_.fontScale);
+    format.setForeground(toQColor(math_.text));
+}
+
+void EditorFormats::applyMathMarker(QTextCharFormat& format, const core::LineRender& render, int level) const {
+    applyMath(format, render, level);
+    format.setForeground(toQColor(math_.marker));
 }
 
 QFont EditorFormats::tableFont(bool header) const {

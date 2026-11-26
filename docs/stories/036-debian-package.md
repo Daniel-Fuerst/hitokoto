@@ -185,6 +185,15 @@ manual step, and never a package that does not install and start.
   "Re-run failed jobs" released 0.5.4. The step now asks again, 3 s apart, up to 10 times while
   no draft is listed; the check for exactly one draft follows, more than one fails at once, and a
   failing API call still stops the job. The lint `S036_TheReleaseWaitsForItsDraft` keeps it so.
+- Debian's build flags (2026-11-21): the recipe configured with plain CMake, so the package got
+  only what trixie's GCC turns on by itself (PIE). It now takes the flags of `dpkg-buildflags` with
+  `DEB_BUILD_MAINT_OPTIONS=hardening=+all` before it configures, as debhelper does: `CXXFLAGS`
+  with `CPPFLAGS` (CMake does not read `CPPFLAGS`) and `LDFLAGS`, that is `_FORTIFY_SOURCE=2`,
+  `-fstack-protector-strong`, `-fstack-clash-protection`, `-fcf-protection`, `-Wl,-z,relro` and
+  `-Wl,-z,now` on trixie. lintian runs with `-I`, so that a missing feature (`hardening-no-*`,
+  partly an informational tag) shows, and fails the build. The case
+  `S036_ThePackageIsBuiltWithDebiansHardeningFlags` keeps it so. Every version the workflow builds
+  gets the flags, also one whose source is older than the recipe.
 
 - S037 (Proposed, 2026-11-13) adds a Windows installer to the same releases: the release job then
   waits for both packages of a version, because an immutable release takes no asset after

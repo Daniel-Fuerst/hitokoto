@@ -145,16 +145,26 @@ follows the general tokens above.
 | `table.text` | color | Text colour of table body cells | `colors.text` |
 | `table.header-text` | color | Text colour of table header cells | `table.text` |
 | `table.header-weight` | number | Font weight of table header cells, 100 to 900 | `headings.weight` |
-| `table.border` | color | Outer border, cell grid lines and row/column controls | `colors.border` |
+| `table.border` | color | Outer border, cell grid lines and add-row/column controls | `colors.border` |
 | `table.border-width` | number (px) | Width of table and cell borders, 0 to 8 | 1 |
 | `table.radius` | number (px) | Corner radius of the outer table border, 0 to 32 | `layout.radius` |
 | `table.padding` | number (px) | Horizontal and vertical space inside cells, 0 to 64 | `layout.spacing` |
 | `table.font-family` | string | Font family of table cells; "" = editor font | "" |
 | `table.font-scale` | number | Font size of table cells relative to the editor font, 0.5 to 2 | 1 |
 | `escape.marker` | color | Backslash when revealed | `colors.marker` |
-| `escape.marker` | color | Backslash when revealed | `colors.marker` |
 | `link.text` | color | Colour of link text | `colors.accent` |
 | `link.marker` | color | Delimiters and destination when revealed | `colors.marker` |
+| `math.text` | color | Colour of formulas, typeset (S046) or as source (S044) | `colors.text` |
+| `math.marker` | color | Math delimiters ($ and $$) when revealed | `colors.marker` |
+| `math.error` | color | Source of a formula that cannot be typeset (S046) | `colors.accent` |
+| `math.font-family` | string | Font family of formula source; "" = editor font | "" |
+| `math.font-scale` | number | Size of formulas (typeset or source) relative to the text around them, 0.5 to 2 | 1 |
+| `math.display-background` | color | Background of a display formula's panel (S047) | `colors.background` |
+| `math.display-border` | color | Border of a display formula's panel | `colors.border` |
+| `math.display-border-width` | number (px) | Border width of the panel, 0 to 8 | 0 |
+| `math.display-radius` | number (px) | Corner radius of the panel, 0 to 32 | `layout.radius` |
+| `math.display-padding` | number (px) | Space between the panel's edge and the formula, 0 to 64 | `layout.spacing` |
+| `math.display-margin` | number (px) | Space above and below the panel, 0 to 64 | 3 |
 | `thematic-break.border` | color | Colour of the horizontal line | `colors.border` |
 | `thematic-break.border-width` | number (px) | Thickness of the line, 0 to 8; drawn as max(1, round(width x device pixel ratio)) device pixels | 1 |
 | `thematic-break.margin` | number (px) | Space above and below the line, 0 to 64; part of the line's geometry, the same when revealed | 0 |
@@ -176,6 +186,13 @@ follows the general tokens above.
 | `properties.chip-border-width` | number (px) | Border width of a list item or tag, 0 to 8 | 0 |
 | `properties.chip-radius` | number (px) | Corner radius of a list item or tag, 0 to 32 | `layout.radius` |
 | `properties.chip-padding` | number (px) | Horizontal space inside a list item or tag, 0 to 32 | 4 |
+| `properties.editor-background` | color | Background of an inline property editor | `properties.background` |
+| `properties.editor-text` | color | Text of an inline property editor | `properties.text` |
+| `properties.editor-border` | color | Border of an inline property editor | `colors.border` |
+| `properties.editor-focus-border` | color | Focused border of an inline property editor | `colors.accent` |
+| `properties.editor-border-width` | number (px) | Border width of an inline property editor, 0 to 8 | 1 |
+| `properties.editor-radius` | number (px) | Corner radius of an inline property editor, 0 to 32 | `layout.radius` |
+| `properties.editor-padding` | number (px) | Padding inside an inline property editor, 0 to 32 | 4 |
 | `properties.border` | color | Border of the block | `colors.border` |
 | `properties.border-width` | number (px) | Border width, 0 to 8 | 0 |
 | `properties.radius` | number (px) | Corner radius of the block, 0 to 32 | `layout.radius` |
@@ -221,7 +238,7 @@ follows the general tokens above.
 | `find.active-icon` | color | Icon of a pressed button or a toggle that is on | `colors.selection-text` |
 | `find.current-background` | color | Current match | #ffd43b (light), #c99a06 (dark) |
 | `find.current-text` | color | Text of the current match | #1a1a1a |
-| `find.match-background` | color | Other matches (highlight all); cells, property keys and values, and chips with a match | #fff3bf (light), #5c4a12 (dark) |
+| `find.match-background` | color | Other matches (highlight all); cells, values and chips with a match | #fff3bf (light), #5c4a12 (dark) |
 | `find.match-text` | color | Text of other matches | #1a1a1a (light), #f1f1f1 (dark) |
 | `menu-bar.background` | color | Background of the top menu bar | `colors.background` |
 | `menu-bar.border` | color | Line below the top menu bar | `colors.border` |
@@ -238,24 +255,55 @@ follows the general tokens above.
 | `menu-bar.item-padding-horizontal` | number (px) | Horizontal space inside each menu bar item pill, 0 to 32 | `layout.spacing` |
 | `menu-bar.item-padding-vertical` | number (px) | Vertical space inside each menu bar item pill, 0 to 32 | 4 |
 | `menu-bar.font-family` | string | Font family of the menu bar; "" = UI font | "" |
-| `menu-bar.font-scale` | number | Size of the menu bar relative to the UI font, 0.5 to 2 | 1 |
+| `menu-bar.font-scale` | number | Font size of the menu bar relative to the UI font, 0.5 to 2 | 1 |
+| `switch.track` | color | Track of a toggle switch that is off | `colors.border` |
+| `switch.checked-track` | color | Track of a toggle switch that is on | `colors.accent` |
+| `switch.knob` | color | Knob of a toggle switch that is off | `colors.background` |
+| `switch.checked-knob` | color | Knob of a toggle switch that is on | `colors.background` |
+| `switch.border` | color | Border of the track of a toggle switch | `colors.border` |
+| `switch.border-width` | number (px) | Border width of the track of a toggle switch, 0 to 8 | 0 |
+| `switch.width` | number (px) | Width of a toggle switch, 16 to 128 | 36 |
+| `switch.height` | number (px) | Height of a toggle switch, 8 to 64 | 20 |
+| `switch.radius` | number (px) | Corner radius of the track of a toggle switch; the knob is rounded alike, 0 to 32 | 10 |
+| `switch.knob-margin` | number (px) | Space between the knob and the edge of the track, 0 to 16 | 2 |
+| `settings-section.text` | color | Section headings of the settings flyout | `colors.accent` |
+| `settings-section.weight` | number | Font weight of the section headings, 100 to 900 | 600 |
+| `settings-section.rule` | color | Line to the right of a section heading | `colors.border` |
+| `settings-section.rule-width` | number (px) | Thickness of the line, 0 to 8 | 1 |
+| `settings-section.rule-gap` | number (px) | Space between a section heading and its line, 0 to 64 | `layout.spacing` |
 
 A thematic break (`---`, `***`, `___`) is a line across the text column, centred vertically in its block.
 Setext headings (text underlined with `===` or `---`) add no tokens: their lines use the heading
 tokens (`headings.*`) like ATX headings, and a revealed underline uses `colors.marker` at body size.
 
-Front matter shown as properties (S024) is a block of its own, embedded in place of the YAML lines:
-a title, then one row per property with a type icon, the key and the value. Lists and tags are
-chips; the key column takes `properties.key-width`, at most half the block; a checkbox is drawn read
-only; a nested value shows its JSON in `properties.unsupported-text`, at most three lines. Margin
-and padding are part of the block's geometry, as for a code block. Invalid YAML stays text and shows
-a badge after its first line (`properties.badge-*`).
+Front matter shown as properties (S024) is a compact table-like block embedded in place of the YAML
+lines: a title, then one row per property with a type icon, key and value. The key column takes
+`properties.key-width`, at most half the block; clicking a checkbox toggles it; lists and tags are
+chips with individual remove controls and an inline add chip; a nested value shows its JSON in
+`properties.unsupported-text`, at most three lines. Clicking a key or value edits it in place
+without a dialog. The compact “+ Add property” action is text-only, like a menu-bar item; a row's
+remove control appears on hover. The editor field uses `properties.editor-*` tokens. Margin and
+padding are part of the block's geometry, as for a code block. Invalid YAML stays text and shows a
+badge after its first line (`properties.badge-*`).
 
 The find bar (S028) sits below the editor. "(light)" and "(dark)" name the fallbacks of the
 built-in light and dark bases; the highlight text colours fall back to fixed values, so the text on a
 highlight keeps its contrast whatever a theme sets for `colors.text`. With "Highlight all", a table
 cell, a property key or value, or a chip that contains a match takes `find.match-background` as its
 background while its element shows cells or rows.
+
+Toggle switches in the settings flyout (S043, such as "Smooth scrolling" in the section Feel) are a
+track with a knob. When a switch is flipped, the knob slides to the other end with an ease-in-out
+motion while the track and knob blend from their off colours (`switch.track`, `switch.knob`) to
+their on colours (`switch.checked-track`, `switch.checked-knob`). The knob keeps
+`switch.knob-margin` from the edge of the track; its corner radius is `switch.radius` less that
+margin, so the default track is a pill and the knob a circle, and `radius = 0` gives square ones.
+The labels beside a switch are those of the flyout (`colors.text-muted`, UI font).
+
+The sections of the settings flyout (S048, such as **Appearance** and **Feel**) start with a heading
+row: the heading in `settings-section.text` and `settings-section.weight` (UI font), then, after
+`settings-section.rule-gap`, a line in `settings-section.rule` that runs to the right edge of the
+content, centred vertically on the heading; `rule-width = 0` hides the line.
 
 Bold text is never lighter than the text around it: inside a heading the weight is the larger of
 `headings.weight` and `emphasis.bold-weight`. The built-in themes set both to 700, so bold inside a

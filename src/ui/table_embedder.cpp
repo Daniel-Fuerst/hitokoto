@@ -5,6 +5,7 @@
 #include "block_styler.hpp"
 #include "editor_formats.hpp"
 #include "editor_widget.hpp"
+#include "hitokoto/core/table.hpp"
 #include "qt_bridge.hpp"
 #include "table_model.hpp"
 #include "table_view.hpp"

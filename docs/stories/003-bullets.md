@@ -74,3 +74,5 @@ naturally while the source stays plain Markdown.
   Directly after a line of text, a bullet without text and a bullet indented four or more columns
   past the text's content column are text that continues the paragraph (CommonMark 5.2, S023 review
   O3, code).
+  Changed by S050 (2026-11-25): a marker followed by a blank (`- `, `* `, `+ `) is an empty item even
+  directly after a line of text; only a bare marker continues the text.

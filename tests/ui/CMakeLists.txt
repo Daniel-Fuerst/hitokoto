@@ -11,6 +11,16 @@ if(WIN32)
     list(APPEND hitokoto_ui_test_env "QT_QPA_FONTDIR=${hitokoto_system_fonts}")
 endif()
 
+# Time limits of the UI tests. Under the sanitizers (the CI's job ui-sanitizers) a test takes two to
+# four times as long; the slowest, tst_s017, takes about 120 s there instead of 37 s. The limits
+# inside the tests scale with test::kTimeScale (ui_test_support.hpp).
+set(hitokoto_ui_test_timeout 300)
+set(hitokoto_ui_test_timeout_scaled 120)
+if(HITOKOTO_SANITIZE)
+    set(hitokoto_ui_test_timeout 900)
+    set(hitokoto_ui_test_timeout_scaled 360)
+endif()
+
 function(hitokoto_ui_test name)
     qt_add_executable(${name} ${name}.cpp ui_test_support.hpp key_input.hpp)
     target_link_libraries(${name} PRIVATE hitokoto::ui Qt6::Test)
@@ -19,13 +29,18 @@ function(hitokoto_ui_test name)
         # Qt Test macros (QTRY_*) expand to narrowing conversions in some Qt versions.
         target_compile_options(${name} PRIVATE -Wno-conversion -Wno-sign-conversion)
     endif()
+    if(HITOKOTO_SANITIZE)
+        target_compile_definitions(${name} PRIVATE HITOKOTO_TESTS_UNDER_SANITIZERS)  # test::kTimeScale
+    endif()
     add_test(NAME ${name} COMMAND ${name})
-    set_tests_properties(${name} PROPERTIES ENVIRONMENT "${hitokoto_ui_test_env}" TIMEOUT 300)
+    set_tests_properties(${name} PROPERTIES ENVIRONMENT "${hitokoto_ui_test_env}"
+                         TIMEOUT ${hitokoto_ui_test_timeout})
     hitokoto_qt_runtime_beside(${name})
 endfunction()
 
 foreach(t IN ITEMS
         tst_s000_skeleton
+        tst_s000_random_edits
         tst_s001_open
         tst_s002_headings
         tst_s003_bullets
@@ -53,9 +68,21 @@ foreach(t IN ITEMS
         tst_s031_paste_tables
         tst_s033_soft_line_breaks
         tst_s038_subtle_menu_bar
-        tst_s039_settings_menu)
+        tst_s039_settings_menu
+        tst_s043_smooth_scrolling_toggle
+        tst_s044_math_source
+        tst_s045_bundled_math_font
+        tst_s046_typeset_inline_math
+        tst_s047_typeset_display_math
+        tst_s048_settings_section_headings)
     hitokoto_ui_test(${t})
 endforeach()
+
+# S044: the LaTeX sample from tests/data.
+target_compile_definitions(tst_s044_math_source PRIVATE HITOKOTO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_compile_definitions(tst_s045_bundled_math_font PRIVATE HITOKOTO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_compile_definitions(tst_s046_typeset_inline_math PRIVATE HITOKOTO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_compile_definitions(tst_s047_typeset_display_math PRIVATE HITOKOTO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
 # S031: the clipboard samples as resources (:/s031/<name>.html and .txt).
 file(GLOB hitokoto_s031_samples ${PROJECT_SOURCE_DIR}/tests/data/s031/samples/*.html
@@ -68,7 +95,8 @@ qt_add_resources(tst_s031_paste_tables "s031_samples" PREFIX "/s031"
 # S023: the line of a thematic break is crisp at fractional scaling too.
 add_test(NAME tst_s023_thematic_breaks_scaled COMMAND tst_s023_thematic_breaks aConcealedBreakIsCrispAtTheDeviceScale)
 set_tests_properties(tst_s023_thematic_breaks_scaled PROPERTIES
-                     ENVIRONMENT "${hitokoto_ui_test_env};QT_SCALE_FACTOR=1.5" TIMEOUT 120)
+                     ENVIRONMENT "${hitokoto_ui_test_env};QT_SCALE_FACTOR=1.5"
+                     TIMEOUT ${hitokoto_ui_test_timeout_scaled})
 
 if(WIN32)
     # Qt's DLLs must be found beside the test executable: Visual Studio's Test Explorer starts the

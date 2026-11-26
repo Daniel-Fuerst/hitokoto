@@ -1,0 +1,23 @@
+# S049 (decision 5): the files of hitokoto.app, relative to the bundle. A framework counts as one
+# entry (its folder); everything else is a file or a symbolic link of its own. A file more or less
+# makes the build and the check red. macdeployqt decides the Qt part; when it changes on purpose,
+# this list follows. The job summary of every build prints the bundle's list. Confirmed by the
+# second dry run on pull request 80 (Qt 6.12.0, macos-15, 0.10.1): macdeployqt brings QtDBus (a Qt
+# framework links it) and writes no qt.conf (Qt finds its plugins in Contents/PlugIns without one;
+# install-check.sh checks that libqcocoa is loaded from there); CMake's Makefile generator writes
+# no PkgInfo, which macOS does not need.
+Contents/Info.plist
+Contents/MacOS/hitokoto
+Contents/Resources/hitokoto.icns
+Contents/Resources/LICENSE.txt
+Contents/Resources/LGPL-3.0.txt
+Contents/Resources/THIRD-PARTY.txt
+Contents/_CodeSignature/CodeResources
+Contents/Frameworks/QtCore.framework
+Contents/Frameworks/QtDBus.framework
+Contents/Frameworks/QtGui.framework
+Contents/Frameworks/QtSvg.framework
+Contents/Frameworks/QtWidgets.framework
+Contents/PlugIns/iconengines/libqsvgicon.dylib
+Contents/PlugIns/platforms/libqcocoa.dylib
+Contents/PlugIns/styles/libqmacstyle.dylib

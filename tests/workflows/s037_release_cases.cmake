@@ -169,7 +169,7 @@ elseif("${CASE}" STREQUAL "AReleaseWithoutAnyMsiIsNotStopped")
     # Review (code) O3: when no Windows check passed, the download of windows-* finds nothing; a
     # version skipped for Windows is still released. The release step checks every file it needs.
     list(JOIN job_debian-release "\n" release)
-    if(NOT release MATCHES "\n      - uses: actions/download-artifact@v8\n        if: [^\n]*\n        continue-on-error: true\n        with:\n          pattern: hitokoto-\\*-x64.msi\n")
+    if(NOT release MATCHES "\n      - uses: actions/download-artifact@[0-9a-f]+ # v8\\.[0-9.]+\n        if: [^\n]*\n        continue-on-error: true\n        with:\n          pattern: hitokoto-\\*-x64.msi\n")
         message(FATAL_ERROR "the download of windows-* in debian-release may stop the release")
     endif()
 
@@ -270,10 +270,11 @@ elseif("${CASE}" STREQUAL "WindowsInstallsAqtinstallFromAPinnedCommit")
     endforeach()
 
     # packaging.yml: the Windows installer's job runs on Windows only and names the commit itself.
-    install_qt_steps("${packaging}" packaging_steps)
+    # The macOS disk image's job (S049) takes the release of the macOS CI instead.
+    install_qt_steps("${job_windows-package}" packaging_steps)
     list(LENGTH packaging_steps count)
     if(count EQUAL 0)
-        message(FATAL_ERROR "packaging.yml has no call of install-qt-action")
+        message(FATAL_ERROR "windows-package in packaging.yml has no call of install-qt-action")
     endif()
     foreach(step IN LISTS packaging_steps)
         if(NOT step MATCHES "\n( +#[^\n]*\n)? +aqtsource: ${source}( #[^\n]*)?(\n|$)")

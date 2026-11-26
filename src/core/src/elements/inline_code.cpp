@@ -22,24 +22,15 @@ bool escaped(std::u16string_view line, std::size_t position, detail::InlineSteps
 
 class InlineCodeElement final : public InlineElement {
 public:
-    [[nodiscard]] std::string_view id() const noexcept override { return "inline-code"; }
     [[nodiscard]] std::u16string_view triggerCharacters() const noexcept override { return u"`"; }
 
-    void render(std::u16string_view line, const LineContext& context, LineRender& out) const override {
+    void render(std::u16string_view line, const LineContext& context, const InlineScan& scan,
+                LineRender& out) const override {
         detail::InlineSteps steps;
         steps.add(line.size());
-        std::vector<bool> opaque(line.size(), false);
-        for (const auto& span : out.opaqueSpans) {
-            if (span.start < line.size()) {
-                const auto end = std::min<std::size_t>(span.end(), line.size());
-                steps.add(end - span.start);
-                std::fill(opaque.begin() + static_cast<std::ptrdiff_t>(span.start),
-                          opaque.begin() + static_cast<std::ptrdiff_t>(end), true);
-            }
-        }
         std::size_t opener = std::u16string_view::npos;
         for (std::size_t i = 0; i < line.size(); ++i) {
-            if (opaque[i]) {
+            if (scan.isOpaque(i)) {
                 opener = std::u16string_view::npos;
                 continue;
             }

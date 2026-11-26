@@ -3,6 +3,7 @@
 // through the clipboard with the samples of tests/data/s031/samples: HTML as Qt hands it to the
 // editor on Windows and the plain text, so the tests run alike on every platform.
 #include "find_bar.hpp"
+#include "hitokoto/core/table.hpp"
 #include "paste_samples.hpp"
 #include "table_model.hpp"
 #include "table_paste.hpp"
@@ -1308,6 +1309,28 @@ private slots:
             pressPaste(cell);
             QCOMPARE(cell->toPlainText(), markdown);
         }
+    }
+
+    // Qt's import of a table in a cell, at any depth: the cell's lines hold the text of the tables
+    // inside it in their order, and the outer table is marked as holding one. The editor never
+    // converts such a paste (review O1: scanHtml finds the nested table first); this is the reading.
+    void aTableInACellGivesTheCellItsText() {
+        const auto parts = ui::readPastedHtml(QStringLiteral(
+            "<table><tr><td>a<table><tr><td>b<table><tr><td>c</td></tr></table></td><td>d</td></tr></table>e</td>"
+            "<td>f</td></tr></table>"));
+        // Qt's document has an empty block before and after a table, also after the innermost one.
+        QCOMPARE(parts.size(), std::size_t{3});
+        QCOMPARE(parts[0].lines, std::vector<std::u16string>{u""});
+        QCOMPARE(parts[2].lines, std::vector<std::u16string>{u""});
+        const std::optional<core::PastedTable>& pasted = parts[1].table;
+        if (!pasted.has_value()) {
+            QFAIL("the part between the empty blocks is a table");
+        }
+        const core::PastedTable& table = *pasted;
+        QVERIFY(table.containsTable);
+        QCOMPARE(table.cells.size(), std::size_t{2});
+        QCOMPARE(table.cells[0].lines, (std::vector<std::u16string>{u"a", u"b", u"c", u"", u"d", u"e"}));
+        QCOMPARE(table.cells[1].lines, std::vector<std::u16string>{u"f"});
     }
 };
 

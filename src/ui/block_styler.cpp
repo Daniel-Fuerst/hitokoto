@@ -3,6 +3,7 @@
 
 #include "block_data.hpp"
 #include "block_layout.hpp"
+#include "block_user_state.hpp"
 #include "qt_bridge.hpp"
 
 #include <QElapsedTimer>
@@ -17,30 +18,6 @@
 
 namespace hitokoto::ui {
 namespace {
-// QTextBlock::userState() carries what is known about a block; Qt gives new blocks -1 (nothing).
-// Bits 0-1: what the block was styled for (0 = not styled, 1 = concealed, 2 = revealed).
-// Bit 2: the block state after the line is known. Bit 3: that state is active; only then does
-// the block carry a BlockData holding it, so plain lines need no allocation.
-// Bits 4-19: the paragraph of that state (BlockState::paragraph, S023, ADR 0006).
-// Bit 20: the setext level of the line's paragraph is known; bits 21-22: that level, or the one
-// the line was last shown with. Bit 23: the line's link to the paragraph above is known; bits
-// 24-25: that link (none, continues, underline of level 1 or 2).
-constexpr int kStyleMask = 0x3;
-constexpr int kUnstyled = 0;
-constexpr int kStyledConcealed = 1;
-constexpr int kStyledRevealed = 2;
-constexpr int kStyledParagraphRevealed = 3;
-constexpr int kStateKnown = 0x4;
-constexpr int kStateActive = 0x8;
-constexpr int kParagraphShift = 4;
-constexpr int kParagraphMask = 0xFFFF << kParagraphShift;
-constexpr int kLevelKnown = 1 << 20;
-constexpr int kLevelShift = 21;
-constexpr int kLevelMask = 0x3 << kLevelShift;
-constexpr int kLinkKnown = 1 << 23;
-constexpr int kLinkShift = 24;
-constexpr int kLinkMask = 0x3 << kLinkShift;
-constexpr int kLinkContinues = 1;
 // The walk over a paragraph (S023) runs synchronously for this long, then in idle slices.
 constexpr qint64 kParagraphSearchNanoseconds = 2'000'000;
 // A changed setext level is passed up this many lines of a paragraph on a key; the lines above
@@ -82,8 +59,7 @@ std::optional<core::BlockState> cachedBlockState(const QTextBlock& block) {
 void cacheBlockState(QTextBlock& block, core::BlockState state) {
     auto* data = dynamic_cast<BlockData*>(block.userData());
     const auto previous = cachedBlockState(block);
-    int keep = stateBits(block) & (kStyleMask | kLevelKnown | kLevelMask | kLinkKnown | kLinkMask | kWrapIndentMask |
-                                   kFlowsToNextBit | kHardBreakBit | kSharesPrevLineBit);
+    int keep = stateBits(block) & ~kCachedStateBits;
     if (previous && *previous != state) {
         keep &= ~kLevelKnown;  // found for another state
         if (QTextBlock next = block.next(); next.isValid()) {
@@ -452,15 +428,17 @@ BlockStyler::CodeExtent BlockStyler::codeExtentOf(const QTextBlock& block) {
         return search_.known();  // the block searched last: a caret step inside costs nothing
     }
     const auto render = renderFor(block);
-    if (!render.codeBlock) {
+    if (!render.codeBlock && !render.mathBlock) {
         return {};  // a search still running goes on, for when the caret comes back
     }
     // Every line of one code block carries the same block state; the line before the opening
     // fence and the closing fence carry another one. The search reads cached states and renders
     // nothing; it runs once per block, not once per caret step (review O2).
     const core::BlockState before = blockStateBefore(block);
-    const bool opening = render.fenceLine && render.blockState.active();
-    const bool closing = render.fenceLine && !render.blockState.active();
+    // S047: the `$$` lines of a display math block are its fences.
+    const bool fence = render.fenceLine || render.mathDelimiter;
+    const bool opening = fence && render.blockState.active();
+    const bool closing = fence && !render.blockState.active();
     fenceSearch_.stop();
     search_ = {.inside = opening ? render.blockState : before,
                .from = number,
@@ -553,11 +531,12 @@ void BlockStyler::updateExtentAfterEdit(int position, int charsAdded) {
     const int close = search_.close >= 0 ? search_.close + delta : -1;
     bool keep = l - f <= kSynchronousLimit && (close < 0 || l < close);
     for (QTextBlock b = first; keep && b.isValid() && b.blockNumber() <= l; b = b.next()) {
-        keep = !renderFor(b).fenceLine;
+        const auto edited = renderFor(b);
+        keep = !edited.fenceLine && !edited.mathDelimiter;
     }
     if (keep && close >= 0) {
         const auto render = renderFor(document_->findBlockByNumber(close));
-        keep = render.codeBlock && render.fenceLine;
+        keep = (render.codeBlock && render.fenceLine) || (render.mathBlock && render.mathDelimiter);
     }
     if (!keep) {
         forgetExtent();

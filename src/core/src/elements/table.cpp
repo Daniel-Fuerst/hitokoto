@@ -2,6 +2,7 @@
 // S018: GitHub Flavored Markdown pipe tables (GFM 0.29 section 4.10, ADR 0005), following
 // cmark-gfm where the spec leaves room. The UI shows table lines in a table view; the lines carry
 // no formats of their own.
+#include "hitokoto/core/table.hpp"
 #include "hitokoto/core/markdown.hpp"
 
 #include "../block_rules.hpp"
@@ -171,11 +172,6 @@ std::size_t delimiterColumns(std::u16string_view line, std::array<TableAlign, kM
 class TableElement final : public MultiLineElement {
 public:
     [[nodiscard]] std::string_view id() const noexcept override { return "table"; }
-
-    [[nodiscard]] std::optional<BlockLine> parse(std::u16string_view line,
-                                                 std::uint32_t state) const noexcept override {
-        return parseWithNextLine(line, state, {});
-    }
 
     [[nodiscard]] std::optional<BlockLine> parseWithNextLine(std::u16string_view line, std::uint32_t state,
                                                              std::u16string_view nextLine) const noexcept override {

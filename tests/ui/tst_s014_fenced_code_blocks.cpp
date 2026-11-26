@@ -7,12 +7,8 @@
 using namespace hitokoto;
 
 namespace {
-QColor qcolor(const core::Color& c) {
-    return {c.r, c.g, c.b, c.a};
-}
-QColor pixel(ui::EditorWidget* editor, qreal x, qreal y) {
-    return editor->viewport()->grab().toImage().pixelColor(static_cast<int>(x), static_cast<int>(y));
-}
+using test::pixel;
+using test::qcolor;
 }  // namespace
 
 class tst_s014_fenced_code_blocks : public QObject {
