@@ -134,3 +134,17 @@ on main was still running (and could have ended red).
 - Builds for a new version follow the CI by `workflow_run` on "CI" (`packaging.yml`, S034), not the
   tag job: a run started by `workflow_run` belongs to the newest commit of main, so only one such
   step keeps the commit the CI passed (`github.event.workflow_run.head_sha`).
+
+## Amendment: a fifth label for documentation (S042, 2026-11-21)
+
+Approved by Armin in conversation on 2026-11-21, with the spec of S042; implemented on 2026-11-26.
+
+- `version:doc`: the pull request changes only documentation, that is files under `docs/` other
+  than those that tests read (`tests/docs-read-by-tests.txt`). For the version it counts as
+  `version:none`: the merge gets no tag. "Version label" accepts exactly one of the five labels.
+- Its second meaning is for the CI: with `version:doc`, `ci.yml` checks that every changed file
+  counts as documentation and then skips its builds and tests; a wrong `version:doc` is red. A push
+  to main that changes only documentation starts no CI run, so "Version" does not run for it; the
+  next merge with a version passes over it as over `version:none`.
+- `version:none` stays for documentation together with anything else (tests, workflows, scripts,
+  `README.md`, `CLAUDE.md`), which runs the whole CI.
