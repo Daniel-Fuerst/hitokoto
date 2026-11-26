@@ -15,6 +15,7 @@
 #include <QEvent>
 #include <QHeaderView>
 #include <QInputMethodEvent>
+#include <QItemSelectionModel>
 #include <QKeyEvent>
 #include <QMenu>
 #include <QMimeData>
@@ -32,6 +33,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace hitokoto::ui {
@@ -103,6 +105,10 @@ void CellEditor::pressKey(QKeyEvent* event) {
 }
 
 void CellEditor::inputMethodEvent(QInputMethodEvent* event) {
+    // S040, decision 11: committed text replaces no cells; it goes where the caret was.
+    if (view_ != nullptr && view_->hasCellSelection() && !event->commitString().isEmpty()) {
+        view_->endCellSelection();
+    }
     // The committed text enters the cell as insertableText makes it (S004, rework of 2026-11-21).
     if (const auto input = insertableInput(*event)) {
         QPlainTextEdit::inputMethodEvent(input.get());
@@ -115,19 +121,40 @@ void CellEditor::inputMethodEvent(QInputMethodEvent* event) {
 void CellEditor::contextMenuEvent(QContextMenuEvent* event) {
     // The text actions and the table actions (S018, kept from the first version).
     std::unique_ptr<QMenu> menu(createStandardContextMenu(event->pos()));
+    QAction* textSelectAll = nullptr;
     for (QAction* entry : menu->actions()) {
         if (entry->text().contains(QStringLiteral("Undo")) || entry->text().contains(QStringLiteral("Redo"))) {
             entry->setVisible(false);  // the cell has no undo of its own
         }
+        if (entry->objectName() == QStringLiteral("select-all")) {
+            textSelectAll = entry;
+        }
     }
     if (view_ != nullptr) {
+        // S040, decision 7: Select All selects the table, followed by Select Column and Select Row,
+        // in the place of the text's Select All.
+        QList<QAction*> selecting;
+        QList<QAction*> others;
+        for (QAction* entry : view_->actions()) {
+            (entry->objectName().startsWith(QStringLiteral("tableSelect")) ? selecting : others) << entry;
+        }
+        if (textSelectAll != nullptr) {
+            menu->insertActions(textSelectAll, selecting);
+            menu->removeAction(textSelectAll);
+        } else {
+            menu->addActions(selecting);
+        }
         menu->addSeparator();
-        menu->addActions(view_->actions());
+        menu->addActions(others);
     }
     menu->exec(event->globalPos());
 }
 
 void CellEditor::insertFromMimeData(const QMimeData* source) {
+    // S040, decision 11: a paste replaces no cells; it goes where the caret was.
+    if (view_ != nullptr && view_->hasCellSelection()) {
+        view_->endCellSelection();
+    }
     // As in the editor (S031): the text alone, so that Qt never chooses a format, and only text
     // that may enter the document (insertableText; S004, rework of 2026-11-21).
     QMimeData plain;
@@ -184,6 +211,12 @@ bool holdsImage(const QTextDocument& document) {
 // --- TableDelegate ----------------------------------------------------------------------------
 
 TableDelegate::TableDelegate(QObject* parent) : QStyledItemDelegate(parent) {}
+
+void TableDelegate::setSelectionColors(const QColor& background, const QColor& text, const QColor& current) {
+    selectionBackground_ = background;
+    selectionText_ = text;
+    currentBackground_ = current;
+}
 
 void TableDelegate::setPadding(qreal padding) {
     padding_ = padding;
@@ -296,10 +329,13 @@ void TableDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option,
     if (background.isValid()) {
         painter->fillRect(option.rect, background.value<QColor>());
     }
-    if ((option.state & QStyle::State_HasFocus) != 0) {
-        QColor highlight = option.palette.color(QPalette::Highlight);
-        highlight.setAlpha(60);
-        painter->fillRect(option.rect, highlight);
+    // S040: a cell selected as a cell shows the selection colours over its whole area; the
+    // current cell, while no cell is selected, table.current-background.
+    const bool selected = (option.state & QStyle::State_Selected) != 0;
+    if (selected) {
+        painter->fillRect(option.rect, selectionBackground_);
+    } else if ((option.state & QStyle::State_HasFocus) != 0) {
+        painter->fillRect(option.rect, currentBackground_);
     }
     QTextDocument document;
     prepare(document, index);
@@ -309,7 +345,9 @@ void TableDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option,
     QAbstractTextDocumentLayout::PaintContext context;
     context.palette = option.palette;
     const QVariant foreground = index.data(Qt::ForegroundRole);
-    if (foreground.isValid()) {
+    if (selected) {
+        context.palette.setColor(QPalette::Text, selectionText_);
+    } else if (foreground.isValid()) {
         context.palette.setColor(QPalette::Text, foreground.value<QColor>());
     }
     context.clip = QRectF(0, 0, width, std::max<qreal>(0.0, option.rect.height() - 2 * padding_));
@@ -413,7 +451,9 @@ TableView::TableView(QWidget* parent) : QTableView(parent), delegate_(new TableD
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setWordWrap(true);
     setTabKeyNavigation(true);
-    setSelectionMode(QAbstractItemView::SingleSelection);
+    // S040: the view selects nothing by itself, not even the current cell; a selection of cells
+    // is set in the selection model by the keys, the mouse and the actions below.
+    setSelectionMode(QAbstractItemView::NoSelection);
     // The current cell always has its editor open (currentChanged); clicks place the caret.
     setEditTriggers(QAbstractItemView::NoEditTriggers);
 
@@ -424,10 +464,14 @@ TableView::TableView(QWidget* parent) : QTableView(parent), delegate_(new TableD
         connect(action, &QAction::triggered, this, slot);
         QWidget::addAction(action);
     };
+    // S040, decision 7: Select All selects the table, directly followed by Select Column and Select Row.
+    addAction(tr("Select All"), "tableSelectAll", [this] { selectTable(); });
+    addAction(tr("Select Column"), "tableSelectColumn", [this] { selectColumns(); });
+    addAction(tr("Select Row"), "tableSelectRow", [this] { selectRows(); });
     addAction(tr("Add Row"), "tableAddRow", [this] { emit appendRow(std::max(currentIndex().column(), 0)); });
-    addAction(tr("Delete Row"), "tableDeleteRow", [this] { emit deleteRow(currentIndex().row(), false); });
+    addAction(tr("Delete Row"), "tableDeleteRow", [this] { deleteSelectedRows(); });
     addAction(tr("Add Column"), "tableAddColumn", [this] { emit addColumn(); });
-    addAction(tr("Delete Column"), "tableDeleteColumn", [this] { emit deleteColumn(currentIndex().column()); });
+    addAction(tr("Delete Column"), "tableDeleteColumn", [this] { deleteSelectedColumns(); });
     addAction(tr("Show Markdown Source\tCtrl+Shift+M"), "tableShowSource", [this] { emit toggleSource(); });
 }
 
@@ -502,6 +546,9 @@ void TableView::setModel(QAbstractItemModel* newModel) {
     // A reset (rows or columns added or removed, undo) closes the editor; the caret comes back
     // to the same cell if a cell had the focus.
     connect(newModel, &QAbstractItemModel::modelAboutToBeReset, this, [this] {
+        // S040, decision 9: a change of the table's lines ends a selection of cells; the caret
+        // goes where S018 puts it.
+        cells_.reset();
         const CellEditor* editor = currentEditor();
         restore_.focus = editor != nullptr && editor->hasFocus();
         restore_.row = std::max(currentIndex().row(), 0);
@@ -596,6 +643,9 @@ bool TableView::cellKey(QKeyEvent* event, CellEditor* editor) {
     auto* tableModel = qobject_cast<TableModel*>(model());
     if (tableModel == nullptr || !currentIndex().isValid()) {
         return false;
+    }
+    if (selectionKey(event, editor)) {
+        return true;
     }
     const Qt::KeyboardModifiers modifiers = event->modifiers() & ~Qt::KeypadModifier;
     const bool none = modifiers == Qt::NoModifier;
@@ -790,6 +840,289 @@ void TableView::keyPressEvent(QKeyEvent* event) {
     QTableView::keyPressEvent(event);
 }
 
+// --- S040: selecting cells, rows and columns ----------------------------------------------------
+
+std::optional<core::TableCellRange> TableView::cellSelection() const {
+    if (!cells_) {
+        return std::nullopt;
+    }
+    return cells_->range();
+}
+
+void TableView::setCells(const core::TableCellSelection& selection) {
+    if (!cells_) {
+        // Where the caret was before the selection began: the start of a text selection.
+        const QModelIndex current = currentIndex();
+        before_.row = std::max(current.row(), 0);
+        before_.column = std::max(current.column(), 0);
+        const CellEditor* editor = currentEditor();
+        before_.position = editor != nullptr ? editor->textCursor().anchor() : 0;
+    }
+    cells_ = selection;
+    showCells();
+}
+
+void TableView::showCells() {
+    QAbstractItemModel* m = model();
+    if (m == nullptr) {
+        return;
+    }
+    if (cells_) {
+        const core::TableCellRange r = cells_->range();
+        selectionModel()->select(QItemSelection(m->index(r.top, r.left), m->index(r.bottom, r.right)),
+                                 QItemSelectionModel::ClearAndSelect);
+    } else {
+        selectionModel()->clearSelection();
+    }
+    // The current cell's editor covers its cell: it takes the selection colours and hides its
+    // caret while cells are selected.
+    if (CellEditor* editor = currentEditor()) {
+        QPalette palette = editor->palette();
+        const QModelIndex index = currentIndex();
+        if (cells_) {
+            palette.setColor(QPalette::Base, delegate_->selectionBackground());
+            palette.setColor(QPalette::Text, delegate_->selectionText());
+            // The view's style sheet reaches the editor, so its own rule paints the selection
+            // colour, over the padding around its text as well.
+            editor->setStyleSheet(QStringLiteral("QPlainTextEdit { background: %1; color: %2; }")
+                                      .arg(delegate_->selectionBackground().name(QColor::HexArgb),
+                                           delegate_->selectionText().name(QColor::HexArgb)));
+            QTextCursor cursor = editor->textCursor();
+            cursor.clearSelection();
+            editor->setTextCursor(cursor);
+            editor->setCursorWidth(0);
+            editor->setFocus();  // keys go on to the selection, also after the context menu
+        } else {
+            if (const QVariant background = index.data(Qt::BackgroundRole); background.isValid()) {
+                palette.setColor(QPalette::Base, background.value<QColor>());
+            }
+            if (const QVariant foreground = index.data(Qt::ForegroundRole); foreground.isValid()) {
+                palette.setColor(QPalette::Text, foreground.value<QColor>());
+            }
+            editor->setCursorWidth(1);
+            editor->setStyleSheet(QString());
+        }
+        editor->setPalette(palette);
+    }
+    // Decision 10: the header row stays; with only the header row selected Delete Row does nothing.
+    if (auto* deleteRowAction = findChild<QAction*>(QStringLiteral("tableDeleteRow"))) {
+        deleteRowAction->setEnabled(!cells_ || cells_->range().bottom > 0);
+    }
+    viewport()->update();
+}
+
+void TableView::endCellSelection(bool restoreCaret) {
+    if (!cells_) {
+        return;
+    }
+    cells_.reset();
+    showCells();
+    if (!restoreCaret || model() == nullptr) {
+        return;
+    }
+    if (currentIndex() != model()->index(before_.row, before_.column)) {
+        enterCell(before_.row, before_.column, Caret::Start);
+    }
+    if (CellEditor* editor = currentEditor()) {
+        QTextCursor cursor = editor->textCursor();
+        cursor.setPosition(std::min(before_.position, static_cast<int>(editor->toPlainText().size())));
+        editor->setTextCursor(cursor);
+        editor->setFocus();
+    }
+}
+
+void TableView::selectTable() {
+    if (model() == nullptr || model()->rowCount() == 0 || model()->columnCount() == 0) {
+        return;
+    }
+    setCells(core::TableCellSelection::wholeTable(model()->rowCount(), model()->columnCount()));
+}
+
+void TableView::selectRows() {
+    if (model() == nullptr || !currentIndex().isValid()) {
+        return;
+    }
+    core::TableCellSelection selection =
+        cells_ ? *cells_
+               : core::TableCellSelection(model()->rowCount(), model()->columnCount(),
+                                          {currentIndex().row(), currentIndex().column()});
+    selection.selectRows();
+    setCells(selection);
+}
+
+void TableView::selectColumns() {
+    if (model() == nullptr || !currentIndex().isValid()) {
+        return;
+    }
+    core::TableCellSelection selection =
+        cells_ ? *cells_
+               : core::TableCellSelection(model()->rowCount(), model()->columnCount(),
+                                          {currentIndex().row(), currentIndex().column()});
+    selection.selectColumns();
+    setCells(selection);
+}
+
+void TableView::deleteSelectedRows() {
+    if (!cells_) {
+        emit deleteRow(currentIndex().row(), false);  // S018
+        return;
+    }
+    const core::TableCellRange r = cells_->range();
+    const int first = std::max(r.top, 1);  // the header row stays
+    if (first > r.bottom) {
+        return;
+    }
+    emit deleteRows(first, r.bottom);
+}
+
+void TableView::deleteSelectedColumns() {
+    if (!cells_) {
+        emit deleteColumn(currentIndex().column());  // S018
+        return;
+    }
+    const core::TableCellRange r = cells_->range();
+    emit deleteColumns(r.left, r.right);
+}
+
+bool TableView::selectionKey(QKeyEvent* event, CellEditor* editor) {
+    QAbstractItemModel* m = model();
+    const QModelIndex current = currentIndex();
+    if (m == nullptr || !current.isValid() || editor == nullptr) {
+        return false;
+    }
+    const Qt::KeyboardModifiers modifiers = event->modifiers() & ~Qt::KeypadModifier;
+    const int key = event->key();
+#ifdef Q_OS_MACOS
+    // Decision 4: the Control key, which Qt calls Meta on macOS (Ctrl there is Command).
+    constexpr Qt::KeyboardModifiers columnModifiers = Qt::MetaModifier;
+#else
+    constexpr Qt::KeyboardModifiers columnModifiers = Qt::ControlModifier;
+#endif
+    if (key == Qt::Key_Space && modifiers == Qt::ShiftModifier) {
+        selectRows();
+        return true;
+    }
+    if (key == Qt::Key_Space && modifiers == columnModifiers) {
+        selectColumns();
+        return true;
+    }
+    const int length = static_cast<int>(editor->toPlainText().size());
+    if (event->matches(QKeySequence::SelectAll)) {
+        // Decision 3: the cell's text, then the table; an empty cell first as a cell.
+        if (cells_) {
+            selectTable();
+            return true;
+        }
+        const QTextCursor cursor = editor->textCursor();
+        if (length == 0) {
+            setCells(core::TableCellSelection(m->rowCount(), m->columnCount(), {current.row(), current.column()}));
+            return true;
+        }
+        if (cursor.selectionStart() == 0 && cursor.selectionEnd() == length) {
+            selectTable();
+            return true;
+        }
+        return false;
+    }
+    const auto stepOf = [&](bool shifted) -> std::optional<core::TableStep> {
+        const bool ctrl = (modifiers & Qt::ControlModifier) != 0;
+        if (modifiers != Qt::ShiftModifier && !(shifted && modifiers == (Qt::ShiftModifier | Qt::ControlModifier) &&
+                                                (key == Qt::Key_Home || key == Qt::Key_End))) {
+            return std::nullopt;
+        }
+        switch (key) {
+            case Qt::Key_Left:
+                return core::TableStep::Left;
+            case Qt::Key_Right:
+                return core::TableStep::Right;
+            case Qt::Key_Up:
+                return core::TableStep::Up;
+            case Qt::Key_Down:
+                return core::TableStep::Down;
+            case Qt::Key_Home:
+                return ctrl ? core::TableStep::TableStart : core::TableStep::RowStart;
+            case Qt::Key_End:
+                return ctrl ? core::TableStep::TableEnd : core::TableStep::RowEnd;
+            default:
+                return std::nullopt;
+        }
+    };
+    if (!cells_) {
+        // Decision 8: a Shift step at the edge of the cell's text selects the cell as a cell.
+        const auto step = stepOf(false);
+        if (!step) {
+            return false;
+        }
+        const QTextCursor cursor = editor->textCursor();
+        const QTextBlock block = cursor.block();
+        const QTextLayout* layout = block.layout();
+        const QTextLine line = layout->lineForTextPosition(cursor.positionInBlock());
+        const bool onFirstLine =
+            block == editor->document()->firstBlock() && (!line.isValid() || line.lineNumber() == 0);
+        const bool onLastLine = block == editor->document()->lastBlock() &&
+                                (!line.isValid() || line.lineNumber() == layout->lineCount() - 1);
+        if (!core::shiftStepSelectsCell(*step, cursor.position(), length, onFirstLine, onLastLine)) {
+            return false;
+        }
+        setCells(core::TableCellSelection(m->rowCount(), m->columnCount(), {current.row(), current.column()}));
+        return true;
+    }
+    switch (key) {
+        case Qt::Key_Shift:
+        case Qt::Key_Control:
+        case Qt::Key_Meta:
+        case Qt::Key_Alt:
+        case Qt::Key_AltGr:
+        case Qt::Key_CapsLock:
+            return true;  // a modifier alone changes nothing
+        case Qt::Key_Escape:
+            if (modifiers == Qt::NoModifier) {
+                endCellSelection(true);  // decision 9; a second Escape leaves the table (S018)
+                return true;
+            }
+            break;
+        case Qt::Key_Left:
+        case Qt::Key_Right:
+        case Qt::Key_Up:
+        case Qt::Key_Down:
+        case Qt::Key_Home:
+        case Qt::Key_End:
+            if (const auto step = stepOf(true)) {
+                cells_->extend(*step);
+                showCells();
+                return true;
+            }
+            break;
+        case Qt::Key_Delete:
+        case Qt::Key_Backspace:
+            // Decision 10: empty the cells, or remove the whole table; the keys of S018 remove the
+            // selected rows or columns.
+            if (modifiers == Qt::NoModifier) {
+                if (cells_->coversWholeTable()) {
+                    emit removeTable();
+                } else {
+                    emit emptyCells(cells_->range());
+                }
+                return true;
+            }
+            if (modifiers == (Qt::ControlModifier | Qt::AltModifier)) {
+                deleteSelectedColumns();
+                return true;
+            }
+            if (modifiers == (Qt::ControlModifier | Qt::ShiftModifier)) {
+                deleteSelectedRows();
+                return true;
+            }
+            break;
+        default:
+            break;
+    }
+    // Any other key ends the selection; it then acts as if there had been none, from where the
+    // caret was before the selection began (decisions 9 and 11).
+    endCellSelection(true);
+    return false;
+}
+
 void TableView::handleEnter() {
     auto* tableModel = qobject_cast<TableModel*>(model());
     if (tableModel == nullptr) {
@@ -810,6 +1143,28 @@ void TableView::handleEnter() {
 void TableView::mousePressEvent(QMouseEvent* event) {
     const QPoint position = event->position().toPoint();
     const QModelIndex index = indexAt(position);
+    dragCells_ = false;
+    // S040, decision 7: a right click inside a selection of cells keeps it; elsewhere it ends it.
+    if (event->button() == Qt::RightButton && cells_ && index.isValid() &&
+        cells_->range().contains(index.row(), index.column())) {
+        event->accept();
+        return;
+    }
+    // S040, decision 8: Shift with a click selects the rectangle from the current cell.
+    if (event->button() == Qt::LeftButton && event->modifiers() == Qt::ShiftModifier && index.isValid() &&
+        currentIndex().isValid() && model() != nullptr) {
+        core::TableCellSelection selection =
+            cells_ ? *cells_
+                   : core::TableCellSelection(model()->rowCount(), model()->columnCount(),
+                                              {currentIndex().row(), currentIndex().column()});
+        selection.extendTo({index.row(), index.column()});
+        setCells(selection);
+        event->accept();
+        return;
+    }
+    if (cells_) {
+        endCellSelection(false);  // decision 9: the caret goes where the click was
+    }
     if (event->button() != Qt::LeftButton || event->modifiers() != Qt::NoModifier || !index.isValid()) {
         QTableView::mousePressEvent(event);
         return;
@@ -825,9 +1180,32 @@ void TableView::mousePressEvent(QMouseEvent* event) {
 }
 
 void TableView::mouseMoveEvent(QMouseEvent* event) {
-    if (dragEditor_ != nullptr && (event->buttons() & Qt::LeftButton) != 0) {
+    if (dragEditor_ != nullptr && (event->buttons() & Qt::LeftButton) != 0 && model() != nullptr) {
+        // S040, decision 8: in another cell the rectangle from the starting cell; past the end of
+        // the starting cell's text that cell; back over its text a text selection again.
+        const QModelIndex start = currentIndex();
+        const QModelIndex over = indexAt(event->position().toPoint());
+        const QPoint inCell = dragEditor_->viewport()->mapFrom(viewport(), event->position().toPoint());
+        const QTextCursor at = dragEditor_->cursorForPosition(inCell);
+        const QRect end = dragEditor_->cursorRect(at);
+        const bool pastText = over == start && at.position() == dragEditor_->toPlainText().size() &&
+                              (inCell.x() > end.right() + 2 || inCell.y() > end.bottom());
+        if (over.isValid() && start.isValid() && (over != start || pastText)) {
+            core::TableCellSelection selection =
+                cells_ ? *cells_
+                       : core::TableCellSelection(model()->rowCount(), model()->columnCount(),
+                                                  {start.row(), start.column()});
+            selection.extendTo({over.row(), over.column()});
+            setCells(selection);
+            dragCells_ = true;
+            event->accept();
+            return;
+        }
+        if (cells_) {
+            endCellSelection(false);
+        }
         // Selecting in the cell the click went into, as in its editor (S018).
-        const QPoint position = dragEditor_->viewport()->mapFrom(viewport(), event->position().toPoint());
+        const QPoint position = inCell;
         QTextCursor cursor = dragEditor_->textCursor();
         cursor.setPosition(dragAnchor_);
         cursor.setPosition(dragEditor_->cursorForPosition(position).position(), QTextCursor::KeepAnchor);
@@ -953,6 +1331,8 @@ void TableWidget::applyStyle(const EditorFormats& formats) {
                            style.borderWidth, style.radius);
     }
     view_->tableDelegate()->setPadding(style.padding);
+    view_->tableDelegate()->setSelectionColors(toQColor(style.selectionBackground), toQColor(style.selectionText),
+                                               toQColor(style.currentBackground));
     view_->setStyleSheet(
         QStringLiteral("QTableView { background: %1; gridline-color: %2; border: %3px solid %2; "
                        "border-radius: %4px; }")

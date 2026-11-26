@@ -1343,13 +1343,17 @@ private slots:
 
         const QRect cell = view->visualRect(view->model()->index(1, 0));
         const QPoint from(cell.left() + 1, cell.center().y());
-        const QPoint to(cell.right() - 1, cell.center().y());
         QWidget* target = view->viewport()->childAt(from);
         if (target == nullptr) {
             target = view->viewport();
         }
         const auto local = [&](QPoint p) { return target->mapFrom(view->viewport(), p); };
         QTest::mousePress(target, Qt::LeftButton, {}, local(from));
+        // To the end of the text: past it, a drag selects the cell as a cell (S040, decision 8).
+        auto* pressed = qobject_cast<QPlainTextEdit*>(view->indexWidget(view->model()->index(1, 0)));
+        QVERIFY(pressed != nullptr);
+        const int advance = pressed->fontMetrics().horizontalAdvance(QStringLiteral("Alice Smith"));
+        const QPoint to(cell.left() + pressed->viewport()->x() + advance, cell.center().y());
         QMouseEvent drag(QEvent::MouseMove, QPointF(local(to)), QPointF(target->mapToGlobal(local(to))), Qt::NoButton,
                          Qt::LeftButton, Qt::NoModifier);
         QCoreApplication::sendEvent(target, &drag);

@@ -4,12 +4,17 @@
 // the hover controls for rows and columns.
 #pragma once
 
+#include "hitokoto/core/table_selection.hpp"
+
+#include <QColor>
 #include <QHash>
 #include <QPlainTextEdit>
 #include <QSizeF>
 #include <QStyledItemDelegate>
 #include <QTableView>
 #include <QToolButton>
+
+#include <optional>
 
 class QTextDocument;
 
@@ -50,6 +55,11 @@ class TableDelegate : public QStyledItemDelegate {
 public:
     explicit TableDelegate(QObject* parent = nullptr);
     void setPadding(qreal padding);
+    /// S040: selected cells and the current cell (table.selection-background, table.selection-text,
+    /// table.current-background).
+    void setSelectionColors(const QColor& background, const QColor& text, const QColor& current);
+    [[nodiscard]] QColor selectionBackground() const { return selectionBackground_; }
+    [[nodiscard]] QColor selectionText() const { return selectionText_; }
 
     void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override;
     [[nodiscard]] QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const override;
@@ -80,6 +90,9 @@ private:
     [[nodiscard]] static QString cacheKey(const QModelIndex& index, const QString& markdown);
 
     qreal padding_ = 4;
+    QColor selectionBackground_{0xdc, 0xd8, 0xfe};
+    QColor selectionText_{0x1f, 0x23, 0x28};
+    QColor currentBackground_{0xdc, 0xd8, 0xfe, 60};
     mutable QHash<QString, QSizeF> naturalCache_;
     mutable QHash<QString, qreal> heightCache_;  ///< by cache key and width
 };
@@ -126,6 +139,17 @@ public:
     /// Whether every cell of `column` is empty, the header's included.
     [[nodiscard]] bool isColumnEmpty(int column) const;
 
+    /// S040: a selection of cells, held in the selection model (decision 13); none while the caret
+    /// is in a cell's text.
+    [[nodiscard]] bool hasCellSelection() const noexcept { return cells_.has_value(); }
+    [[nodiscard]] std::optional<core::TableCellRange> cellSelection() const;
+    /// Ends a selection of cells; with `restoreCaret` the caret goes where it was before it began.
+    void endCellSelection(bool restoreCaret = true);
+    /// Decision 3 and 7: the whole table, the current rows, the current columns.
+    void selectTable();
+    void selectRows();
+    void selectColumns();
+
 signals:
     /// To the line above the table; `atEnd` puts the caret at its end (Left), else its start.
     void leaveAbove(bool atEnd);
@@ -142,6 +166,12 @@ signals:
     void toggleSource();
     void undo();
     void redo();
+    /// S040, decision 10: empty the cells of `range`; remove body rows `first` to `last`; remove
+    /// columns `first` to `last`; remove the whole table.
+    void emptyCells(hitokoto::core::TableCellRange range);
+    void deleteRows(int first, int last);
+    void deleteColumns(int first, int last);
+    void removeTable();
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -154,6 +184,14 @@ protected:
     void currentChanged(const QModelIndex& current, const QModelIndex& previous) override;
 
 private:
+    /// S040: keys while cells are selected, and the keys that select them; true if handled.
+    bool selectionKey(QKeyEvent* event, CellEditor* editor);
+    /// Starts or replaces the selection of cells, remembering the caret first.
+    void setCells(const core::TableCellSelection& selection);
+    /// The selection model, the look of the current cell's editor and the actions follow cells_.
+    void showCells();
+    void deleteSelectedRows();
+    void deleteSelectedColumns();
     void handleEnter();
     /// Tab and Shift+Tab: the next or previous cell, appending a row after the last.
     void moveToNeighbour(bool backward);
@@ -166,7 +204,15 @@ private:
         int row = 0;
         int column = 0;
         int position = 0;
-    } restore_;  ///< the caret across a model reset (rows or columns changed, undo)
+    } restore_;                                      ///< the caret across a model reset (rows or columns changed, undo)
+    std::optional<core::TableCellSelection> cells_;  ///< S040
+    struct Before {
+        int row = 0;
+        int column = 0;
+        int position = 0;
+    } before_;                ///< S040: where the caret was before the selection of cells began
+    bool dragCells_ = false;  ///< S040: a drag that left the text of its cell
+    bool showingCells_ = false;
 };
 
 /// The table view plus the hover controls around it; this is what the editor places in its

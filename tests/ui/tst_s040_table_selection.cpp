@@ -10,6 +10,7 @@
 #include <QImage>
 #include <QItemSelectionModel>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QTableView>
 #include <QTimer>
@@ -133,6 +134,10 @@ QStringList contextMenuOf(QWidget* widget) {
     QContextMenuEvent event(QContextMenuEvent::Mouse, point, target->mapToGlobal(point));
     QCoreApplication::sendEvent(target, &event);
     QCoreApplication::processEvents();
+    // The closed menu leaves the window inactive on the offscreen platform; a user's window is
+    // active again.
+    widget->window()->activateWindow();
+    (void)QTest::qWaitForWindowActive(widget->window());
     return *texts;
 }
 
@@ -207,6 +212,45 @@ private slots:
         QCOMPARE(selected(view_), cells(1, 2, 1, 2));
         press(Qt::Key_Down, Qt::ShiftModifier);
         QCOMPARE(selected(view_), cells(1, 2, 2, 2));
+    }
+
+    void fromTextToCellsWithTheMouse() {
+        // Decision 8: over the text a text selection, past its end the cell, in another cell the
+        // rectangle, back over the text a text selection again; Shift with a click a rectangle.
+        const QRect start = view_->visualRect(view_->model()->index(1, 1));
+        QWidget* target = view_->viewport();
+        const auto move = [&](QPoint to) {
+            QMouseEvent drag(QEvent::MouseMove, QPointF(to), QPointF(target->mapToGlobal(to)), Qt::NoButton,
+                             Qt::LeftButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(target, &drag);
+            QCoreApplication::processEvents();
+        };
+        QTest::mousePress(target, Qt::LeftButton, {}, QPoint(start.left() + 1, start.center().y()));
+        auto* cell = qobject_cast<QPlainTextEdit*>(view_->indexWidget(view_->model()->index(1, 1)));
+        QVERIFY(cell != nullptr);
+        const int advance = cell->fontMetrics().horizontalAdvance(QStringLiteral("b1"));
+        move(QPoint(start.left() + cell->viewport()->x() + advance, start.center().y()));
+        QCOMPARE(selected(view_), QString());
+        QCOMPARE(cell->textCursor().selectedText(), QStringLiteral("b1"));
+        move(QPoint(start.right() - 1, start.bottom() - 1));
+        QCOMPARE(selected(view_), cells(1, 1, 1, 1));
+        const QRect other = view_->visualRect(view_->model()->index(2, 2));
+        move(other.center());
+        QCOMPARE(selected(view_), cells(1, 1, 2, 2));
+        move(QPoint(start.left() + cell->viewport()->x() + advance, start.center().y()));
+        QCOMPARE(selected(view_), QString());
+        QTest::mouseRelease(target, Qt::LeftButton, {}, QPoint(start.left() + 2, start.center().y()));
+        QCOMPARE(focusedCell()->textCursor().selectedText(), QStringLiteral("b1"));
+
+        QTest::mouseClick(target, Qt::LeftButton, Qt::ShiftModifier,
+                          view_->visualRect(view_->model()->index(3, 3)).center());
+        QCoreApplication::processEvents();
+        QCOMPARE(selected(view_), cells(1, 1, 3, 3));
+        QTest::mouseClick(target, Qt::LeftButton, {}, view_->visualRect(view_->model()->index(2, 0)).center());
+        QCoreApplication::processEvents();
+        QCOMPARE(selected(view_), QString());
+        QCOMPARE(view_->currentIndex(), view_->model()->index(2, 0));
+        QCOMPARE(text(), QString::fromUtf8(kTable));
     }
 
     void rowsAndColumnsWithKeys() {

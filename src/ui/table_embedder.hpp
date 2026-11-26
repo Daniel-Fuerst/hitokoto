@@ -4,6 +4,8 @@
 // rows and columns in the Markdown lines and moves the caret into and out of tables.
 #pragma once
 
+#include "hitokoto/core/table_selection.hpp"
+
 #include "block_layout.hpp"
 
 #include <QObject>
@@ -168,6 +170,13 @@ private:
     void addColumn(Table& table);
     void deleteColumn(Table& table, int column);
     void removeLastRowAndLeave(Table& table);
+    /// S040, decision 10: the lines of a selection's deletion, one undo step each.
+    void emptyCells(Table& table, core::TableCellRange range);
+    void deleteRows(Table& table, int first, int last);
+    void deleteColumns(Table& table, int first, int last);
+    void removeTable(Table& table);
+    /// Replaces the table's lines with `lines` in one edit block and returns the updated table.
+    Table* replaceLines(Table& table, const std::vector<std::u16string>& lines);
     /// To the line above (`atEnd`: its end), adding one if the table starts the document.
     void leaveAbove(Table& table, bool atEnd);
     /// To the line below, if any.

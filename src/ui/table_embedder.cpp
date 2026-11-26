@@ -543,6 +543,13 @@ TableWidget* TableEmbedder::createWidget() {
     connect(view, &TableView::addColumn, this, on([this](Table& t) { addColumn(t); }));
     connect(view, &TableView::deleteColumn, this, on([this](Table& t, int column) { deleteColumn(t, column); }));
     connect(view, &TableView::removeLastRowAndLeave, this, on([this](Table& t) { removeLastRowAndLeave(t); }));
+    connect(view, &TableView::emptyCells, this,
+            on([this](Table& t, core::TableCellRange range) { emptyCells(t, range); }));
+    connect(view, &TableView::deleteRows, this,
+            on([this](Table& t, int first, int last) { deleteRows(t, first, last); }));
+    connect(view, &TableView::deleteColumns, this,
+            on([this](Table& t, int first, int last) { deleteColumns(t, first, last); }));
+    connect(view, &TableView::removeTable, this, on([this](Table& t) { removeTable(t); }));
     connect(view, &TableView::leaveAbove, this, on([this](Table& t, bool atEnd) { leaveAbove(t, atEnd); }));
     connect(view, &TableView::leaveDown, this, on([this](Table& t) { leaveDown(t); }));
     connect(view, &TableView::leaveBelow, this, on([this](Table& t) { leaveBelow(t.last.blockNumber()); }));
@@ -1000,6 +1007,115 @@ void TableEmbedder::removeLastRowAndLeave(Table& table) {
         changed->last = last;
     }
     leaveBelow(last.blockNumber());
+}
+
+// --- S040: deleting a selection of cells ---------------------------------------------------------
+
+TableEmbedder::Table* TableEmbedder::replaceLines(Table& table, const std::vector<std::u16string>& lines) {
+    const QTextBlock header = table.header;
+    const QTextBlock last = table.last;
+    QTextCursor cursor(header);
+    cursor.beginEditBlock();
+    std::size_t i = 0;
+    QTextBlock line = header;
+    // Lines that stay are written only if they change, so that every other byte stays (ADR 0002).
+    for (; line.isValid() && i < lines.size(); line = line.next(), ++i) {
+        if (view(line.text()) != lines[i]) {
+            setLine(cursor, line, toQString(lines[i]));
+        }
+        if (line == last) {
+            line = QTextBlock();
+            ++i;
+            break;
+        }
+    }
+    if (line.isValid()) {
+        // Fewer lines than before: the rest of the table's lines go, with the break before each.
+        cursor.setPosition(line.position() - 1);
+        cursor.setPosition(last.position() + static_cast<int>(last.text().size()), QTextCursor::KeepAnchor);
+        cursor.removeSelectedText();
+    }
+    cursor.endEditBlock();
+    return update(header);
+}
+
+namespace {
+
+std::vector<std::u16string> tableLines(const QTextBlock& header, const QTextBlock& last) {
+    std::vector<std::u16string> lines;
+    for (QTextBlock line = header; line.isValid(); line = line.next()) {
+        lines.emplace_back(view(line.text()));
+        if (line == last) {
+            break;
+        }
+    }
+    return lines;
+}
+
+}  // namespace
+
+void TableEmbedder::emptyCells(Table& table, core::TableCellRange range) {
+    if (table.widget == nullptr) {
+        return;
+    }
+    const int row = std::max(table.widget->view()->currentIndex().row(), 0);
+    const int column = std::max(table.widget->view()->currentIndex().column(), 0);
+    if (Table* changed = replaceLines(table, core::emptyTableCells(tableLines(table.header, table.last), range));
+        changed != nullptr && changed->widget != nullptr) {
+        focusCell(*changed, row, column);
+    }
+}
+
+void TableEmbedder::deleteRows(Table& table, int first, int last) {
+    if (table.widget == nullptr) {
+        return;
+    }
+    const int column = std::max(table.widget->view()->currentIndex().column(), 0);
+    if (Table* changed = replaceLines(table, core::removeTableRows(tableLines(table.header, table.last), first, last));
+        changed != nullptr && changed->widget != nullptr) {
+        focusCell(*changed, std::min(first, changed->widget->model()->rowCount() - 1), column);
+    }
+}
+
+void TableEmbedder::deleteColumns(Table& table, int first, int last) {
+    if (table.widget == nullptr) {
+        return;
+    }
+    const int row = std::max(table.widget->view()->currentIndex().row(), 0);
+    if (Table* changed =
+            replaceLines(table, core::removeTableColumns(tableLines(table.header, table.last), first, last));
+        changed != nullptr && changed->widget != nullptr) {
+        focusCell(*changed, row, std::min(first, changed->widget->model()->columnCount() - 1));
+    }
+}
+
+void TableEmbedder::removeTable(Table& table) {
+    // Decision 10: the table's lines and the blank line below it; the text before and after it
+    // stays apart by the blank line above the table.
+    const QTextBlock header = table.header;
+    const QTextBlock last = table.last;
+    const QTextBlock blank = last.next();
+    QTextCursor cursor(header);
+    cursor.beginEditBlock();
+    if (blank.isValid() && blank.text().trimmed().isEmpty() && blank.next().isValid()) {
+        cursor.setPosition(header.position());
+        cursor.setPosition(blank.next().position(), QTextCursor::KeepAnchor);
+    } else if (header.previous().isValid()) {
+        cursor.setPosition(header.position() - 1);
+        cursor.setPosition(last.position() + static_cast<int>(last.text().size()), QTextCursor::KeepAnchor);
+    } else {
+        cursor.setPosition(header.position());
+        cursor.setPosition(blank.isValid() ? blank.position() + static_cast<int>(blank.text().size())
+                                           : last.position() + static_cast<int>(last.text().size()),
+                           QTextCursor::KeepAnchor);
+    }
+    const int at = cursor.selectionStart();
+    cursor.removeSelectedText();
+    cursor.endEditBlock();
+    QTextCursor caret(editor_->document());
+    caret.setPosition(std::min(at, editor_->document()->characterCount() - 1));
+    editor_->setTextCursor(caret);
+    editor_->setFocus();
 }
 
 }  // namespace hitokoto::ui
