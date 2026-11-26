@@ -78,3 +78,17 @@ foreach(name IN ITEMS
         COMMAND ${CMAKE_COMMAND} -DCASE=${name} -DWORKFLOWS_DIR=${PROJECT_SOURCE_DIR}/.github/workflows
                 -DSOURCE_DIR=${PROJECT_SOURCE_DIR} -P ${s000_cases})
 endforeach()
+
+# S042: the decision of the job "Changes" (scripts/ci/DocsOnly.cmake) on fixed inputs.
+set(s042_cases "${CMAKE_CURRENT_SOURCE_DIR}/s042_docs_only_cases.cmake")
+foreach(name IN ITEMS
+        OnlyDocumentationSkipsTheBuild
+        WithoutTheLabelEveryJobRuns
+        AWrongLabelNamesEachFile
+        AFileMovedIntoDocsCountsWithItsOldPath
+        OtherFilesOutsideDocsNeverCount
+        CarriageReturnsAreIgnored)
+    add_test(NAME S042_${name}
+        COMMAND ${CMAKE_COMMAND} -DCASE=${name} -DSCRIPT=${PROJECT_SOURCE_DIR}/scripts/ci/DocsOnly.cmake
+                -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/cases/s042_${name} -P ${s042_cases})
+endforeach()
