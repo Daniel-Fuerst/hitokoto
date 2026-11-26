@@ -50,6 +50,8 @@ struct EmphasisTokens {
 /// Tokens of `[table]`; resolved by tableStyle().
 struct TableTokens {
     std::optional<Color> background, headerBackground, stripeBackground, text, headerText, border;
+    /// S040: selected cells, the current cell and the pointers over the areas of rows and columns.
+    std::optional<Color> selectionBackground, selectionText, currentBackground, selectPointerFill, selectPointerOutline;
     std::optional<double> headerWeight, borderWidth, radius, padding, fontScale;
     std::optional<std::string> fontFamily;
     friend bool operator==(const TableTokens&, const TableTokens&) = default;
@@ -231,6 +233,7 @@ struct EmphasisStyle {
 
 struct TableStyle {
     Color background, headerBackground, stripeBackground, text, headerText, border;
+    Color selectionBackground, selectionText, currentBackground, selectPointerFill, selectPointerOutline;  ///< S040
     int headerWeight = 700;
     double borderWidth = 1;
     double radius = 0;

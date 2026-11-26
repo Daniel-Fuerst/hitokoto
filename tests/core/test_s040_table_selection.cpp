@@ -2,6 +2,7 @@
 // S040: the rules of selecting cells, rows and columns that need no Qt, and the lines that
 // deleting a selection leaves.
 #include "hitokoto/core/table_selection.hpp"
+#include "hitokoto/core/theme.hpp"
 
 #include <gtest/gtest.h>
 
@@ -179,4 +180,36 @@ TEST(S040_TableSelection, DeletingColumnsKeepsOneColumn) {
     const auto all = removeTableColumns(kLines, 0, 2);
     const std::vector<std::u16string> first = {u"| A |", u"| --- |", u"| a1 |", u"|a2|", u"| a3 |"};
     EXPECT_EQ(all, first);
+}
+
+// --- Theming baseline ---------------------------------------------------------------------------
+
+TEST(S040_TableSelection, SelectionTokensFallBackAsDocumented) {
+    for (const auto scheme : {ColorScheme::Light, ColorScheme::Dark}) {
+        const Theme& theme = builtinTheme(scheme);
+        const TableStyle s = tableStyle(theme);
+        EXPECT_EQ(s.selectionBackground, theme.selection);
+        EXPECT_EQ(s.selectionText, theme.selectionText);
+        Color current = theme.selection;
+        current.a = 60;  // as before S040
+        EXPECT_EQ(s.currentBackground, current);
+        EXPECT_EQ(s.selectPointerFill, (Color{0, 0, 0, 255}));
+        EXPECT_EQ(s.selectPointerOutline, (Color{255, 255, 255, 255}));
+    }
+}
+
+TEST(S040_TableSelection, SelectionTokensAreParsed) {
+    const auto parsed = parseTheme(
+        "[table]\nselection-background = \"#010101\"\nselection-text = \"#020202\"\n"
+        "current-background = \"#03030380\"\nselect-pointer-fill = \"#040404\"\nselect-pointer-outline = \"#050505\"\n",
+        builtinTheme(ColorScheme::Light));
+    if (!parsed.theme) {  // explicit for bugprone-unchecked-optional-access
+        FAIL() << "theme not parsed";
+    }
+    const TableStyle s = tableStyle(*parsed.theme);
+    EXPECT_EQ(s.selectionBackground, (Color{1, 1, 1, 255}));
+    EXPECT_EQ(s.selectionText, (Color{2, 2, 2, 255}));
+    EXPECT_EQ(s.currentBackground, (Color{3, 3, 3, 0x80}));
+    EXPECT_EQ(s.selectPointerFill, (Color{4, 4, 4, 255}));
+    EXPECT_EQ(s.selectPointerOutline, (Color{5, 5, 5, 255}));
 }
