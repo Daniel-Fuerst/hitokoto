@@ -25,6 +25,12 @@ concurrency:
 # other code, a commit cannot (lint S000_EveryActionIsPinnedToACommit). To update an action, take
 # the commit of its new release tag (git ls-remote --tags) and change both.
 
+# Every build names its number of jobs: the cores of the runner. A bare --parallel gives Makefiles a
+# bare make -j without a limit; on macos-15 (3 cores, 7 GB) it started about 36 compilers at once,
+# and swapping stretched the build of the macOS job from 6 min (2026-11-03) to over 60 min
+# (2026-11-26) while Linux stayed at 3 min. getconf answers on Linux and macOS, NUMBER_OF_PROCESSORS
+# on Windows.
+
 # No job has a right it does not ask for, whatever the repository's default for the token.
 permissions: {}
 
@@ -55,7 +61,7 @@ jobs:
       - name: Configure
         run: cmake --preset core-sanitize
       - name: Build
-        run: cmake --build --preset core-sanitize --parallel
+        run: cmake --build --preset core-sanitize --parallel "$(nproc)"
       - name: Test
         run: ctest --preset core-sanitize
 
@@ -84,7 +90,7 @@ jobs:
           -DHITOKOTO_BUILD_TESTS=ON -DHITOKOTO_WARNINGS_AS_ERRORS=ON
           -DHITOKOTO_SANITIZE=address,undefined
       - name: Build
-        run: cmake --build build/ui-sanitize --parallel
+        run: cmake --build build/ui-sanitize --parallel "$(nproc)"
       - name: Test
         run: ctest --test-dir build/ui-sanitize --output-on-failure
         env:
@@ -106,7 +112,7 @@ jobs:
       - name: Configure
         run: cmake --preset fuzz
       - name: Build
-        run: cmake --build --preset fuzz --parallel
+        run: cmake --build --preset fuzz --parallel "$(nproc)"
       - name: Corpus of earlier runs
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -171,7 +177,8 @@ jobs:
       - name: Configure
         run: cmake --preset ci -DHITOKOTO_WARNINGS_AS_ERRORS=${{ matrix.werror }}
       - name: Build
-        run: cmake --build --preset ci --parallel
+        shell: bash
+        run: cmake --build --preset ci --parallel "$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo "$NUMBER_OF_PROCESSORS")"
       # The checks of cmake/HitokotoCompilerOptions.cmake reach the program: libstdc++'s assertions
       # call std::__glibcxx_assert_fail (Linux); Control Flow Guard is a flag of the executable
       # (Windows). macOS uses libc++, which ignores _GLIBCXX_ASSERTIONS.
@@ -226,7 +233,7 @@ jobs:
       - name: Configure
         run: cmake --preset dev -DHITOKOTO_BUILD_BENCHMARKS=ON
       - name: Build (generates moc files)
-        run: cmake --build --preset dev --parallel
+        run: cmake --build --preset dev --parallel "$(nproc)"
       - name: Configure fuzzers
         run: cmake --preset fuzz
       - name: clang-tidy
@@ -327,7 +334,7 @@ jobs:
       - name: Configure
         run: cmake --preset bench
       - name: Build
-        run: cmake --build --preset bench --parallel
+        run: cmake --build --preset bench --parallel "$(nproc)"
       - name: Runner class
         id: class
         shell: bash
@@ -364,7 +371,7 @@ jobs:
             echo "The base is built with its own Qt: $qt" | tee -a "$GITHUB_STEP_SUMMARY"
             args=(-DCMAKE_PREFIX_PATH="$qt" -DQt6_DIR="$qt/lib/cmake/Qt6")
           fi
-          if ! cmake -S ../base --preset bench "${args[@]}" || ! cmake --build ../base/build/bench --parallel; then
+          if ! cmake -S ../base --preset bench "${args[@]}" || ! cmake --build ../base/build/bench --parallel "$(nproc)"; then
             echo "Outcome: fails, the base commit $base does not build" | tee -a "$GITHUB_STEP_SUMMARY"
             exit 1
           fi

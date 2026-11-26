@@ -60,7 +60,9 @@ cmake -S "$source_dir" -B "$build" \
     -DHITOKOTO_BUILD_BENCHMARKS=OFF \
     -DHITOKOTO_BUILD_FUZZERS=OFF \
     -DHITOKOTO_WARNINGS_AS_ERRORS=OFF
-cmake --build "$build" --parallel
+# The cores of the runner as the number of jobs: a bare --parallel gives Makefiles make -j without a
+# limit, and on macos-15 (3 cores, 7 GB) the compilers swap (.github/workflows/ci.yml says more).
+cmake --build "$build" --parallel "$(sysctl -n hw.ncpu)"
 QT_QPA_PLATFORM=offscreen ctest --test-dir "$build" --output-on-failure
 
 # Decision 5: the bundle, alone; nothing else may come along (an install rule of a dependency).
