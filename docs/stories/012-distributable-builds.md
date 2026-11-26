@@ -31,4 +31,7 @@ without building it.
 - S037 builds a Windows installer (MSI, per user, unsigned) for every version from its own recipe in
   `packaging/windows` and attaches it to the same release as the Debian package; for Windows this
   story keeps only a zip, if one is still wanted, and signing.
+- S049 builds a macOS disk image (DMG, Apple silicon, signed ad hoc, not notarised) for every
+  version from its own recipe in `packaging/macos` and attaches it to the same release; for macOS
+  this story keeps only signing with a Developer ID and notarisation, and Intel Macs.
 - Flatpak (KDE runtime) is a possible later addition.

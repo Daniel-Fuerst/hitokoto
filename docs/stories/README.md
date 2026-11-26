@@ -60,7 +60,8 @@ story ID (see "Conventions").
 | 51 | [S046](046-typeset-inline-math.md) | Inline formulas shown typeset | S044, S045, S010, S019 | L | In review |
 | 52 | [S047](047-typeset-display-math.md) | Display formulas shown typeset | S044, S045, S046 | M | In review |
 | 53 | [S048](048-settings-section-headings.md) | Section headings in the settings flyout stand out | S039, S043 | S | In progress |
-| 54 | [S049](049-empty-bullet-after-text.md) | An empty bullet under text stays a bullet | S003, S023 | S | In progress |
+| 54 | [S049](049-macos-disk-image.md) | Every version gets a macOS disk image (Apple silicon) | S030, S035, S036, S037 | M | In progress |
+| 55 | [S050](050-empty-bullet-after-text.md) | An empty bullet under text stays a bullet | S003, S023 | S | In progress |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 
@@ -74,7 +75,8 @@ sets it).
 ## Decisions (confirmed 2026-10-24)
 
 1. **Licence:** GPL-3.0-or-later (`LICENSE`). Qt is used under LGPLv3 (dynamic linking).
-2. **Minimum platforms:** Windows 10 22H2 and 11 (x64), macOS 13 or newer, Linux with Qt 6.8 or
+2. **Minimum platforms:** Windows 10 22H2 and 11 (x64), macOS 13 or newer (since ADR 0015, 2026-11-25:
+   macOS 14.4 or newer, the oldest macOS of the Qt the disk image ships), Linux with Qt 6.8 or
    newer (Debian trixie). CI builds with Qt 6.12 and, on Linux, with Qt 6.8 as the minimum.
 3. **Text buffer ownership:** ADR 0002 – the editor's `QTextDocument` is the only copy of the text.
 4. **Encoding and line endings:** ADR 0002 – UTF-8 only, invalid files refused; LF, CRLF and CR

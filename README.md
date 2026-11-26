@@ -50,7 +50,9 @@ For packaging/distributable builds, see [`docs/stories/012-distributable-builds.
 
 Packages: every version from 0.5.1 on has a GitHub release with a Debian package for trixie
 ([`packaging/debian/README.md`](packaging/debian/README.md)), and every version after 0.5.1 also
-an MSI for Windows ([`packaging/windows/README.md`](packaging/windows/README.md)); the AUR package
+an MSI for Windows ([`packaging/windows/README.md`](packaging/windows/README.md)); versions
+released after S049 also carry a disk image for macOS on Apple silicon
+([`packaging/macos/README.md`](packaging/macos/README.md)); the AUR package
 `hitokoto` follows every version ([`packaging/archlinux/README.md`](packaging/archlinux/README.md)).
 
 ## Versions
