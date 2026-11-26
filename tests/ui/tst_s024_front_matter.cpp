@@ -29,7 +29,7 @@ namespace {
 constexpr auto kRecord =
     "---\n"
     "mode: code\n"
-    "spec: docs/stories/022-inline-links.md\n"
+    "spec: docs/stories/022-inline-links.md\n"  // S042-mention: front matter text, not a file read
     "branch: feature/links_references  # Daniel's branch, pull request #21\n"
     "commit_range: d5e959f..60263e3  # third follow-up: 3ecbe77, 6357d45, 60263e3\n"
     "reviewed_on: 2026-10-30\n"

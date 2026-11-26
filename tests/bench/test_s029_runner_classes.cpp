@@ -200,10 +200,14 @@ TEST(S029_RunnerClasses, TheResultCarriesTheFourRoundsInMeasuringOrder) {
 TEST(S029_RunnerClasses, PathsOfTheToolchainAndPathsAllowedBesideIt) {
     EXPECT_TRUE(changesToolchainFiles({"CMakePresets.json"}));
     EXPECT_TRUE(changesToolchainFiles({"src/core/markdown.cpp", "cmake/HitokotoDependencies.cmake"}));
-    EXPECT_FALSE(changesToolchainFiles({".github/workflows/ci.yml", "docs/cmake.md", "bench/hitokoto_bench.cpp"}));
-    const auto beside = pathsBesideToolchain(
-        {".github/workflows/ci.yml", "CMakePresets.json", "cmake/HitokotoDependencies.cmake", "docs/performance.md",
-         "docs/adr/0011-qt-6-13.md", "README.md", "src/core/markdown.cpp", "tests/core/test_x.cpp"});
+    // Changed paths of a pull request, not files the test reads: the marker is for the lint of S042.
+    EXPECT_FALSE(changesToolchainFiles(
+        {".github/workflows/ci.yml", "docs/cmake.md", "bench/hitokoto_bench.cpp"}));  // S042-mention
+    const auto beside =
+        pathsBesideToolchain({".github/workflows/ci.yml", "CMakePresets.json", "cmake/HitokotoDependencies.cmake",
+                              "docs/performance.md",       // S042-mention
+                              "docs/adr/0011-qt-6-13.md",  // S042-mention
+                              "README.md", "src/core/markdown.cpp", "tests/core/test_x.cpp"});
     EXPECT_EQ(beside, (std::vector<std::string>{"src/core/markdown.cpp", "tests/core/test_x.cpp"}));
     EXPECT_TRUE(changesHarness({"bench/hitokoto_bench.cpp"}));
     EXPECT_FALSE(changesHarness({"bench/gate/src/gate.cpp", "bench/baselines/README.md", "src/bench.cpp"}));
@@ -283,7 +287,7 @@ TEST(S029_RunnerClasses, HardBudgetsOfThePullRequestFailThoseOfTheBaseAreInforma
 
 TEST(S029_RunnerClasses, AToolchainChangeAloneIsCompared) {
     Inputs in = pullRequestRun();
-    in.changedPaths = {".github/workflows/ci.yml", "docs/performance.md"};
+    in.changedPaths = {".github/workflows/ci.yml", "docs/performance.md"};  // S042-mention: changed paths
     in.qtVersionChanged = true;
     const Decision d = decide(in);
     EXPECT_EQ(d.outcome, Outcome::Green);

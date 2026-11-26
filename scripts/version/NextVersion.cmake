@@ -7,7 +7,8 @@
 #   cmake -DMODE=base -DTAGS_FILE=<f> -DOUTPUT=<f> -P NextVersion.cmake
 #       Writes the highest version tag of the list.
 #   cmake [-DMODE=next] -DTAGS_FILE=<f> -DLABELS_FILE=<f> -DOUTPUT=<f> -P NextVersion.cmake
-#       Writes the next version tag after the highest one for the one version label, or "none".
+#       Writes the next version tag after the highest one for the one version label, or "none"
+#       (version:none and version:doc).
 #   cmake -DMODE=plan -DTAGS_FILE=<f> -DCANDIDATES_FILE=<f> -DOUTPUT=<f> -P NextVersion.cmake
 #       Writes the tags to set, one line "<commit> <tag> <pull request>" each, in order. Fails at
 #       the first merge without exactly one version label, after writing the tags before it.
@@ -23,7 +24,9 @@
 #     and gets no version; a merge without a pull request stops the plan (code review O1).
 cmake_minimum_required(VERSION 3.25)
 
-set(version_labels version:major version:minor version:patch version:none)
+# S042: version:doc marks a pull request that changes only documentation (the CI checks that and
+# skips the build); for the version it counts as version:none.
+set(version_labels version:major version:minor version:patch version:none version:doc)
 list(JOIN version_labels ", " version_labels_text)
 
 function(read_lines file out)
@@ -91,7 +94,7 @@ function(base_version tags out)
     set(${out} "${best}" PARENT_SCOPE)
 endfunction()
 
-# The version after <version> for a version label; "none" for version:none.
+# The version after <version> for a version label; "none" for version:none and version:doc.
 function(next_version version label out)
     string(REPLACE "." ";" parts "${version}")
     list(GET parts 0 major)
