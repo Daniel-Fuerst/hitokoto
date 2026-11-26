@@ -873,6 +873,9 @@ void TableView::showCells() {
         const core::TableCellRange r = cells_->range();
         selectionModel()->select(QItemSelection(m->index(r.top, r.left), m->index(r.bottom, r.right)),
                                  QItemSelectionModel::ClearAndSelect);
+    } else if (covered_ && m->rowCount() > 0 && m->columnCount() > 0) {
+        selectionModel()->select(QItemSelection(m->index(0, 0), m->index(m->rowCount() - 1, m->columnCount() - 1)),
+                                 QItemSelectionModel::ClearAndSelect);
     } else {
         selectionModel()->clearSelection();
     }
@@ -881,7 +884,7 @@ void TableView::showCells() {
     if (CellEditor* editor = currentEditor()) {
         QPalette palette = editor->palette();
         const QModelIndex index = currentIndex();
-        if (cells_) {
+        if (cells_ || covered_) {
             palette.setColor(QPalette::Base, delegate_->selectionBackground());
             palette.setColor(QPalette::Text, delegate_->selectionText());
             // The view's style sheet reaches the editor, so its own rule paints the selection
@@ -893,7 +896,9 @@ void TableView::showCells() {
             cursor.clearSelection();
             editor->setTextCursor(cursor);
             editor->setCursorWidth(0);
-            editor->setFocus();  // keys go on to the selection, also after the context menu
+            if (cells_) {
+                editor->setFocus();  // keys go on to the selection, also after the context menu
+            }
         } else {
             if (const QVariant background = index.data(Qt::BackgroundRole); background.isValid()) {
                 palette.setColor(QPalette::Base, background.value<QColor>());
@@ -962,6 +967,14 @@ void TableView::selectColumns() {
                                           {currentIndex().row(), currentIndex().column()});
     selection.selectColumns();
     setCells(selection);
+}
+
+void TableView::setCoveredByEditor(bool covered) {
+    if (covered_ == covered) {
+        return;
+    }
+    covered_ = covered;
+    showCells();
 }
 
 void TableView::selectArea(bool rows, int index, bool extend) {
@@ -1037,7 +1050,13 @@ bool TableView::selectionKey(QKeyEvent* event, CellEditor* editor) {
     }
     const int length = static_cast<int>(editor->toPlainText().size());
     if (event->matches(QKeySequence::SelectAll)) {
-        // Decision 3: the cell's text, then the table; an empty cell first as a cell.
+        // Decision 3: the cell's text, then the table, then the document; an empty cell first
+        // as a cell.
+        if (cells_ && cells_->coversWholeTable()) {
+            endCellSelection(false);
+            emit selectDocument();
+            return true;
+        }
         if (cells_) {
             selectTable();
             return true;
@@ -1117,6 +1136,14 @@ bool TableView::selectionKey(QKeyEvent* event, CellEditor* editor) {
         case Qt::Key_Home:
         case Qt::Key_End:
             if (const auto step = stepOf(true)) {
+                // Decision 12: past the last row or above the header row, a selection in the editor.
+                const bool beyondDown = *step == core::TableStep::Down && cells_->focus().row == m->rowCount() - 1;
+                const bool beyondUp = *step == core::TableStep::Up && cells_->focus().row == 0;
+                if ((beyondDown || beyondUp) && cells_->kind() != core::TableCellSelection::Kind::Columns) {
+                    endCellSelection(false);
+                    emit extendBeyond(beyondDown);
+                    return true;
+                }
                 cells_->extend(*step);
                 showCells();
                 return true;

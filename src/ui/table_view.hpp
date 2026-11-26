@@ -153,6 +153,8 @@ public:
     /// Decision 6: a click in the area of row (`rows`) or column `index`; `extend` keeps the rows
     /// or columns selected so far from where they started (Shift, dragging).
     void selectArea(bool rows, int index, bool extend);
+    /// Decision 12: a selection in the editor covers the table; all its cells show as selected.
+    void setCoveredByEditor(bool covered);
 
 signals:
     /// To the line above the table; `atEnd` puts the caret at its end (Left), else its start.
@@ -176,6 +178,11 @@ signals:
     void deleteRows(int first, int last);
     void deleteColumns(int first, int last);
     void removeTable();
+    /// Decision 3: a third Ctrl+A selects the whole document.
+    void selectDocument();
+    /// Decision 12: a selection of cells extended past the last row (`down`) or above the header
+    /// row becomes a selection in the editor.
+    void extendBeyond(bool down);
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -217,6 +224,7 @@ private:
     } before_;                ///< S040: where the caret was before the selection of cells began
     bool dragCells_ = false;  ///< S040: a drag that left the text of its cell
     bool showingCells_ = false;
+    bool covered_ = false;  ///< S040, decision 12
 };
 
 /// The table view plus the hover controls around it; this is what the editor places in its

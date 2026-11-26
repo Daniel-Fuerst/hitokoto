@@ -90,6 +90,7 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
     });
     connect(this, &QTextEdit::cursorPositionChanged, this, &EditorWidget::updateReveal);
     connect(this, &QTextEdit::cursorPositionChanged, tables_.get(), &TableEmbedder::caretMoved);
+    connect(this, &QTextEdit::selectionChanged, tables_.get(), &TableEmbedder::selectionMoved);  // S040
     connect(document(), &QTextDocument::contentsChange, tables_.get(), &TableEmbedder::documentChanged);
     connect(styler_, &BlockStyler::completed, tables_.get(), &TableEmbedder::scheduleRefresh);
     connect(layout_, &BlockLayout::documentSizeChanged, tables_.get(), &TableEmbedder::reposition);
