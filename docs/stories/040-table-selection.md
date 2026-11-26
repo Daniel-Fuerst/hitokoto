@@ -1,6 +1,6 @@
 # S040 — Selecting cells, rows and columns in a table
 
-- **Status:** Confirmed (Armin, 2026-11-21, after the review
+- **Status:** In progress (confirmed by Armin on 2026-11-21, after the review
   `docs/reviews/040-table-selection-spec.md` and its dispositions) · **Order:** 46 · **Size:** L ·
   **Depends on:** S018, S019, S028, S031
 - **Basis:** Armin, 2026-11-21: a selection of more than one cell cannot be seen; rows and columns
