@@ -84,7 +84,7 @@ and I want to paste a table into cells.
      pasted at the caret as today.
    - Each paste is one undo step, and the file is saved byte for byte as always (ADR 0002).
 
-## Implementation (2026-11-26, night mode; in progress)
+## Implementation (2026-11-26, night mode)
 
 - Core (`table_clipboard.hpp`): `copiedTableCells` gives the text of decision 2 (the whole table as
   its lines, one cell as its text, any other rectangle as a GFM table whose delimiter row keeps the
@@ -93,17 +93,29 @@ and I want to paste a table into cells.
   `markdownTableCells` reads hitokoto's own Markdown back when the registry reads it as exactly one
   table (decision 5); `pastedTableCells` gives the cells of an HTML or tab-separated paste as S031
   writes them; `pasteCellsIntoTable` and `pasteTextIntoTableCells` give the lines of decision 7.
+- Editor: `EditorWidget::ownCopyData` is hitokoto's own copy (decision 1); the editor's copy is
+  the selected text as the file is written from the document. A paste with the marker takes the
+  Markdown (`pastedText`); `pasteOwnTable` places exactly one table as S031 places one.
+- Table view: with cells selected, `Ctrl+C`, `Ctrl+X` and `Ctrl+V` and the context menu's Cut,
+  Copy and Paste act on the cells; the view's action `Copy as Tab-Separated Text` stands directly
+  below Copy and is enabled only with cells selected. `TableEmbedder::copyCells` and
+  `pasteIntoCells` do the work, `pastedCells` (`table_paste.hpp`) reads a table from the
+  clipboard; `replaceLines` adds rows after the table, so each paste is one undo step.
+- Paste as Plain Text in a cell puts the clipboard's plain text at the caret, as before; it never
+  fills cells with a table (`CellEditor::pasteAsPlainText`).
 - Assumption: one line break at the end of pasted text is dropped before it fills cells, as a
   spreadsheet ends the copy of a single cell with one.
-- The core's share in the 1,000-row table of five columns (release, cloud VM, 2026-11-26, best of
-  nine): the whole table as Markdown 0.01 ms, its body rows as a table 0.13 ms, as tab-separated
-  text 2.1 ms, reading the copy back 0.5 ms, pasting it as a block of 5,000 cells 0.7 to 0.9 ms,
-  text into 5,000 cells 0.6 ms.
+- Benchmarks `s041_*` (release, cloud VM, 2 vCPU, Qt 6.12.0, offscreen, 2026-11-26): copying the
+  1,000-row table as Markdown and as tab-separated text, median 2.7 ms, p95 4.5 ms, highest 6.7 ms;
+  pasting 399 cells 8.5 to 10.2 ms, 3,999 cells (334 rows added) 40.5 to 41.2 ms. The core's share
+  in a table of five columns (best of nine): the body rows as a table 0.13 ms, as tab-separated text
+  2.1 ms, reading the copy back 0.5 ms, pasting 5,000 cells 0.7 to 0.9 ms.
 
-Open: the table view and the editor (the clipboard's formats, `Copy as Tab-Separated Text`, the
-marker on paste, cut, pasting into cells, one undo step each), `tst_s041_table_copy_paste`, the
-benchmarks `s041_*`, the dated notes in S031 and ADR 0011, the manual checks, and a green CI on
-Linux, Windows and macOS.
+Open before "In review": the manual checks (Obsidian with Armin's sample, Excel and Calc with the
+tab-separated text) and a green CI on Linux, Windows and macOS.
+
+Not covered by this story: the Edit menu's Cut, Copy and Paste act on the editor, not on selected
+cells; the keys and the cell's context menu do.
 
 ## Acceptance scenarios
 
