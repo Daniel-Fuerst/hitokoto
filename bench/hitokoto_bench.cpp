@@ -434,6 +434,73 @@ std::vector<double> measureTableTyping(ui::MainWindow& w, int keys) {
     return samples;
 }
 
+/// S040: key-to-paint of selecting in a table (scenario "selecting keeps the budgets"): a column
+/// (Ctrl+Space), the table (Ctrl+A twice; the first selects the cell's text), a row extended by
+/// one (Shift+Space, Shift+Down), an emptied column (Ctrl+Space, Delete) and the removed table
+/// (Ctrl+A twice, Delete), each from a cell in the middle; Escape ends the first three. Undoing a
+/// deletion and entering the cell again are not measured.
+std::vector<double> measureTableSelection(ui::MainWindow& w, int rounds) {
+    ui::EditorWidget* e = w.editor();
+#ifdef Q_OS_MACOS
+    constexpr Qt::KeyboardModifier columnKey = Qt::MetaModifier;  // the Control key
+#else
+    constexpr Qt::KeyboardModifier columnKey = Qt::ControlModifier;
+#endif
+    QTableView* view = nullptr;
+    const auto enterMiddle = [&] {
+        view = e->tableViewAt(2);
+        if (view == nullptr) {
+            return false;
+        }
+        const QModelIndex middle = view->model()->index(view->model()->rowCount() / 2, 1);
+        view->scrollTo(middle);
+        view->setCurrentIndex(middle);
+        view->edit(middle);
+        QCoreApplication::processEvents();
+        return true;
+    };
+    std::vector<double> samples;
+    const auto press = [&](Qt::Key key, Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
+        QWidget* target = QApplication::focusWidget() != nullptr ? QApplication::focusWidget() : view;
+        QElapsedTimer t;
+        t.start();
+        test::keyClick(target, key, modifiers);
+        e->viewport()->repaint();
+        samples.push_back(static_cast<double>(t.nsecsElapsed()) / 1e6);
+    };
+    const auto undo = [&] {
+        e->document()->undo();
+        QCoreApplication::processEvents();
+        return enterMiddle();
+    };
+    if (!enterMiddle()) {
+        std::fprintf(stderr, "no table view to select in\n");
+        return {};
+    }
+    for (int round = 0; round < rounds; ++round) {
+        press(Qt::Key_Space, columnKey);
+        press(Qt::Key_Escape);
+        press(Qt::Key_A, Qt::ControlModifier);
+        press(Qt::Key_A, Qt::ControlModifier);
+        press(Qt::Key_Escape);
+        press(Qt::Key_Space, Qt::ShiftModifier);
+        press(Qt::Key_Down, Qt::ShiftModifier);
+        press(Qt::Key_Escape);
+        press(Qt::Key_Space, columnKey);
+        press(Qt::Key_Delete);
+        if (!undo()) {
+            break;
+        }
+        press(Qt::Key_A, Qt::ControlModifier);
+        press(Qt::Key_A, Qt::ControlModifier);
+        press(Qt::Key_Delete);
+        if (!undo()) {
+            break;
+        }
+    }
+    return samples;
+}
+
 /// S021: key-to-paint of caret moves inside a large code block (Down, Up, End, Home, Right, Left).
 std::vector<double> measureCodeBlockCaret(ui::MainWindow& w, int keys) {
     ui::EditorWidget* e = w.editor();
@@ -936,6 +1003,8 @@ const Budget kBudgets[] = {
     {"s028_table_field_typing_max_ms", 50, "no key in the find bar above 50 ms, 1000-row table, highlight all (hard)",
      true},
     {"s028_table_step_max_ms", 50, "no next match above 50 ms, 1000-row table, highlight all (hard)", true},
+    {"s040_selection_p95_ms", 16, "selecting key to screen <= 16 ms (1000-row table)"},
+    {"s040_selection_max_ms", 50, "no selecting key above 50 ms, 1000-row table (hard)", true},
     {"s028_doc_typing_p95_ms", 16, "key to screen <= 16 ms (10 MB, highlight all)"},
     {"s028_doc_typing_max_ms", 50, "no key event above 50 ms, 10 MB with find open (hard)", true},
     {"s007_bound_lines_typing_max_ms", 50, "no key event above 50 ms, lines at the bounds (hard)", true},
@@ -1200,6 +1269,18 @@ int main(int argc, char* argv[]) {
         r["s028_table_step_max_ms"] = steps.max;
         w.findBar()->highlightAllAction()->setChecked(false);
         w.findController()->close();
+        w.editor()->document()->setModified(false);
+    }
+
+    // S040: selecting in the 1000-row table.
+    w.session()->newDocument();
+    (void)measureOpen(w, table1000);
+    {
+        const auto selecting = stats(measureTableSelection(w, 10));
+        r["s040_selection_median_ms"] = selecting.median;
+        r["s040_selection_p95_ms"] = selecting.p95;
+        r["s040_selection_max_ms"] = selecting.max;
+        r["s040_selection_over_16ms"] = selecting.over16;
         w.editor()->document()->setModified(false);
     }
 
