@@ -7,6 +7,7 @@
 #include "hitokoto/core/table_selection.hpp"
 
 #include <QColor>
+#include <QCursor>
 #include <QHash>
 #include <QPlainTextEdit>
 #include <QSizeF>
@@ -149,6 +150,9 @@ public:
     void selectTable();
     void selectRows();
     void selectColumns();
+    /// Decision 6: a click in the area of row (`rows`) or column `index`; `extend` keeps the rows
+    /// or columns selected so far from where they started (Shift, dragging).
+    void selectArea(bool rows, int index, bool extend);
 
 signals:
     /// To the line above the table; `atEnd` puts the caret at its end (Left), else its start.
@@ -236,8 +240,24 @@ signals:
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
 
 private:
+    /// S040, decision 6: the area of a row (between its delete control and the table, the table's
+    /// border included) or of a column (the same above the table) at `position`.
+    struct Area {
+        bool row = true;
+        int index = 0;
+    };
+    [[nodiscard]] std::optional<Area> areaAt(QPoint position) const;
+    /// The pointer over the areas: an arrow pointing right (rows) or down (columns), drawn from
+    /// icons/select-*.svg in the theme's colours at the screen's scale.
+    [[nodiscard]] QCursor areaPointer(bool row) const;
+    /// Mouse events over the areas, also where the table's border lies inside the view; true if
+    /// handled.
+    bool areaMouse(QMouseEvent* event, QPoint position);
     void updateHover(QPoint position);
     void hideControls();
 
@@ -251,6 +271,10 @@ private:
     int gutter_ = 18;     ///< thickness_ plus the gaps around it
     int hoverRow_ = -1;
     int hoverColumn_ = -1;
+    std::optional<Area> areaDrag_;  ///< S040: dragging across the areas of rows or columns
+    QColor pointerFill_{Qt::black};
+    QColor pointerOutline_{Qt::white};
+    mutable QHash<QString, QCursor> pointers_;  ///< by direction, colours and scale
 };
 
 }  // namespace hitokoto::ui

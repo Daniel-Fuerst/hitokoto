@@ -42,6 +42,8 @@ qt_add_resources(hitokoto_ui hitokoto_icon
     PREFIX "/icons"
     BASE "${PROJECT_SOURCE_DIR}/icons"
     FILES "${PROJECT_SOURCE_DIR}/icons/hitokoto.svg"
+          "${PROJECT_SOURCE_DIR}/icons/select-row.svg"      # S040: the pointers over the areas
+          "${PROJECT_SOURCE_DIR}/icons/select-column.svg"   # of rows and columns
 )
 # S045, ADR 0014: the math font and its licence, inside the program (fonts/stix-two-math/README.md).
 qt_add_resources(hitokoto_ui hitokoto_math_font

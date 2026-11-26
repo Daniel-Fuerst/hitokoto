@@ -13,6 +13,7 @@
 #include <QApplication>
 #include <QContextMenuEvent>
 #include <QEvent>
+#include <QFile>
 #include <QHeaderView>
 #include <QInputMethodEvent>
 #include <QItemSelectionModel>
@@ -23,6 +24,7 @@
 #include <QPainter>
 #include <QScrollBar>
 #include <QSignalBlocker>
+#include <QSvgRenderer>
 #include <QTextBlock>
 #include <QTextBlockFormat>
 #include <QTextCursor>
@@ -962,6 +964,33 @@ void TableView::selectColumns() {
     setCells(selection);
 }
 
+void TableView::selectArea(bool rows, int index, bool extend) {
+    QAbstractItemModel* m = model();
+    if (m == nullptr || m->rowCount() == 0 || m->columnCount() == 0) {
+        return;
+    }
+    const int lastRow = m->rowCount() - 1;
+    const int lastColumn = m->columnCount() - 1;
+    index = std::clamp(index, 0, rows ? lastRow : lastColumn);
+    const auto kind = rows ? core::TableCellSelection::Kind::Rows : core::TableCellSelection::Kind::Columns;
+    if (extend && cells_ && cells_->kind() == kind) {
+        cells_->extendTo(rows ? core::TableCellPos{index, lastColumn} : core::TableCellPos{lastRow, index});
+        showCells();
+        return;
+    }
+    if (!currentIndex().isValid() || currentEditor() == nullptr) {
+        enterCell(rows ? index : 0, rows ? 0 : index, Caret::Start);
+    }
+    core::TableCellSelection selection(m->rowCount(), m->columnCount(),
+                                       rows ? core::TableCellPos{index, 0} : core::TableCellPos{0, index});
+    if (rows) {
+        selection.selectRows();
+    } else {
+        selection.selectColumns();
+    }
+    setCells(selection);
+}
+
 void TableView::deleteSelectedRows() {
     if (!cells_) {
         emit deleteRow(currentIndex().row(), false);  // S018
@@ -1317,6 +1346,9 @@ TableWidget::TableWidget(TableModel* model, QWidget* parent)
     view_->setMouseTracking(true);
     view_->viewport()->setMouseTracking(true);
     view_->viewport()->installEventFilter(this);
+    // S040: the areas of rows and columns reach into the view's border, which is the view itself.
+    view_->installEventFilter(this);
+    view_->viewport()->setCursor(Qt::ArrowCursor);
     installEventFilter(this);
 }
 
@@ -1331,6 +1363,8 @@ void TableWidget::applyStyle(const EditorFormats& formats) {
                            style.borderWidth, style.radius);
     }
     view_->tableDelegate()->setPadding(style.padding);
+    pointerFill_ = toQColor(style.selectPointerFill);
+    pointerOutline_ = toQColor(style.selectPointerOutline);
     view_->tableDelegate()->setSelectionColors(toQColor(style.selectionBackground), toQColor(style.selectionText),
                                                toQColor(style.currentBackground));
     view_->setStyleSheet(
@@ -1348,6 +1382,14 @@ void TableWidget::fit(int width) {
 }
 
 bool TableWidget::eventFilter(QObject* watched, QEvent* event) {
+    if (watched == view_ && (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseMove ||
+                             event->type() == QEvent::MouseButtonRelease)) {
+        // Events on the view's border, outside its viewport.
+        auto* mouse = static_cast<QMouseEvent*>(event);
+        if (areaMouse(mouse, view_->mapTo(this, mouse->position().toPoint()))) {
+            return true;
+        }
+    }
     if (event->type() == QEvent::MouseMove) {
         const auto* mouse = static_cast<QMouseEvent*>(event);
         const auto* widget = static_cast<QWidget*>(watched);
@@ -1361,6 +1403,109 @@ bool TableWidget::eventFilter(QObject* watched, QEvent* event) {
 void TableWidget::wheelEvent(QWheelEvent* event) {
     event->ignore();
     forwardWheelToEditor(this, event);
+}
+
+std::optional<TableWidget::Area> TableWidget::areaAt(QPoint position) const {
+    // Decision 6: from the first pixel after the control, towards the table, up to and including
+    // the table's border: the gap of 2 px plus the border's width.
+    constexpr int kGap = 2;
+    const QRect v = view_->geometry();
+    const int frame = view_->frameWidth();
+    const QPoint origin = v.topLeft() + QPoint(frame, frame);
+    if (position.x() >= v.left() - kGap && position.x() <= v.left() + frame - 1 && position.y() >= v.top()) {
+        if (const int row = view_->rowAt(position.y() - origin.y()); row >= 0) {
+            return Area{true, row};
+        }
+    }
+    if (position.y() >= v.top() - kGap && position.y() <= v.top() + frame - 1 && position.x() >= v.left()) {
+        if (const int column = view_->columnAt(position.x() - origin.x()); column >= 0) {
+            return Area{false, column};
+        }
+    }
+    return std::nullopt;
+}
+
+QCursor TableWidget::areaPointer(bool row) const {
+    const qreal scale = devicePixelRatioF();
+    const QString key = QStringLiteral("%1 %2 %3 %4")
+                            .arg(row ? u'r' : u'c')
+                            .arg(pointerFill_.name(QColor::HexArgb), pointerOutline_.name(QColor::HexArgb))
+                            .arg(scale);
+    if (const auto found = pointers_.constFind(key); found != pointers_.constEnd()) {
+        return *found;
+    }
+    QFile file(row ? QStringLiteral(":/icons/select-row.svg") : QStringLiteral(":/icons/select-column.svg"));
+    QByteArray svg;
+    if (file.open(QIODevice::ReadOnly)) {
+        svg = file.readAll();
+    }
+    svg.replace("#000000", pointerFill_.name(QColor::HexRgb).toLatin1());
+    svg.replace("#ffffff", pointerOutline_.name(QColor::HexRgb).toLatin1());
+    QSvgRenderer renderer(svg);
+    constexpr int kSize = 32;
+    QPixmap pixmap(QSize(kSize, kSize) * scale);
+    pixmap.fill(Qt::transparent);
+    {
+        QPainter painter(&pixmap);
+        renderer.render(&painter);
+    }
+    pixmap.setDevicePixelRatio(scale);
+    const QCursor cursor = row ? QCursor(pixmap, 30, 16) : QCursor(pixmap, 16, 30);
+    pointers_.insert(key, cursor);
+    return cursor;
+}
+
+bool TableWidget::areaMouse(QMouseEvent* event, QPoint position) {
+    const std::optional<Area> area = areaAt(position);
+    switch (event->type()) {
+        case QEvent::MouseButtonPress:
+            if (!area || event->button() != Qt::LeftButton) {
+                return false;
+            }
+            view_->selectArea(area->row, area->index, (event->modifiers() & Qt::ShiftModifier) != 0);
+            areaDrag_ = area;
+            event->accept();
+            return true;
+        case QEvent::MouseMove:
+            if (areaDrag_ && (event->buttons() & Qt::LeftButton) != 0) {
+                // Across adjacent areas of the same kind; along the table past its edge.
+                const int index = areaDrag_->row ? view_->rowAt(position.y() - view_->y() - view_->frameWidth())
+                                                 : view_->columnAt(position.x() - view_->x() - view_->frameWidth());
+                if (index >= 0) {
+                    view_->selectArea(areaDrag_->row, index, true);
+                }
+                event->accept();
+                return true;
+            }
+            return false;
+        case QEvent::MouseButtonRelease:
+            if (areaDrag_) {
+                areaDrag_.reset();
+                event->accept();
+                return true;
+            }
+            return false;
+        default:
+            return false;
+    }
+}
+
+void TableWidget::mousePressEvent(QMouseEvent* event) {
+    if (!areaMouse(event, event->position().toPoint())) {
+        QWidget::mousePressEvent(event);
+    }
+}
+
+void TableWidget::mouseMoveEvent(QMouseEvent* event) {
+    if (!areaMouse(event, event->position().toPoint())) {
+        QWidget::mouseMoveEvent(event);
+    }
+}
+
+void TableWidget::mouseReleaseEvent(QMouseEvent* event) {
+    if (!areaMouse(event, event->position().toPoint())) {
+        QWidget::mouseReleaseEvent(event);
+    }
 }
 
 void TableWidget::hideControls() {
@@ -1415,6 +1560,16 @@ void TableWidget::updateHover(QPoint position) {
         }
     }
     deleteColumn_->setVisible(hoverColumn_ >= 0);
+
+    // S040, decision 6: the pointer shows the areas of rows and columns; they are not drawn.
+    if (const std::optional<Area> area = areaAt(position)) {
+        const QCursor pointer = areaPointer(area->row);
+        setCursor(pointer);
+        view_->setCursor(pointer);
+    } else {
+        unsetCursor();
+        view_->unsetCursor();
+    }
 }
 
 }  // namespace hitokoto::ui
