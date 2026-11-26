@@ -2,8 +2,17 @@
 name: CI
 
 on:
+  # S042: a push to main that changes only documentation starts no run (later patterns override
+  # earlier ones): every file, then not those under docs/, then again the files under docs/ that
+  # tests read (tests/docs-read-by-tests.txt; the lint S042_ThePushFilterFollowsTheList keeps them
+  # equal). No label events on pull requests: they fire for every label and would cancel the
+  # running CI; the job Changes reads the labels when it runs.
   push:
     branches: [main]
+    paths:
+      - "**"
+      - "!docs/**"
+      - "docs/theming.md"
   pull_request:
   workflow_dispatch:
 
@@ -40,8 +49,56 @@ env:
   AQT_SOURCE_WINDOWS: git+https://github.com/miurahr/aqtinstall.git@8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b
 
 jobs:
+  # S042: a pull request labelled version:doc that changes only documentation (files under docs/
+  # that no test reads) skips every other job; with a wrong version:doc this job fails, names the
+  # files that are not documentation, and the other jobs are skipped as well. Without the label
+  # every job runs. The labels are read when the job runs, not from the event, so that a label set
+  # or removed later takes effect with "Re-run all jobs" (or the next push).
+  changes:
+    name: Changes
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      docs-only: ${{ steps.decide.outputs.docs-only }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0  # the merge base of the pull request and its base
+          persist-credentials: false
+      - name: Labels and changed files of the pull request
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}  # the labels of the pull request (gh api), this step only
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh api "repos/$REPO/pulls/$NUMBER" --jq '.labels[].name' > "$RUNNER_TEMP/labels.txt"
+          # The merge commit CI tests has the base as first parent and the pull request as second;
+          # three dots compare the pull request with their merge base. A renamed file counts with
+          # its old and its new path.
+          git diff --name-only --no-renames "HEAD^1...HEAD^2" > "$RUNNER_TEMP/changed.txt"
+          echo "Labels:"; cat "$RUNNER_TEMP/labels.txt"
+          echo "Changed files: $(wc -l < "$RUNNER_TEMP/changed.txt")"
+      - name: Decide
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "docs-only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          cmake -DLABELS_FILE="$RUNNER_TEMP/labels.txt" -DCHANGED_FILE="$RUNNER_TEMP/changed.txt" \
+            -DLIST_FILE=tests/docs-read-by-tests.txt -DOUTPUT="$RUNNER_TEMP/docs-only.txt" \
+            -P scripts/ci/DocsOnly.cmake
+          echo "docs-only=$(cat "$RUNNER_TEMP/docs-only.txt")" >> "$GITHUB_OUTPUT"
+
   format:
     name: Format (clang-format)
+    needs: changes
+    if: needs.changes.outputs.docs-only != 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -53,6 +110,8 @@ jobs:
 
   core-sanitizers:
     name: Core with ASan/UBSan, without Qt (layering check)
+    needs: changes
+    if: needs.changes.outputs.docs-only != 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -69,6 +128,8 @@ jobs:
   # instrumented. The UI tests get longer time limits in this build (tests/ui/CMakeLists.txt).
   ui-sanitizers:
     name: UI with ASan/UBSan (Linux)
+    needs: changes
+    if: needs.changes.outputs.docs-only != 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -102,6 +163,8 @@ jobs:
   # newest one its branch or main saved) and merged down to the inputs that add coverage.
   fuzz:
     name: Fuzz core (60 s per target)
+    needs: changes
+    if: needs.changes.outputs.docs-only != 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -150,6 +213,8 @@ jobs:
 
   build-test:
     name: Build and test (${{ matrix.name }})
+    needs: changes
+    if: needs.changes.outputs.docs-only != 'true'
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -213,6 +278,8 @@ jobs:
 
   tidy:
     name: Lint (clang-tidy)
+    needs: changes
+    if: needs.changes.outputs.docs-only != 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -248,7 +315,8 @@ jobs:
   # check the hard budgets. The runner class is reported for information.
   bench:
     name: Benchmarks (${{ matrix.name }})
-    needs: build-test
+    needs: [changes, build-test]
+    if: needs.changes.outputs.docs-only != 'true'
     runs-on: ${{ matrix.os }}
     # S029: with the base build and four rounds the job took 7 min 52 s on pull request #31
     # (2026-11-08); about four times that leaves room for slower runners.
@@ -413,13 +481,56 @@ jobs:
             changed-paths.txt
             gate-report.md
 
+  # S042: one check for the ruleset of main, whatever jobs this workflow has. It passes when every
+  # job passed, or when Changes found a pull request labelled version:doc that changes only
+  # documentation and every other job was skipped; a failed or cancelled job, a skipped one in a
+  # full run, or a wrong version:doc fails it. The lint S042_TheCiResultNeedsEveryJob keeps its
+  # needs complete (every job but Version, which needs it).
+  ci-result:
+    name: CI result
+    needs: [changes, format, core-sanitizers, ui-sanitizers, fuzz, build-test, tidy, bench]
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Every job passed, or only documentation changed
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          DOCS_ONLY: ${{ needs.changes.outputs.docs-only }}
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Changes: $CHANGES; documentation only: ${DOCS_ONLY:-false}; results: $RESULTS"
+          if [ "$CHANGES" != "success" ]; then
+            echo "::error::The job Changes did not pass ($CHANGES); see its log."
+            exit 1
+          fi
+          passed=0
+          for result in $RESULTS; do
+            case "$result" in
+              success) passed=$((passed + 1)) ;;
+              skipped)
+                if [ "${DOCS_ONLY:-false}" != "true" ]; then
+                  echo "::error::A job was skipped although the pull request is not documentation only."
+                  exit 1
+                fi ;;
+              *)
+                echo "::error::A job ended with '$result'."
+                exit 1 ;;
+            esac
+          done
+          if [ "${DOCS_ONLY:-false}" = "true" ] && [ "$passed" -ne 1 ]; then
+            echo "::error::Only documentation changed, yet $((passed - 1)) other jobs ran."
+            exit 1
+          fi
+          echo "CI result: passed."
+
   # S035: the version tag only after every other job of this run is green on a push to main
   # (version.yml, tag job). A skipped job does not stop it (review O1); a failed or cancelled one
   # does, until "Re-run failed jobs" turns the run green. The lint S035_TheVersionJobNeedsEveryCiJob
   # keeps the needs complete. Packaging (packaging.yml) follows this workflow by workflow_run.
   version:
     name: Version
-    needs: [format, core-sanitizers, ui-sanitizers, fuzz, build-test, tidy, bench]
+    needs: [changes, format, core-sanitizers, ui-sanitizers, fuzz, build-test, tidy, bench, ci-result]
     if: >-
       always() && github.event_name == 'push' && github.ref == 'refs/heads/main' &&
       !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
