@@ -272,6 +272,44 @@ private slots:
         QCOMPARE(selected(view_), cells(0, 2, 3, 3));
     }
 
+    // Armin, 2026-11-27 (acceptance of S040 on v0.12.0): with the caret in a cell, Ctrl+Space
+    // selects its column; selecting the row above with the mouse left the caret's cell painted as
+    // selected.
+    void theCaretsCellLeavesTheSelectionWithTheMouse() {
+        QVERIFY(caretIn(view_, 2, 1, 1) != nullptr);
+        press(Qt::Key_Space, kColumnKey);
+        QCOMPARE(selected(view_), cells(0, 1, 3, 1));
+        QCOMPARE(paintedSelected(view_), cells(0, 1, 3, 1));
+        QWidget* widget = view_->parentWidget();
+        QVERIFY(widget != nullptr);
+        const int frame = view_->frameWidth();
+        const QPoint origin = view_->pos() + QPoint(frame, frame);
+        const QPoint rowArea(view_->x() - 1, origin.y() + view_->visualRect(view_->model()->index(1, 0)).center().y());
+        QTest::mouseClick(widget, Qt::LeftButton, {}, rowArea);
+        QCoreApplication::processEvents();
+        QCOMPARE(selected(view_), cells(1, 0, 1, 3));
+        QCOMPARE(paintedSelected(view_), cells(1, 0, 1, 3));
+    }
+
+    void theCaretsCellLeavesTheSelectionWhenDragging() {
+        QVERIFY(caretIn(view_, 2, 1, 1) != nullptr);
+        press(Qt::Key_Space, kColumnKey);
+        QCOMPARE(paintedSelected(view_), cells(0, 1, 3, 1));
+        // Dragging from the first to the last cell of the row above.
+        QWidget* target = view_->viewport();
+        const QPoint from = view_->visualRect(view_->model()->index(1, 0)).center();
+        const QPoint to = view_->visualRect(view_->model()->index(1, 3)).center();
+        QTest::mousePress(target, Qt::LeftButton, {}, from);
+        QMouseEvent drag(QEvent::MouseMove, QPointF(to), QPointF(target->mapToGlobal(to)), Qt::NoButton, Qt::LeftButton,
+                         Qt::NoModifier);
+        QCoreApplication::sendEvent(target, &drag);
+        QCoreApplication::processEvents();
+        QTest::mouseRelease(target, Qt::LeftButton, {}, to);
+        QCoreApplication::processEvents();
+        QCOMPARE(selected(view_), cells(1, 0, 1, 3));
+        QCOMPARE(paintedSelected(view_), cells(1, 0, 1, 3));
+    }
+
     void rowsAndColumnsWithTheMouse() {
         // Decision 6: between a row's control and the table, its border included, lies the row's
         // area; above the table the columns'. Not drawn: the pointer shows it.
