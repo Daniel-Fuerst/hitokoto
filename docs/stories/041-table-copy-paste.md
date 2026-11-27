@@ -84,6 +84,22 @@ and I want to paste a table into cells.
      pasted at the caret as today.
    - Each paste is one undo step, and the file is saved byte for byte as always (ADR 0002).
 
+## Decisions after the code review (Armin, 2026-11-27)
+
+From the dispositions of `docs/reviews/041-table-copy-paste-code.md`:
+
+- In cells only a single cell is text: one row or one column of a spreadsheet or of an HTML table
+  fills cells (O1). Lines without a tab and without HTML stay text, as a column of lines cannot be
+  told from lines of text.
+- A table with text beside it stays text in cells, and a notice says why (O2).
+- The Edit menu acts where the focus is (O5). With cells selected, Copy copies them; Cut leaves
+  them and a notice names the key that cuts; Paste overwrites them only if the clipboard holds as
+  many cells in the same arrangement (a text counts as one cell), otherwise nothing changes and a
+  notice gives both sizes. With the caret in a cell, Cut, Copy and Paste act on the cell as its keys
+  do.
+- A tab-separated field that starts with `"` stays unquoted, to gather experience (O3); S031's
+  reading of Excel's text holds such fields as Excel's samples write them (`"Leaf" Co`).
+
 ## Implementation (2026-11-26, night mode)
 
 - Core (`table_clipboard.hpp`): `copiedTableCells` gives the text of decision 2 (the whole table as
@@ -103,6 +119,10 @@ and I want to paste a table into cells.
   clipboard; `replaceLines` adds rows after the table, so each paste is one undo step.
 - Paste as Plain Text in a cell puts the clipboard's plain text at the caret, as before; it never
   fills cells with a table (`CellEditor::pasteAsPlainText`).
+- After the code review (2026-11-27): `core::parseTabSeparatedCells` and `countsAsCellTable` let one
+  row or column count in cells; `TableView::showNotice` shows a notice beside the cells (a tool tip
+  in the theme's tool-tip colours); the Edit menu's actions route by focus (`main_window.cpp`,
+  `TableView::PasteMode::SameArrangement`, `refuseCut`).
 - Assumption: one line break at the end of pasted text is dropped before it fills cells, as a
   spreadsheet ends the copy of a single cell with one.
 - Benchmarks `s041_*` (release, cloud VM, 2 vCPU, Qt 6.12.0, offscreen, 2026-11-26): copying the
@@ -113,9 +133,6 @@ and I want to paste a table into cells.
 
 Open before "In review": the manual checks (Obsidian with Armin's sample, Excel and Calc with the
 tab-separated text) and a green CI on Linux, Windows and macOS.
-
-Not covered by this story: the Edit menu's Cut, Copy and Paste act on the editor, not on selected
-cells; the keys and the cell's context menu do.
 
 ## Acceptance scenarios
 

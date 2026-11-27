@@ -8,44 +8,44 @@ objections:
     category: failure
     severity: major
     title: One spreadsheet row or column pasted into cells lands as one text with tabs in every cell
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: 'Armin, 2026-11-27: in cells only a single cell is text. parseTabSeparatedCells and countsAsCellTable let one row or one column of a spreadsheet or an HTML table fill cells (e5df239, tests in b26b954).'
   - id: O2
     category: failure
     severity: minor
     title: An HTML table with any text beside it fills every selected cell with the whole text
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: 'Armin, 2026-11-27: the decision stays (a table with text beside it is text in cells), with a notice beside the cells saying why (e5df239).'
   - id: O3
     category: failure
     severity: minor
     title: A tab-separated field that starts with a quote is written unquoted
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: 'Armin, 2026-11-27: kept as decision 4 says, to gather experience. S031 reads Excel''s text with such fields unquoted ("Leaf" Co in its samples), which suggests Excel writes them so too.'
   - id: O4
     category: failure
     severity: minor
     title: One cell copied as a cell puts its text, not its Markdown, into text/markdown
-    disposition: pending
-    disposition_rationale: null
+    disposition: resolved
+    disposition_rationale: 'Armin, 2026-11-27: consistent with O1, a single cell is text.'
   - id: O5
     category: operational
     severity: minor
     title: The Edit menu's Cut, Copy and Paste ignore the selected cells and the cell with the caret
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: 'Armin, 2026-11-27: Copy copies the selected cells; Cut leaves them with a notice; Paste overwrites them only with as many cells in the same arrangement, else a notice; with the caret in a cell the menu acts on it (e5df239).'
   - id: O6
     category: operational
     severity: minor
     title: Cut, Copy and Paste of the cell's context menu are untested
-    disposition: pending
-    disposition_rationale: null
+    disposition: fixed
+    disposition_rationale: 'Armin, 2026-11-27: test-first was missed for the retargeted entries; only the tests are added (c2cf6cd, checked by mutation).'
   - id: O7
     category: cost
     severity: minor
     title: Pasting hitokoto's own table in the editor has no benchmark and no wait cursor
-    disposition: pending
-    disposition_rationale: null
+    disposition: documented
+    disposition_rationale: 'Armin, 2026-11-27: accepted for now; a benchmark may follow later.'
 ---
 
 # S041 — Copying and pasting table cells as Markdown: objection record (code)
