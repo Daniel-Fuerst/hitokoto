@@ -102,6 +102,12 @@ depend on it.
 - And the accessible text of lines with typeset formulas is their LaTeX source, dollars included,
   with the caret elsewhere and on them
 
+**Scenario: a selection of cells (S040)**
+- Given a table and the caret in one of its cells
+- Then the table view's accessible table reports no selected cell
+- When two cells, a row or a column are selected
+- Then it reports exactly those cells as selected, and the selected row or column
+
 ## Outcome
 
 **ADR 0003 – concealment technique**: keep the `QPlainTextEdit` adapter, or switch to the

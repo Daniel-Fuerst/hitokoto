@@ -20,9 +20,11 @@
 #include <QToolButton>
 
 #include <QAccessible>
+#include <QAccessibleTableInterface>
 #include <QInputMethodEvent>
 #include <QMap>
 #include <QRandomGenerator>
+#include <QTableView>
 
 #include <algorithm>
 #include <array>
@@ -689,6 +691,40 @@ private slots:
                 }
             }
         }
+    }
+
+    // S040, decision 13: a selection of cells, rows or columns reaches screen readers through the
+    // table view's selection model.
+    void aSelectionOfCellsIsReportedToScreenReaders() {
+        test::Fixture f;
+        QVERIFY(f.open(f.writeFile(QStringLiteral("cells.md"),
+                                   "| A | B | C |\n| --- | --- | --- |\n| a | b | c |\n"
+                                   "| d | e | f |\n")));
+        f.settle();
+        QTableView* view = f.editor()->tableViewAt(0);
+        QVERIFY(view != nullptr);
+        QTest::mouseClick(view->viewport(), Qt::LeftButton, {}, view->visualRect(view->model()->index(1, 1)).center());
+        QCoreApplication::processEvents();
+        QAccessibleInterface* table = QAccessible::queryAccessibleInterface(view);
+        QVERIFY(table != nullptr && table->tableInterface() != nullptr);
+        QCOMPARE(table->tableInterface()->selectedCellCount(), 0);  // the caret in a cell selects nothing
+        // Two cells.
+        test::keyClick(QApplication::focusWidget(), Qt::Key_Right, Qt::ShiftModifier);
+        test::keyClick(QApplication::focusWidget(), Qt::Key_Right, Qt::ShiftModifier);
+        test::keyClick(QApplication::focusWidget(), Qt::Key_Right, Qt::ShiftModifier);
+        QCOMPARE(table->tableInterface()->selectedCellCount(), 2);
+        // A row.
+        test::keyClick(QApplication::focusWidget(), Qt::Key_Space, Qt::ShiftModifier);
+        QCOMPARE(table->tableInterface()->selectedRows(), QList<int>{1});
+        // A column.
+        test::keyClick(QApplication::focusWidget(), Qt::Key_Escape);
+#ifdef Q_OS_MACOS
+        test::keyClick(QApplication::focusWidget(), Qt::Key_Space, Qt::MetaModifier);
+#else
+        test::keyClick(QApplication::focusWidget(), Qt::Key_Space, Qt::ControlModifier);
+#endif
+        QCOMPARE(table->tableInterface()->selectedColumns(), QList<int>{1});
+        QCOMPARE(table->tableInterface()->selectedCellCount(), 3);
     }
 };
 

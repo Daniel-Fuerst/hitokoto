@@ -1,6 +1,6 @@
 # S040 — Selecting cells, rows and columns in a table
 
-- **Status:** Confirmed (Armin, 2026-11-21, after the review
+- **Status:** In progress (confirmed by Armin on 2026-11-21, after the review
   `docs/reviews/040-table-selection-spec.md` and its dispositions) · **Order:** 46 · **Size:** L ·
   **Depends on:** S018, S019, S028, S031
 - **Basis:** Armin, 2026-11-21: a selection of more than one cell cannot be seen; rows and columns
@@ -149,6 +149,34 @@ can act on exactly what I see.
 13. **Screen readers.** The selection of cells is held in the table view's selection model, so
     that Qt's accessible table interface reports the selected cells, rows and columns. S009 gains a
     scenario for it.
+
+## Implementation (2026-11-26, night mode; in progress)
+
+- Core: `core::TableCellSelection` (`table_selection.hpp`) holds the rectangle from its anchor,
+  whole rows and columns, and the steps of decision 8; `shiftStepSelectsCell` the step from text
+  to cell; `emptyTableCells`, `removeTableRows` and `removeTableColumns` the lines of decision 10.
+- The table view selects nothing by itself (`NoSelection`); a selection of cells is set in its
+  selection model, which the accessible table reports (decision 13, S009 scenario). The open editor
+  of the current cell, which covers its cell, takes the selection colours through a style sheet of
+  its own while cells are selected or the editor's selection covers the table: the view's style
+  sheet reaches it, so its palette alone does not show.
+- The areas of rows and columns (decision 6) are found by `TableWidget::areaAt`; the pointers are
+  `icons/select-row.svg` and `icons/select-column.svg`, rendered in the theme's colours.
+- A selection in the editor that ends inside a table's lines is widened to the table's end (from
+  above, the hidden blank line below it included) or start (from below) on every selection change,
+  so keys and the mouse behave alike.
+
+- Benchmarks: `s040_selection_*` in hitokoto-bench measure every key of a column, `Ctrl+A` twice,
+  a row extended by one, an emptied column and the removed table, ten rounds in the 1,000-row
+  table; `s040_selection_max_ms` is a hard budget of the gate. Release build in the cloud VM
+  (2 vCPU, Qt 6.12.0, offscreen), 2026-11-26: p95 9.75 ms, highest 14.4 ms, none over 16 ms.
+
+Open before "In review": the manual checks (a key the system takes, the pointers on Windows and
+macOS at 2x) and a green CI on Linux, Windows and macOS.
+
+Left as it is for now (Armin, 2026-11-26, to gather practical experience): dragging with the mouse
+from a selection of cells to below or above the table stops at the edge rows, because the view
+keeps the mouse while the button is held; Shift with the arrows does extend it into the editor.
 
 ## Acceptance scenarios
 

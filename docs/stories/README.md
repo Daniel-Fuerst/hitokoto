@@ -52,7 +52,7 @@ story ID (see "Conventions").
 | 43 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |
 | 44 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | In progress |
 | 45 | [S042](042-docs-only-pull-requests.md) | Pull requests that change only documentation skip the build | S030, S032, S035 | S | In progress |
-| 46 | [S040](040-table-selection.md) | Selecting cells, rows and columns in a table | S018, S019, S028, S031 | L | Confirmed |
+| 46 | [S040](040-table-selection.md) | Selecting cells, rows and columns in a table | S018, S019, S028, S031 | L | In progress |
 | 47 | [S041](041-table-copy-paste.md) | Copying and pasting table cells as Markdown | S031, S040 | M | Confirmed |
 | 48 | [S043](043-smooth-scrolling-toggle.md) | Toggle switches and a "Feel" section for smooth scrolling | S027, S039 | M | In progress |
 | 49 | [S044](044-latex-math.md) | Math source: `$…$` and `$$…$$` recognised and styled | S014, S015, S020, S021 | M | In review |

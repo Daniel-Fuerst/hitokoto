@@ -4,6 +4,8 @@
 // rows and columns in the Markdown lines and moves the caret into and out of tables.
 #pragma once
 
+#include "hitokoto/core/table_selection.hpp"
+
 #include "block_layout.hpp"
 
 #include <QObject>
@@ -94,6 +96,9 @@ public:
     /// blank line below a table it moves to the line after it (S018, "the blank line below a
     /// table").
     void caretMoved();
+    /// S040, decision 12: a selection in the editor that reaches into a table covers all of it,
+    /// and the tables it covers show all their cells as selected.
+    void selectionMoved();
     /// A click in the editor above a table that starts the document or below one that ends it
     /// adds a line there for the caret. Returns true if the click was handled.
     bool handleEditorClick(QPoint position);
@@ -168,6 +173,14 @@ private:
     void addColumn(Table& table);
     void deleteColumn(Table& table, int column);
     void removeLastRowAndLeave(Table& table);
+    /// S040, decision 10: the lines of a selection's deletion, one undo step each.
+    void emptyCells(Table& table, core::TableCellRange range);
+    void deleteRows(Table& table, int first, int last);
+    void deleteColumns(Table& table, int first, int last);
+    void removeTable(Table& table);
+    void extendBeyond(Table& table, bool down);
+    /// Replaces the table's lines with `lines` in one edit block and returns the updated table.
+    Table* replaceLines(Table& table, const std::vector<std::u16string>& lines);
     /// To the line above (`atEnd`: its end), adding one if the table starts the document.
     void leaveAbove(Table& table, bool atEnd);
     /// To the line below, if any.
@@ -188,6 +201,7 @@ private:
     const EditorFormats* formats_ = nullptr;
     int availableWidth_ = 400;
     std::vector<Table> tables_;
+    bool adjustingSelection_ = false;  ///< S040: widening a selection over a table
     int typingDepth_ = 0;
     bool leaving_ = false;  ///< moving the caret out of a table: caretMoved() lets it
     QTextBlock typing_;     ///< the line the editor's caret types in; invalid once it leaves

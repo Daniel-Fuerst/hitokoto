@@ -1,0 +1,544 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// S040: selecting cells, rows and columns in a table. Keys only through test::keyClick (CLAUDE.md).
+#include "table_view.hpp"
+#include "ui_test_support.hpp"
+
+#include <QAbstractScrollArea>
+#include <QAccessible>
+#include <QAccessibleTableInterface>
+#include <QAction>
+#include <QImage>
+#include <QItemSelectionModel>
+#include <QMenu>
+#include <QMouseEvent>
+#include <QPlainTextEdit>
+#include <QTableView>
+#include <QTimer>
+
+#include <algorithm>
+#include <memory>
+
+using namespace hitokoto;
+
+namespace {
+
+// The table of the story's scenarios: a header row and three body rows of four columns. Row 1,
+// column 1 holds "b1x" so that the caret can stand in the middle of a text.
+constexpr auto kTable =
+    "above\n"
+    "\n"
+    "| A | B | C | D |\n"
+    "| --- | --- | --- | --- |\n"
+    "| a1 | b1x | c1 | d1 |\n"
+    "| a2 | b2 | c2 | d2 |\n"
+    "| a3 | b3 |  | d3 |\n"
+    "\n"
+    "below";
+constexpr int kHeaderBlock = 2;
+
+#ifdef Q_OS_MACOS
+constexpr Qt::KeyboardModifier kColumnKey = Qt::MetaModifier;  // the Control key (decision 4)
+#else
+constexpr Qt::KeyboardModifier kColumnKey = Qt::ControlModifier;
+#endif
+
+QPlainTextEdit* focusedCell() {
+    return qobject_cast<QPlainTextEdit*>(QApplication::focusWidget());
+}
+
+void press(Qt::Key key, Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
+    test::keyClick(QApplication::focusWidget(), key, modifiers);
+    QCoreApplication::processEvents();
+}
+
+/// The selected cells as "row,column" in reading order, joined by spaces.
+QString selected(const QTableView* view) {
+    QModelIndexList indexes = view->selectionModel()->selectedIndexes();
+    std::sort(indexes.begin(), indexes.end(), [](const QModelIndex& a, const QModelIndex& b) {
+        return a.row() != b.row() ? a.row() < b.row() : a.column() < b.column();
+    });
+    QStringList out;
+    for (const QModelIndex& index : indexes) {
+        out << QStringLiteral("%1,%2").arg(index.row()).arg(index.column());
+    }
+    return out.join(u' ');
+}
+
+/// The cells of rows `top`..`bottom` and columns `left`..`right` as selected() lists them.
+QString cells(int top, int left, int bottom, int right) {
+    QStringList out;
+    for (int r = top; r <= bottom; ++r) {
+        for (int c = left; c <= right; ++c) {
+            out << QStringLiteral("%1,%2").arg(r).arg(c);
+        }
+    }
+    return out.join(u' ');
+}
+
+/// The colour painted near the top left corner of a cell, inside its padding, where no text is.
+QColor paintedAt(QTableView* view, int row, int column) {
+    const QImage image = view->grab().toImage();
+    const QRect rect = view->visualRect(view->model()->index(row, column));
+    const QPoint point = view->viewport()->mapTo(view, rect.topLeft() + QPoint(2, 2));
+    return image.pixelColor(point);
+}
+
+/// The cells painted with the selection colour, as selected() lists them.
+QString paintedSelected(QTableView* view) {
+    const QColor selection =
+        test::qcolor(core::tableStyle(core::builtinTheme(core::ColorScheme::Light)).selectionBackground);
+    QStringList out;
+    for (int r = 0; r < view->model()->rowCount(); ++r) {
+        for (int c = 0; c < view->model()->columnCount(); ++c) {
+            if (paintedAt(view, r, c) == selection) {
+                out << QStringLiteral("%1,%2").arg(r).arg(c);
+            }
+        }
+    }
+    return out.join(u' ');
+}
+
+/// Clicks the cell, then puts the caret at `position` of its text.
+QPlainTextEdit* caretIn(QTableView* view, int row, int column, int position) {
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, {},
+                      view->visualRect(view->model()->index(row, column)).center());
+    QCoreApplication::processEvents();
+    QPlainTextEdit* cell = focusedCell();
+    if (cell != nullptr) {
+        QTextCursor cursor = cell->textCursor();
+        cursor.setPosition(position);
+        cell->setTextCursor(cursor);
+    }
+    return cell;
+}
+
+/// The entries of the table's context menu, without accelerators and shortcuts.
+QStringList contextMenuOf(QWidget* widget) {
+    auto texts = std::make_shared<QStringList>();
+    QTimer::singleShot(0, [texts] {
+        if (auto* menu = qobject_cast<QMenu*>(QApplication::activePopupWidget())) {
+            for (const QAction* entry : menu->actions()) {
+                if (!entry->isSeparator() && entry->isVisible()) {
+                    *texts << entry->text().remove(u'&').section(u'\t', 0, 0);
+                }
+            }
+            menu->close();
+        }
+    });
+    // A text field takes the event on its viewport, as from the mouse.
+    QWidget* target = widget;
+    if (auto* area = qobject_cast<QAbstractScrollArea*>(widget)) {
+        target = area->viewport();
+    }
+    const QPoint point = target->rect().center();
+    QContextMenuEvent event(QContextMenuEvent::Mouse, point, target->mapToGlobal(point));
+    QCoreApplication::sendEvent(target, &event);
+    QCoreApplication::processEvents();
+    // The closed menu leaves the window inactive on the offscreen platform; a user's window is
+    // active again.
+    widget->window()->activateWindow();
+    (void)QTest::qWaitForWindowActive(widget->window());
+    return *texts;
+}
+
+QAction* action(QTableView* view, const char* name) {
+    return view->findChild<QAction*>(QString::fromLatin1(name));
+}
+
+}  // namespace
+
+class tst_s040_table_selection : public QObject {
+    Q_OBJECT
+
+private:
+    std::unique_ptr<test::Fixture> f_;
+    QTableView* view_ = nullptr;
+
+    QString text() const { return f_->editor()->toPlainText(); }
+
+private slots:
+    void init() {
+        f_ = std::make_unique<test::Fixture>();
+        QVERIFY(f_->open(f_->writeFile(QStringLiteral("table.md"), kTable)));
+        f_->settle();
+        view_ = f_->editor()->tableViewAt(kHeaderBlock);
+        QVERIFY(view_ != nullptr);
+    }
+
+    void cleanup() {
+        view_ = nullptr;
+        f_.reset();
+    }
+
+    void aRectangleOfCellsIsSelectedAndVisible() {
+        QVERIFY(caretIn(view_, 1, 1, 1) != nullptr);
+        for (int i = 0; i < 3; ++i) {  // to the end of "b1x", then the cell
+            press(Qt::Key_Right, Qt::ShiftModifier);
+        }
+        QCOMPARE(selected(view_), cells(1, 1, 1, 1));
+        press(Qt::Key_Right, Qt::ShiftModifier);
+        press(Qt::Key_Right, Qt::ShiftModifier);
+        press(Qt::Key_Down, Qt::ShiftModifier);
+        press(Qt::Key_Down, Qt::ShiftModifier);
+        QCOMPARE(selected(view_), cells(1, 1, 3, 3));
+        QCOMPARE(paintedSelected(view_), cells(1, 1, 3, 3));
+        QCOMPARE(text(), QString::fromUtf8(kTable));
+        QVERIFY(!f_->editor()->document()->isModified());
+    }
+
+    void fromTextToACellWithKeys() {
+        QPlainTextEdit* cell = caretIn(view_, 1, 1, 1);
+        QVERIFY(cell != nullptr);
+        press(Qt::Key_Right, Qt::ShiftModifier);
+        press(Qt::Key_Right, Qt::ShiftModifier);
+        QCOMPARE(cell->textCursor().selectedText(), QStringLiteral("1x"));
+        QCOMPARE(selected(view_), QString());
+        QCOMPARE(paintedSelected(view_), QString());
+        press(Qt::Key_Right, Qt::ShiftModifier);
+        QCOMPARE(selected(view_), cells(1, 1, 1, 1));
+        QCOMPARE(paintedSelected(view_), cells(1, 1, 1, 1));
+        // Towards the start: the cell, then the cell to the left.
+        QVERIFY(caretIn(view_, 2, 1, 1) != nullptr);
+        QCOMPARE(selected(view_), QString());
+        press(Qt::Key_Left, Qt::ShiftModifier);
+        press(Qt::Key_Left, Qt::ShiftModifier);
+        press(Qt::Key_Left, Qt::ShiftModifier);
+        QCOMPARE(selected(view_), cells(2, 0, 2, 1));
+        // Down on the last line: the end of the text, then the cell, then the cell below.
+        QVERIFY(caretIn(view_, 1, 2, 0) != nullptr);
+        press(Qt::Key_Down, Qt::ShiftModifier);
+        QCOMPARE(selected(view_), QString());
+        press(Qt::Key_Down, Qt::ShiftModifier);
+        QCOMPARE(selected(view_), cells(1, 2, 1, 2));
+        press(Qt::Key_Down, Qt::ShiftModifier);
+        QCOMPARE(selected(view_), cells(1, 2, 2, 2));
+    }
+
+    void fromTextToCellsWithTheMouse() {
+        // Decision 8: over the text a text selection, past its end the cell, in another cell the
+        // rectangle, back over the text a text selection again; Shift with a click a rectangle.
+        const QRect start = view_->visualRect(view_->model()->index(1, 1));
+        QWidget* target = view_->viewport();
+        const auto move = [&](QPoint to) {
+            QMouseEvent drag(QEvent::MouseMove, QPointF(to), QPointF(target->mapToGlobal(to)), Qt::NoButton,
+                             Qt::LeftButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(target, &drag);
+            QCoreApplication::processEvents();
+        };
+        QTest::mousePress(target, Qt::LeftButton, {}, QPoint(start.left() + 1, start.center().y()));
+        auto* cell = qobject_cast<QPlainTextEdit*>(view_->indexWidget(view_->model()->index(1, 1)));
+        QVERIFY(cell != nullptr);
+        const int advance = cell->fontMetrics().horizontalAdvance(QStringLiteral("b1"));
+        move(QPoint(start.left() + cell->viewport()->x() + advance, start.center().y()));
+        QCOMPARE(selected(view_), QString());
+        QCOMPARE(cell->textCursor().selectedText(), QStringLiteral("b1"));
+        move(QPoint(start.right() - 1, start.bottom() - 1));
+        QCOMPARE(selected(view_), cells(1, 1, 1, 1));
+        const QRect other = view_->visualRect(view_->model()->index(2, 2));
+        move(other.center());
+        QCOMPARE(selected(view_), cells(1, 1, 2, 2));
+        move(QPoint(start.left() + cell->viewport()->x() + advance, start.center().y()));
+        QCOMPARE(selected(view_), QString());
+        QTest::mouseRelease(target, Qt::LeftButton, {}, QPoint(start.left() + 2, start.center().y()));
+        QCOMPARE(focusedCell()->textCursor().selectedText(), QStringLiteral("b1"));
+
+        QTest::mouseClick(target, Qt::LeftButton, Qt::ShiftModifier,
+                          view_->visualRect(view_->model()->index(3, 3)).center());
+        QCoreApplication::processEvents();
+        QCOMPARE(selected(view_), cells(1, 1, 3, 3));
+        QTest::mouseClick(target, Qt::LeftButton, {}, view_->visualRect(view_->model()->index(2, 0)).center());
+        QCoreApplication::processEvents();
+        QCOMPARE(selected(view_), QString());
+        QCOMPARE(view_->currentIndex(), view_->model()->index(2, 0));
+        QCOMPARE(text(), QString::fromUtf8(kTable));
+    }
+
+    void rowsAndColumnsWithKeys() {
+        QPlainTextEdit* cell = caretIn(view_, 2, 1, 1);
+        QVERIFY(cell != nullptr);
+        press(Qt::Key_Space, Qt::ShiftModifier);
+        QCOMPARE(selected(view_), cells(2, 0, 2, 3));
+        QCOMPARE(paintedSelected(view_), cells(2, 0, 2, 3));
+        press(Qt::Key_Down, Qt::ShiftModifier);
+        QCOMPARE(selected(view_), cells(2, 0, 3, 3));
+        press(Qt::Key_Space, kColumnKey);
+        QCOMPARE(selected(view_), cells(0, 0, 3, 3));  // every column the rows lie in
+        QCOMPARE(text(), QString::fromUtf8(kTable));   // no space typed
+        press(Qt::Key_Escape);
+        QVERIFY(caretIn(view_, 2, 2, 0) != nullptr);
+        press(Qt::Key_Space, kColumnKey);
+        QCOMPARE(selected(view_), cells(0, 2, 3, 2));  // the header cell included
+        press(Qt::Key_Right, Qt::ShiftModifier);
+        QCOMPARE(selected(view_), cells(0, 2, 3, 3));
+    }
+
+    void rowsAndColumnsWithTheMouse() {
+        // Decision 6: between a row's control and the table, its border included, lies the row's
+        // area; above the table the columns'. Not drawn: the pointer shows it.
+        QWidget* widget = view_->parentWidget();
+        QVERIFY(widget != nullptr);
+        const QSize sizeBefore = widget->size();
+        const QPoint viewAt = view_->pos();
+        const int frame = view_->frameWidth();
+        const QPoint origin = view_->pos() + QPoint(frame, frame);
+        const auto rowArea = [&](int row) {
+            return QPoint(view_->x() - 1, origin.y() + view_->visualRect(view_->model()->index(row, 0)).center().y());
+        };
+        const auto columnArea = [&](int column) {
+            return QPoint(origin.x() + view_->visualRect(view_->model()->index(0, column)).center().x(),
+                          view_->y() - 1);
+        };
+        const auto shapeAt = [&](QPoint at) {
+            QTest::mouseMove(widget, at);
+            QCoreApplication::processEvents();
+            return widget->cursor().shape();
+        };
+        QCOMPARE(shapeAt(rowArea(2)), Qt::BitmapCursor);
+        const QCursor rowPointer = widget->cursor();
+        QCOMPARE(shapeAt(columnArea(1)), Qt::BitmapCursor);
+        const QCursor columnPointer = widget->cursor();
+        // The arrows: tip at the hot spot, black with a white outline (table.select-pointer-*).
+        QCOMPARE(rowPointer.hotSpot(), QPoint(30, 16));
+        QCOMPARE(columnPointer.hotSpot(), QPoint(16, 30));
+        const QImage right = rowPointer.pixmap().toImage();
+        const qreal scale = rowPointer.pixmap().devicePixelRatio();
+        QCOMPARE(right.pixelColor(QPoint(int(8 * scale), int(16 * scale))), QColor(Qt::black));  // the shaft
+        QCOMPARE(right.pixelColor(QPoint(int(8 * scale), int(4 * scale))).alpha(), 0);           // beside it
+        QVERIFY(shapeAt(QPoint(view_->x() + view_->width() / 2, view_->y() + view_->height() / 2)) != Qt::BitmapCursor);
+
+        QTest::mouseClick(widget, Qt::LeftButton, {}, rowArea(2));
+        QCoreApplication::processEvents();
+        QCOMPARE(selected(view_), cells(2, 0, 2, 3));
+        QTest::mouseClick(widget, Qt::LeftButton, Qt::ShiftModifier, rowArea(3));
+        QCoreApplication::processEvents();
+        QCOMPARE(selected(view_), cells(2, 0, 3, 3));
+        QTest::mouseClick(widget, Qt::LeftButton, {}, columnArea(1));
+        QCoreApplication::processEvents();
+        QCOMPARE(selected(view_), cells(0, 1, 3, 1));
+        // Dragging across adjacent areas.
+        QTest::mousePress(widget, Qt::LeftButton, {}, columnArea(0));
+        QMouseEvent drag(QEvent::MouseMove, QPointF(columnArea(2)), QPointF(widget->mapToGlobal(columnArea(2))),
+                         Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(widget, &drag);
+        QTest::mouseRelease(widget, Qt::LeftButton, {}, columnArea(2));
+        QCoreApplication::processEvents();
+        QCOMPARE(selected(view_), cells(0, 0, 3, 2));
+        // The table and its controls stay where they were.
+        QCOMPARE(widget->size(), sizeBefore);
+        QCOMPARE(view_->pos(), viewAt);
+        QCOMPARE(text(), QString::fromUtf8(kTable));
+    }
+
+    void ctrlATwiceSelectsTheTable() {
+        QPlainTextEdit* cell = caretIn(view_, 1, 1, 1);
+        QVERIFY(cell != nullptr);
+        press(Qt::Key_A, Qt::ControlModifier);
+        QCOMPARE(cell->textCursor().selectedText(), QStringLiteral("b1x"));
+        QCOMPARE(selected(view_), QString());
+        press(Qt::Key_A, Qt::ControlModifier);
+        QCOMPARE(selected(view_), cells(0, 0, 3, 3));
+        QCOMPARE(paintedSelected(view_), cells(0, 0, 3, 3));
+        // An empty cell: the first Ctrl+A selects the cell, the second the table.
+        press(Qt::Key_Escape);
+        QVERIFY(caretIn(view_, 3, 2, 0) != nullptr);
+        press(Qt::Key_A, Qt::ControlModifier);
+        QCOMPARE(selected(view_), cells(3, 2, 3, 2));
+        press(Qt::Key_A, Qt::ControlModifier);
+        QCOMPARE(selected(view_), cells(0, 0, 3, 3));
+    }
+
+    void aThirdCtrlASelectsTheDocument() {
+        QVERIFY(caretIn(view_, 1, 1, 1) != nullptr);
+        press(Qt::Key_A, Qt::ControlModifier);
+        press(Qt::Key_A, Qt::ControlModifier);
+        press(Qt::Key_A, Qt::ControlModifier);
+        const QTextCursor cursor = f_->editor()->textCursor();
+        QCOMPARE(cursor.selectionStart(), 0);
+        QCOMPARE(cursor.selectionEnd(), static_cast<int>(text().size()));
+        QCOMPARE(paintedSelected(view_), cells(0, 0, 3, 3));  // the table shows all its cells as selected
+        QCOMPARE(text(), QString::fromUtf8(kTable));
+    }
+
+    void aSelectionInTheEditorCoversWholeTables() {
+        // Decision 12: with keys as before, and a selection that ends inside a table's lines
+        // (dragging into it) reaches to its end, the hidden blank line below it included.
+        QTextCursor cursor(f_->editor()->document());
+        cursor.setPosition(2);  // in "above"
+        f_->editor()->setTextCursor(cursor);
+        f_->editor()->setFocus();
+        press(Qt::Key_Down, Qt::ShiftModifier);
+        press(Qt::Key_Down, Qt::ShiftModifier);
+        const int tableEnd = static_cast<int>(text().indexOf(QStringLiteral("below")));
+        QCOMPARE(f_->editor()->textCursor().selectionEnd(), tableEnd);
+        QCOMPARE(selected(view_), cells(0, 0, 3, 3));
+        QCOMPARE(paintedSelected(view_), cells(0, 0, 3, 3));
+        // As a drag into a cell leaves it: the selection ends inside the table's lines.
+        cursor.setPosition(2);
+        cursor.setPosition(static_cast<int>(text().indexOf(QStringLiteral("b2"))), QTextCursor::KeepAnchor);
+        f_->editor()->setTextCursor(cursor);
+        QCoreApplication::processEvents();
+        QCOMPARE(f_->editor()->textCursor().selectionEnd(), tableEnd);
+        // From below upwards: to the table's start.
+        cursor.setPosition(static_cast<int>(text().size()));
+        cursor.setPosition(static_cast<int>(text().indexOf(QStringLiteral("c2"))), QTextCursor::KeepAnchor);
+        f_->editor()->setTextCursor(cursor);
+        QCoreApplication::processEvents();
+        QCOMPARE(f_->editor()->textCursor().selectionStart(), static_cast<int>(text().indexOf(QStringLiteral("| A"))));
+        // No selection: no cell shows as selected.
+        cursor.setPosition(1);
+        f_->editor()->setTextCursor(cursor);
+        QCoreApplication::processEvents();
+        QCOMPARE(selected(view_), QString());
+        QCOMPARE(text(), QString::fromUtf8(kTable));
+    }
+
+    void aSelectionOfCellsExtendedBeyondTheTable() {
+        QVERIFY(caretIn(view_, 3, 0, 0) != nullptr);
+        press(Qt::Key_Space, Qt::ShiftModifier);
+        press(Qt::Key_Down, Qt::ShiftModifier);
+        const QTextCursor cursor = f_->editor()->textCursor();
+        QCOMPARE(cursor.selectionStart(), static_cast<int>(text().indexOf(QStringLiteral("| A"))));
+        QCOMPARE(cursor.selectionEnd(), static_cast<int>(text().size()));  // to the end of the line below
+        QCOMPARE(paintedSelected(view_), cells(0, 0, 3, 3));
+        // Upwards from the header row: from the table's end to the line above.
+        QVERIFY(caretIn(view_, 0, 0, 0) != nullptr);
+        press(Qt::Key_Right, Qt::ShiftModifier);
+        press(Qt::Key_Right, Qt::ShiftModifier);
+        press(Qt::Key_Up, Qt::ShiftModifier);
+        const QTextCursor up = f_->editor()->textCursor();
+        QCOMPARE(up.selectionEnd(), static_cast<int>(text().indexOf(QStringLiteral("below"))));
+        QCOMPARE(up.selectionStart(), static_cast<int>(text().indexOf(QStringLiteral("\n\n| A"))) + 1);
+        QCOMPARE(text(), QString::fromUtf8(kTable));
+    }
+
+    void theContextMenuSelects() {
+        QPlainTextEdit* cell = caretIn(view_, 2, 1, 0);
+        QVERIFY(cell != nullptr);
+        const QStringList entries = contextMenuOf(cell);
+        const qsizetype at = entries.indexOf(QStringLiteral("Select All"));
+        QVERIFY2(at >= 0, qPrintable(entries.join(u'|')));
+        QCOMPARE(entries.mid(at, 3), (QStringList{QStringLiteral("Select All"), QStringLiteral("Select Column"),
+                                                  QStringLiteral("Select Row")}));
+        QVERIFY(action(view_, "tableSelectRow") != nullptr);
+        action(view_, "tableSelectRow")->trigger();
+        QCOMPARE(selected(view_), cells(2, 0, 2, 3));
+        action(view_, "tableSelectColumn")->trigger();
+        QCOMPARE(selected(view_), cells(0, 0, 3, 3));  // the columns of the selected row: all
+        press(Qt::Key_Escape);
+        QVERIFY(caretIn(view_, 2, 1, 0) != nullptr);
+        action(view_, "tableSelectColumn")->trigger();
+        QCOMPARE(selected(view_), cells(0, 1, 3, 1));
+        action(view_, "tableSelectAll")->trigger();
+        QCOMPARE(selected(view_), cells(0, 0, 3, 3));
+    }
+
+    void endingASelectionOfCells() {
+        QVERIFY(caretIn(view_, 1, 1, 1) != nullptr);
+        for (int i = 0; i < 3; ++i) {
+            press(Qt::Key_Right, Qt::ShiftModifier);
+        }
+        press(Qt::Key_Down, Qt::ShiftModifier);
+        QCOMPARE(selected(view_), cells(1, 1, 2, 1));
+        press(Qt::Key_Escape);
+        QCOMPARE(selected(view_), QString());
+        QCOMPARE(view_->currentIndex(), view_->model()->index(1, 1));
+        QCOMPARE(focusedCell()->textCursor().position(), 1);
+        QVERIFY(!focusedCell()->textCursor().hasSelection());
+        // An arrow without Shift: as if there had been no selection.
+        for (int i = 0; i < 3; ++i) {
+            press(Qt::Key_Right, Qt::ShiftModifier);
+        }
+        QCOMPARE(selected(view_), cells(1, 1, 1, 1));
+        press(Qt::Key_Right);
+        QCOMPARE(selected(view_), QString());
+        QCOMPARE(view_->currentIndex(), view_->model()->index(1, 1));
+        QCOMPARE(focusedCell()->textCursor().position(), 2);
+        // Tab: to the next cell, counted from there.
+        press(Qt::Key_Space, Qt::ShiftModifier);
+        press(Qt::Key_Tab);
+        QCOMPARE(selected(view_), QString());
+        QCOMPARE(view_->currentIndex(), view_->model()->index(1, 2));
+        QCOMPARE(text(), QString::fromUtf8(kTable));
+    }
+
+    void typingNeverReplacesSelectedCells() {
+        QPlainTextEdit* cell = caretIn(view_, 1, 1, 3);
+        QVERIFY(cell != nullptr);
+        press(Qt::Key_Space, Qt::ShiftModifier);  // Shift held a moment too long
+        QCOMPARE(selected(view_), cells(1, 0, 1, 3));
+        test::keyClicks(QApplication::focusWidget(), QStringLiteral("y"));
+        QCoreApplication::processEvents();
+        QCOMPARE(selected(view_), QString());
+        QVERIFY(text().contains(QStringLiteral("| a1 | b1xy | c1 | d1 |")));
+    }
+
+    void deletingActsOnTheSelection() {
+        QVERIFY(caretIn(view_, 1, 1, 3) != nullptr);
+        press(Qt::Key_Right, Qt::ShiftModifier);
+        press(Qt::Key_Right, Qt::ShiftModifier);
+        press(Qt::Key_Down, Qt::ShiftModifier);
+        press(Qt::Key_Delete);
+        QVERIFY2(text().contains(QStringLiteral("| a1 |  |  | d1 |\n| a2 |  |  | d2 |")), qPrintable(text()));
+        f_->editor()->document()->undo();
+        f_->settle();
+        QCOMPARE(text(), QString::fromUtf8(kTable));
+
+        // Two whole body rows, then Delete Row.
+        view_ = f_->editor()->tableViewAt(kHeaderBlock);
+        QVERIFY(caretIn(view_, 1, 0, 0) != nullptr);
+        press(Qt::Key_Space, Qt::ShiftModifier);
+        press(Qt::Key_Down, Qt::ShiftModifier);
+        action(view_, "tableDeleteRow")->trigger();
+        f_->settle();
+        QVERIFY2(!text().contains(QStringLiteral("a1")) && !text().contains(QStringLiteral("a2")) &&
+                     text().contains(QStringLiteral("| a3 |")),
+                 qPrintable(text()));
+        f_->editor()->document()->undo();
+        f_->settle();
+        QCOMPARE(text(), QString::fromUtf8(kTable));
+
+        // Only the header row: Delete Row is disabled.
+        view_ = f_->editor()->tableViewAt(kHeaderBlock);
+        QVERIFY(caretIn(view_, 0, 0, 0) != nullptr);
+        press(Qt::Key_Space, Qt::ShiftModifier);
+        QVERIFY(!action(view_, "tableDeleteRow")->isEnabled());
+
+        // Every column: only the first remains.
+        press(Qt::Key_Escape);
+        QVERIFY(caretIn(view_, 0, 0, 0) != nullptr);
+        press(Qt::Key_Space, Qt::ShiftModifier);
+        press(Qt::Key_Space, kColumnKey);
+        action(view_, "tableDeleteColumn")->trigger();
+        f_->settle();
+        QVERIFY2(text().contains(QStringLiteral("| A |\n| --- |\n| a1 |\n| a2 |\n| a3 |")), qPrintable(text()));
+        f_->editor()->document()->undo();
+        f_->settle();
+        QCOMPARE(text(), QString::fromUtf8(kTable));
+
+        // The whole table: its lines and the blank line below it.
+        view_ = f_->editor()->tableViewAt(kHeaderBlock);
+        QVERIFY(caretIn(view_, 1, 1, 1) != nullptr);
+        press(Qt::Key_A, Qt::ControlModifier);
+        press(Qt::Key_A, Qt::ControlModifier);
+        press(Qt::Key_Backspace);
+        f_->settle();
+        QCOMPARE(text(), QStringLiteral("above\n\nbelow"));
+        f_->editor()->document()->undo();
+        f_->settle();
+        QCOMPARE(text(), QString::fromUtf8(kTable));
+    }
+
+    void aScreenReaderLearnsTheSelection() {
+        QVERIFY(caretIn(view_, 2, 1, 0) != nullptr);
+        press(Qt::Key_Space, Qt::ShiftModifier);
+        QAccessibleInterface* table = QAccessible::queryAccessibleInterface(view_);
+        QVERIFY(table != nullptr);
+        QAccessibleTableInterface* cellsOf = table->tableInterface();
+        QVERIFY(cellsOf != nullptr);
+        QCOMPARE(cellsOf->selectedCellCount(), 4);
+        QCOMPARE(cellsOf->selectedRows(), QList<int>{2});
+    }
+};
+
+QTEST_MAIN(tst_s040_table_selection)
+#include "tst_s040_table_selection.moc"

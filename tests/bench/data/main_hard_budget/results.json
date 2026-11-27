@@ -26,6 +26,7 @@
     "s031_paste_outlook_400x10_ms": 5.0,
     "s031_paste_outlook_40x100_ms": 5.0,
     "s031_paste_outlook_40x10_ms": 5.0,
+    "s040_selection_max_ms": 5.0,
     "save_10mb_total_ms": 5.0,
     "save_10mb_ui_blocked_ms": 17.0,
     "typing_10mb_max_ms": 5.0,
