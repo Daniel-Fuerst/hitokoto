@@ -8,10 +8,12 @@
 #include <QAction>
 #include <QClipboard>
 #include <QMenu>
+#include <QMenuBar>
 #include <QMimeData>
 #include <QPlainTextEdit>
 #include <QTableView>
 #include <QTimer>
+#include <QToolTip>
 
 #include <memory>
 
@@ -121,6 +123,28 @@ QStringList contextMenuOf(QWidget* widget) {
 }
 
 /// The clipboard's data; empty data while it holds none, so that a check fails instead of crashing.
+/// The action of the main window's menus whose text without mnemonics is `name`.
+QAction* menuAction(const test::Fixture& f, const QString& name) {
+    for (QAction* menu : f.window->menuBar()->actions()) {
+        if (menu->menu() == nullptr) {
+            continue;
+        }
+        for (QAction* a : menu->menu()->actions()) {
+            if (a->text().remove(u'&') == name) {
+                return a;
+            }
+        }
+    }
+    return nullptr;
+}
+
+/// The notice shown beside the table (a tool tip), then hidden.
+QString notice() {
+    const QString text = QToolTip::isVisible() ? test::shownText(QToolTip::text()) : QString();
+    QToolTip::hideText();
+    return text;
+}
+
 /// Chooses the entry `text` (without accelerator) of the cell's context menu; false if it has none
 /// or it cannot be chosen.
 bool chooseFromContextMenu(QWidget* widget, const QString& text) {
@@ -438,6 +462,111 @@ private slots:
         QVERIFY(chooseFromContextMenu(focusedCell(), QStringLiteral("Paste")));
         f_->settle();
         QCOMPARE(text(), replaced(QStringLiteral("| p | q | r | s |"), QStringLiteral("| z | z | z | s |")));
+    }
+
+    // S041 review (code) O1 (Armin, 2026-11-27): in cells only a single cell is text; one row or
+    // one column of a spreadsheet is a table.
+    void aSpreadsheetRowFillsCells() {
+        auto* data = new QMimeData;
+        data->setText(QStringLiteral("1\t2\t3\r\n"));
+        QApplication::clipboard()->setMimeData(data);
+        QVERIFY(selectCells(view(), 1, 0, 1, 2));
+        pressStandardKey(QKeySequence::Paste);
+        f_->settle();
+        QCOMPARE(text(),
+                 replaced(QStringLiteral("| **bold** | a \\| b | x<br>y | 1 |"), QStringLiteral("| 1 | 2 | 3 | 1 |")));
+    }
+
+    void anHtmlColumnFillsCells() {
+        auto* data = new QMimeData;
+        data->setHtml(QStringLiteral("<table><tr><td>a</td></tr><tr><td>b</td></tr></table>"));
+        data->setText(QStringLiteral("a\nb"));
+        QApplication::clipboard()->setMimeData(data);
+        QVERIFY(selectCells(view(), 2, 3, 2, 3));
+        pressStandardKey(QKeySequence::Paste);
+        f_->settle();
+        QCOMPARE(text(), replaced(QStringLiteral("| p | q | r | s |\n| t | u | v | w |"),
+                                  QStringLiteral("| p | q | r | a |\n| t | u | v | b |")));
+    }
+
+    void aSingleHtmlCellIsText() {
+        auto* data = new QMimeData;
+        data->setHtml(QStringLiteral("<table><tr><td>z</td></tr></table>"));
+        data->setText(QStringLiteral("z"));
+        QApplication::clipboard()->setMimeData(data);
+        QVERIFY(selectCells(view(), 2, 0, 2, 2));
+        pressStandardKey(QKeySequence::Paste);
+        f_->settle();
+        QCOMPARE(text(), replaced(QStringLiteral("| p | q | r | s |"), QStringLiteral("| z | z | z | s |")));
+    }
+
+    // S041 review (code) O2 (Armin, 2026-11-27): a table with text beside it stays text in cells,
+    // and a notice says why.
+    void aTableWithTextBesideItIsTextWithANotice() {
+        auto* data = new QMimeData;
+        data->setHtml(
+            QStringLiteral("<p>Caption</p><table><tr><td>1</td><td>2</td></tr><tr><td>3</td><td>4</td></tr></table>"));
+        data->setText(QStringLiteral("Caption\n1 2"));
+        QApplication::clipboard()->setMimeData(data);
+        QVERIFY(selectCells(view(), 2, 0, 2, 1));
+        pressStandardKey(QKeySequence::Paste);
+        f_->settle();
+        QCOMPARE(text(), replaced(QStringLiteral("| p | q | r | s |"),
+                                  QStringLiteral("| Caption<br>1 2 | Caption<br>1 2 | r | s |")));
+        QVERIFY2(notice().contains(QStringLiteral("text beside")), "no notice");
+    }
+
+    // S041 review (code) O5 (Armin, 2026-11-27): the Edit menu with cells selected. Copy copies them;
+    // Cut leaves them and says so; Paste overwrites them only with as many cells in the same
+    // arrangement, otherwise nothing changes and a notice says why.
+    void theEditMenuCopiesTheCells() {
+        QVERIFY(selectCells(view(), 1, 0, 2, 2));
+        QAction* copy = menuAction(*f_, QStringLiteral("Copy"));
+        QVERIFY(copy != nullptr);
+        copy->trigger();
+        QCOMPARE(clipboardText(), QString::fromUtf8(kCopiedBlock));
+        QCOMPARE(clipboardMarkdown(), QByteArray(kCopiedBlock));
+    }
+
+    void theEditMenuDoesNotCutCells() {
+        QApplication::clipboard()->setText(QStringLiteral("keep"));
+        QVERIFY(selectCells(view(), 1, 0, 1, 1));
+        QAction* cut = menuAction(*f_, QStringLiteral("Cut"));
+        QVERIFY(cut != nullptr);
+        cut->trigger();
+        f_->settle();
+        QCOMPARE(text(), QString::fromUtf8(kTable));
+        QCOMPARE(clipboardText(), QStringLiteral("keep"));
+        QVERIFY2(!notice().isEmpty(), "no notice");
+    }
+
+    void theEditMenuPastesOnlyTheSameArrangement() {
+        QVERIFY(selectCells(view(), 1, 0, 2, 2));
+        pressStandardKey(QKeySequence::Copy);  // 2 x 3 cells
+        QAction* paste = menuAction(*f_, QStringLiteral("Paste"));
+        QVERIFY(paste != nullptr);
+        QVERIFY(selectCells(view(), 2, 1, 3, 3));
+        paste->trigger();
+        f_->settle();
+        QCOMPARE(text(), replaced(QStringLiteral("| p | q | r | s |\n| t | u | v | w |"),
+                                  QStringLiteral("| p | **bold** | a \\| b | x<br>y |\n| t | p | q | r |")));
+        QVERIFY(undoneOnce());
+        // One cell selected: nothing changes, and a notice says why.
+        QVERIFY(selectCells(view(), 1, 0, 1, 0));
+        paste->trigger();
+        f_->settle();
+        QCOMPARE(text(), QString::fromUtf8(kTable));
+        QVERIFY2(notice().contains(QStringLiteral("2 × 3")), "no notice");
+    }
+
+    void theEditMenuPastesAtTheCaretInACell() {
+        QApplication::clipboard()->setText(QStringLiteral("z"));
+        QVERIFY(caretIn(view(), 3, 0, 1) != nullptr);
+        QAction* paste = menuAction(*f_, QStringLiteral("Paste"));
+        QVERIFY(paste != nullptr);
+        paste->trigger();
+        f_->settle();
+        QCOMPARE(text(), replaced(QStringLiteral("| t | u |"), QStringLiteral("| tz | u |")));
     }
 
     void spreadsheetTextAndHtmlFillCells() {

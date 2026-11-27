@@ -211,3 +211,39 @@ TEST(S041_TableCopyPaste, TextReplacesEverySelectedCell) {
     EXPECT_EQ(pasteTextIntoTableCells({u"| A | B |", u"| - | - |", u"| a | b |  "}, {1, 0, 1, 0}, u"t")[2],
               u"| t | b |  ");
 }
+
+TEST(S041_TableCopyPaste, InCellsOneRowIsATable) {
+    // S041 review (code) O1 (Armin, 2026-11-27): in cells, only a single cell is text.
+    const auto row = parseTabSeparatedCells(u"a\tb\tc\r\n");
+    // Explicit branch for bugprone-unchecked-optional-access (it ignores ASSERT_TRUE).
+    if (!row) {
+        FAIL() << "one row of a spreadsheet is no table";
+    }
+    EXPECT_EQ(pastedTableCells(*row), (TableCellGrid{{u"a", u"b", u"c"}}));
+    const auto quoted = parseTabSeparatedCells(u"\"x\ny\"\tz");
+    if (!quoted) {
+        FAIL() << "a quoted field with a line break is no table";
+    }
+    EXPECT_EQ(pastedTableCells(*quoted), (TableCellGrid{{u"x<br>y", u"z"}}));
+    // As S031 reads two rows and more.
+    const auto rows = parseTabSeparatedCells(u"1\t2\r\n3\t4\r\n");
+    EXPECT_EQ(rows, parseExcelPlainText(u"1\t2\r\n3\t4\r\n"));
+    EXPECT_TRUE(rows.has_value());
+    // Text: one cell, lines without a tab, rows of different widths, indented text.
+    EXPECT_EQ(parseTabSeparatedCells(u"a\r\n"), std::nullopt);
+    EXPECT_EQ(parseTabSeparatedCells(u"a\r\nb\r\n"), std::nullopt);
+    EXPECT_EQ(parseTabSeparatedCells(u"a\tb\r\nc\r\n"), std::nullopt);
+    EXPECT_EQ(parseTabSeparatedCells(u"\ta\tb"), std::nullopt);
+}
+
+TEST(S041_TableCopyPaste, InCellsOneColumnOfAnHtmlTableIsATable) {
+    PastedTable column;
+    column.cells = {{0, 0, 1, 1, {u"a"}}, {1, 0, 1, 1, {u"b"}}};
+    EXPECT_TRUE(countsAsCellTable(column));
+    EXPECT_FALSE(countsAsTable(column));  // in the editor it stays text (S031)
+    EXPECT_EQ(pastedTableCells(column), (TableCellGrid{{u"a"}, {u"b"}}));
+    PastedTable single;
+    single.cells = {{0, 0, 1, 1, {u"z"}}};
+    EXPECT_FALSE(countsAsCellTable(single));
+    EXPECT_FALSE(countsAsCellTable(PastedTable{}));
+}

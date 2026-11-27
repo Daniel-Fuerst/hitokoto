@@ -195,6 +195,16 @@ struct HtmlScan {
 /// text is no such table.
 [[nodiscard]] std::optional<PastedTable> parseExcelPlainText(std::u16string_view text);
 
+/// S041 review (code) O1: tab-separated text as a table for a paste into cells. Read as
+/// parseExcelPlainText reads it, but one row is enough: at least two fields in every row, every row
+/// with the same number of fields, not every row starting with a tab. Text without a tab outside
+/// quoted fields is no table (a column of lines cannot be told from lines of text).
+[[nodiscard]] std::optional<PastedTable> parseTabSeparatedCells(std::u16string_view text);
+
+/// S041 review (code) O1: whether a table pasted into cells counts: two cells or more, so that one
+/// row or one column does; a single cell is text.
+[[nodiscard]] bool countsAsCellTable(const PastedTable& table);
+
 /// Where a paste lands: the caret's line split at the caret (after the selection is removed) and
 /// the lines around it.
 struct PastePlace {

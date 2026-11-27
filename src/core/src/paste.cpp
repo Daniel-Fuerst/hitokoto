@@ -514,4 +514,12 @@ PasteInsertion placePastedBlocks(std::span<const PasteBlock> blocks, const Paste
     return out;
 }
 
+std::optional<PastedTable> parseTabSeparatedCells(std::u16string_view /*text*/) {
+    return std::nullopt;
+}
+
+bool countsAsCellTable(const PastedTable& /*table*/) {
+    return false;
+}
+
 }  // namespace hitokoto::core
