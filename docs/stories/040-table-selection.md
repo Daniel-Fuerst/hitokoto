@@ -1,7 +1,8 @@
 # S040 — Selecting cells, rows and columns in a table
 
-- **Status:** In progress (confirmed by Armin on 2026-11-21, after the review
-  `docs/reviews/040-table-selection-spec.md` and its dispositions) · **Order:** 46 · **Size:** L ·
+- **Status:** Done (accepted by Armin on 2026-11-27 on v0.12.0, Linux and Windows; confirmed on
+  2026-11-21, after the review `docs/reviews/040-table-selection-spec.md` and its dispositions) ·
+  **Order:** 46 · **Size:** L ·
   **Depends on:** S018, S019, S028, S031
 - **Basis:** Armin, 2026-11-21: a selection of more than one cell cannot be seen; rows and columns
   cannot be selected, or their selection is not visible. Checked on main `c8a167f` with Qt 6.12.0
@@ -171,8 +172,21 @@ can act on exactly what I see.
   table; `s040_selection_max_ms` is a hard budget of the gate. Release build in the cloud VM
   (2 vCPU, Qt 6.12.0, offscreen), 2026-11-26: p95 9.75 ms, highest 14.4 ms, none over 16 ms.
 
-Open before "In review": the manual checks (a key the system takes, the pointers on Windows and
-macOS at 2x) and a green CI on Linux, Windows and macOS.
+Acceptance (Armin, 2026-11-27, v0.12.0 on Windows and Linux): stories are closed with what was
+learnt, and findings become stories of their own.
+
+- The pointers of rows and columns work on Windows but are too large: S051 makes them two thirds of
+  their size.
+- macOS is not checked: Armin has no Mac; a colleague may give feedback. Linux and Windows are good
+  enough for now.
+- A key the system takes never reaches hitokoto, so there is nothing to check. Should a combination
+  collide with a standard of an operating system and disturb, a story looks for an alternative
+  there.
+- With the caret in a cell, `Ctrl+Space` and then the row above selected in its area left the
+  caret's cell painted as selected. Fixed with a test on the branch
+  `agents/s040-selected-cell-look`, after this acceptance.
+- Selecting with the keys past the table's edge selects the whole table; a selection begun with the
+  mouse in the table stays in it; one begun outside it covers the whole table (decision 12).
 
 Left as it is for now (Armin, 2026-11-26, to gather practical experience): dragging with the mouse
 from a selection of cells to below or above the table stops at the edge rows, because the view
