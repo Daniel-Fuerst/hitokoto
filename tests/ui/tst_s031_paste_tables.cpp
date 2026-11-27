@@ -696,7 +696,9 @@ private slots:
         QCOMPARE(text(f), inserted(markdown, at, test::s031Text(QStringLiteral("outlook-t1-example"))));
     }
 
-    void inACellOfAShownTableThePlainTextIsPasted() {
+    // Since S041 (decision 7) a table pasted with the caret in a cell fills the cells from there,
+    // adding rows and columns; before, the plain text went into the cell.
+    void inACellOfAShownTableATableFillsTheCells() {
         const QString markdown = QStringLiteral("| a | b |\n| --- | --- |\n| 1 | 2 |\n");
         test::Fixture f;
         QVERIFY(openText(f, markdown));
@@ -710,12 +712,10 @@ private slots:
         test::keyClick(cell, Qt::Key_A, Qt::ControlModifier);
         test::putSampleOnClipboard(QStringLiteral("outlook-t1-example"));
         pressPaste(cell);
-        test::keyClick(cell, Qt::Key_Backtab);  // commits, as in S018
         f.settle();
-        const std::u16string plain = test::s031Text(QStringLiteral("outlook-t1-example")).toStdU16String();
-        const std::u16string row = core::replaceTableCell(u"| 1 | 2 |", 0, core::tableCellFromText(plain));
-        QCOMPARE(text(f),
-                 QStringLiteral("| a | b |\n| --- | --- |\n") + QString::fromStdU16String(row) + QStringLiteral("\n"));
+        QCOMPARE(text(f), QStringLiteral("| a | b |  |\n| --- | --- | --- |\n| Product | Supplier | Price per kg |\n"
+                                         "| Green tea | Tea House North<br>Tea House South | 12,50<br>13,20 |\n"
+                                         "| Black tea | Tea House West | 9,80 |\n"));
     }
 
     // Review O1: a table nested thousands of levels deep stays plain text without Qt's import,
@@ -896,9 +896,9 @@ private slots:
         QCOMPARE(text(f), inserted(markdown, at, test::s031Text(QStringLiteral("outlook-t1-example"))));
     }
 
-    // Review (code) O9: a copy made in hitokoto carries a marker besides its usual formats, so that
-    // other programs get what they got before and hitokoto's own paste skips the HTML, which Qt
-    // would first generate from the selection.
+    // Review (code) O9: a copy made in hitokoto carries a marker besides its formats. Since S041
+    // (decision 1) they are the plain text and Markdown, both exactly the selected text, and no
+    // HTML.
     void aCopyFromHitokotoIsMarked() {
         const QString markdown = QStringLiteral("Para **one**.\n\nPara two.\n");
         test::Fixture f;
@@ -910,9 +910,9 @@ private slots:
         QVERIFY(!ui::EditorWidget::ownCopyFormat().isEmpty());
         QVERIFY(copy->hasFormat(ui::EditorWidget::ownCopyFormat()));
         QVERIFY(copy->hasText());
-        QVERIFY(copy->hasHtml());
+        QVERIFY(!copy->hasHtml());
         QCOMPARE(copy->text(), text(f));  // everything selected
-        QVERIFY(copy->html().contains(QStringLiteral("Para two.")));
+        QCOMPARE(copy->data(QStringLiteral("text/markdown")), text(f).toUtf8());
     }
 
     void aCopyFromHitokotoIsPastedAsPlainText() {

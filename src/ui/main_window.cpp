@@ -13,6 +13,7 @@
 #include "find_bar.hpp"
 #include "find_controller.hpp"
 #include "menu_bar.hpp"
+#include "table_view.hpp"
 
 #include <QAction>
 #include <QApplication>
@@ -147,13 +148,47 @@ void MainWindow::createMenus() {
     edit->addAction(tr("&Undo"), QKeySequence::Undo, editor_, &EditorWidget::undoEdit);
     edit->addAction(tr("&Redo"), QKeySequence::Redo, editor_, &EditorWidget::redoEdit);
     edit->addSeparator();
-    edit->addAction(tr("Cu&t"), QKeySequence::Cut, editor_, &QTextEdit::cut);
-    edit->addAction(tr("&Copy"), QKeySequence::Copy, editor_, &QTextEdit::copy);
-    edit->addAction(tr("&Paste"), QKeySequence::Paste, editor_, &QTextEdit::paste);
+    // S041 review (code) O5: in a cell the Edit menu acts there. With cells selected, Copy copies
+    // them, Cut leaves them (with a notice) and Paste overwrites them only with as many cells in
+    // the same arrangement; with the caret in a cell they act on its text, Paste as Ctrl+V there.
+    const auto focusedCell = [] { return qobject_cast<CellEditor*>(QApplication::focusWidget()); };
+    const auto selectedCells = [focusedCell]() -> TableView* {
+        CellEditor* cell = focusedCell();
+        TableView* view = cell != nullptr ? cell->tableView() : nullptr;
+        return view != nullptr && view->hasCellSelection() ? view : nullptr;
+    };
+    edit->addAction(tr("Cu&t"), QKeySequence::Cut, this, [this, focusedCell, selectedCells] {
+        if (TableView* view = selectedCells()) {
+            view->refuseCut();
+        } else if (CellEditor* cell = focusedCell()) {
+            cell->cut();
+        } else {
+            editor_->cut();
+        }
+    });
+    edit->addAction(tr("&Copy"), QKeySequence::Copy, this, [this, focusedCell, selectedCells] {
+        if (TableView* view = selectedCells()) {
+            view->copyCells(false);
+        } else if (CellEditor* cell = focusedCell()) {
+            cell->copy();
+        } else {
+            editor_->copy();
+        }
+    });
+    edit->addAction(tr("&Paste"), QKeySequence::Paste, this, [this, focusedCell, selectedCells] {
+        if (TableView* view = selectedCells()) {
+            view->pasteSameArrangement(QApplication::clipboard()->mimeData());
+        } else if (CellEditor* cell = focusedCell()) {
+            cell->paste();
+        } else {
+            editor_->paste();
+        }
+    });
     // S031: paste the clipboard's plain text without converting tables (decision 5).
     // The key reaches the window from every widget: it acts where the focus is (review O2), in a
-    // cell editor or a text field as Ctrl+V there (both take plain text only), in the editor
-    // without converting tables, elsewhere not at all.
+    // text field as Ctrl+V there, in a cell editor with the plain text at the caret (since S041
+    // Ctrl+V there fills cells with a table), in the editor without converting tables, elsewhere
+    // not at all.
     QAction* pastePlain =
         edit->addAction(tr("Paste as &Plain Text"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V), this, [this] {
             QWidget* focus = QApplication::focusWidget();
@@ -161,6 +196,8 @@ void MainWindow::createMenus() {
                 editor_->pasteAsPlainText();
             } else if (auto* line = qobject_cast<QLineEdit*>(focus)) {
                 line->paste();
+            } else if (auto* cell = qobject_cast<CellEditor*>(focus)) {
+                cell->pasteAsPlainText();  // never fills cells with a table (S041)
             } else if (auto* text = qobject_cast<QPlainTextEdit*>(focus)) {
                 text->paste();
             }

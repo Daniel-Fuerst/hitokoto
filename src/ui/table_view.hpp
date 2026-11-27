@@ -15,8 +15,11 @@
 #include <QTableView>
 #include <QToolButton>
 
+#include <functional>
 #include <optional>
 
+class QMenu;
+class QMimeData;
 class QTextDocument;
 
 namespace hitokoto::ui {
@@ -34,6 +37,11 @@ class CellEditor : public QPlainTextEdit {
 public:
     CellEditor(TableView* view, QWidget* parent);
     void setPadding(int padding) { setViewportMargins(padding, padding, padding, padding); }
+    /// S031 review O2, S041: Paste as Plain Text in a cell puts the clipboard's plain text at the
+    /// caret and never fills cells with a table; a selection of cells ends first (S040, decision 11).
+    void pasteAsPlainText();
+    /// The table view the cell belongs to (S041: the Edit menu acts on its cells).
+    [[nodiscard]] TableView* tableView() const noexcept { return view_; }
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -46,6 +54,9 @@ protected:
 private:
     /// keyPressEvent for a key whose text may enter the cell as it is (text_input.hpp).
     void pressKey(QKeyEvent* event);
+    /// S041: Cut, Copy and Paste of `menu` act on the selected cells; Copy as Tab-Separated Text
+    /// goes below Copy.
+    void cellClipboardEntries(QMenu& menu);
 
     TableView* view_;
 };
@@ -156,6 +167,29 @@ public:
     /// Decision 12: a selection in the editor covers the table; all its cells show as selected.
     void setCoveredByEditor(bool covered);
 
+    /// S041: Ctrl+C (or `Copy as Tab-Separated Text`) and Ctrl+X on the selected cells; nothing
+    /// without them. Cutting copies, then deletes as Delete does (S040, decision 10).
+    void copyCells(bool tabSeparated);
+    void cutCells();
+    /// S041: how a paste meets the cells. Fill: the selected cells (decision 7); CaretOnly: from
+    /// the cell with the caret, text stays the cell editor's; SameArrangement: the Edit menu's Paste
+    /// on selected cells, only as many cells in the same arrangement (review (code) O5).
+    enum class PasteMode { Fill, CaretOnly, SameArrangement };
+    /// What a paste does to the table, decided by the embedder: `range` the selected cells, or the
+    /// cell with the caret. True if the paste is the table's (even if it changes nothing); false
+    /// lets the cell's editor paste text at the caret.
+    using PasteHandler = std::function<bool(const QMimeData* source, core::TableCellRange range, PasteMode mode)>;
+    void setPasteHandler(PasteHandler handler) { pasteHandler_ = std::move(handler); }
+    /// Pastes `source` into the selected cells, or from the cell with the caret; see PasteHandler.
+    bool pasteCells(const QMimeData* source);
+    /// S041 review (code) O5: the Edit menu's Paste on the selected cells (PasteMode::SameArrangement).
+    void pasteSameArrangement(const QMimeData* source);
+    /// S041 review (code) O5: the Edit menu's Cut on selected cells changes nothing; a notice says so.
+    void refuseCut();
+    /// S041: a short notice beside the selected cells or the current cell (a tool tip), shown
+    /// once the events of the change are handled, so that a change of focus does not hide it.
+    void showNotice(const QString& text);
+
 signals:
     /// To the line above the table; `atEnd` puts the caret at its end (Left), else its start.
     void leaveAbove(bool atEnd);
@@ -183,6 +217,8 @@ signals:
     /// Decision 12: a selection of cells extended past the last row (`down`) or above the header
     /// row becomes a selection in the editor.
     void extendBeyond(bool down);
+    /// S041: put the cells of `range` on the clipboard, as Markdown or as tab-separated text.
+    void copySelectedCells(hitokoto::core::TableCellRange range, bool tabSeparated);
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -229,7 +265,8 @@ private:
     } before_;                ///< S040: where the caret was before the selection of cells began
     bool dragCells_ = false;  ///< S040: a drag that left the text of its cell
     bool showingCells_ = false;
-    bool covered_ = false;  ///< S040, decision 12
+    bool covered_ = false;       ///< S040, decision 12
+    PasteHandler pasteHandler_;  ///< S041
 };
 
 /// The table view plus the hover controls around it; this is what the editor places in its

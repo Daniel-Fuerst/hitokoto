@@ -11,6 +11,7 @@
 #include <QAbstractTextDocumentLayout>
 #include <QAction>
 #include <QApplication>
+#include <QClipboard>
 #include <QContextMenuEvent>
 #include <QEvent>
 #include <QFile>
@@ -18,7 +19,9 @@
 #include <QInputMethodEvent>
 #include <QItemSelectionModel>
 #include <QKeyEvent>
+#include <QKeySequence>
 #include <QMenu>
+#include <QMetaObject>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
@@ -31,6 +34,7 @@
 #include <QTextDocument>
 #include <QTextLayout>
 #include <QToolButton>
+#include <QToolTip>
 
 #include <algorithm>
 #include <cmath>
@@ -133,11 +137,15 @@ void CellEditor::contextMenuEvent(QContextMenuEvent* event) {
         }
     }
     if (view_ != nullptr) {
+        cellClipboardEntries(*menu);
         // S040, decision 7: Select All selects the table, followed by Select Column and Select Row,
         // in the place of the text's Select All.
         QList<QAction*> selecting;
         QList<QAction*> others;
         for (QAction* entry : view_->actions()) {
+            if (entry->objectName() == QStringLiteral("tableCopyTabSeparated")) {
+                continue;  // below Copy (cellClipboardEntries)
+            }
             (entry->objectName().startsWith(QStringLiteral("tableSelect")) ? selecting : others) << entry;
         }
         if (textSelectAll != nullptr) {
@@ -152,8 +160,63 @@ void CellEditor::contextMenuEvent(QContextMenuEvent* event) {
     menu->exec(event->globalPos());
 }
 
+void CellEditor::cellClipboardEntries(QMenu& menu) {
+    // S041: with cells selected, Cut, Copy and Paste act on them; Copy as Tab-Separated Text
+    // directly below Copy (decision 4).
+    QAction* tabSeparated = view_->findChild<QAction*>(QStringLiteral("tableCopyTabSeparated"));
+    const QList<QAction*> entries = menu.actions();
+    for (qsizetype i = 0; i < entries.size(); ++i) {
+        QAction* entry = entries.at(i);
+        const QString name = entry->objectName();
+        if (view_->hasCellSelection() && (name == QStringLiteral("edit-copy") || name == QStringLiteral("edit-cut") ||
+                                          name == QStringLiteral("edit-paste"))) {
+            QObject::disconnect(entry, &QAction::triggered, nullptr, nullptr);
+            if (name == QStringLiteral("edit-copy")) {
+                connect(entry, &QAction::triggered, view_, [view = view_] { view->copyCells(false); });
+            } else if (name == QStringLiteral("edit-cut")) {
+                connect(entry, &QAction::triggered, view_, [view = view_] { view->cutCells(); });
+            } else {
+                connect(entry, &QAction::triggered, view_,
+                        [view = view_] { view->pasteCells(QGuiApplication::clipboard()->mimeData()); });
+            }
+            entry->setEnabled(name != QStringLiteral("edit-paste") || entry->isEnabled());
+        }
+        if (name == QStringLiteral("edit-copy") && tabSeparated != nullptr) {
+            if (i + 1 < entries.size()) {
+                menu.insertAction(entries.at(i + 1), tabSeparated);
+            } else {
+                menu.addAction(tabSeparated);
+            }
+            tabSeparated = nullptr;
+        }
+    }
+    if (tabSeparated != nullptr) {
+        menu.addAction(tabSeparated);
+    }
+}
+
+void CellEditor::pasteAsPlainText() {
+    if (isReadOnly()) {
+        return;
+    }
+    if (view_ != nullptr && view_->hasCellSelection()) {
+        view_->endCellSelection();
+    }
+    const QMimeData* clipboard = QGuiApplication::clipboard()->mimeData();
+    if (clipboard == nullptr || !clipboard->hasText()) {
+        return;
+    }
+    QMimeData plain;
+    plain.setText(insertableText(clipboard->text()));
+    QPlainTextEdit::insertFromMimeData(&plain);
+}
+
 void CellEditor::insertFromMimeData(const QMimeData* source) {
-    // S040, decision 11: a paste replaces no cells; it goes where the caret was.
+    // S041, decision 7: a table fills cells, text fills the selected cells.
+    if (view_ != nullptr && view_->pasteCells(source)) {
+        return;
+    }
+    // Text with only the caret in the cell goes there, as before (S040, decision 11).
     if (view_ != nullptr && view_->hasCellSelection()) {
         view_->endCellSelection();
     }
@@ -470,6 +533,10 @@ TableView::TableView(QWidget* parent) : QTableView(parent), delegate_(new TableD
     addAction(tr("Select All"), "tableSelectAll", [this] { selectTable(); });
     addAction(tr("Select Column"), "tableSelectColumn", [this] { selectColumns(); });
     addAction(tr("Select Row"), "tableSelectRow", [this] { selectRows(); });
+    // S041, decision 4: shown directly below Copy in a cell's context menu; enabled with cells
+    // selected (showCells).
+    addAction(tr("Copy as Tab-Separated Text"), "tableCopyTabSeparated", [this] { copyCells(true); });
+    findChild<QAction*>(QStringLiteral("tableCopyTabSeparated"))->setEnabled(false);
     addAction(tr("Add Row"), "tableAddRow", [this] { emit appendRow(std::max(currentIndex().column(), 0)); });
     addAction(tr("Delete Row"), "tableDeleteRow", [this] { deleteSelectedRows(); });
     addAction(tr("Add Column"), "tableAddColumn", [this] { emit addColumn(); });
@@ -915,6 +982,9 @@ void TableView::showCells() {
     if (auto* deleteRowAction = findChild<QAction*>(QStringLiteral("tableDeleteRow"))) {
         deleteRowAction->setEnabled(!cells_ || cells_->range().bottom > 0);
     }
+    if (auto* tabSeparated = findChild<QAction*>(QStringLiteral("tableCopyTabSeparated"))) {
+        tabSeparated->setEnabled(cells_.has_value());  // S041, decision 4
+    }
     viewport()->update();
 }
 
@@ -1132,6 +1202,19 @@ bool TableView::startCellsKey(QKeyEvent* event, CellEditor* editor) {
 }
 
 bool TableView::cellsKey(QKeyEvent* event) {
+    // S041: copy, cut and paste act on the selected cells.
+    if (event->matches(QKeySequence::Copy)) {
+        copyCells(false);
+        return true;
+    }
+    if (event->matches(QKeySequence::Cut)) {
+        cutCells();
+        return true;
+    }
+    if (event->matches(QKeySequence::Paste)) {
+        pasteCells(QGuiApplication::clipboard()->mimeData());
+        return true;
+    }
     const Qt::KeyboardModifiers modifiers = event->modifiers() & ~Qt::KeypadModifier;
     switch (event->key()) {
         case Qt::Key_Shift:
@@ -1212,6 +1295,69 @@ bool TableView::deleteKey(Qt::KeyboardModifiers modifiers) {
         return true;
     }
     return false;
+}
+
+void TableView::copyCells(bool tabSeparated) {
+    if (cells_) {
+        emit copySelectedCells(cells_->range(), tabSeparated);
+    }
+}
+
+void TableView::cutCells() {
+    if (cells_) {
+        copyCells(false);
+        deleteKey(Qt::NoModifier);  // decision 6: empty the cells, or remove the whole table
+    }
+}
+
+bool TableView::pasteCells(const QMimeData* source) {
+    if (!pasteHandler_ || source == nullptr) {
+        return false;
+    }
+    if (cells_) {
+        return pasteHandler_(source, cells_->range(), PasteMode::Fill);
+    }
+    const QModelIndex current = currentIndex();
+    if (!current.isValid()) {
+        return false;
+    }
+    return pasteHandler_(source, {current.row(), current.column(), current.row(), current.column()},
+                         PasteMode::CaretOnly);
+}
+
+void TableView::pasteSameArrangement(const QMimeData* source) {
+    if (pasteHandler_ && source != nullptr && cells_) {
+        pasteHandler_(source, cells_->range(), PasteMode::SameArrangement);
+    }
+}
+
+void TableView::refuseCut() {
+    showNotice(tr("Cut from the Edit menu leaves selected cells as they are; %1 cuts them.")
+                   .arg(QKeySequence(QKeySequence::Cut).toString(QKeySequence::NativeText)));
+}
+
+void TableView::showNotice(const QString& text) {
+    QRect rect;
+    if (model() != nullptr) {
+        if (cells_) {
+            const core::TableCellRange r = cells_->range();
+            rect = visualRect(model()->index(r.top, r.left)).united(visualRect(model()->index(r.bottom, r.right)));
+        } else if (currentIndex().isValid()) {
+            rect = visualRect(currentIndex());
+        }
+    }
+    if (rect.isEmpty()) {
+        rect = viewport()->rect();
+    }
+    // Queued with the view as context: it does not run once the view is gone (a table whose lines
+    // changed is shown by a new view).
+    QMetaObject::invokeMethod(
+        this,
+        [this, rect, text] {
+            QWidget* target = viewport();
+            QToolTip::showText(target->mapToGlobal(rect.center()), text, target, rect);
+        },
+        Qt::QueuedConnection);
 }
 
 void TableView::handleEnter() {

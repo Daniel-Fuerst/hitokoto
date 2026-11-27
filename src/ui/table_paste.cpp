@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "table_paste.hpp"
 
+#include "editor_widget.hpp"
 #include "qt_bridge.hpp"
 
+#include <QGuiApplication>
+#include <QMimeData>
+#include <QScopeGuard>
 #include <QTextBlock>
 #include <QTextDocument>
 #include <QTextFrame>
@@ -100,6 +104,66 @@ std::vector<core::PastedPart> readPastedHtml(const QString& html) {
 
 std::uint64_t pastedHtmlImports() noexcept {
     return imports;
+}
+
+namespace {
+
+/// The cells of an HTML paste with exactly one table of two cells or more and no text beside it.
+PastedCells htmlTableCells(const QString& pasted) {
+    const std::u16string html = core::htmlWithoutFormatting(view(pasted));
+    if (core::scanHtmlTables(html) != core::HtmlTables::Flat) {
+        return {};
+    }
+    // The wait cursor while Qt imports the HTML (S031, ADR 0011).
+    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    const auto restore = qScopeGuard([] { QGuiApplication::restoreOverrideCursor(); });
+    const core::PastedTable* only = nullptr;
+    bool text = false;
+    const std::vector<core::PastedPart> parts = readPastedHtml(toQString(html));
+    for (const core::PastedPart& part : parts) {
+        if (part.table) {
+            if (only != nullptr || part.table->containsTable || !core::countsAsCellTable(*part.table)) {
+                return {};
+            }
+            only = &*part.table;
+        } else if (std::any_of(part.lines.begin(), part.lines.end(), [](const std::u16string& line) {
+                       return line.find_first_not_of(u" \t\u00A0") != std::u16string::npos;
+                   })) {
+            text = true;
+        }
+    }
+    if (only == nullptr) {
+        return {};
+    }
+    if (text) {
+        return {std::nullopt, true};
+    }
+    return {core::pastedTableCells(*only), false};
+}
+
+}  // namespace
+
+PastedCells pastedCells(const QMimeData* source, const core::ElementRegistry& registry) {
+    if (source == nullptr) {
+        return {};
+    }
+    const QString markdown = QStringLiteral("text/markdown");
+    if (source->hasFormat(EditorWidget::ownCopyFormat())) {
+        if (!source->hasFormat(markdown)) {
+            return {};
+        }
+        const QString text = QString::fromUtf8(source->data(markdown));
+        return {core::markdownTableCells(registry, view(text)), false};
+    }
+    if (source->hasHtml()) {
+        return htmlTableCells(source->html());
+    }
+    if (source->hasText()) {
+        if (const std::optional<core::PastedTable> table = core::parseTabSeparatedCells(view(source->text()))) {
+            return {core::pastedTableCells(*table), false};
+        }
+    }
+    return {};
 }
 
 }  // namespace hitokoto::ui

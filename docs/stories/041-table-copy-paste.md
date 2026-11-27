@@ -1,7 +1,7 @@
 # S041 — Copying and pasting table cells as Markdown
 
-- **Status:** Confirmed (Armin, 2026-11-21, after the review of S040, from which it was split) ·
-  **Order:** 47 · **Size:** M · **Depends on:** S031, S040
+- **Status:** In progress (confirmed by Armin on 2026-11-21, after the review of S040, from which it
+  was split) · **Order:** 47 · **Size:** M · **Depends on:** S031, S040
 - **Basis:** split from S040 (Armin, 2026-11-21, after the review of S040): what copy, cut and
   paste do with selected cells. Checked on main `c8a167f` and with Armin's clipboard samples on
   Windows (2026-11-21), before this story was written:
@@ -83,6 +83,56 @@ and I want to paste a table into cells.
      `<br>` and `|` as `\|`, as in S018. With the caret in a cell and no cell selected, it is
      pasted at the caret as today.
    - Each paste is one undo step, and the file is saved byte for byte as always (ADR 0002).
+
+## Decisions after the code review (Armin, 2026-11-27)
+
+From the dispositions of `docs/reviews/041-table-copy-paste-code.md`:
+
+- In cells only a single cell is text: one row or one column of a spreadsheet or of an HTML table
+  fills cells (O1). Lines without a tab and without HTML stay text, as a column of lines cannot be
+  told from lines of text.
+- A table with text beside it stays text in cells, and a notice says why (O2).
+- The Edit menu acts where the focus is (O5). With cells selected, Copy copies them; Cut leaves
+  them and a notice names the key that cuts; Paste overwrites them only if the clipboard holds as
+  many cells in the same arrangement (a text counts as one cell), otherwise nothing changes and a
+  notice gives both sizes. With the caret in a cell, Cut, Copy and Paste act on the cell as its keys
+  do.
+- A tab-separated field that starts with `"` stays unquoted, to gather experience (O3); S031's
+  reading of Excel's text holds such fields as Excel's samples write them (`"Leaf" Co`).
+
+## Implementation (2026-11-26, night mode)
+
+- Core (`table_clipboard.hpp`): `copiedTableCells` gives the text of decision 2 (the whole table as
+  its lines, one cell as its text, any other rectangle as a GFM table whose delimiter row keeps the
+  colons of each column, so a column without alignment keeps none);
+  `copiedTableCellsAsTabSeparated` the text of decision 4 from the cells' find units (S028);
+  `markdownTableCells` reads hitokoto's own Markdown back when the registry reads it as exactly one
+  table (decision 5); `pastedTableCells` gives the cells of an HTML or tab-separated paste as S031
+  writes them; `pasteCellsIntoTable` and `pasteTextIntoTableCells` give the lines of decision 7.
+- Editor: `EditorWidget::ownCopyData` is hitokoto's own copy (decision 1); the editor's copy is
+  the selected text as the file is written from the document. A paste with the marker takes the
+  Markdown (`pastedText`); `pasteOwnTable` places exactly one table as S031 places one.
+- Table view: with cells selected, `Ctrl+C`, `Ctrl+X` and `Ctrl+V` and the context menu's Cut,
+  Copy and Paste act on the cells; the view's action `Copy as Tab-Separated Text` stands directly
+  below Copy and is enabled only with cells selected. `TableEmbedder::copyCells` and
+  `pasteIntoCells` do the work, `pastedCells` (`table_paste.hpp`) reads a table from the
+  clipboard; `replaceLines` adds rows after the table, so each paste is one undo step.
+- Paste as Plain Text in a cell puts the clipboard's plain text at the caret, as before; it never
+  fills cells with a table (`CellEditor::pasteAsPlainText`).
+- After the code review (2026-11-27): `core::parseTabSeparatedCells` and `countsAsCellTable` let one
+  row or column count in cells; `TableView::showNotice` shows a notice beside the cells (a tool tip
+  in the theme's tool-tip colours); the Edit menu's actions route by focus (`main_window.cpp`,
+  `TableView::PasteMode::SameArrangement`, `refuseCut`).
+- Assumption: one line break at the end of pasted text is dropped before it fills cells, as a
+  spreadsheet ends the copy of a single cell with one.
+- Benchmarks `s041_*` (release, cloud VM, 2 vCPU, Qt 6.12.0, offscreen, 2026-11-26): copying the
+  1,000-row table as Markdown and as tab-separated text, median 2.7 ms, p95 4.5 ms, highest 6.7 ms;
+  pasting 399 cells 8.5 to 10.2 ms, 3,999 cells (334 rows added) 40.5 to 41.2 ms. The core's share
+  in a table of five columns (best of nine): the body rows as a table 0.13 ms, as tab-separated text
+  2.1 ms, reading the copy back 0.5 ms, pasting 5,000 cells 0.7 to 0.9 ms.
+
+Open before "In review": the manual checks (Obsidian with Armin's sample, Excel and Calc with the
+tab-separated text) and a green CI on Linux, Windows and macOS.
 
 ## Acceptance scenarios
 

@@ -433,3 +433,16 @@ Branch `agents/s031-paste-within-bounds`, from main 98ef4fe.
   66 % of what the cells allow, and the list of 15,908 items stays plain text in 2 ms. No sample, no
   table in their markup and none of 900 random mixes changes its verdict, so what converts stays the
   same; the import itself is unchanged.
+
+## Note of 2026-11-26 (S041)
+
+S041 changes what this story says about hitokoto's own copy and about pastes in a cell:
+
+- hitokoto's own copy holds `text/plain` and `text/markdown`, both exactly the selected text, and
+  the marker; no HTML and no ODF any more (S041, decision 1). A paste with the marker takes the
+  Markdown: exactly one GFM table lands as "Where it lands" places a table, other Markdown is
+  inserted as text (S041, decision 5). Without the marker a paste works as this story says.
+- A table pasted with the caret in a cell or with cells selected fills the cells from there,
+  instead of going into the cell as plain text (S041, decision 7); the HTML is read as here (scan,
+  bounds, Qt's import) and counts only as exactly one table without other text. Paste as Plain Text
+  in a cell still puts the plain text at the caret.

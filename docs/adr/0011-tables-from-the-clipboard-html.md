@@ -112,6 +112,12 @@ sample-like cells).
 - Third addendum of 2026-11-20: Qt marks every block of a list again for each block that joins
   it, so the scan counts those blocks per open list and charges each one for the blocks before it;
   one list of thousands of items stays plain text, many short lists convert as before.
+- Addendum of 2026-11-26 (S041, decision 5): hitokoto's own copy holds Markdown and no HTML. A
+  paste with its marker takes the Markdown and does not look at the other formats: exactly one GFM
+  table lands as a table does here (its own block, one undo step), other Markdown as text. Other
+  programs' `text/markdown` stays unread, as before. A paste in a table's cell reads an HTML table
+  through the same scan and import, and only if the paste holds exactly one table that counts and no
+  other text; its cells fill the table's cells (S041, decision 7).
 
 ## Reconsider if
 

@@ -373,20 +373,24 @@ std::optional<std::vector<PasteBlock>> pastedTablesToMarkdown(std::span<const Pa
     return blocks;
 }
 
+namespace {
+
+/// A row of tab-separated text as S031 reads it ("What counts as a table, plain text").
+struct TabRow {
+    std::vector<std::u16string> fields;
+    bool startsWithTab = false;
+};
+
 // NOLINTNEXTLINE(readability-function-cognitive-complexity): above the threshold when the check came in
-std::optional<PastedTable> parseExcelPlainText(std::u16string_view text) {
-    struct Row {
-        std::vector<std::u16string> fields;
-        bool startsWithTab = false;
-    };
-    std::vector<Row> rows;
+std::vector<TabRow> tabSeparatedRows(std::u16string_view text) {
+    std::vector<TabRow> rows;
     const std::size_t n = text.size();
     std::size_t i = 0;
     const auto isFieldEnd = [&](std::size_t at) {
         return at >= n || text[at] == u'\t' || text[at] == u'\n' || text[at] == u'\r';
     };
     while (i < n) {
-        Row row;
+        TabRow row;
         row.startsWithTab = text[i] == u'\t';
         for (;;) {
             std::u16string field;
@@ -444,7 +448,13 @@ std::optional<PastedTable> parseExcelPlainText(std::u16string_view text) {
         rows.push_back(std::move(row));
     }
 
-    if (rows.size() < 2) {
+    return rows;
+}
+
+/// The rows as a table if every row has the same number of fields, at least two, there are at least
+/// `minRows` rows, and not every row starts with a tab (indented text).
+std::optional<PastedTable> tableOfRows(const std::vector<TabRow>& rows, std::size_t minRows) {
+    if (rows.size() < minRows || rows.empty()) {
         return std::nullopt;
     }
     const std::size_t columns = rows.front().fields.size();
@@ -485,6 +495,12 @@ std::optional<PastedTable> parseExcelPlainText(std::u16string_view text) {
     return table;
 }
 
+}  // namespace
+
+std::optional<PastedTable> parseExcelPlainText(std::u16string_view text) {
+    return tableOfRows(tabSeparatedRows(text), 2);
+}
+
 PasteInsertion placePastedBlocks(std::span<const PasteBlock> blocks, const PastePlace& place) {
     PasteInsertion out;
     if (blocks.empty()) {
@@ -512,6 +528,15 @@ PasteInsertion placePastedBlocks(std::span<const PasteBlock> blocks, const Paste
         }
     }
     return out;
+}
+
+std::optional<PastedTable> parseTabSeparatedCells(std::u16string_view text) {
+    return tableOfRows(tabSeparatedRows(text), 1);
+}
+
+bool countsAsCellTable(const PastedTable& table) {
+    const Size s = sizeOf(table);
+    return s.rows * s.columns >= 2;
 }
 
 }  // namespace hitokoto::core
