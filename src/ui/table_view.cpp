@@ -946,12 +946,15 @@ void TableView::showCells() {
     } else {
         selectionModel()->clearSelection();
     }
-    // The current cell's editor covers its cell: it takes the selection colours and hides its
-    // caret while cells are selected.
+    // The current cell's editor covers its cell: it hides its caret while cells are selected, and
+    // takes the selection colours only while its cell is one of them (Armin, 2026-11-27: after
+    // Ctrl+Space a row selected in its area left the caret's cell painted as selected).
     if (CellEditor* editor = currentEditor()) {
         QPalette palette = editor->palette();
         const QModelIndex index = currentIndex();
-        if (cells_ || covered_) {
+        const bool selecting = cells_ || covered_;
+        const bool selected = covered_ || (cells_ && cells_->range().contains(index.row(), index.column()));
+        if (selected) {
             palette.setColor(QPalette::Base, delegate_->selectionBackground());
             palette.setColor(QPalette::Text, delegate_->selectionText());
             // The view's style sheet reaches the editor, so its own rule paints the selection
@@ -959,6 +962,16 @@ void TableView::showCells() {
             editor->setStyleSheet(QStringLiteral("QPlainTextEdit { background: %1; color: %2; }")
                                       .arg(delegate_->selectionBackground().name(QColor::HexArgb),
                                            delegate_->selectionText().name(QColor::HexArgb)));
+        } else {
+            if (const QVariant background = index.data(Qt::BackgroundRole); background.isValid()) {
+                palette.setColor(QPalette::Base, background.value<QColor>());
+            }
+            if (const QVariant foreground = index.data(Qt::ForegroundRole); foreground.isValid()) {
+                palette.setColor(QPalette::Text, foreground.value<QColor>());
+            }
+            editor->setStyleSheet(QString());
+        }
+        if (selecting) {
             QTextCursor cursor = editor->textCursor();
             cursor.clearSelection();
             editor->setTextCursor(cursor);
@@ -967,14 +980,7 @@ void TableView::showCells() {
                 editor->setFocus();  // keys go on to the selection, also after the context menu
             }
         } else {
-            if (const QVariant background = index.data(Qt::BackgroundRole); background.isValid()) {
-                palette.setColor(QPalette::Base, background.value<QColor>());
-            }
-            if (const QVariant foreground = index.data(Qt::ForegroundRole); foreground.isValid()) {
-                palette.setColor(QPalette::Text, foreground.value<QColor>());
-            }
             editor->setCursorWidth(1);
-            editor->setStyleSheet(QString());
         }
         editor->setPalette(palette);
     }
