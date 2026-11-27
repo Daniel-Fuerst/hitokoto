@@ -1,6 +1,7 @@
 # S042 — Pull requests that change only documentation skip the build
 
-- **Status:** In progress (confirmed by Armin on 2026-11-21, after the review
+- **Status:** Done (accepted by Armin on 2026-11-27, ahead of the check of step 3 below, which the
+  pull request setting it Done is; confirmed on 2026-11-21, after the review
   `docs/reviews/042-docs-only-pull-requests-spec.md` and its dispositions) · **Order:** 45 ·
   **Size:** S · **Depends on:** S030, S032, S035
 - **Basis:** Armin, 2026-11-21, with the specs of S040 and S041: a pull request that changes only
@@ -123,6 +124,10 @@ required only then; otherwise after one more run):
    "Version label". "Changes" need not be required: "CI result" fails whenever it fails.
 3. The first pull request labelled `version:doc`: check that every job but "Changes" and "CI result"
    is skipped, that it can be merged, and that no CI run starts on main; record the result here.
+
+Steps 1 and 2 are done (the label by Armin on 2026-11-26, the ruleset by Daniel). Step 3 is the pull
+request from `agents/s040-s042-done` (2026-11-27), which sets this story Done; its result follows
+with a later pull request.
 
 ## Acceptance scenarios
 

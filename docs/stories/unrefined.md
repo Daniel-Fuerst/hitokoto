@@ -165,6 +165,20 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   Setup) and version resources need a numeric version: they take `HITOKOTO_VERSION_CORE`, not
   `CPACK_PACKAGE_VERSION`.
 
+## A table copied as HTML
+
+- **Seen:** 2026-11-27 (Armin, v0.12.0 on Windows): a Markdown table copied in hitokoto does not
+  arrive in Word or Excel as a table.
+- **Now:** hitokoto's own copy holds `text/plain` and `text/markdown` (S041, decision 1). Before
+  S041 it also held Qt's HTML, which was the source lines as paragraphs, so a table never arrived as
+  a table either. For spreadsheets there is `Copy as Tab-Separated Text` (S041, decision 4).
+- **Idea:** when cells or whole tables are copied, add `text/html` with a real table (cells rendered:
+  bold, links), which Word, Outlook, Excel and Obsidian read as a table. S041 names an HTML flavour
+  under "Not in this story".
+- **Open:** whether the brief's "No HTML" (section 2, web technology in the application) also rules
+  out a format on the clipboard; hitokoto reads HTML from the clipboard since S031 (ADR 0011). A
+  decision of Daniel and Armin, recorded as an ADR.
+
 ## Update check in the app
 
 - **Seen:** 2026-11-13 (Armin, while refining S037): it would be good if hitokoto asked the GitHub
