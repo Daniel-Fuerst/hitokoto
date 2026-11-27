@@ -276,6 +276,17 @@ follows the general tokens above.
 | `settings-section.rule` | color | Line to the right of a section heading | `colors.border` |
 | `settings-section.rule-width` | number (px) | Thickness of the line, 0 to 8 | 1 |
 | `settings-section.rule-gap` | number (px) | Space between a section heading and its line, 0 to 64 | `layout.spacing` |
+| `task.background` | color | Inside of an unchecked task box | `colors.background` |
+| `task.border` | color | Border of an unchecked task box | `colors.text-muted` |
+| `task.checked-background` | color | Inside of a checked task box | `colors.accent` |
+| `task.checked-border` | color | Border of a checked task box | `task.checked-background` |
+| `task.check` | color | Tick in a checked task box | `colors.background` |
+| `task.border-width` | number (px) | Border width of the box (and thickness of the tick), 0 to 8 | 1.5 |
+| `task.radius` | number (px) | Corner radius of the box, 0 to 16 | 3 |
+| `task.scale` | number | Side of the box relative to the ascent of the text, 0.5 to 2 | 0.9 |
+| `task.gap` | number (px) | Space between the box and the text, 0 to 32 | 6 |
+| `task.done-text` | color | Text of a checked task item | `colors.text-muted` |
+| `task.done-strikethrough` | number | 1 = a line through the text of a checked task item, 0 = none | 1 |
 
 A thematic break (`---`, `***`, `___`) is a line across the text column, centred vertically in its block.
 Setext headings (text underlined with `===` or `---`) add no tokens: their lines use the heading
@@ -304,6 +315,14 @@ their on colours (`switch.checked-track`, `switch.checked-knob`). The knob keeps
 `switch.knob-margin` from the edge of the track; its corner radius is `switch.radius` less that
 margin, so the default track is a pill and the knob a circle, and `radius = 0` gives square ones.
 The labels beside a switch are those of the flyout (`colors.text-muted`, UI font).
+
+A task item (S051, `- [ ] milk`, `- [x] bread`) shows a box in place of its marker and brackets,
+with or without the caret on the line. The box's side is `task.scale` times the ascent of the
+text; it sits on the text's x-height centre, and the text follows after `task.gap`. An unchecked box
+is drawn in `task.background` with a `task.border` border, a checked one in `task.checked-background`
+and `task.checked-border` with a tick in `task.check` as thick as the border (at least 1.5 px). The
+text of a checked item takes `task.done-text` and, unless `task.done-strikethrough` is 0, a line
+through it.
 
 The sections of the settings flyout (S048, such as **Appearance** and **Feel**) start with a heading
 row: the heading in `settings-section.text` and `settings-section.weight` (UI font), then, after

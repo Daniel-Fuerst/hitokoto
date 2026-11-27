@@ -392,6 +392,17 @@ const Token kTokens[] = {
     {{"settings-section", "rule", "color", "Line to the right of a section heading", "colors.border"}, &applyOptColor<&Theme::settingsSection, &SettingsSectionTokens::rule>},
     {{"settings-section", "rule-width", "number (px)", "Thickness of the line, 0 to 8", "1"}, &applyOptNumber<&Theme::settingsSection, &SettingsSectionTokens::ruleWidth, 0, 80>},
     {{"settings-section", "rule-gap", "number (px)", "Space between a section heading and its line, 0 to 64", "layout.spacing"}, &applyOptNumber<&Theme::settingsSection, &SettingsSectionTokens::ruleGap, 0, 640>},
+    {{"task", "background", "color", "Inside of an unchecked task box", "colors.background"}, &applyOptColor<&Theme::task, &TaskTokens::background>},
+    {{"task", "border", "color", "Border of an unchecked task box", "colors.text-muted"}, &applyOptColor<&Theme::task, &TaskTokens::border>},
+    {{"task", "checked-background", "color", "Inside of a checked task box", "colors.accent"}, &applyOptColor<&Theme::task, &TaskTokens::checkedBackground>},
+    {{"task", "checked-border", "color", "Border of a checked task box", "task.checked-background"}, &applyOptColor<&Theme::task, &TaskTokens::checkedBorder>},
+    {{"task", "check", "color", "Tick in a checked task box", "colors.background"}, &applyOptColor<&Theme::task, &TaskTokens::check>},
+    {{"task", "border-width", "number (px)", "Border width of the box (and thickness of the tick), 0 to 8", "1.5"}, &applyOptNumber<&Theme::task, &TaskTokens::borderWidth, 0, 80>},
+    {{"task", "radius", "number (px)", "Corner radius of the box, 0 to 16", "3"}, &applyOptNumber<&Theme::task, &TaskTokens::radius, 0, 160>},
+    {{"task", "scale", "number", "Side of the box relative to the ascent of the text, 0.5 to 2", "0.9"}, &applyOptNumber<&Theme::task, &TaskTokens::scale, 5, 20>},
+    {{"task", "gap", "number (px)", "Space between the box and the text, 0 to 32", "6"}, &applyOptNumber<&Theme::task, &TaskTokens::gap, 0, 320>},
+    {{"task", "done-text", "color", "Text of a checked task item", "colors.text-muted"}, &applyOptColor<&Theme::task, &TaskTokens::doneText>},
+    {{"task", "done-strikethrough", "number", "1 = a line through the text of a checked task item, 0 = none", "1"}, &applyOptNumber<&Theme::task, &TaskTokens::doneStrikethrough, 0, 10>},
 };
 // clang-format on
 
@@ -1032,6 +1043,24 @@ SettingsSectionStyle settingsSectionStyle(const Theme& t) {
         .weight = static_cast<int>(ss.weight.value_or(600)),
         .ruleWidth = ss.ruleWidth.value_or(1),
         .ruleGap = ss.ruleGap.value_or(t.spacing),
+    };
+}
+
+TaskStyle taskStyle(const Theme& t) {
+    const TaskTokens& k = t.task;
+    const Color checkedBackground = k.checkedBackground.value_or(t.accent);
+    return {
+        .background = k.background.value_or(t.background),
+        .border = k.border.value_or(t.textMuted),
+        .checkedBackground = checkedBackground,
+        .checkedBorder = k.checkedBorder.value_or(checkedBackground),
+        .check = k.check.value_or(t.background),
+        .doneText = k.doneText.value_or(t.textMuted),
+        .borderWidth = k.borderWidth.value_or(1.5),
+        .radius = k.radius.value_or(3),
+        .scale = k.scale.value_or(0.9),
+        .gap = k.gap.value_or(6),
+        .doneStrikethrough = k.doneStrikethrough.value_or(1) >= 0.5,
     };
 }
 

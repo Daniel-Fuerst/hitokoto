@@ -752,6 +752,7 @@ ElementRegistry ElementRegistry::withBuiltins() {
     registry.addMultiLine(makeFrontMatterElement());
     registry.addMultiLine(makeDisplayMathElement());
     registry.add(makeHeadingElement());
+    registry.add(makeTaskElement());
     registry.add(makeBulletElement());
     registry.addInline(makeLinkElement());
     registry.addInline(makeInlineCodeElement());

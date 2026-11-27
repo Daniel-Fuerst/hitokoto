@@ -106,6 +106,7 @@ enum class HideMode : std::uint8_t {
     Collapse,   ///< takes (almost) no space; following text moves left
     ZeroWidth,  ///< takes no space; used for concealed link syntax
     KeepSpace,  ///< invisible but keeps its width (a decoration is drawn there)
+    Box,        ///< invisible, as wide as the checkbox the UI draws before it plus its gap (S051)
 };
 
 struct HiddenRange {
@@ -114,13 +115,17 @@ struct HiddenRange {
     friend bool operator==(const HiddenRange&, const HiddenRange&) = default;
 };
 
-enum class DecorationKind : std::uint8_t { Bullet };
+enum class DecorationKind : std::uint8_t {
+    Bullet,    ///< the dot of a bullet item (S003)
+    Checkbox,  ///< the box of a task item (S051), drawn with every reveal
+};
 
 /// Something the UI draws on top of the text, anchored at a character.
 struct Decoration {
     DecorationKind kind = DecorationKind::Bullet;
     std::uint32_t column = 0;  ///< anchor character (UTF-16 index in the line)
     std::uint8_t depth = 0;    ///< nesting depth for lists (0 = top level)
+    bool checked = false;      ///< Checkbox: the box is ticked
     friend bool operator==(const Decoration&, const Decoration&) = default;
 };
 
@@ -173,11 +178,12 @@ struct LineRender {
     std::vector<Span> inlineContexts;  ///< isolated inline contexts (e.g. link text: delimiters never pair outside)
     std::u16string codeLanguage;       ///< opening fence: language of the info string (S021), else empty
     std::uint32_t wrapIndent = 0;      ///< column where continuation lines align (hanging indent, S003); 0 = none
+    Span doneText;                     ///< text of a checked task item (S051): shown as done; empty = none
     [[nodiscard]] bool empty() const noexcept {
         return headingLevel == 0 && !codeBlock && !fenceLine && !table && !thematicBreak && setextUnderline == 0 &&
                !frontMatter && !mathBlock && !mathDelimiter && !flowsToNext && !hardBreak && runs.empty() &&
                inlineStyles.empty() && hidden.empty() && decorations.empty() && links.empty() && math.empty() &&
-               opaqueSpans.empty() && inlineContexts.empty() && wrapIndent == 0;
+               opaqueSpans.empty() && inlineContexts.empty() && wrapIndent == 0 && doneText.length == 0;
     }
     friend bool operator==(const LineRender&, const LineRender&) = default;
 };
@@ -465,6 +471,8 @@ private:
 /// Built-in elements (each in its own source file).
 std::unique_ptr<LineElement> makeHeadingElement();
 std::unique_ptr<LineElement> makeBulletElement();
+/// S051: task list items (`- [ ]`, `- [x]`); registered before the bullet element.
+std::unique_ptr<LineElement> makeTaskElement();
 std::unique_ptr<InlineElement> makeInlineCodeElement();
 std::unique_ptr<InlineElement> makeLinkElement();
 std::unique_ptr<InlineElement> makeEmphasisElement();

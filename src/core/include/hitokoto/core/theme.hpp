@@ -139,6 +139,13 @@ struct SettingsSectionTokens {
     friend bool operator==(const SettingsSectionTokens&, const SettingsSectionTokens&) = default;
 };
 
+/// Tokens of `[task]` (S051); resolved by taskStyle().
+struct TaskTokens {
+    std::optional<Color> background, border, checkedBackground, checkedBorder, check, doneText;
+    std::optional<double> borderWidth, radius, scale, gap, doneStrikethrough;
+    friend bool operator==(const TaskTokens&, const TaskTokens&) = default;
+};
+
 /// Every value the UI uses for colours, fonts, radii and spacing. Hard-coded styling values
 /// in UI code are bugs; add a token instead.
 struct Theme {
@@ -183,6 +190,7 @@ struct Theme {
     MenuBarTokens menuBar;
     SwitchTokens toggleSwitch;  ///< `[switch]`; `switch` is a C++ keyword
     SettingsSectionTokens settingsSection;
+    TaskTokens task;
 
     friend bool operator==(const Theme&, const Theme&) = default;
 };
@@ -364,6 +372,19 @@ struct SettingsSectionStyle {
     friend bool operator==(const SettingsSectionStyle&, const SettingsSectionStyle&) = default;
 };
 
+/// Resolved look of a task item's checkbox and of done text (S051).
+struct TaskStyle {
+    Color background, border;                       ///< the box when unchecked
+    Color checkedBackground, checkedBorder, check;  ///< the box when checked, and its tick
+    Color doneText;                                 ///< text of a checked item
+    double borderWidth = 1.5;
+    double radius = 3;
+    double scale = 0.9;  ///< side of the box relative to the ascent of the text
+    double gap = 6;      ///< space between the box and the text
+    bool doneStrikethrough = true;
+    friend bool operator==(const TaskStyle&, const TaskStyle&) = default;
+};
+
 [[nodiscard]] CodeStyle codeBlockStyle(const Theme& theme);
 [[nodiscard]] CodeStyle inlineCodeStyle(const Theme& theme);
 [[nodiscard]] EmphasisStyle emphasisStyle(const Theme& theme);
@@ -378,6 +399,8 @@ struct SettingsSectionStyle {
 [[nodiscard]] MenuBarStyle menuBarStyle(const Theme& theme);
 [[nodiscard]] SwitchStyle switchStyle(const Theme& theme);
 [[nodiscard]] SettingsSectionStyle settingsSectionStyle(const Theme& theme);
+/// S051: the checkbox of a task item and the text of a checked one.
+[[nodiscard]] TaskStyle taskStyle(const Theme& theme);
 
 /// All tokens of the theme format, in documentation order.
 std::span<const ThemeTokenInfo> themeTokens();

@@ -73,6 +73,9 @@ void paintBullets(QPainter& painter, const QTextBlock& block, const QRectF& rect
                   const QColor& color, const QFontMetricsF& metrics, qreal radius) {
     const QTextLayout* layout = block.layout();
     for (const auto& d : render.decorations) {
+        if (d.kind != core::DecorationKind::Bullet) {
+            continue;
+        }
         const int column = static_cast<int>(d.column);
         const QTextLine line = layout->lineForTextPosition(column);
         if (!line.isValid()) {
@@ -90,6 +93,58 @@ void paintBullets(QPainter& painter, const QTextBlock& block, const QRectF& rect
             painter.setBrush(Qt::NoBrush);
         }
         painter.drawEllipse(centre, radius, radius);
+    }
+}
+
+QRectF checkboxRect(const QTextBlock& block, const core::Decoration& d, QPointF origin, qreal side,
+                    const QFontMetricsF& metrics) {
+    const QTextLayout* layout = block.layout();
+    if (layout == nullptr || layout->lineCount() == 0) {
+        return {};
+    }
+    const int column = static_cast<int>(d.column);
+    const QTextLine line = layout->lineForTextPosition(column);
+    if (!line.isValid()) {
+        return {};
+    }
+    const QPointF base = origin + layout->position();
+    const qreal centreY = base.y() + line.y() + line.ascent() - metrics.xHeight() / 2.0;
+    const qreal left = base.x() + line.cursorToX(column);
+    return {std::round(left), std::round(centreY - side / 2.0), side, side};
+}
+
+void paintCheckboxes(QPainter& painter, const QTextBlock& block, const QRectF& rect, const core::LineRender& render,
+                     const core::TaskStyle& style, qreal side, const QFontMetricsF& metrics) {
+    for (const auto& d : render.decorations) {
+        if (d.kind != core::DecorationKind::Checkbox) {
+            continue;
+        }
+        const QRectF box = checkboxRect(block, d, rect.topLeft(), side, metrics);
+        if (box.isEmpty()) {
+            continue;
+        }
+        const qreal border = style.borderWidth;
+        const QColor borderColor = toQColor(d.checked ? style.checkedBorder : style.border);
+        painter.setPen(border > 0 ? QPen(borderColor, border) : QPen(Qt::NoPen));
+        painter.setBrush(toQColor(d.checked ? style.checkedBackground : style.background));
+        const QRectF inner = box.adjusted(border / 2, border / 2, -border / 2, -border / 2);
+        const qreal radius = std::max<qreal>(0, style.radius - border / 2);
+        painter.drawRoundedRect(inner, radius, radius);
+        if (!d.checked) {
+            continue;
+        }
+        // The tick: a short stroke down to the lower third, a long one up to the right.
+        QPen tick(toQColor(style.check), std::max<qreal>(1.5, border));
+        tick.setCapStyle(Qt::RoundCap);
+        tick.setJoinStyle(Qt::RoundJoin);
+        painter.setPen(tick);
+        painter.setBrush(Qt::NoBrush);
+        const QPointF points[] = {
+            {box.left() + side * 0.25, box.top() + side * 0.52},
+            {box.left() + side * 0.43, box.top() + side * 0.70},
+            {box.left() + side * 0.76, box.top() + side * 0.32},
+        };
+        painter.drawPolyline(points, 3);
     }
 }
 

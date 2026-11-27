@@ -62,6 +62,7 @@ story ID (see "Conventions").
 | 53 | [S048](048-settings-section-headings.md) | Section headings in the settings flyout stand out | S039, S043 | S | In progress |
 | 54 | [S049](049-macos-disk-image.md) | Every version gets a macOS disk image (Apple silicon) | S030, S035, S036, S037 | M | In progress |
 | 55 | [S050](050-empty-bullet-after-text.md) | An empty bullet under text stays a bullet | S003, S023 | S | In progress |
+| 56 | [S051](051-task-checkboxes.md) | Task list items show as checkboxes that the mouse ticks | S003, S009, S010, S019 | M | In progress |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 

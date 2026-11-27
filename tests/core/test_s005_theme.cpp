@@ -481,6 +481,17 @@ const std::map<std::string, Resolved>& resolvedTokens() {
         ELEMENT_TOKEN("settings-section.rule", settingsSectionStyle, rule),
         ELEMENT_TOKEN("settings-section.rule-width", settingsSectionStyle, ruleWidth),
         ELEMENT_TOKEN("settings-section.rule-gap", settingsSectionStyle, ruleGap),
+        ELEMENT_TOKEN("task.background", taskStyle, background),
+        ELEMENT_TOKEN("task.border", taskStyle, border),
+        ELEMENT_TOKEN("task.checked-background", taskStyle, checkedBackground),
+        ELEMENT_TOKEN("task.checked-border", taskStyle, checkedBorder),
+        ELEMENT_TOKEN("task.check", taskStyle, check),
+        ELEMENT_TOKEN("task.border-width", taskStyle, borderWidth),
+        ELEMENT_TOKEN("task.radius", taskStyle, radius),
+        ELEMENT_TOKEN("task.scale", taskStyle, scale),
+        ELEMENT_TOKEN("task.gap", taskStyle, gap),
+        ELEMENT_TOKEN("task.done-text", taskStyle, doneText),
+        ELEMENT_TOKEN("task.done-strikethrough", taskStyle, doneStrikethrough),
     };
     return tokens;
 }
