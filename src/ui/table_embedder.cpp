@@ -559,10 +559,11 @@ TableWidget* TableEmbedder::createWidget() {
     connect(view, &TableView::removeTable, this, on([this](Table& t) { removeTable(t); }));
     connect(view, &TableView::copySelectedCells, this,
             on([this](Table& t, core::TableCellRange range, bool tsv) { copyCells(t, range, tsv); }));
-    view->setPasteHandler([this, widget](const QMimeData* source, core::TableCellRange range, bool caretOnly) {
-        Table* table = tableOf(widget);
-        return table != nullptr && pasteIntoCells(*table, source, range, caretOnly);
-    });
+    view->setPasteHandler(
+        [this, widget](const QMimeData* source, core::TableCellRange range, TableView::PasteMode mode) {
+            Table* table = tableOf(widget);
+            return table != nullptr && pasteIntoCells(*table, source, range, mode);
+        });
     connect(view, &TableView::selectDocument, editor_, [this] {
         editor_->setFocus();
         editor_->selectAll();
@@ -1108,30 +1109,57 @@ void TableEmbedder::copyCells(Table& table, core::TableCellRange range, bool tab
         EditorWidget::ownCopyData(toQString(core::copiedTableCells(lines, range))));
 }
 
-bool TableEmbedder::pasteIntoCells(Table& table, const QMimeData* source, core::TableCellRange range, bool caretOnly) {
+bool TableEmbedder::pasteIntoCells(Table& table, const QMimeData* source, core::TableCellRange range,
+                                   TableView::PasteMode mode) {
     if (table.widget == nullptr || source == nullptr) {
         return false;
     }
     if (editor_->isReadOnly()) {
         return true;
     }
+    const bool caretOnly = mode == TableView::PasteMode::CaretOnly;
     const std::vector<std::u16string> lines = tableLines(table.header, table.last);
+    PastedCells pasted = pastedCells(source, styler_->registry());
+    QString notice;
+    if (pasted.textBesideTable) {
+        // Review (code) O2: in a cell the text has no place, so the whole paste is text.
+        notice = tr("Pasted as text: the clipboard holds text beside its table.");
+    }
     std::optional<std::vector<std::u16string>> changed;
-    if (std::optional<core::TableCellGrid> cells = pastedCells(source, styler_->registry())) {
+    if (pasted.cells) {
         // Every cell enters the document as text may (S004, rework of 2026-11-21).
-        for (auto& row : *cells) {
+        for (auto& row : *pasted.cells) {
             for (auto& cell : row) {
                 const QString insertable = insertableText(toQString(cell));
                 cell.assign(view(insertable));
             }
         }
-        changed = core::pasteCellsIntoTable(lines, {range.top, range.left}, *cells);
+        if (mode == TableView::PasteMode::SameArrangement) {
+            // Review (code) O5: only as many cells in the same arrangement as are selected.
+            std::size_t columns = 0;
+            for (const auto& row : *pasted.cells) {
+                columns = std::max(columns, row.size());
+            }
+            const auto rows = static_cast<int>(pasted.cells->size());
+            if (rows != range.bottom - range.top + 1 || static_cast<int>(columns) != range.right - range.left + 1) {
+                table.widget->view()->showNotice(arrangementNotice(rows, static_cast<int>(columns), range));
+                return true;
+            }
+        }
+        changed = core::pasteCellsIntoTable(lines, {range.top, range.left}, *pasted.cells);
         if (!changed) {
             return true;  // more than 255 columns: nothing changes
         }
     } else {
         if (caretOnly) {
+            if (!notice.isEmpty()) {
+                table.widget->view()->showNotice(notice);
+            }
             return false;  // text goes to the caret in the cell, as before
+        }
+        if (mode == TableView::PasteMode::SameArrangement && (range.top != range.bottom || range.left != range.right)) {
+            table.widget->view()->showNotice(arrangementNotice(1, 1, range));
+            return true;
         }
         const QString text = insertableText(EditorWidget::pastedText(source));
         if (text.isEmpty()) {
@@ -1143,8 +1171,19 @@ bool TableEmbedder::pasteIntoCells(Table& table, const QMimeData* source, core::
     const int column = std::max(table.widget->view()->currentIndex().column(), 0);
     if (Table* after = replaceLines(table, *changed); after != nullptr && after->widget != nullptr) {
         focusCell(*after, row, column);
+        if (!notice.isEmpty()) {
+            after->widget->view()->showNotice(notice);
+        }
     }
     return true;
+}
+
+QString TableEmbedder::arrangementNotice(int rows, int columns, core::TableCellRange range) {
+    return tr("Nothing pasted: the clipboard holds %1 × %2 cells, %3 × %4 are selected.")
+        .arg(rows)
+        .arg(columns)
+        .arg(range.bottom - range.top + 1)
+        .arg(range.right - range.left + 1);
 }
 
 void TableEmbedder::deleteRows(Table& table, int first, int last) {

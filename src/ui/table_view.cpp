@@ -19,7 +19,9 @@
 #include <QInputMethodEvent>
 #include <QItemSelectionModel>
 #include <QKeyEvent>
+#include <QKeySequence>
 #include <QMenu>
+#include <QMetaObject>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
@@ -32,6 +34,7 @@
 #include <QTextDocument>
 #include <QTextLayout>
 #include <QToolButton>
+#include <QToolTip>
 
 #include <algorithm>
 #include <cmath>
@@ -1312,13 +1315,49 @@ bool TableView::pasteCells(const QMimeData* source) {
         return false;
     }
     if (cells_) {
-        return pasteHandler_(source, cells_->range(), false);
+        return pasteHandler_(source, cells_->range(), PasteMode::Fill);
     }
     const QModelIndex current = currentIndex();
     if (!current.isValid()) {
         return false;
     }
-    return pasteHandler_(source, {current.row(), current.column(), current.row(), current.column()}, true);
+    return pasteHandler_(source, {current.row(), current.column(), current.row(), current.column()},
+                         PasteMode::CaretOnly);
+}
+
+void TableView::pasteSameArrangement(const QMimeData* source) {
+    if (pasteHandler_ && source != nullptr && cells_) {
+        pasteHandler_(source, cells_->range(), PasteMode::SameArrangement);
+    }
+}
+
+void TableView::refuseCut() {
+    showNotice(tr("Cut from the Edit menu leaves selected cells as they are; %1 cuts them.")
+                   .arg(QKeySequence(QKeySequence::Cut).toString(QKeySequence::NativeText)));
+}
+
+void TableView::showNotice(const QString& text) {
+    QRect rect;
+    if (model() != nullptr) {
+        if (cells_) {
+            const core::TableCellRange r = cells_->range();
+            rect = visualRect(model()->index(r.top, r.left)).united(visualRect(model()->index(r.bottom, r.right)));
+        } else if (currentIndex().isValid()) {
+            rect = visualRect(currentIndex());
+        }
+    }
+    if (rect.isEmpty()) {
+        rect = viewport()->rect();
+    }
+    // Queued with the view as context: it does not run once the view is gone (a table whose lines
+    // changed is shown by a new view).
+    QMetaObject::invokeMethod(
+        this,
+        [this, rect, text] {
+            QWidget* target = viewport();
+            QToolTip::showText(target->mapToGlobal(rect.center()), text, target, rect);
+        },
+        Qt::QueuedConnection);
 }
 
 void TableView::handleEnter() {

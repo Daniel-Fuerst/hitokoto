@@ -551,8 +551,9 @@ private slots:
         QCOMPARE(text(), replaced(QStringLiteral("| p | q | r | s |\n| t | u | v | w |"),
                                   QStringLiteral("| p | **bold** | a \\| b | x<br>y |\n| t | p | q | r |")));
         QVERIFY(undoneOnce());
-        // One cell selected: nothing changes, and a notice says why.
-        QVERIFY(selectCells(view(), 1, 0, 1, 0));
+        // One cell selected (where the block would add rows and columns): nothing changes, and a
+        // notice says why.
+        QVERIFY(selectCells(view(), 3, 3, 3, 3));
         paste->trigger();
         f_->settle();
         QCOMPARE(text(), QString::fromUtf8(kTable));

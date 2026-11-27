@@ -7,6 +7,7 @@
 #include "hitokoto/core/table_selection.hpp"
 
 #include "block_layout.hpp"
+#include "table_view.hpp"
 
 #include <QObject>
 #include <QPoint>
@@ -184,9 +185,11 @@ private:
     /// S041: the cells of `range` on the clipboard, as Markdown (decision 2) or tab-separated
     /// text (decision 4).
     void copyCells(Table& table, core::TableCellRange range, bool tabSeparated);
-    /// S041, decision 7: `source` into the cells of `range` (from the cell with the caret if
-    /// `caretOnly`), one undo step; see TableView::PasteHandler.
-    bool pasteIntoCells(Table& table, const QMimeData* source, core::TableCellRange range, bool caretOnly);
+    /// S041, decision 7: `source` into the cells of `range` as `mode` says, one undo step; see
+    /// TableView::PasteHandler.
+    bool pasteIntoCells(Table& table, const QMimeData* source, core::TableCellRange range, TableView::PasteMode mode);
+    /// Review (code) O5: why the Edit menu's Paste changed nothing.
+    [[nodiscard]] static QString arrangementNotice(int rows, int columns, core::TableCellRange range);
     /// Replaces the table's lines with `lines` in one edit block and returns the updated table.
     /// More lines than the table has are added after its last line (S041: pasted rows).
     Table* replaceLines(Table& table, const std::vector<std::u16string>& lines);

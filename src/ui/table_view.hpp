@@ -40,6 +40,8 @@ public:
     /// S031 review O2, S041: Paste as Plain Text in a cell puts the clipboard's plain text at the
     /// caret and never fills cells with a table; a selection of cells ends first (S040, decision 11).
     void pasteAsPlainText();
+    /// The table view the cell belongs to (S041: the Edit menu acts on its cells).
+    [[nodiscard]] TableView* tableView() const noexcept { return view_; }
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -169,13 +171,24 @@ public:
     /// without them. Cutting copies, then deletes as Delete does (S040, decision 10).
     void copyCells(bool tabSeparated);
     void cutCells();
-    /// S041, decision 7: what a paste does to the table, decided by the embedder: `range` the
-    /// selected cells, or the cell with the caret (`caretOnly`). True if the paste is the table's
-    /// (even if it changes nothing); false lets the cell's editor paste text at the caret.
-    using PasteHandler = std::function<bool(const QMimeData* source, core::TableCellRange range, bool caretOnly)>;
+    /// S041: how a paste meets the cells. Fill: the selected cells (decision 7); CaretOnly: from
+    /// the cell with the caret, text stays the cell editor's; SameArrangement: the Edit menu's Paste
+    /// on selected cells, only as many cells in the same arrangement (review (code) O5).
+    enum class PasteMode { Fill, CaretOnly, SameArrangement };
+    /// What a paste does to the table, decided by the embedder: `range` the selected cells, or the
+    /// cell with the caret. True if the paste is the table's (even if it changes nothing); false
+    /// lets the cell's editor paste text at the caret.
+    using PasteHandler = std::function<bool(const QMimeData* source, core::TableCellRange range, PasteMode mode)>;
     void setPasteHandler(PasteHandler handler) { pasteHandler_ = std::move(handler); }
     /// Pastes `source` into the selected cells, or from the cell with the caret; see PasteHandler.
     bool pasteCells(const QMimeData* source);
+    /// S041 review (code) O5: the Edit menu's Paste on the selected cells (PasteMode::SameArrangement).
+    void pasteSameArrangement(const QMimeData* source);
+    /// S041 review (code) O5: the Edit menu's Cut on selected cells changes nothing; a notice says so.
+    void refuseCut();
+    /// S041: a short notice beside the selected cells or the current cell (a tool tip), shown
+    /// once the events of the change are handled, so that a change of focus does not hide it.
+    void showNotice(const QString& text);
 
 signals:
     /// To the line above the table; `atEnd` puts the caret at its end (Left), else its start.
