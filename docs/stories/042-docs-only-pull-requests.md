@@ -125,9 +125,10 @@ required only then; otherwise after one more run):
 3. The first pull request labelled `version:doc`: check that every job but "Changes" and "CI result"
    is skipped, that it can be merged, and that no CI run starts on main; record the result here.
 
-Steps 1 and 2 are done (the label by Armin on 2026-11-26, the ruleset by Daniel). Step 3 is the pull
-request from `agents/s040-s042-done` (2026-11-27), which sets this story Done; its result follows
-with a later pull request.
+Steps 1 and 2 are done (the label by Armin on 2026-11-26, the ruleset by Daniel). Step 3, pull
+request 86 (`agents/s040-s042-done`, 2026-11-27, which set this story Done): "Changes", "CI result"
+and "Version label" passed and the nine other checks were skipped; it could be merged (merge commit
+`21b459a`, its tree that of the branch); no CI run started on main and no tag was set (Armin).
 
 ## Acceptance scenarios
 
