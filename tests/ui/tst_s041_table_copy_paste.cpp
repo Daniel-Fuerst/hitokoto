@@ -121,6 +121,38 @@ QStringList contextMenuOf(QWidget* widget) {
 }
 
 /// The clipboard's data; empty data while it holds none, so that a check fails instead of crashing.
+/// Chooses the entry `text` (without accelerator) of the cell's context menu; false if it has none
+/// or it cannot be chosen.
+bool chooseFromContextMenu(QWidget* widget, const QString& text) {
+    auto chosen = std::make_shared<bool>(false);
+    QTimer::singleShot(0, [chosen, text] {
+        if (auto* menu = qobject_cast<QMenu*>(QApplication::activePopupWidget())) {
+            QAction* entry = nullptr;
+            for (QAction* candidate : menu->actions()) {
+                if (candidate->text().remove(u'&').section(u'\t', 0, 0) == text && candidate->isEnabled()) {
+                    entry = candidate;
+                }
+            }
+            menu->close();
+            if (entry != nullptr) {
+                entry->trigger();
+                *chosen = true;
+            }
+        }
+    });
+    QWidget* target = widget;
+    if (auto* area = qobject_cast<QAbstractScrollArea*>(widget)) {
+        target = area->viewport();
+    }
+    const QPoint point = target->rect().center();
+    QContextMenuEvent event(QContextMenuEvent::Mouse, point, target->mapToGlobal(point));
+    QCoreApplication::sendEvent(target, &event);
+    QCoreApplication::processEvents();
+    widget->window()->activateWindow();
+    (void)QTest::qWaitForWindowActive(widget->window());
+    return *chosen;
+}
+
 const QMimeData* clipboard() {
     static const QMimeData empty;
     const QMimeData* data = QApplication::clipboard()->mimeData();
@@ -378,6 +410,34 @@ private slots:
         pressStandardKey(QKeySequence::Paste);
         f_->settle();
         QCOMPARE(text(), replaced(QStringLiteral("| t | u |"), QStringLiteral("| tz | u |")));
+    }
+
+    // S041 review (code) O6: Cut, Copy and Paste of the cell's context menu act on the selected
+    // cells, as the keys do.
+    void theContextMenuCopiesTheCells() {
+        QVERIFY(selectCells(view(), 1, 0, 2, 2));
+        QVERIFY(chooseFromContextMenu(focusedCell(), QStringLiteral("Copy")));
+        QCOMPARE(clipboardText(), QString::fromUtf8(kCopiedBlock));
+        QCOMPARE(clipboardMarkdown(), QByteArray(kCopiedBlock));
+    }
+
+    void theContextMenuCutsTheCells() {
+        QVERIFY(selectCells(view(), 1, 0, 1, 1));
+        QVERIFY(chooseFromContextMenu(focusedCell(), QStringLiteral("Cut")));
+        f_->settle();
+        QCOMPARE(clipboardText(), QStringLiteral("| **bold** | a \\| b |\n| :--- | :---: |"));
+        QCOMPARE(text(), replaced(QStringLiteral("| **bold** | a \\| b | x<br>y | 1 |"),
+                                  QStringLiteral("|  |  | x<br>y | 1 |")));
+    }
+
+    void theContextMenuPastesIntoTheCells() {
+        auto* data = new QMimeData;
+        data->setText(QStringLiteral("z"));
+        QApplication::clipboard()->setMimeData(data);
+        QVERIFY(selectCells(view(), 2, 0, 2, 2));
+        QVERIFY(chooseFromContextMenu(focusedCell(), QStringLiteral("Paste")));
+        f_->settle();
+        QCOMPARE(text(), replaced(QStringLiteral("| p | q | r | s |"), QStringLiteral("| z | z | z | s |")));
     }
 
     void spreadsheetTextAndHtmlFillCells() {
