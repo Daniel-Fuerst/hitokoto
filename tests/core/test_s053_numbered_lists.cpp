@@ -116,9 +116,12 @@ TEST(S053_NumberedLists, ParseOrderedLine) {
 TEST(S053_NumberedLists, PrefixAndIndentation) {
     const std::u16string line = u"  9)  x";
     const auto info = parseOrderedLine(line);
-    ASSERT_TRUE(info.has_value());
+    const auto bare = parseOrderedLine(u"1.");
+    if (!info || !bare) {
+        FAIL() << "both are items";
+    }
     EXPECT_EQ(nextOrderedPrefix(line, *info), u"  10)  ");
-    EXPECT_EQ(nextOrderedPrefix(u"1.", *parseOrderedLine(u"1.")), u"2. ");
+    EXPECT_EQ(nextOrderedPrefix(u"1.", *bare), u"2. ");
     EXPECT_EQ(orderedMarkerWidth(*info), 3U);
     EXPECT_EQ(indentOrderedLine(u"2. b"), u"   2. b");
     EXPECT_EQ(outdentOrderedLine(u"   2. b"), u"2. b");

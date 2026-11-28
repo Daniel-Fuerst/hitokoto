@@ -40,6 +40,10 @@ public:
     [[nodiscard]] const core::ThematicBreakStyle& thematicBreak() const noexcept { return thematicBreak_; }
     /// Resolved properties tokens (S024) and the fonts of the properties block and its badge.
     [[nodiscard]] const core::PropertiesStyle& properties() const noexcept { return properties_; }
+    /// Resolved task tokens (S052) and the side of a task item's box in pixels: task.scale times
+    /// the ascent of the editor font.
+    [[nodiscard]] const core::TaskStyle& task() const noexcept { return task_; }
+    [[nodiscard]] qreal checkboxSide() const noexcept { return checkboxSide_; }
     [[nodiscard]] QFont propertiesFont() const;
     [[nodiscard]] QFont propertiesBadgeFont() const;
     [[nodiscard]] QFont tableFont(bool header) const;
@@ -80,6 +84,7 @@ private:
         const core::LinkTarget* link = nullptr;
         bool bulletSpace = false;                   ///< the space after a bullet with a hanging indent (S003)
         bool inlineCodeDelimiter = false;           ///< a hidden backtick that opens or closes inline code
+        bool done = false;                          ///< text of a checked task item (S052)
         const core::MathLayout* formula = nullptr;  ///< inside the source of a concealed formula (S046)
         bool formulaHead = false;                   ///< its first character, which reserves the width
         QStringView formulaSource{};                ///< the whole source of that formula
@@ -112,6 +117,8 @@ private:
     /// bullet space, in that order.
     [[nodiscard]] QTextCharFormat composedFormat(const core::LineRender& render, const Piece& piece,
                                                  QStringView pieceText) const;
+    void applyHiddenOrDone(QTextCharFormat& format, const core::LineRender& render, const Piece& piece,
+                           QStringView pieceText) const;
     /// Font size of text at heading `level` (0 = body text).
     [[nodiscard]] double textSize(int level) const;
     /// The format of a piece of a typeset formula's source (S046, decisions 1, 2 and 5); nothing
@@ -142,6 +149,9 @@ private:
     core::ThematicBreakStyle thematicBreak_;
     core::OrderedListStyle orderedList_;
     core::PropertiesStyle properties_;
+    core::TaskStyle task_;
+    qreal checkboxSide_ = 0;
+    qreal boxSpacing_ = 0;     ///< letter spacing that makes the blank before a task's text the box's width
     double pointToPixel_ = 1;  ///< pixels per point of the screen fonts are laid out for
     std::shared_ptr<MathCache> mathCache_ = std::make_shared<MathCache>();
     QStringList codeBlockFamilies_;

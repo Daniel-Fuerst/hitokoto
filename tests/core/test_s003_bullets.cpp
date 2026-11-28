@@ -111,7 +111,8 @@ TEST(S003_Bullets, NonItemsArePlainText) {
 }
 
 TEST(S003_Bullets, HeadingAndBulletShareTheRegistry) {
-    EXPECT_EQ(ElementRegistry::withBuiltins().size(), 3u);  // S053 added ordered list items
+    EXPECT_EQ(ElementRegistry::withBuiltins().size(), 4u)
+        << "heading, task item (S052), bullet, ordered list item (S053)";
     EXPECT_EQ(show(u"# - not a bullet").headingLevel, 1);
     EXPECT_TRUE(show(u"# - not a bullet").decorations.empty());
 }

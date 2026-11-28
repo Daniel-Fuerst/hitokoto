@@ -239,7 +239,10 @@ std::vector<NumberEdit> renumberOrderedList(const LineAt& lineAt, std::size_t in
     bool isFirst = true;
     while (item) {
         const auto text = lineAt(*item);
-        const auto current = parseOrderedLine(*text);
+        const auto current = text ? parseOrderedLine(*text) : std::nullopt;
+        if (!current) {
+            break;  // siblingFrom found an item here; only a changed document gets this far
+        }
         if (isFirst) {
             expected = restart ? 1U : current->number;
             isFirst = false;
