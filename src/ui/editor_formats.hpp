@@ -96,6 +96,8 @@ private:
     void applyLinkMarker(QTextCharFormat& format, const core::LineRender& render, int level) const;
     void applyMath(QTextCharFormat& format, const core::LineRender& render, int level) const;
     void applyMathMarker(QTextCharFormat& format, const core::LineRender& render, int level) const;
+    void applyListNumber(QTextCharFormat& format, const core::LineRender& render, int level) const;
+    void applyListNumberMarker(QTextCharFormat& format, const core::LineRender& render, int level) const;
     [[nodiscard]] QList<QTextLayout::FormatRange> rangesOf(const core::LineRender& render, QStringView text,
                                                            bool shortcuts) const;
     /// The ranges of a line the shortcuts for whole lines give, if one applies.
@@ -138,6 +140,7 @@ private:
     core::LinkStyle link_;
     core::MathStyle math_;
     core::ThematicBreakStyle thematicBreak_;
+    core::OrderedListStyle orderedList_;
     core::PropertiesStyle properties_;
     double pointToPixel_ = 1;  ///< pixels per point of the screen fonts are laid out for
     std::shared_ptr<MathCache> mathCache_ = std::make_shared<MathCache>();

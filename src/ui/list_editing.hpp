@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // S003: Enter, Tab and Shift+Tab in bullet items, as edits through a cursor of the document. The
 // core says what a bullet line is and how it is indented (bullet.hpp); this applies that to the
-// lines at a cursor, each key one undo step.
+// lines at a cursor, each key one undo step. S053: the same for ordered items (ordered_list.hpp),
+// which also renumber the lists they change, in the same undo step.
 #pragma once
 
 #include <QTextCursor>
@@ -25,15 +26,18 @@ public:
     /// is code and these keys are not list keys.
     explicit ListEditing(std::function<bool(const QTextBlock&)> inCodeBlock);
 
-    /// Enter in a bullet item: continues the list with the item's prefix, or ends it on an empty
-    /// item (outdents it one level, or removes its marker at the top level). `cursor` is the caret.
+    /// Enter in a bullet or ordered item: continues the list with the item's prefix (an ordered
+    /// item with the next number), or ends it on an empty item (outdents it one level, or removes its
+    /// marker at the top level). Ordered lists are renumbered after it. `cursor` is the caret.
     [[nodiscard]] Outcome enter(QTextCursor& cursor) const;
-    /// Tab (`outdent` false) or Shift+Tab on the bullet lines of `cursor`'s selection: each is
-    /// indented or outdented one level as core::indentBulletLine or core::outdentBulletLine says.
+    /// Tab (`outdent` false) or Shift+Tab on the list lines of `cursor`'s selection: each is
+    /// indented or outdented one level as core::indentBulletLine or core::outdentBulletLine says (for
+    /// an ordered item core::indentOrderedLine or core::outdentOrderedLine, then renumbered).
     [[nodiscard]] Outcome tab(QTextCursor& cursor, bool outdent) const;
 
 private:
-    [[nodiscard]] bool isBulletLine(const QTextBlock& block) const;
+    [[nodiscard]] bool isListLine(const QTextBlock& block) const;
+    [[nodiscard]] Outcome enterOrdered(QTextCursor& cursor) const;
 
     std::function<bool(const QTextBlock&)> inCodeBlock_;
 };

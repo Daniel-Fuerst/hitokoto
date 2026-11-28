@@ -63,6 +63,7 @@ story ID (see "Conventions").
 | 54 | [S049](049-macos-disk-image.md) | Every version gets a macOS disk image (Apple silicon) | S030, S035, S036, S037 | M | In progress |
 | 55 | [S050](050-empty-bullet-after-text.md) | An empty bullet under text stays a bullet | S003, S023 | S | In progress |
 | 56 | [S051](051-smaller-area-pointers.md) | Smaller pointers for the areas of rows and columns | S040 | S | Confirmed |
+| 58 | [S053](053-numbered-lists.md) | Numbered lists | S003, S009, S023, S033, S050 | M | In progress |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 

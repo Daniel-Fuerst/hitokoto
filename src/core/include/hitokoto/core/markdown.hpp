@@ -38,6 +38,8 @@ enum class Role : std::uint8_t {
     LinkMarker,        ///< a revealed link delimiter or target
     Math,              ///< LaTeX source of a formula (S044)
     MathMarker,        ///< a revealed math delimiter (`$`, `$$`; S044)
+    ListNumber,        ///< number and delimiter of an ordered list item, shown as written (S053)
+    ListNumberMarker,  ///< the same when revealed (S053)
 };
 
 /// A LaTeX formula on a line (S044): where its source is, and whether it is display math (`$$`)
@@ -465,6 +467,8 @@ private:
 /// Built-in elements (each in its own source file).
 std::unique_ptr<LineElement> makeHeadingElement();
 std::unique_ptr<LineElement> makeBulletElement();
+/// S053: ordered list items (`1.`, `1)`).
+std::unique_ptr<LineElement> makeOrderedListElement();
 std::unique_ptr<InlineElement> makeInlineCodeElement();
 std::unique_ptr<InlineElement> makeLinkElement();
 std::unique_ptr<InlineElement> makeEmphasisElement();
