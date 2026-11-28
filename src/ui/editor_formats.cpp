@@ -360,8 +360,7 @@ QTextCharFormat EditorFormats::composedFormat(const core::LineRender& render, co
         {core::Role::ListNumber, &EditorFormats::applyListNumber, false, false},
         {core::Role::ListNumberMarker, &EditorFormats::applyListNumberMarker, false, false},
     }};
-    static_assert(kRoles.size() == static_cast<std::size_t>(core::Role::ListNumberMarker) + 1,
-                  "a row for every role");
+    static_assert(kRoles.size() == static_cast<std::size_t>(core::Role::ListNumberMarker) + 1, "a row for every role");
     static_assert(
         [] {
             for (std::size_t i = 0; i < kRoles.size(); ++i) {
@@ -558,8 +557,7 @@ void EditorFormats::applyEscapeMarker(QTextCharFormat& format, const core::LineR
     format.setForeground(toQColor(escape_.marker));
 }
 
-void EditorFormats::applyListNumber(QTextCharFormat& format, const core::LineRender& /*render*/,
-                                    int /*level*/) const {
+void EditorFormats::applyListNumber(QTextCharFormat& format, const core::LineRender& /*render*/, int /*level*/) const {
     format.setForeground(toQColor(orderedList_.text));
     format.setFontWeight(orderedList_.weight);
     if (!orderedList_.fontFamily.empty()) {
