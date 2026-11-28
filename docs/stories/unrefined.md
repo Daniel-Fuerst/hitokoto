@@ -47,21 +47,7 @@ commonmark.js or markdown-it-py (mode `commonmark`) before they are written here
   continues and leaves lists with Enter, indents with Tab and Shift+Tab, and adds a default indent.
 - **Open:** hard-wrapped continuation lines (concealing their indentation, hanging indent); nesting
   by content column. Related: soft line breaks and emphasis across a line break above, numbered
-  lists below.
-
-## Numbered lists
-
-- **Seen:** listed as not in the MVP (brief, `README.md`); S023 treats them only as block starts.
-- **CommonMark:** an ordered list item is 1–9 digits followed by `.` or `)` and a space (or the end
-  of the line). The first item's number is the list's start (`3.` / `7.` gives `<ol start="3">`);
-  later numbers do not matter. The content column is the marker's width plus 1–4 spaces, so
-  continuation lines of `10. foo` are indented four spaces, those of `1. foo` three. Bullets and
-  ordered lists nest in each other by the content column (`1. a` / `   - b`). Only a list starting
-  with `1` can interrupt a paragraph; `Foo` / `2. x` is one paragraph.
-- **hitokoto:** plain text.
-- **Open:** how the marker looks while the caret is elsewhere (as written, or numbered from the
-  start), its tokens; continuation lines and nesting with the correct indentation (shares its rules
-  with bullet list indentation above); Enter and Tab like `fix/bullet_points` does for bullets.
+  lists (S053).
 
 ## Blank lines as paragraph spacing
 

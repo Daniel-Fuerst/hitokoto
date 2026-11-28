@@ -11,6 +11,7 @@ add_library(hitokoto_core STATIC
     src/elements/heading.cpp
     src/elements/bullet.cpp
     src/elements/task.cpp
+    src/elements/ordered_list.cpp
     src/elements/inline_code.cpp
     src/elements/link.cpp
     src/elements/emphasis.cpp

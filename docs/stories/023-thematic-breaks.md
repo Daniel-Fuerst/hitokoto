@@ -89,8 +89,9 @@ belong to has a story:
   CommonMark ends the list with a break or starts a new item;
 - an empty list item followed by an indented line (`-` / `  bar`) ends the item; in CommonMark the
   line is the item's content;
-- an underline inside an ordered list item or a block quote (`1. foo` / `   ---`) shows a break or
-  text, because those blocks are not rendered yet;
+- an underline inside a block quote shows a break or text, because block quotes are not rendered
+  yet (changed by S053, 2026-11-28: inside an ordered list item, `1. foo` / `   ---` is a setext
+  heading as in CommonMark);
 - a bullet indented four or more columns at the top level (indented code in CommonMark, a nested
   item in hitokoto since S003) opens paragraph text at its content column;
 - HTML blocks are not tracked beyond their first line: `<div>` / `---` shows a break, where

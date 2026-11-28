@@ -174,6 +174,10 @@ follows the general tokens above.
 | `thematic-break.border-width` | number (px) | Thickness of the line, 0 to 8; drawn as max(1, round(width x device pixel ratio)) device pixels | 1 |
 | `thematic-break.margin` | number (px) | Space above and below the line, 0 to 64; part of the line's geometry, the same when revealed | 0 |
 | `thematic-break.marker` | color | Characters of the break when revealed | `colors.marker` |
+| `ordered-list.text` | color | Number and delimiter of an ordered list item | `colors.bullet` |
+| `ordered-list.marker` | color | Number and delimiter when revealed | `colors.marker` |
+| `ordered-list.weight` | number | Font weight of the number, 100 to 900 | 400 |
+| `ordered-list.font-family` | string | Font family of the number; "" = editor font | `fonts.editor-family` |
 | `properties.background` | color | Background of the block | `colors.background` |
 | `properties.text` | color | Values | `colors.text` |
 | `properties.key-text` | color | Keys | `colors.text-muted` |
@@ -291,6 +295,11 @@ follows the general tokens above.
 A thematic break (`---`, `***`, `___`) is a line across the text column, centred vertically in its block.
 Setext headings (text underlined with `===` or `---`) add no tokens: their lines use the heading
 tokens (`headings.*`) like ATX headings, and a revealed underline uses `colors.marker` at body size.
+
+The number of an ordered list item (`1.`, `7)`, S053) is shown as written, never renumbered on
+screen: in `ordered-list.text`, `ordered-list.weight` and `ordered-list.font-family` while the caret
+is elsewhere, in `ordered-list.marker` while the line is revealed. The item's text and its wrapped
+lines take the body text tokens; the lines a window wraps start under the item's text.
 
 Front matter shown as properties (S024) is a compact table-like block embedded in place of the YAML
 lines: a title, then one row per property with a type icon, key and value. The key column takes

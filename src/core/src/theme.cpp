@@ -290,6 +290,10 @@ const Token kTokens[] = {
     {{"thematic-break", "border-width", "number (px)", "Thickness of the line, 0 to 8; drawn as max(1, round(width x device pixel ratio)) device pixels", "1"}, &applyOptNumber<&Theme::thematicBreak, &ThematicBreakTokens::borderWidth, 0, 80>},
     {{"thematic-break", "margin", "number (px)", "Space above and below the line, 0 to 64; part of the line's geometry, the same when revealed", "0"}, &applyOptNumber<&Theme::thematicBreak, &ThematicBreakTokens::margin, 0, 640>},
     {{"thematic-break", "marker", "color", "Characters of the break when revealed", "colors.marker"}, &applyOptColor<&Theme::thematicBreak, &ThematicBreakTokens::marker>},
+    {{"ordered-list", "text", "color", "Number and delimiter of an ordered list item", "colors.bullet"}, &applyOptColor<&Theme::orderedList, &OrderedListTokens::text>},
+    {{"ordered-list", "marker", "color", "Number and delimiter when revealed", "colors.marker"}, &applyOptColor<&Theme::orderedList, &OrderedListTokens::marker>},
+    {{"ordered-list", "weight", "number", "Font weight of the number, 100 to 900", "400"}, &applyOptNumber<&Theme::orderedList, &OrderedListTokens::weight, 1000, 9000>},
+    {{"ordered-list", "font-family", "string", "Font family of the number; \"\" = editor font", "fonts.editor-family"}, &applyOptString<&Theme::orderedList, &OrderedListTokens::fontFamily>},
     {{"properties", "background", "color", "Background of the block", "colors.background"}, &applyOptColor<&Theme::properties, &PropertiesTokens::background>},
     {{"properties", "text", "color", "Values", "colors.text"}, &applyOptColor<&Theme::properties, &PropertiesTokens::text>},
     {{"properties", "key-text", "color", "Keys", "colors.text-muted"}, &applyOptColor<&Theme::properties, &PropertiesTokens::keyText>},
@@ -894,6 +898,16 @@ ThematicBreakStyle thematicBreakStyle(const Theme& t) {
         .borderWidth = b.borderWidth.value_or(1),
         .margin = b.margin.value_or(0),
         .marker = b.marker.value_or(t.marker),
+    };
+}
+
+OrderedListStyle orderedListStyle(const Theme& t) {
+    const OrderedListTokens& o = t.orderedList;
+    return {
+        .text = o.text.value_or(t.bullet),
+        .marker = o.marker.value_or(t.marker),
+        .weight = static_cast<int>(o.weight.value_or(400)),
+        .fontFamily = o.fontFamily.value_or(t.editorFontFamily),
     };
 }
 

@@ -98,6 +98,7 @@ EditorFormats::EditorFormats(const core::Theme& theme)
       link_(core::linkStyle(theme)),
       math_(core::mathStyle(theme)),
       thematicBreak_(core::thematicBreakStyle(theme)),
+      orderedList_(core::orderedListStyle(theme)),
       properties_(core::propertiesStyle(theme)),
       task_(core::taskStyle(theme)),
       codeBlockFamilies_(codeFamilies(codeBlock_.fontFamily)),
@@ -354,7 +355,7 @@ struct RoleFormat {
 
 QTextCharFormat EditorFormats::composedFormat(const core::LineRender& render, const Piece& piece,
                                               QStringView pieceText) const {
-    static constexpr std::array<RoleFormat, 11> kRoles{{
+    static constexpr std::array<RoleFormat, 13> kRoles{{
         {core::Role::Marker, &EditorFormats::applyMarker, true, false},
         {core::Role::HeadingText, nullptr, true, true},
         {core::Role::CodeBlock, &EditorFormats::applyCodeBlock, true, true},
@@ -367,8 +368,11 @@ QTextCharFormat EditorFormats::composedFormat(const core::LineRender& render, co
         // S044: formula source keeps its look inside emphasis, as inline code does.
         {core::Role::Math, &EditorFormats::applyMath, false, false},
         {core::Role::MathMarker, &EditorFormats::applyMathMarker, true, false},
+        // S053: the number of an ordered list item keeps its own colour and weight.
+        {core::Role::ListNumber, &EditorFormats::applyListNumber, false, false},
+        {core::Role::ListNumberMarker, &EditorFormats::applyListNumberMarker, false, false},
     }};
-    static_assert(kRoles.size() == static_cast<std::size_t>(core::Role::MathMarker) + 1, "a row for every role");
+    static_assert(kRoles.size() == static_cast<std::size_t>(core::Role::ListNumberMarker) + 1, "a row for every role");
     static_assert(
         [] {
             for (std::size_t i = 0; i < kRoles.size(); ++i) {
@@ -576,6 +580,21 @@ void EditorFormats::applyEmphasisMarker(QTextCharFormat& format, const core::Lin
 void EditorFormats::applyEscapeMarker(QTextCharFormat& format, const core::LineRender& /*render*/,
                                       int /*level*/) const {
     format.setForeground(toQColor(escape_.marker));
+}
+
+void EditorFormats::applyListNumber(QTextCharFormat& format, const core::LineRender& /*render*/, int /*level*/) const {
+    format.setForeground(toQColor(orderedList_.text));
+    format.setFontWeight(orderedList_.weight);
+    if (!orderedList_.fontFamily.empty()) {
+        format.setFontFamilies({QString::fromStdString(orderedList_.fontFamily)});
+    }
+}
+
+void EditorFormats::applyListNumberMarker(QTextCharFormat& format, const core::LineRender& render, int level) const {
+    // Revealed, the number keeps its weight and family, so the line does not shift; only the colour
+    // changes to the marker colour.
+    applyListNumber(format, render, level);
+    format.setForeground(toQColor(orderedList_.marker));
 }
 
 void EditorFormats::applyLinkText(QTextCharFormat& format, const core::LineRender& /*render*/, int /*level*/) const {

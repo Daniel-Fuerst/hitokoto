@@ -177,8 +177,9 @@ TEST(S023_ThematicBreaks, DashesAfterOtherBlocksAreABreak) {
 }
 
 // Blocks hitokoto does not render yet are no paragraph text where CommonMark lets them start: after
-// them, `---` is a break. A link reference definition at the start counts as such a block (the
-// reference parsers disagree there, story: known deviations).
+// them, `---` is a break. Ordered list items are rendered since S053; `---` at column 0 after an
+// item's text is outside the item and still a break. A link reference definition at the start
+// counts as such a block (the reference parsers disagree there, story: known deviations).
 TEST(S023_ThematicBreaks, DashesAfterUnrenderedBlocksAreABreak) {
     const std::vector<std::vector<std::u16string>> breaks = {
         {u"1. foo", u"---"},      {u"1) foo", u"---"},   {u"Foo", u"1. x", u"---"},          {u"> quote", u"---"},
@@ -309,10 +310,11 @@ TEST(S023_ThematicBreaks, DashesUnderAListItem) {
     }
 }
 
-// Text after an ordered list item or a block quote (not rendered yet) continues it lazily and can
-// never be underlined; an item or quote without paragraph text, or with a break, heading or
-// indented code as its content, ends the paragraph. A line less indented than an item's content
-// starts any ordered item. Checked against commonmark.js 0.31.2 and markdown-it-py 4.2.0.
+// Text after an ordered list item (rendered since S053, with the paragraph rules of a bullet) or a
+// block quote (not rendered yet) continues it lazily and can never be underlined; an item or quote
+// without paragraph text, or with a break, heading or indented code as its content, ends the
+// paragraph. A line less indented than an item's content starts any ordered item. Checked against
+// commonmark.js 0.31.2 and markdown-it-py 4.2.0.
 TEST(S023_ThematicBreaks, LazyTextAfterUnrenderedBlocks) {
     const std::vector<std::vector<std::u16string>> breaks = {
         {u"> quote", u"bar", u"---"}, {u"1. foo", u"bar", u"---"}, {u"- foo", u"2. y", u"  ---"},

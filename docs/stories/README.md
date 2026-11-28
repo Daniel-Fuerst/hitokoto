@@ -64,6 +64,7 @@ story ID (see "Conventions").
 | 55 | [S050](050-empty-bullet-after-text.md) | An empty bullet under text stays a bullet | S003, S023 | S | In progress |
 | 56 | [S051](051-smaller-area-pointers.md) | Smaller pointers for the areas of rows and columns | S040 | S | Confirmed |
 | 57 | [S052](052-task-checkboxes.md) | Task list items show as checkboxes that the mouse ticks | S003, S009, S010, S019 | M | In progress |
+| 58 | [S053](053-numbered-lists.md) | Numbered lists | S003, S009, S023, S033, S050 | M | In progress |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 

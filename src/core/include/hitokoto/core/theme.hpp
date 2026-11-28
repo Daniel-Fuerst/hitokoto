@@ -87,6 +87,14 @@ struct ThematicBreakTokens {
     friend bool operator==(const ThematicBreakTokens&, const ThematicBreakTokens&) = default;
 };
 
+/// Tokens of `[ordered-list]` (S053); resolved by orderedListStyle().
+struct OrderedListTokens {
+    std::optional<Color> text, marker;
+    std::optional<double> weight;
+    std::optional<std::string> fontFamily;
+    friend bool operator==(const OrderedListTokens&, const OrderedListTokens&) = default;
+};
+
 /// Tokens of `[properties]` (S024); resolved by propertiesStyle().
 struct PropertiesTokens {
     std::optional<Color> background, text, keyText, titleText, icon, unsupportedText, badgeText, checkbox,
@@ -184,6 +192,7 @@ struct Theme {
     LinkTokens link;
     MathTokens math;
     ThematicBreakTokens thematicBreak;
+    OrderedListTokens orderedList;
     PropertiesTokens properties;
     ToolbarTokens toolbar;
     FindTokens find;
@@ -385,6 +394,15 @@ struct TaskStyle {
     friend bool operator==(const TaskStyle&, const TaskStyle&) = default;
 };
 
+/// Resolved look of the number of an ordered list item (S053).
+struct OrderedListStyle {
+    Color text;    ///< the number while the line is concealed
+    Color marker;  ///< the number while the line is revealed
+    int weight = 400;
+    std::string fontFamily;  ///< empty = editor font
+    friend bool operator==(const OrderedListStyle&, const OrderedListStyle&) = default;
+};
+
 [[nodiscard]] CodeStyle codeBlockStyle(const Theme& theme);
 [[nodiscard]] CodeStyle inlineCodeStyle(const Theme& theme);
 [[nodiscard]] EmphasisStyle emphasisStyle(const Theme& theme);
@@ -393,6 +411,7 @@ struct TaskStyle {
 [[nodiscard]] LinkStyle linkStyle(const Theme& theme);
 [[nodiscard]] MathStyle mathStyle(const Theme& theme);
 [[nodiscard]] ThematicBreakStyle thematicBreakStyle(const Theme& theme);
+[[nodiscard]] OrderedListStyle orderedListStyle(const Theme& theme);
 [[nodiscard]] PropertiesStyle propertiesStyle(const Theme& theme);
 [[nodiscard]] ToolbarStyle toolbarStyle(const Theme& theme);
 [[nodiscard]] FindStyle findStyle(const Theme& theme);

@@ -754,6 +754,7 @@ ElementRegistry ElementRegistry::withBuiltins() {
     registry.add(makeHeadingElement());
     registry.add(makeTaskElement());
     registry.add(makeBulletElement());
+    registry.add(makeOrderedListElement());
     registry.addInline(makeLinkElement());
     registry.addInline(makeInlineCodeElement());
     registry.addInline(makeInlineMathElement());
