@@ -76,7 +76,7 @@ public:
     [[nodiscard]] QString frontMatterBadge() const;
     /// S024 review O2: front matter as a properties block (on) or as plain text, as in S023 (off).
     void setFrontMatterAsProperties(bool on);
-    /// S051: the box of the task item on block `blockNumber` in viewport coordinates; empty if the
+    /// S052: the box of the task item on block `blockNumber` in viewport coordinates; empty if the
     /// line is no task item or not laid out.
     [[nodiscard]] QRectF checkboxRect(int blockNumber);
     [[nodiscard]] bool frontMatterAsProperties() const noexcept { return frontMatterAsProperties_; }
@@ -186,15 +186,15 @@ private:
     [[nodiscard]] std::vector<FormulaHighlight> formulaHighlightRanges() const;
     /// Enter, Tab and Shift+Tab in bullet items (S003), through list_.
     bool handleBulletKey(QKeyEvent* event);
-    /// S051: the block whose task box is at `pos` (viewport coordinates), or an invalid block.
+    /// S052: the block whose task box is at `pos` (viewport coordinates), or an invalid block.
     [[nodiscard]] QTextBlock checkboxAt(QPoint pos);
-    /// S051: whether `block` is shown as a task item with its box.
+    /// S052: whether `block` is shown as a task item with its box.
     [[nodiscard]] bool showsCheckbox(const QTextBlock& block);
-    /// S051: writes the other state of the box of `block`'s task item, one undo step.
+    /// S052: writes the other state of the box of `block`'s task item, one undo step.
     void toggleTask(const QTextBlock& block);
-    /// S051, decision 4: the caret never stands in the hidden prefix of a task item.
+    /// S052, decision 4: the caret never stands in the hidden prefix of a task item.
     void keepCaretOutOfTaskBox();
-    /// S051, decision 4: Left and Backspace at the start of a task item's text.
+    /// S052, decision 4: Left and Backspace at the start of a task item's text.
     bool handleTaskKey(QKeyEvent* event);
     /// S009 for S047: Left (and word left) from the start of the line below a typeset `$$` block
     /// moves one character (word) back into the block's closing line.
@@ -214,7 +214,7 @@ private:
     BlockLayout* layout_ = nullptr;
     bool insideEdit_ = false;           ///< between contentsChange and contentsChanged of the document
     bool propertiesClickHeld_ = false;  ///< a click in front-matter source protected by the properties view
-    bool movingCaretOutOfBox_ = false;  ///< keepCaretOutOfTaskBox() is placing the caret (S051)
+    bool movingCaretOutOfBox_ = false;  ///< keepCaretOutOfTaskBox() is placing the caret (S052)
     ViewAnchor* view_ = nullptr;        ///< the reading position and the followed caret (S033)
     BlockStyler* styler_ = nullptr;
     ListEditing list_{[this](const QTextBlock& block) { return styler_->renderFor(block).codeBlock; }};

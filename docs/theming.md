@@ -316,7 +316,7 @@ their on colours (`switch.checked-track`, `switch.checked-knob`). The knob keeps
 margin, so the default track is a pill and the knob a circle, and `radius = 0` gives square ones.
 The labels beside a switch are those of the flyout (`colors.text-muted`, UI font).
 
-A task item (S051, `- [ ] milk`, `- [x] bread`) shows a box in place of its marker and brackets,
+A task item (S052, `- [ ] milk`, `- [x] bread`) shows a box in place of its marker and brackets,
 with or without the caret on the line. The box's side is `task.scale` times the ascent of the
 text; it sits on the text's x-height centre, and the text follows after `task.gap`. An unchecked box
 is drawn in `task.background` with a `task.border` border, a checked one in `task.checked-background`

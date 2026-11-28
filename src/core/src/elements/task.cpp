@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S051: task list items. A bullet item (S003) whose text starts with `[ ]`, `[x]`, `[X]` or `[]`
+// S052: task list items. A bullet item (S003) whose text starts with `[ ]`, `[x]`, `[X]` or `[]`
 // followed by a blank shows a checkbox in place of the marker. The prefix up to the text is hidden
 // whether or not the caret is on the line (the user's decision: no source view of a box); the
 // blank before the text takes the box's width. Registered before the bullet element, which it
@@ -29,7 +29,7 @@ std::optional<TaskLineInfo> taskAfterBullet(std::u16string_view line, const Line
     }
     std::uint32_t content = close + 1;
     if (content >= line.size() || !blocks::isBlank(line[content])) {
-        return std::nullopt;  // created on the blank after `]` (S051, decision 5)
+        return std::nullopt;  // created on the blank after `]` (S052, decision 5)
     }
     while (content < line.size() && blocks::isBlank(line[content])) {
         ++content;
@@ -71,7 +71,7 @@ public:
 
     void render(std::u16string_view line, const LineMatch& match, const LineContext& /*context*/,
                 LineRender& out) const override {
-        // The reveal is ignored on purpose: a box never shows its source (S051, decision 2).
+        // The reveal is ignored on purpose: a box never shows its source (S052, decision 2).
         const std::uint32_t content = match.marker.end();
         const bool checked = taskChecked(line, match.markerChar, content);
         out.hidden.push_back({{match.markerChar, content - 1 - match.markerChar}, HideMode::ZeroWidth});

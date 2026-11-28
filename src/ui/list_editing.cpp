@@ -56,7 +56,7 @@ ListEditing::Outcome ListEditing::enter(QTextCursor& cursor) const {
     }
 
     const int posInBlock = cursor.positionInBlock();
-    // S051: a task item continues with an unchecked box and counts as empty without text after it.
+    // S052: a task item continues with an unchecked box and counts as empty without text after it.
     const auto task = core::parseTaskLine(view(block.text()));
     const bool isEmpty = task.has_value() ? task->isEmpty : info->isEmpty;
     const auto prefixLength = task.has_value() ? task->contentStart : info->prefixLength;

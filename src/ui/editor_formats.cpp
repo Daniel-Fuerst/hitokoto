@@ -118,7 +118,7 @@ EditorFormats::EditorFormats(const core::Theme& theme)
     }
     const QFontMetricsF metrics(baseFont_);
     bulletSpacing_ = std::max<double>(3.0, std::round(metrics.horizontalAdvance(QLatin1Char(' ')) * 0.75));
-    // S051: the blank before a task's text is as wide as the box plus its gap.
+    // S052: the blank before a task's text is as wide as the box plus its gap.
     checkboxSide_ = std::round(metrics.ascent() * task_.scale);
     boxSpacing_ = checkboxSide_ + task_.gap - metrics.horizontalAdvance(QLatin1Char(' '));
     for (int level = 1; level <= 6; ++level) {
@@ -312,7 +312,7 @@ std::optional<QList<QTextLayout::FormatRange>> EditorFormats::wholeLineShortcut(
 
 QTextCharFormat EditorFormats::formatFor(const core::LineRender& render, const Piece& piece, QStringView pieceText,
                                          bool shortcuts) const {
-    // Done text (S051) and the box's blank always take the general path.
+    // Done text (S052) and the box's blank always take the general path.
     const bool boxSpace = piece.hidden != nullptr && piece.hidden->mode == core::HideMode::Box;
     if (shortcuts && !piece.done && !boxSpace) {
         // Shortcuts for the most common pieces: formats made once per theme by composedFormat().
@@ -440,12 +440,12 @@ QTextCharFormat EditorFormats::composedFormat(const core::LineRender& render, co
         } else if (piece.hidden->mode == core::HideMode::ZeroWidth && !pieceText.isEmpty()) {
             format = zeroWidthFormat(format, pieceText);
         } else if (piece.hidden->mode == core::HideMode::Box) {
-            // S051: room for the task box the editor paints, and the gap after it.
+            // S052: room for the task box the editor paints, and the gap after it.
             format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
             format.setFontLetterSpacing(boxSpacing_);
         }
     } else if (piece.done) {
-        // S051: a checked task item's text reads as done, over every other colour.
+        // S052: a checked task item's text reads as done, over every other colour.
         format.setForeground(toQColor(task_.doneText));
         format.setFontStrikeOut(task_.doneStrikethrough);
     }

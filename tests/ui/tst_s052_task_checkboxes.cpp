@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S051: task list items show as checkboxes. A click toggles the box; keys never do. The prefix up
+// S052: task list items show as checkboxes. A click toggles the box; keys never do. The prefix up
 // to the text is never shown and the caret never stands in it; Backspace before the text removes
 // the box; Enter continues task lists.
 #include "ui_test_support.hpp"
@@ -39,7 +39,7 @@ QPoint centreOf(const QRectF& box) {
 }
 }  // namespace
 
-class tst_s051_task_checkboxes : public QObject {
+class tst_s052_task_checkboxes : public QObject {
     Q_OBJECT
 private slots:
     // Scenarios "unchecked and checked boxes" and "no source view".
@@ -209,5 +209,5 @@ private slots:
     }
 };
 
-QTEST_MAIN(tst_s051_task_checkboxes)
-#include "tst_s051_task_checkboxes.moc"
+QTEST_MAIN(tst_s052_task_checkboxes)
+#include "tst_s052_task_checkboxes.moc"

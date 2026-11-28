@@ -87,7 +87,7 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
             ++editCount_;
         }
     });
-    connect(this, &QTextEdit::cursorPositionChanged, this, &EditorWidget::keepCaretOutOfTaskBox);  // S051
+    connect(this, &QTextEdit::cursorPositionChanged, this, &EditorWidget::keepCaretOutOfTaskBox);  // S052
     connect(this, &QTextEdit::cursorPositionChanged, this, &EditorWidget::updateReveal);
     connect(this, &QTextEdit::cursorPositionChanged, tables_.get(), &TableEmbedder::caretMoved);
     connect(this, &QTextEdit::selectionChanged, tables_.get(), &TableEmbedder::selectionMoved);  // S040
@@ -394,7 +394,7 @@ void EditorWidget::mouseReleaseEvent(QMouseEvent* event) {
     QTextEdit::mouseReleaseEvent(event);
     if (event->button() == Qt::LeftButton) {
         properties_->setMouseHeld(false);  // S024 review O6: the block may switch now
-        keepCaretOutOfTaskBox();           // S051: after a drag that ended in a task's prefix
+        keepCaretOutOfTaskBox();           // S052: after a drag that ended in a task's prefix
     }
 }
 
@@ -409,7 +409,7 @@ void EditorWidget::mousePressEvent(QMouseEvent* event) {
     }
     if (event->button() == Qt::LeftButton && event->modifiers() == Qt::NoModifier) {
         if (const QTextBlock task = checkboxAt(event->position().toPoint()); task.isValid()) {
-            toggleTask(task);  // S051: the mouse ticks the box; the caret stays where it was
+            toggleTask(task);  // S052: the mouse ticks the box; the caret stays where it was
             event->accept();
             return;
         }
@@ -478,7 +478,7 @@ void EditorWidget::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void EditorWidget::mouseDoubleClickEvent(QMouseEvent* event) {
-    // S051: the second click of a double click arrives here; on a box it ticks again.
+    // S052: the second click of a double click arrives here; on a box it ticks again.
     if (event->button() == Qt::LeftButton && event->modifiers() == Qt::NoModifier) {
         if (const QTextBlock task = checkboxAt(event->position().toPoint()); task.isValid()) {
             toggleTask(task);
@@ -1100,7 +1100,7 @@ void EditorWidget::paintDecorations() {
             continue;
         }
         const auto render = styler_->renderFor(block);
-        // S051: task boxes are drawn with every reveal; they never show their source.
+        // S052: task boxes are drawn with every reveal; they never show their source.
         paintCheckboxes(painter, block, rect, render, styler_->formats().task(), styler_->formats().checkboxSide(),
                         metrics);
         if (styler_->isRevealed(block.blockNumber())) {

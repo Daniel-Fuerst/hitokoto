@@ -77,7 +77,7 @@ foreach(t IN ITEMS
         tst_s046_typeset_inline_math
         tst_s047_typeset_display_math
         tst_s048_settings_section_headings
-        tst_s051_task_checkboxes)
+        tst_s052_task_checkboxes)
     hitokoto_ui_test(${t})
 endforeach()
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S051: task list items (`- [ ] milk`, `- [x] bread`) as lines: where the box is, what a click on
+// S052: task list items (`- [ ] milk`, `- [x] bread`) as lines: where the box is, what a click on
 // it writes, what Backspace before the text removes and what Enter continues with.
 #pragma once
 

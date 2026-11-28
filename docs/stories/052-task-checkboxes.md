@@ -1,6 +1,6 @@
-# S051 — Task list items show as checkboxes that the mouse ticks
+# S052 — Task list items show as checkboxes that the mouse ticks
 
-- **Status:** In progress (confirmed by the user on 2026-11-27) · **Order:** 56 · **Size:** M ·
+- **Status:** In progress (confirmed by the user on 2026-11-27) · **Order:** 57 · **Size:** M ·
   **Depends on:** S003, S009, S010, S019
 - **Basis:** Request of the user on 2026-11-27: "`[]` and `[x]` should act as checkboxes. There
   should not be a markdown-view of them. Once created the only interaction is with the mouse."
@@ -117,11 +117,11 @@ with a click, so that the list reads and works like a checklist while the file s
 
 ## Tests
 
-- **Core (`tests/core/test_s051_task_checkboxes.cpp`):** `S051_TaskCheckboxes.` `RecognisesTaskItems`,
+- **Core (`tests/core/test_s052_task_checkboxes.cpp`):** `S052_TaskCheckboxes.` `RecognisesTaskItems`,
   `NotTaskItems`, `HidesThePrefixWhetherRevealedOrNot`, `CheckedTextIsDone`, `WrapIndentAfterTheBox`,
   `ParagraphRulesAsBullets`, `ToggleWritesTheOtherState`, `RemoveBoxLeavesABullet`,
   `ContinuedPrefixIsUnchecked`, `ThemeTokensFallbackAndResolve`.
-- **UI (`tests/ui/tst_s051_task_checkboxes.cpp`):** a click on the box toggles and undoes, the caret
+- **UI (`tests/ui/tst_s052_task_checkboxes.cpp`):** a click on the box toggles and undoes, the caret
   stays; Space and Enter do not toggle; the caret skips the prefix (Home, Left, Right, a click left
   of the box); Backspace removes the box; typing creates a task item; Enter continues and ends task
   lists; the revealed line keeps the box (no visible prefix glyphs); done text format.

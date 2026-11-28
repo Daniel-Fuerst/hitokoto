@@ -44,13 +44,13 @@ void paintThematicBreak(QPainter& painter, const QTextBlock& block, const QRectF
 void paintBullets(QPainter& painter, const QTextBlock& block, const QRectF& rect, const core::LineRender& render,
                   const QColor& color, const QFontMetricsF& metrics, qreal radius);
 
-/// S051: where the box of the task item decoration `d` of `block` stands (`origin`, the block's top
+/// S052: where the box of the task item decoration `d` of `block` stands (`origin`, the block's top
 /// left in viewport coordinates): a square of `side` at the x of its marker, centred on the
 /// x-height of the text's first line. Empty if the block has no layout yet.
 [[nodiscard]] QRectF checkboxRect(const QTextBlock& block, const core::Decoration& d, QPointF origin, qreal side,
                                   const QFontMetricsF& metrics);
 
-/// S051: the boxes of the task items of `block` (`rect`, viewport coordinates), ticked or not.
+/// S052: the boxes of the task items of `block` (`rect`, viewport coordinates), ticked or not.
 void paintCheckboxes(QPainter& painter, const QTextBlock& block, const QRectF& rect, const core::LineRender& render,
                      const core::TaskStyle& style, qreal side, const QFontMetricsF& metrics);
 

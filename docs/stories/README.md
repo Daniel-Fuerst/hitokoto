@@ -51,9 +51,9 @@ story ID (see "Conventions").
 | 42 | [S011](011-reference-hardware.md) | Budgets confirmed on reference hardware | S007 | S | Open |
 | 43 | [S012](012-distributable-builds.md) | Distributable builds for Linux, Windows and macOS | S000 | M | Open |
 | 44 | [S025](025-edit-properties.md) | Editing properties in the properties block | S024 | M | In progress |
-| 45 | [S042](042-docs-only-pull-requests.md) | Pull requests that change only documentation skip the build | S030, S032, S035 | S | In progress |
-| 46 | [S040](040-table-selection.md) | Selecting cells, rows and columns in a table | S018, S019, S028, S031 | L | In progress |
-| 47 | [S041](041-table-copy-paste.md) | Copying and pasting table cells as Markdown | S031, S040 | M | In progress |
+| 45 | [S042](042-docs-only-pull-requests.md) | Pull requests that change only documentation skip the build | S030, S032, S035 | S | Done |
+| 46 | [S040](040-table-selection.md) | Selecting cells, rows and columns in a table | S018, S019, S028, S031 | L | Done |
+| 47 | [S041](041-table-copy-paste.md) | Copying and pasting table cells as Markdown | S031, S040 | M | Done |
 | 48 | [S043](043-smooth-scrolling-toggle.md) | Toggle switches and a "Feel" section for smooth scrolling | S027, S039 | M | In progress |
 | 49 | [S044](044-latex-math.md) | Math source: `$…$` and `$$…$$` recognised and styled | S014, S015, S020, S021 | M | In review |
 | 50 | [S045](045-math-layout-engine.md) | Math layout engine in the core (ADR 0014) | S044 | L | In review |
@@ -62,7 +62,8 @@ story ID (see "Conventions").
 | 53 | [S048](048-settings-section-headings.md) | Section headings in the settings flyout stand out | S039, S043 | S | In progress |
 | 54 | [S049](049-macos-disk-image.md) | Every version gets a macOS disk image (Apple silicon) | S030, S035, S036, S037 | M | In progress |
 | 55 | [S050](050-empty-bullet-after-text.md) | An empty bullet under text stays a bullet | S003, S023 | S | In progress |
-| 56 | [S051](051-task-checkboxes.md) | Task list items show as checkboxes that the mouse ticks | S003, S009, S010, S019 | M | In progress |
+| 56 | [S051](051-smaller-area-pointers.md) | Smaller pointers for the areas of rows and columns | S040 | S | Confirmed |
+| 57 | [S052](052-task-checkboxes.md) | Task list items show as checkboxes that the mouse ticks | S003, S009, S010, S019 | M | In progress |
 
 Sizes: S = up to a day, M = a few days, L = about a week of part-time work (rough).
 

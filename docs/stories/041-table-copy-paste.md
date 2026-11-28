@@ -1,7 +1,7 @@
 # S041 — Copying and pasting table cells as Markdown
 
-- **Status:** In progress (confirmed by Armin on 2026-11-21, after the review of S040, from which it
-  was split) · **Order:** 47 · **Size:** M · **Depends on:** S031, S040
+- **Status:** Done (accepted by Armin on 2026-11-27 on v0.12.0; confirmed on 2026-11-21, after the
+  review of S040, from which it was split) · **Order:** 47 · **Size:** M · **Depends on:** S031, S040
 - **Basis:** split from S040 (Armin, 2026-11-21, after the review of S040): what copy, cut and
   paste do with selected cells. Checked on main `c8a167f` and with Armin's clipboard samples on
   Windows (2026-11-21), before this story was written:
@@ -131,8 +131,10 @@ From the dispositions of `docs/reviews/041-table-copy-paste-code.md`:
   in a table of five columns (best of nine): the body rows as a table 0.13 ms, as tab-separated text
   2.1 ms, reading the copy back 0.5 ms, pasting 5,000 cells 0.7 to 0.9 ms.
 
-Open before "In review": the manual checks (Obsidian with Armin's sample, Excel and Calc with the
-tab-separated text) and a green CI on Linux, Windows and macOS.
+Acceptance (Armin, 2026-11-27, v0.12.0 on Windows): `Copy as Tab-Separated Text` arrives in Excel
+cell by cell. A Markdown table copied into Word or Excel does not arrive as a table; it never did
+(the HTML of the own copy before this story was Qt's rendering of the source lines). An HTML table on
+the clipboard is kept as an idea in `unrefined.md` ("A table copied as HTML").
 
 ## Acceptance scenarios
 

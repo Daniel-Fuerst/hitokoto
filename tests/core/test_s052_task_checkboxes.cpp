@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// S051: task list items (`- [ ]`, `- [x]`, `- [X]`, and `- []` as unchecked) show as checkboxes.
+// S052: task list items (`- [ ]`, `- [x]`, `- [X]`, and `- []` as unchecked) show as checkboxes.
 // The prefix up to the text is never shown, with or without the caret on the line; a click
 // toggles the box (the UI writes what toggledTask() says), Backspace removes it.
 #include "hitokoto/core/markdown.hpp"
@@ -40,7 +40,7 @@ bool allHidden(const LineRender& r, std::uint32_t from, std::uint32_t to) {
 }
 }  // namespace
 
-TEST(S051_TaskCheckboxes, RecognisesTaskItems) {
+TEST(S052_TaskCheckboxes, RecognisesTaskItems) {
     struct Case {
         std::u16string line;
         bool checked;
@@ -76,7 +76,7 @@ TEST(S051_TaskCheckboxes, RecognisesTaskItems) {
     }
 }
 
-TEST(S051_TaskCheckboxes, NotTaskItems) {
+TEST(S052_TaskCheckboxes, NotTaskItems) {
     for (const std::u16string line : {u"- [ ]", u"- [x]foo", u"- [](url)", u"[ ] milk", u"-[ ] milk", u"- [y] milk",
                                       u"- [  ] milk", u"- x [ ] y"}) {
         EXPECT_FALSE(parseTaskLine(line).has_value()) << narrow(line);
@@ -89,7 +89,7 @@ TEST(S051_TaskCheckboxes, NotTaskItems) {
 
 // Decision 2: the prefix is hidden whatever the reveal; the blank before the text takes the box's
 // width (HideMode::Box), the rest no width at all.
-TEST(S051_TaskCheckboxes, HidesThePrefixWhetherRevealedOrNot) {
+TEST(S052_TaskCheckboxes, HidesThePrefixWhetherRevealedOrNot) {
     for (const bool revealed : {false, true}) {
         const LineRender r = show(u"  - [x] milk", revealed);
         ASSERT_NE(checkbox(r), nullptr) << "revealed " << revealed;
@@ -111,7 +111,7 @@ TEST(S051_TaskCheckboxes, HidesThePrefixWhetherRevealedOrNot) {
     EXPECT_NE(checkbox(doc[1]), nullptr);
 }
 
-TEST(S051_TaskCheckboxes, CheckedTextIsDone) {
+TEST(S052_TaskCheckboxes, CheckedTextIsDone) {
     EXPECT_EQ(show(u"- [x] bread").doneText, (Span{6, 5}));
     EXPECT_EQ(show(u"- [X] bread", true).doneText, (Span{6, 5}));
     EXPECT_EQ(show(u"- [ ] milk").doneText, (Span{}));
@@ -121,13 +121,13 @@ TEST(S051_TaskCheckboxes, CheckedTextIsDone) {
     EXPECT_FALSE(r.inlineStyles.empty());
 }
 
-TEST(S051_TaskCheckboxes, WrapIndentAfterTheBox) {
+TEST(S052_TaskCheckboxes, WrapIndentAfterTheBox) {
     EXPECT_EQ(show(u"- [ ] milk").wrapIndent, 6U);
     EXPECT_EQ(show(u"  * [] tea", true).wrapIndent, 7U);
 }
 
 // Decision 8: as a bullet with text, also directly after paragraph text and when empty.
-TEST(S051_TaskCheckboxes, ParagraphRulesAsBullets) {
+TEST(S052_TaskCheckboxes, ParagraphRulesAsBullets) {
     const std::vector<std::u16string> lines{u"Foo", u"- [ ] ", u"- [x] bar"};
     const auto r = registry().renderDocument(lines);
     EXPECT_EQ(r[0].headingLevel, 0);
@@ -135,7 +135,7 @@ TEST(S051_TaskCheckboxes, ParagraphRulesAsBullets) {
     EXPECT_NE(checkbox(r[2]), nullptr);
 }
 
-TEST(S051_TaskCheckboxes, ToggleWritesTheOtherState) {
+TEST(S052_TaskCheckboxes, ToggleWritesTheOtherState) {
     struct Case {
         std::u16string line;
         Span span;
@@ -156,7 +156,7 @@ TEST(S051_TaskCheckboxes, ToggleWritesTheOtherState) {
 }
 
 // Decision 4: Backspace at the start of the text removes the box and the blanks after it.
-TEST(S051_TaskCheckboxes, RemoveBoxLeavesABullet) {
+TEST(S052_TaskCheckboxes, RemoveBoxLeavesABullet) {
     const std::u16string line = u"  - [x]  milk";
     const auto info = parseTaskLine(line);
     ASSERT_TRUE(info.has_value());
@@ -169,13 +169,13 @@ TEST(S051_TaskCheckboxes, RemoveBoxLeavesABullet) {
 }
 
 // Decision 6: Enter continues with an unchecked box of the same indentation and marker.
-TEST(S051_TaskCheckboxes, ContinuedPrefixIsUnchecked) {
+TEST(S052_TaskCheckboxes, ContinuedPrefixIsUnchecked) {
     EXPECT_EQ(continuedTaskPrefix(u"  * [x] done"), u"  * [ ] ");
     EXPECT_EQ(continuedTaskPrefix(u"-   [] tea"), u"-   [ ] ");
     EXPECT_EQ(continuedTaskPrefix(u"- milk"), u"");
 }
 
-TEST(S051_TaskCheckboxes, ThemeTokensFallbackAndResolve) {
+TEST(S052_TaskCheckboxes, ThemeTokensFallbackAndResolve) {
     for (const ColorScheme scheme : {ColorScheme::Light, ColorScheme::Dark}) {
         const Theme& base = builtinTheme(scheme);
         const TaskStyle d = taskStyle(base);
