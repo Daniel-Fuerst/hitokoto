@@ -115,6 +115,8 @@ private:
     /// bullet space, in that order.
     [[nodiscard]] QTextCharFormat composedFormat(const core::LineRender& render, const Piece& piece,
                                                  QStringView pieceText) const;
+    void applyHiddenOrDone(QTextCharFormat& format, const core::LineRender& render, const Piece& piece,
+                           QStringView pieceText) const;
     /// Font size of text at heading `level` (0 = body text).
     [[nodiscard]] double textSize(int level) const;
     /// The format of a piece of a typeset formula's source (S046, decisions 1, 2 and 5); nothing

@@ -59,7 +59,10 @@ TEST(S052_TaskCheckboxes, RecognisesTaskItems) {
              {u"- [ ] ", false, 0, 2, 6, 0},
          }) {
         const auto info = parseTaskLine(c.line);
-        ASSERT_TRUE(info.has_value()) << narrow(c.line);
+        if (!info.has_value()) {
+            ADD_FAILURE() << narrow(c.line);
+            continue;
+        }
         EXPECT_EQ(info->checked, c.checked) << narrow(c.line);
         EXPECT_EQ(info->markerChar, c.markerChar) << narrow(c.line);
         EXPECT_EQ(info->box, c.box) << narrow(c.line);
@@ -148,7 +151,10 @@ TEST(S052_TaskCheckboxes, ToggleWritesTheOtherState) {
              {u"+ [] tea", {2, 2}, u"[x]"},
          }) {
         const auto edit = toggledTask(c.line);
-        ASSERT_TRUE(edit.has_value()) << narrow(c.line);
+        if (!edit.has_value()) {
+            ADD_FAILURE() << narrow(c.line);
+            continue;
+        }
         EXPECT_EQ(edit->span, c.span) << narrow(c.line);
         EXPECT_EQ(edit->text, c.text) << narrow(c.line);
     }
@@ -159,7 +165,10 @@ TEST(S052_TaskCheckboxes, ToggleWritesTheOtherState) {
 TEST(S052_TaskCheckboxes, RemoveBoxLeavesABullet) {
     const std::u16string line = u"  - [x]  milk";
     const auto info = parseTaskLine(line);
-    ASSERT_TRUE(info.has_value());
+    if (!info.has_value()) {
+        ADD_FAILURE();
+        return;
+    }
     const Span removed = info->boxWithBlanks();
     EXPECT_EQ(removed, (Span{4, 5}));
     std::u16string after = line;

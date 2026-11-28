@@ -423,8 +423,19 @@ QTextCharFormat EditorFormats::composedFormat(const core::LineRender& render, co
             format.setForeground(toQColor(*color));
         }
     }
+    applyHiddenOrDone(format, render, piece, pieceText);
+    if (piece.bulletSpace) {
+        format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
+        format.setFontLetterSpacing(bulletSpacing_);
+    }
+    applyFormula(format, piece, pieceText);
+    return format;
+}
+
+void EditorFormats::applyHiddenOrDone(QTextCharFormat& format, const core::LineRender& render, const Piece& piece,
+                                      QStringView pieceText) const {
     if (piece.hidden != nullptr) {
-        if ((run == nullptr || run->role != core::Role::CodeBlock) && !render.codeBlock) {
+        if ((piece.run == nullptr || piece.run->role != core::Role::CodeBlock) && !render.codeBlock) {
             format = heading(render.headingLevel);
         }
         if (piece.inlineCodeDelimiter) {
@@ -449,12 +460,6 @@ QTextCharFormat EditorFormats::composedFormat(const core::LineRender& render, co
         format.setForeground(toQColor(task_.doneText));
         format.setFontStrikeOut(task_.doneStrikethrough);
     }
-    if (piece.bulletSpace) {
-        format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
-        format.setFontLetterSpacing(bulletSpacing_);
-    }
-    applyFormula(format, piece, pieceText);
-    return format;
 }
 
 void EditorFormats::applyFormula(QTextCharFormat& format, const Piece& piece, QStringView pieceText) const {
