@@ -99,6 +99,7 @@ EditorFormats::EditorFormats(const core::Theme& theme)
       math_(core::mathStyle(theme)),
       thematicBreak_(core::thematicBreakStyle(theme)),
       properties_(core::propertiesStyle(theme)),
+      task_(core::taskStyle(theme)),
       codeBlockFamilies_(codeFamilies(codeBlock_.fontFamily)),
       inlineCodeFamilies_(codeFamilies(inlineCode_.fontFamily)) {
     baseFont_ = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
@@ -117,6 +118,9 @@ EditorFormats::EditorFormats(const core::Theme& theme)
     }
     const QFontMetricsF metrics(baseFont_);
     bulletSpacing_ = std::max<double>(3.0, std::round(metrics.horizontalAdvance(QLatin1Char(' ')) * 0.75));
+    // S052: the blank before a task's text is as wide as the box plus its gap.
+    checkboxSide_ = std::round(metrics.ascent() * task_.scale);
+    boxSpacing_ = checkboxSide_ + task_.gap - metrics.horizontalAdvance(QLatin1Char(' '));
     for (int level = 1; level <= 6; ++level) {
         QTextCharFormat f;
         f.setFontPointSize(theme.editorFontSize * theme.headingScale[static_cast<std::size_t>(level - 1)]);
@@ -219,6 +223,11 @@ QList<QTextLayout::FormatRange> EditorFormats::rangesOf(const core::LineRender& 
         boundaries.push_back(m.source.start + static_cast<std::uint32_t>(formulaHeadLength(source)));
         boundaries.push_back(m.source.end());
     }
+    const core::Span done = render.doneText;
+    if (done.length > 0) {
+        boundaries.push_back(done.start);
+        boundaries.push_back(done.end());
+    }
     const auto bulletSpace = bulletSpaceSpan(render);
     // Read once, so that the loop below needs no access to the optional (clang-tidy follows it
     // only so far through a long function).
@@ -244,9 +253,10 @@ QList<QTextLayout::FormatRange> EditorFormats::rangesOf(const core::LineRender& 
                     .inlineRun = covering(render.inlineStyles, inlineIndex, start, end),
                     .hidden = covering(render.hidden, hiddenIndex, start, end),
                     .link = covering(render.links, linkIndex, start, end),
-                    .bulletSpace = hasBulletSpace && start >= bullet.start && end <= bullet.end()};
+                    .bulletSpace = hasBulletSpace && start >= bullet.start && end <= bullet.end(),
+                    .done = done.length > 0 && start >= done.start && end <= done.end()};
         if (piece.run == nullptr && piece.inlineRun == nullptr && piece.hidden == nullptr && piece.link == nullptr &&
-            !piece.bulletSpace) {
+            !piece.bulletSpace && !piece.done) {
             continue;
         }
         piece.inlineCodeDelimiter = piece.hidden != nullptr && isInlineCodeDelimiter(render, start);
@@ -271,7 +281,7 @@ std::optional<QList<QTextLayout::FormatRange>> EditorFormats::wholeLineShortcut(
     // Nothing to format, a lone concealed bullet, a plain heading. Their formats are those
     // formatFor() gives the same pieces (made once per theme, see the constructor).
     const bool plain = render.headingLevel == 0 && !render.codeBlock && render.runs.empty() &&
-                       render.inlineStyles.empty() && render.links.empty();
+                       render.inlineStyles.empty() && render.links.empty() && render.doneText.length == 0;
     if (plain && render.hidden.empty() && render.wrapIndent == 0) {
         return QList<QTextLayout::FormatRange>{};
     }
@@ -302,7 +312,9 @@ std::optional<QList<QTextLayout::FormatRange>> EditorFormats::wholeLineShortcut(
 
 QTextCharFormat EditorFormats::formatFor(const core::LineRender& render, const Piece& piece, QStringView pieceText,
                                          bool shortcuts) const {
-    if (shortcuts) {
+    // Done text (S052) and the box's blank always take the general path.
+    const bool boxSpace = piece.hidden != nullptr && piece.hidden->mode == core::HideMode::Box;
+    if (shortcuts && !piece.done && !boxSpace) {
         // Shortcuts for the most common pieces: formats made once per theme by composedFormat().
         const bool plainLine = render.headingLevel == 0 && !render.codeBlock;
         if (piece.bulletSpace && piece.run == nullptr && piece.inlineRun == nullptr && piece.hidden == nullptr &&
@@ -411,8 +423,19 @@ QTextCharFormat EditorFormats::composedFormat(const core::LineRender& render, co
             format.setForeground(toQColor(*color));
         }
     }
+    applyHiddenOrDone(format, render, piece, pieceText);
+    if (piece.bulletSpace) {
+        format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
+        format.setFontLetterSpacing(bulletSpacing_);
+    }
+    applyFormula(format, piece, pieceText);
+    return format;
+}
+
+void EditorFormats::applyHiddenOrDone(QTextCharFormat& format, const core::LineRender& render, const Piece& piece,
+                                      QStringView pieceText) const {
     if (piece.hidden != nullptr) {
-        if ((run == nullptr || run->role != core::Role::CodeBlock) && !render.codeBlock) {
+        if ((piece.run == nullptr || piece.run->role != core::Role::CodeBlock) && !render.codeBlock) {
             format = heading(render.headingLevel);
         }
         if (piece.inlineCodeDelimiter) {
@@ -427,14 +450,16 @@ QTextCharFormat EditorFormats::composedFormat(const core::LineRender& render, co
             format.setProperty(QTextFormat::FontPixelSize, 1);
         } else if (piece.hidden->mode == core::HideMode::ZeroWidth && !pieceText.isEmpty()) {
             format = zeroWidthFormat(format, pieceText);
+        } else if (piece.hidden->mode == core::HideMode::Box) {
+            // S052: room for the task box the editor paints, and the gap after it.
+            format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
+            format.setFontLetterSpacing(boxSpacing_);
         }
+    } else if (piece.done) {
+        // S052: a checked task item's text reads as done, over every other colour.
+        format.setForeground(toQColor(task_.doneText));
+        format.setFontStrikeOut(task_.doneStrikethrough);
     }
-    if (piece.bulletSpace) {
-        format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
-        format.setFontLetterSpacing(bulletSpacing_);
-    }
-    applyFormula(format, piece, pieceText);
-    return format;
 }
 
 void EditorFormats::applyFormula(QTextCharFormat& format, const Piece& piece, QStringView pieceText) const {

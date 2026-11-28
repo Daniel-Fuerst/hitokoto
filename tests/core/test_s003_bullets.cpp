@@ -111,7 +111,7 @@ TEST(S003_Bullets, NonItemsArePlainText) {
 }
 
 TEST(S003_Bullets, HeadingAndBulletShareTheRegistry) {
-    EXPECT_EQ(ElementRegistry::withBuiltins().size(), 2u);
+    EXPECT_EQ(ElementRegistry::withBuiltins().size(), 3u) << "heading, task item (S052), bullet";
     EXPECT_EQ(show(u"# - not a bullet").headingLevel, 1);
     EXPECT_TRUE(show(u"# - not a bullet").decorations.empty());
 }

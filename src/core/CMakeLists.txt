@@ -10,6 +10,7 @@ add_library(hitokoto_core STATIC
     src/height_index.cpp
     src/elements/heading.cpp
     src/elements/bullet.cpp
+    src/elements/task.cpp
     src/elements/inline_code.cpp
     src/elements/link.cpp
     src/elements/emphasis.cpp

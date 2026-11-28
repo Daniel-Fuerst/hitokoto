@@ -5,6 +5,7 @@
 #include "floating_toolbar.hpp"
 #include "hitokoto/core/table.hpp"
 #include "hitokoto/core/table_clipboard.hpp"
+#include "hitokoto/core/task.hpp"
 #include "math_block_embedder.hpp"
 #include "properties_embedder.hpp"
 #include "qt_bridge.hpp"
@@ -86,6 +87,7 @@ EditorWidget::EditorWidget(const core::ElementRegistry& registry, QWidget* paren
             ++editCount_;
         }
     });
+    connect(this, &QTextEdit::cursorPositionChanged, this, &EditorWidget::keepCaretOutOfTaskBox);  // S052
     connect(this, &QTextEdit::cursorPositionChanged, this, &EditorWidget::updateReveal);
     connect(this, &QTextEdit::cursorPositionChanged, tables_.get(), &TableEmbedder::caretMoved);
     connect(this, &QTextEdit::selectionChanged, tables_.get(), &TableEmbedder::selectionMoved);  // S040
@@ -392,6 +394,7 @@ void EditorWidget::mouseReleaseEvent(QMouseEvent* event) {
     QTextEdit::mouseReleaseEvent(event);
     if (event->button() == Qt::LeftButton) {
         properties_->setMouseHeld(false);  // S024 review O6: the block may switch now
+        keepCaretOutOfTaskBox();           // S052: after a drag that ended in a task's prefix
     }
 }
 
@@ -403,6 +406,13 @@ void EditorWidget::mousePressEvent(QMouseEvent* event) {
         propertiesClickHeld_ = true;
         event->accept();
         return;
+    }
+    if (event->button() == Qt::LeftButton && event->modifiers() == Qt::NoModifier) {
+        if (const QTextBlock task = checkboxAt(event->position().toPoint()); task.isValid()) {
+            toggleTask(task);  // S052: the mouse ticks the box; the caret stays where it was
+            event->accept();
+            return;
+        }
     }
     const bool wasConcealed = block.isValid() && !styler_->isRevealed(block.blockNumber());
 
@@ -458,12 +468,25 @@ void EditorWidget::mouseMoveEvent(QMouseEvent* event) {
     const bool isConcealed = block.isValid() && !styler_->isRevealed(block.blockNumber());
     const QString href = anchorAt(event->position().toPoint());
     const bool canOpen = isBrowserUrl(href) && (isConcealed || (event->modifiers() & Qt::ControlModifier));
-    if (canOpen) {
+    const bool onBox = event->buttons() == Qt::NoButton && checkboxAt(event->position().toPoint()).isValid();
+    if (canOpen || onBox) {
         viewport()->setCursor(Qt::PointingHandCursor);
     } else {
         viewport()->setCursor(Qt::IBeamCursor);
     }
     QTextEdit::mouseMoveEvent(event);
+}
+
+void EditorWidget::mouseDoubleClickEvent(QMouseEvent* event) {
+    // S052: the second click of a double click arrives here; on a box it ticks again.
+    if (event->button() == Qt::LeftButton && event->modifiers() == Qt::NoModifier) {
+        if (const QTextBlock task = checkboxAt(event->position().toPoint()); task.isValid()) {
+            toggleTask(task);
+            event->accept();
+            return;
+        }
+    }
+    QTextEdit::mouseDoubleClickEvent(event);
 }
 
 void EditorWidget::wheelEvent(QWheelEvent* event) {
@@ -606,7 +629,7 @@ void EditorWidget::pressKey(QKeyEvent* event) {
     if (tables_->handleEditorKey(event) || properties_->handleEditorKey(event)) {
         return;
     }
-    if (handleBulletKey(event) || handleMathBlockKey(event)) {
+    if (handleTaskKey(event) || handleBulletKey(event) || handleMathBlockKey(event)) {
         return;
     }
     const TableEmbedder::Typing typing(tables_.get());
@@ -1077,6 +1100,9 @@ void EditorWidget::paintDecorations() {
             continue;
         }
         const auto render = styler_->renderFor(block);
+        // S052: task boxes are drawn with every reveal; they never show their source.
+        paintCheckboxes(painter, block, rect, render, styler_->formats().task(), styler_->formats().checkboxSide(),
+                        metrics);
         if (styler_->isRevealed(block.blockNumber())) {
             continue;
         }
@@ -1194,6 +1220,118 @@ bool EditorWidget::handleBulletKey(QKeyEvent* event) {
         setTextCursor(cursor);
     }
     ensureCursorVisible();
+    return true;
+}
+
+QRectF EditorWidget::checkboxRect(int blockNumber) {
+    const QTextBlock block = document()->findBlockByNumber(blockNumber);
+    if (!block.isValid() || !block.isVisible()) {
+        return {};
+    }
+    const core::LineRender render = styler_->renderFor(block);
+    for (const auto& d : render.decorations) {
+        if (d.kind == core::DecorationKind::Checkbox) {
+            const QPointF origin = blockBoundingGeometry(block).translated(contentOffset()).topLeft();
+            return ui::checkboxRect(block, d, origin, styler_->formats().checkboxSide(),
+                                    QFontMetricsF(document()->defaultFont()));
+        }
+    }
+    return {};
+}
+
+QTextBlock EditorWidget::checkboxAt(QPoint pos) {
+    const QTextBlock block = cursorForPosition(pos).block();
+    // A little slack around the box, so that a click on its edge counts.
+    const QRectF box = checkboxRect(block.blockNumber());
+    return !box.isEmpty() && box.adjusted(-2, -2, 2, 2).contains(pos) ? block : QTextBlock{};
+}
+
+void EditorWidget::toggleTask(const QTextBlock& block) {
+    if (isReadOnly()) {
+        return;
+    }
+    const auto edit = core::toggledTask(view(block.text()));
+    if (!edit.has_value()) {
+        return;
+    }
+    QTextCursor cursor(document());
+    cursor.beginEditBlock();
+    cursor.setPosition(block.position() + static_cast<int>(edit->span.start));
+    cursor.setPosition(block.position() + static_cast<int>(edit->span.end()), QTextCursor::KeepAnchor);
+    cursor.insertText(QString::fromStdU16String(edit->text));
+    cursor.endEditBlock();
+}
+
+bool EditorWidget::showsCheckbox(const QTextBlock& block) {
+    const core::LineRender render = styler_->renderFor(block);
+    return std::any_of(render.decorations.begin(), render.decorations.end(),
+                       [](const core::Decoration& d) { return d.kind == core::DecorationKind::Checkbox; });
+}
+
+void EditorWidget::keepCaretOutOfTaskBox() {
+    if (movingCaretOutOfBox_ || (QGuiApplication::mouseButtons() & Qt::LeftButton)) {
+        return;  // a drag is placed once the button is released
+    }
+    QTextCursor cursor = textCursor();
+    const QTextBlock block = cursor.block();
+    const auto task = core::parseTaskLine(view(block.text()));
+    if (!task.has_value() || !showsCheckbox(block)) {
+        return;  // no task item, or one shown as something else (in a code block, say)
+    }
+    const int column = cursor.positionInBlock();
+    const auto content = static_cast<int>(task->contentStart);
+    if (column >= content || (cursor.hasSelection() && column == 0)) {
+        return;
+    }
+    // A selection made leftwards takes the whole box with it; everything else lands before the text.
+    const bool leftwards = cursor.hasSelection() && cursor.anchor() > cursor.position();
+    const QScopedValueRollback guard(movingCaretOutOfBox_, true);
+    cursor.setPosition(block.position() + (leftwards ? 0 : content),
+                       cursor.hasSelection() ? QTextCursor::KeepAnchor : QTextCursor::MoveAnchor);
+    setTextCursor(cursor);
+}
+
+bool EditorWidget::handleTaskKey(QKeyEvent* event) {
+    const bool left =
+        event->matches(QKeySequence::MoveToPreviousChar) || event->matches(QKeySequence::MoveToPreviousWord);
+    const bool backspace = (event->key() == Qt::Key_Backspace &&
+                            (event->modifiers() & ~(Qt::ControlModifier | Qt::KeypadModifier)) == Qt::NoModifier) ||
+                           event->matches(QKeySequence::DeleteStartOfWord);
+    if (!left && !backspace) {
+        return false;
+    }
+    QTextCursor cursor = textCursor();
+    const QTextBlock block = cursor.block();
+    if (cursor.hasSelection()) {
+        return false;
+    }
+    const auto task = core::parseTaskLine(view(block.text()));
+    if (!task.has_value() || cursor.positionInBlock() != static_cast<int>(task->contentStart) ||
+        !showsCheckbox(block)) {
+        return false;
+    }
+    if (left) {
+        // Over the box in one step, to the end of the line above.
+        const QTextBlock above = block.previous();
+        if (above.isValid()) {
+            cursor.setPosition(above.position() + above.length() - 1);
+            setTextCursor(cursor);
+        }
+        event->accept();
+        return true;
+    }
+    if (isReadOnly()) {
+        return false;
+    }
+    // Backspace removes the box and the blanks after it; the line stays a bullet.
+    const core::Span removed = task->boxWithBlanks();
+    cursor.beginEditBlock();
+    cursor.setPosition(block.position() + static_cast<int>(removed.start));
+    cursor.setPosition(block.position() + static_cast<int>(removed.end()), QTextCursor::KeepAnchor);
+    cursor.removeSelectedText();
+    cursor.endEditBlock();
+    setTextCursor(cursor);
+    event->accept();
     return true;
 }
 

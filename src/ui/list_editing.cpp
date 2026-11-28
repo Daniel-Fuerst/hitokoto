@@ -2,6 +2,7 @@
 #include "list_editing.hpp"
 
 #include "hitokoto/core/bullet.hpp"
+#include "hitokoto/core/task.hpp"
 #include "qt_bridge.hpp"
 
 #include <QTextBlock>
@@ -55,8 +56,12 @@ ListEditing::Outcome ListEditing::enter(QTextCursor& cursor) const {
     }
 
     const int posInBlock = cursor.positionInBlock();
+    // S052: a task item continues with an unchecked box and counts as empty without text after it.
+    const auto task = core::parseTaskLine(view(block.text()));
+    const bool isEmpty = task.has_value() ? task->isEmpty : info->isEmpty;
+    const auto prefixLength = task.has_value() ? task->contentStart : info->prefixLength;
 
-    if (info->isEmpty) {
+    if (isEmpty) {
         cursor.beginEditBlock();
         cursor.movePosition(QTextCursor::StartOfBlock);
         cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
@@ -70,9 +75,10 @@ ListEditing::Outcome ListEditing::enter(QTextCursor& cursor) const {
         return Outcome::CaretPlaced;
     }
 
-    if (posInBlock >= static_cast<int>(info->prefixLength)) {
+    if (posInBlock >= static_cast<int>(prefixLength)) {
         cursor.beginEditBlock();
-        const QString prefix = block.text().left(static_cast<qsizetype>(info->prefixLength));
+        const QString prefix = task.has_value() ? toQString(core::continuedTaskPrefix(view(block.text())))
+                                                : block.text().left(static_cast<qsizetype>(info->prefixLength));
         cursor.insertText(QLatin1Char('\n') + prefix);
         cursor.endEditBlock();
         return Outcome::CaretPlaced;
